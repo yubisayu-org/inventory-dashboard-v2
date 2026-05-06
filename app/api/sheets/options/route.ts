@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { requireSession } from "@/lib/api"
-import { getSheetOptions } from "@/lib/sheets"
+import { getSheetOptions } from "@/lib/db"
 
 export async function GET() {
   const { error } = await requireSession()

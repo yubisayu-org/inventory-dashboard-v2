@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import type { SheetOptions } from "@/lib/sheets"
+import type { SheetOptions } from "@/lib/db"
 
 export function useSheetOptions(): SheetOptions | null {
   const [options, setOptions] = useState<SheetOptions | null>(null)

@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react"
-import type { FormRow } from "@/lib/sheets"
+import type { FormRow } from "@/lib/db"
 import { useResizableColumns } from "@/hooks/useResizableColumns"
 
 // ---------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import type { ShippingRecord } from "@/lib/sheets"
+import type { ShippingRecord } from "@/lib/db"
 import { generateShippingLabel, generateMultipleShippingLabels } from "@/lib/shipping-label"
 import type { ShippingLabelParams } from "@/lib/shipping-label"
 import { useModalDismiss } from "@/hooks/useModalDismiss"

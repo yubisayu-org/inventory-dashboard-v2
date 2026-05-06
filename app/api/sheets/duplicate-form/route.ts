@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { getDuplicateFormRows } from "@/lib/sheets"
+import { getDuplicateFormRows } from "@/lib/db"
 
 export async function GET(req: NextRequest) {
   const { session, error: authError } = await requireSession()

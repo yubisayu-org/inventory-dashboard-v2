@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { getDuplicateFormRows, bulkUpdateArrive } from "@/lib/sheets"
+import { getDuplicateFormRows, bulkUpdateArrive } from "@/lib/db"
 
 type ItemLine = { item: string; qty: number }
 type UpdatedRow = { rowNumber: number; customer: string; oldUnitArrive: number; unitArrive: number }

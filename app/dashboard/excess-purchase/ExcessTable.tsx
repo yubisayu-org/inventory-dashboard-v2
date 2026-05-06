@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import type { ExcessRow } from "@/lib/sheets"
+import type { ExcessRow } from "@/lib/db"
 import { useResizableColumns } from "@/hooks/useResizableColumns"
 
 const ROWS_PER_PAGE = 20

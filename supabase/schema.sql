@@ -1,0 +1,79 @@
+-- Yubisayu Inventory Dashboard — Supabase (Postgres) schema
+-- Run this against your Supabase project via the SQL editor.
+
+CREATE TABLE events (
+  id   SERIAL PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE customers (
+  id           SERIAL PRIMARY KEY,
+  instagram_id TEXT NOT NULL UNIQUE,
+  whatsapp     TEXT NOT NULL DEFAULT '',
+  data_diri    TEXT NOT NULL DEFAULT '',
+  ekspedisi    TEXT NOT NULL DEFAULT '',
+  ongkos_kirim INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE products (
+  id    SERIAL PRIMARY KEY,
+  name  TEXT NOT NULL,
+  store TEXT NOT NULL DEFAULT '',
+  price INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE products_indo (
+  id      SERIAL PRIMARY KEY,
+  product TEXT NOT NULL,
+  store   TEXT NOT NULL DEFAULT '',
+  price   INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE orders (
+  id          SERIAL PRIMARY KEY,
+  event       TEXT NOT NULL,
+  customer    TEXT NOT NULL,
+  items       TEXT NOT NULL,
+  unit        INTEGER NOT NULL,
+  note        TEXT NOT NULL DEFAULT '',
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ,
+  unit_buy    INTEGER,
+  receipt     TEXT NOT NULL DEFAULT '',
+  unit_arrive INTEGER,
+  unit_ship   INTEGER,
+  unit_hold   INTEGER
+);
+
+CREATE INDEX idx_orders_event ON orders (event);
+CREATE INDEX idx_orders_customer ON orders (lower(customer));
+CREATE INDEX idx_orders_event_items ON orders (event, items);
+
+CREATE TABLE excess_purchase (
+  id         SERIAL PRIMARY KEY,
+  event      TEXT NOT NULL,
+  items      TEXT NOT NULL,
+  unit_buy   INTEGER NOT NULL,
+  receipt    TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ
+);
+
+CREATE INDEX idx_excess_event_items ON excess_purchase (event, items);
+
+CREATE TABLE shipments (
+  id                SERIAL PRIMARY KEY,
+  event             TEXT NOT NULL,
+  customer          TEXT NOT NULL,
+  shipping_id       TEXT NOT NULL UNIQUE,
+  invoicing         TEXT NOT NULL DEFAULT '',
+  weight_estimation NUMERIC(10,2) NOT NULL DEFAULT 0,
+  ongkir            INTEGER NOT NULL DEFAULT 0,
+  ongkir_total      INTEGER NOT NULL DEFAULT 0,
+  is_last_shipment  BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at        TIMESTAMPTZ,
+  tracking_number   TEXT NOT NULL DEFAULT ''
+);
+
+CREATE INDEX idx_shipments_customer ON shipments (lower(customer));

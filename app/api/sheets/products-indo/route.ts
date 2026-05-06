@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireOwner } from "@/lib/api"
-import { getProductIndo, addProductIndo, updateProductIndo } from "@/lib/sheets"
+import { getProductIndo, addProductIndo, updateProductIndo } from "@/lib/db"
 
 export async function GET() {
   const { session, error: authError } = await requireSession()

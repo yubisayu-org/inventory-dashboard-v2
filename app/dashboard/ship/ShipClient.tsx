@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import type { ShipCustomer, ShipOrdersParams } from "@/lib/sheets"
+import type { ShipCustomer, ShipOrdersParams } from "@/lib/db"
 import { generateShippingLabel } from "@/lib/shipping-label"
 import { useModalDismiss } from "@/hooks/useModalDismiss"
 import { useResizableColumns } from "@/hooks/useResizableColumns"

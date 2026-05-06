@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { appendOrders } from "@/lib/sheets"
+import { appendOrders } from "@/lib/db"
 
 export async function POST(req: NextRequest) {
   const { session, error: authError } = await requireSession()

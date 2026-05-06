@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { getShippingRecords, updateTrackingNumber } from "@/lib/sheets"
+import { getShippingRecords, updateTrackingNumber } from "@/lib/db"
 
 export async function GET() {
   const { session, error: authError } = await requireSession()

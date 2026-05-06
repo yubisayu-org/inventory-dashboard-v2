@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import type { CustomerDetail, InvoiceEvent, InvoiceResult } from "@/lib/sheets"
+import type { CustomerDetail, InvoiceEvent, InvoiceResult } from "@/lib/db"
 import { useCopyFeedback } from "@/hooks/useCopyFeedback"
 import { useResizableColumns } from "@/hooks/useResizableColumns"
 

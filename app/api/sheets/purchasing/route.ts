@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { getDuplicateFormRows, bulkUpdatePurchase, appendExcessPurchase } from "@/lib/sheets"
+import { getDuplicateFormRows, bulkUpdatePurchase, appendExcessPurchase } from "@/lib/db"
 
 type ItemLine = { item: string; qty: number }
 type UpdatedRow = { rowNumber: number; customer: string; oldUnitBuy: number; unitBuy: number }

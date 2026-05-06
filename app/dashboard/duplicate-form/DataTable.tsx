@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react"
-import type { FormRow, InvoiceResult, SheetOptions } from "@/lib/sheets"
+import type { FormRow, InvoiceResult, SheetOptions } from "@/lib/db"
 import { useResizableColumns } from "@/hooks/useResizableColumns"
 import SearchableSelect from "@/components/SearchableSelect"
 import { useSheetOptions } from "@/hooks/useSheetOptions"

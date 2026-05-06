@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { updateFormRow, updateFormRowStage2, updateFormRowStage3, deleteFormRow } from "@/lib/sheets"
+import { updateFormRow, updateFormRowStage2, updateFormRowStage3, deleteFormRow } from "@/lib/db"
 
 type Params = { params: Promise<{ row: string }> }
 
@@ -13,7 +13,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
 
   const { row } = await params
   const rowNumber = Number(row)
-  if (!Number.isInteger(rowNumber) || rowNumber < 2) {
+  if (!Number.isInteger(rowNumber) || rowNumber < 1) {
     return NextResponse.json({ error: "Invalid row number" }, { status: 400 })
   }
 
@@ -77,7 +77,7 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
 
   const { row } = await params
   const rowNumber = Number(row)
-  if (!Number.isInteger(rowNumber) || rowNumber < 2) {
+  if (!Number.isInteger(rowNumber) || rowNumber < 1) {
     return NextResponse.json({ error: "Invalid row number" }, { status: 400 })
   }
 

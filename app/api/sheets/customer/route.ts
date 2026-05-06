@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { lookupCustomerDetail } from "@/lib/sheets"
+import { lookupCustomerDetail } from "@/lib/db"
 
 export async function GET(req: NextRequest) {
   const { session, error: authError } = await requireSession()

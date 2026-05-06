@@ -6,7 +6,7 @@ import {
   bulkUpdatePurchase,
   deleteExcessRow,
   updateExcessRowUnitBuy,
-} from "@/lib/sheets"
+} from "@/lib/db"
 
 type Params = { params: Promise<{ row: string }> }
 type UpdatedRow = { rowNumber: number; customer: string; oldUnitBuy: number; unitBuy: number }
@@ -20,7 +20,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { row } = await params
   const rowNumber = Number(row)
-  if (!Number.isInteger(rowNumber) || rowNumber < 2) {
+  if (!Number.isInteger(rowNumber) || rowNumber < 1) {
     return NextResponse.json({ error: "Invalid row number" }, { status: 400 })
   }
 

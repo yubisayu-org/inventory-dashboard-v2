@@ -6,7 +6,7 @@ import {
   bulkUpdatePurchase,
   deleteExcessRow,
   updateExcessRowUnitBuy,
-} from "@/lib/sheets"
+} from "@/lib/db"
 
 type UpdatedRow = { rowNumber: number; customer: string; oldUnitBuy: number; unitBuy: number }
 type ItemResult = { event: string; items: string; originalUnitBuy: number; filled: UpdatedRow[]; remainder: number }

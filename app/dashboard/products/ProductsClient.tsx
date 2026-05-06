@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import type { ProductIndoRow } from "@/lib/sheets"
+import type { ProductIndoRow } from "@/lib/db"
 import { useResizableColumns } from "@/hooks/useResizableColumns"
 
 const EMPTY_FORM = { product: "", store: "", price: "" }
