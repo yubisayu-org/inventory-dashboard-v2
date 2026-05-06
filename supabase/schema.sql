@@ -22,6 +22,8 @@ CREATE TABLE products (
   price INTEGER NOT NULL DEFAULT 0
 );
 
+CREATE INDEX idx_products_name ON products (name);
+
 CREATE TABLE products_indo (
   id      SERIAL PRIMARY KEY,
   product TEXT NOT NULL,
@@ -47,6 +49,7 @@ CREATE TABLE orders (
 
 CREATE INDEX idx_orders_event ON orders (event);
 CREATE INDEX idx_orders_customer ON orders (lower(customer));
+CREATE INDEX idx_orders_customer_normalized ON orders (lower(replace(customer, '@', '')));
 CREATE INDEX idx_orders_event_items ON orders (event, items);
 
 CREATE TABLE excess_purchase (

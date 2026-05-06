@@ -538,13 +538,10 @@ export async function getInvoiceForCustomer(instagramId: string): Promise<Invoic
 export async function getShipOrders(): Promise<ShipCustomer[]> {
   const [orderRows, customerRows] = await Promise.all([
     sql`
-      SELECT o.id, o.event, o.customer, o.items, o.unit,
-             o.unit_arrive, o.unit_ship,
-             COALESCE(p.price, 0) AS price
-      FROM orders o
-      LEFT JOIN products p ON p.name = o.items
-      WHERE o.unit_arrive IS NOT NULL AND o.unit_arrive > 0
-      ORDER BY o.event, o.customer, o.id
+      SELECT id, event, customer, items, unit, unit_arrive, unit_ship
+      FROM orders
+      WHERE unit_arrive IS NOT NULL AND unit_arrive > 0
+      ORDER BY event, customer, id
     `,
     sql`SELECT instagram_id, whatsapp, data_diri, ekspedisi, ongkos_kirim FROM customers`,
   ])
