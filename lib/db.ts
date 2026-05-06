@@ -178,11 +178,9 @@ function tsToString(v: Date | null | undefined): string {
 
 export async function getSheetOptions(): Promise<SheetOptions> {
   const [eventsRows, productRows, customerRows] = await Promise.all([
-    sql<{ name: string }[]>`SELECT name FROM events ORDER BY name`,
-    sql<{ name: string; store: string; price: number }[]>`
-      SELECT name, store, price FROM products WHERE name != '' ORDER BY name
-    `,
-    sql<{ instagram_id: string }[]>`
+    sql`SELECT name FROM events ORDER BY name`,
+    sql`SELECT name, store, price FROM products WHERE name != '' ORDER BY name`,
+    sql`
       SELECT instagram_id FROM customers
       WHERE instagram_id NOT LIKE '\\_old%' AND instagram_id != 'gantialamat'
       ORDER BY instagram_id
