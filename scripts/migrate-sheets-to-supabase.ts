@@ -2,7 +2,7 @@
  * One-time migration script: Google Sheets → Supabase (Postgres)
  *
  * Usage:
- *   npx tsx scripts/migrate-sheets-to-supabase.ts
+ *   node --env-file=.env.local --import=tsx scripts/migrate-sheets-to-supabase.ts
  *
  * Required env vars (set in .env.local or export in shell):
  *   DATABASE_URL                      — Supabase pooler connection string
@@ -21,10 +21,6 @@
 
 import { google } from "googleapis"
 import postgres from "postgres"
-import { config } from "dotenv"
-
-// Load .env.local (Next.js convention)
-config({ path: ".env.local" })
 
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID!
 const PRODUCT_INDO_SPREADSHEET_ID = process.env.GOOGLE_PRODUCT_INDO_SPREADSHEET_ID!
