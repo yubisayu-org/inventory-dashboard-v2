@@ -72,6 +72,7 @@ export default function SearchableSelect({
     return () => clearTimeout(id)
   }, [inputValue])
 
+  const hasQuery = inputValue.trim().length > 0
   const filtered = useMemo(() => {
     if (debouncedQuery) return options.filter((o) => o.label.toLowerCase().includes(debouncedQuery))
     if (LARGE_LIST) return []
@@ -185,9 +186,9 @@ export default function SearchableSelect({
       return
     }
 
-    const showClear = clearable && value && !debouncedQuery
+    const showClear = clearable && value && !hasQuery
     const clearOffset = showClear ? 1 : 0
-    const showAddRow = allowNewValue && debouncedQuery && filtered.length === 0
+    const showAddRow = allowNewValue && hasQuery && filtered.length === 0
     const total = filtered.length + clearOffset + (showAddRow ? 1 : 0)
 
     if (e.key === "ArrowDown") {
@@ -220,8 +221,8 @@ export default function SearchableSelect({
 
   // ---------- Render ----------
 
-  const showClearRow = clearable && value && !debouncedQuery
-  const showAddRow = allowNewValue && debouncedQuery !== "" && filtered.length === 0
+  const showClearRow = clearable && value && !hasQuery
+  const showAddRow = allowNewValue && hasQuery && filtered.length === 0
 
   return (
     <div ref={wrapperRef} className="relative">
@@ -267,7 +268,7 @@ export default function SearchableSelect({
             )}
             {LARGE_LIST && !debouncedQuery ? (
               <li className="px-3 py-3 text-sm text-gray-400 text-center">
-                Type to search...
+                {hasQuery ? "Searching…" : "Type to search..."}
               </li>
             ) : showAddRow ? (
               <li
