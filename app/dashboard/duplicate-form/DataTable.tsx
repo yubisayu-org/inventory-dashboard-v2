@@ -1,8 +1,11 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react"
-import type { FormRow, InvoiceResult, SheetOptions, PaginatedFormRows } from "@/lib/db"
+import type { FormRow, InvoiceResult, SheetOptions } from "@/lib/db"
 import { useResizableColumns } from "@/hooks/useResizableColumns"
+import { usePaginatedFetch } from "@/hooks/usePaginatedFetch"
+import type { PageData } from "@/hooks/usePaginatedFetch"
+import { PaginationButton, PageJumpInput, getPageNumbers } from "@/components/Pagination"
 import SearchableSelect from "@/components/SearchableSelect"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import { copyToClipboard } from "@/lib/clipboard"
@@ -163,7 +166,6 @@ type EditForm = { event: string; customer: string; items: string; unit: string; 
 
 export default function DataTable() {
   const [table, dispatch] = useReducer(tableReducer, INITIAL_STATE)
-  const [fetchState, setFetchState] = useState<{ loading: boolean; error: string; refreshError: string }>({ loading: true, error: "", refreshError: "" })
   const options = useSheetOptions()
   const [editingRowNumber, setEditingRowNumber] = useState<number | null>(null)
   const [editForm, setEditForm] = useState<EditForm | null>(null)
@@ -193,62 +195,19 @@ export default function DataTable() {
   const hasActiveFilters  = table.filters.event || table.filters.customer || table.filters.items || table.search
   const activeFilterCount = [table.filters.event, table.filters.customer, table.filters.items].filter(Boolean).length
 
-  const fetchPage = useCallback(async (
-    page: number,
-    search: string,
-    filters: Filters,
-    sort: SortConfig,
-    isRefresh = false,
-  ) => {
-    setFetchState((s) => ({ ...s, loading: !isRefresh, refreshError: "" }))
-    const params = new URLSearchParams()
-    params.set("page", String(page))
-    params.set("pageSize", String(PAGE_SIZE))
-    if (search) params.set("search", search)
-    if (filters.event) params.set("event", filters.event)
-    if (filters.customer) params.set("customer", filters.customer)
-    if (filters.items) params.set("items", filters.items)
-    if (sort) {
-      params.set("sortKey", sort.key)
-      params.set("sortDir", sort.direction)
-    } else {
-      params.set("newestFirst", "true")
-    }
-
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 30_000)
-    try {
-      const res = await fetch(`/api/sheets/duplicate-form?${params}`, { signal: controller.signal, cache: "no-store" })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? "Failed to load rows")
-      dispatch({ type: "SET_PAGE_DATA", rows: data.rows, totalCount: data.totalCount, totalPages: data.totalPages, page: data.page })
-      setFetchState({ loading: false, error: "", refreshError: "" })
-    } catch (err) {
-      const msg =
-        err instanceof Error && err.name === "AbortError"
-          ? "Request timed out — please retry"
-          : err instanceof Error ? err.message : "Failed to load rows"
-      if (isRefresh) setFetchState((s) => ({ ...s, loading: false, refreshError: msg }))
-      else setFetchState({ loading: false, error: msg, refreshError: "" })
-    } finally {
-      clearTimeout(timer)
-    }
+  const onData = useCallback((data: PageData) => {
+    dispatch({ type: "SET_PAGE_DATA", rows: data.rows as FormRow[], totalCount: data.totalCount, totalPages: data.totalPages, page: data.page })
   }, [])
 
-  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const prevSearchRef = useRef(table.search)
-
-  useEffect(() => {
-    if (prevSearchRef.current !== table.search) {
-      prevSearchRef.current = table.search
-      if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
-      searchTimerRef.current = setTimeout(() => {
-        fetchPage(1, table.search, table.filters, table.sort)
-      }, 300)
-      return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current) }
-    }
-    fetchPage(table.currentPage, table.search, table.filters, table.sort)
-  }, [table.currentPage, table.filters, table.sort, table.search, fetchPage])
+  const { fetchState, refresh } = usePaginatedFetch({
+    endpoint: "/api/sheets/duplicate-form",
+    pageSize: PAGE_SIZE,
+    page: table.currentPage,
+    search: table.search,
+    filters: table.filters,
+    sort: table.sort,
+    onData,
+  })
 
   useEffect(() => {
     setSelectedRows((prev) => (prev.size === 0 ? prev : new Set()))
@@ -291,7 +250,7 @@ export default function DataTable() {
       setSelectedRows(new Set())
     } catch (err) {
       alert(err instanceof Error ? err.message : "Bulk delete failed")
-      await fetchPage(table.currentPage, table.search, table.filters, table.sort, true)
+      await refresh()
     } finally {
       setBulkDeleting(false)
     }
@@ -357,7 +316,7 @@ export default function DataTable() {
       <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-4 text-sm text-red-700">
         <p className="font-medium mb-1">Failed to load data</p>
         <p>{fetchState.error}</p>
-        <button onClick={() => fetchPage(table.currentPage, table.search, table.filters, table.sort)} className="mt-3 text-sm underline hover:no-underline">Retry</button>
+        <button onClick={refresh} className="mt-3 text-sm underline hover:no-underline">Retry</button>
       </div>
     )
   }
@@ -410,7 +369,7 @@ export default function DataTable() {
               {table.totalCount} {table.totalCount === 1 ? "order" : "orders"}
             </span>
 
-            <button onClick={() => fetchPage(table.currentPage, table.search, table.filters, table.sort, true)} title="Refresh" className="p-1.5 text-gray-400 hover:text-brand transition-colors rounded">
+            <button onClick={refresh} title="Refresh" className="p-1.5 text-gray-400 hover:text-brand transition-colors rounded">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 12a9 9 0 1 1-6.22-8.56" /><polyline points="21 3 21 9 15 9" />
               </svg>
@@ -444,7 +403,7 @@ export default function DataTable() {
         {fetchState.refreshError && (
           <div className="flex items-center justify-between gap-3 px-4 py-2 border-b border-red-200 bg-red-50 text-xs text-red-600">
             <span>Refresh failed: {fetchState.refreshError}</span>
-            <button onClick={() => fetchPage(table.currentPage, table.search, table.filters, table.sort, true)} className="underline hover:no-underline shrink-0">Retry</button>
+            <button onClick={refresh} className="underline hover:no-underline shrink-0">Retry</button>
           </div>
         )}
 
@@ -568,7 +527,7 @@ export default function DataTable() {
         <AddOrderDrawer
           options={options}
           onClose={() => dispatch({ type: "TOGGLE_ADD_DRAWER" })}
-          onOrderAdded={() => fetchPage(1, table.search, table.filters, table.sort)}
+          onOrderAdded={refresh}
         />
       )}
     </div>
@@ -1155,66 +1114,3 @@ function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }
   )
 }
 
-// ---------------------------------------------------------------------------
-// Pagination
-// ---------------------------------------------------------------------------
-
-function PaginationButton({ children, onClick, disabled = false, active = false }: {
-  children: React.ReactNode; onClick: () => void; disabled?: boolean; active?: boolean
-}) {
-  return (
-    <button onClick={onClick} disabled={disabled}
-      className={`min-w-[2rem] h-8 px-2 text-xs rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${active ? "bg-brand text-white font-medium" : "border border-cream-border hover:bg-cream text-gray-600"}`}>
-      {children}
-    </button>
-  )
-}
-
-function PageJumpInput({ currentPage, totalPages, onJump }: {
-  currentPage: number
-  totalPages: number
-  onJump: (page: number) => void
-}) {
-  const [value, setValue] = useState(String(currentPage))
-
-  useEffect(() => { setValue(String(currentPage)) }, [currentPage])
-
-  function commit() {
-    const n = Number(value)
-    if (!Number.isInteger(n) || n < 1) {
-      setValue(String(currentPage))
-      return
-    }
-    const clamped = Math.min(totalPages, Math.max(1, n))
-    if (clamped !== currentPage) onJump(clamped)
-    else setValue(String(currentPage))
-  }
-
-  return (
-    <input
-      type="number"
-      min={1}
-      max={totalPages}
-      value={value}
-      onChange={(e) => setValue(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") { e.preventDefault(); commit(); (e.target as HTMLInputElement).blur() }
-      }}
-      aria-label="Jump to page"
-      className="w-12 text-center border border-cream-border rounded-md px-1 py-1 text-xs text-foreground bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-    />
-  )
-}
-
-function getPageNumbers(current: number, total: number): (number | "…")[] {
-  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1)
-  const pages: (number | "…")[] = [1]
-  if (current > 3) pages.push("…")
-  const start = Math.max(2, current - 1)
-  const end   = Math.min(total - 1, current + 1)
-  for (let p = start; p <= end; p++) pages.push(p)
-  if (current < total - 2) pages.push("…")
-  pages.push(total)
-  return pages
-}

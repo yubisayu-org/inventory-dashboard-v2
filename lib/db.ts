@@ -274,20 +274,18 @@ export async function getDuplicateFormRowsPaginated(opts: {
   const sortCol = (opts.sortKey && SORT_COLUMNS[opts.sortKey]) || "id"
   const sortDir = opts.sortDir === "desc" || (!opts.sortKey && newestFirst) ? "DESC" : "ASC"
 
-  const [countResult, dataRows] = await Promise.all([
-    sql.unsafe(`SELECT COUNT(*) AS count FROM orders ${where}`, params),
-    sql.unsafe(
-      `SELECT id, event, customer, items, unit, note,
-              created_at, updated_at, unit_buy, receipt,
-              unit_arrive, unit_ship, unit_hold
-       FROM orders ${where}
-       ORDER BY ${sortCol} ${sortDir}, id ${sortDir}
-       LIMIT ${pageSize} OFFSET ${offset}`,
-      params,
-    ),
-  ])
+  const dataRows = await sql.unsafe(
+    `SELECT id, event, customer, items, unit, note,
+            created_at, updated_at, unit_buy, receipt,
+            unit_arrive, unit_ship, unit_hold,
+            COUNT(*) OVER() AS _total_count
+     FROM orders ${where}
+     ORDER BY ${sortCol} ${sortDir}, id ${sortDir}
+     LIMIT ${pageSize} OFFSET ${offset}`,
+    params,
+  )
 
-  const totalCount = Number(countResult[0].count)
+  const totalCount = dataRows.length > 0 ? Number(dataRows[0]._total_count) : 0
   return {
     rows: dataRows.map(mapFormRow),
     totalCount,

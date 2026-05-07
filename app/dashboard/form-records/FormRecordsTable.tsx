@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react"
 import type { FormRow } from "@/lib/db"
 import { useResizableColumns } from "@/hooks/useResizableColumns"
+import { usePaginatedFetch } from "@/hooks/usePaginatedFetch"
+import type { PageData } from "@/hooks/usePaginatedFetch"
+import { PaginationButton, PageJumpInput, getPageNumbers } from "@/components/Pagination"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 
 // ---------------------------------------------------------------------------
@@ -172,7 +175,6 @@ function SortIcon({ active, direction }: { active: boolean; direction?: SortDir 
 
 export default function FormRecordsTable() {
   const [state, dispatch] = useReducer(reducer, INITIAL)
-  const [fetchState, setFetchState] = useState({ loading: true, error: "" })
   const [columnsOpen, setColumnsOpen] = useState(false)
   const [filtersOpen, setFiltersOpen] = useState(false)
   const columnsRef = useRef<HTMLDivElement>(null)
@@ -188,59 +190,19 @@ export default function FormRecordsTable() {
     return () => document.removeEventListener("pointerdown", onPointerDown)
   }, [])
 
-  const fetchPage = useCallback(async (
-    page: number,
-    search: string,
-    filters: Filters,
-    sort: SortConfig,
-  ) => {
-    setFetchState({ loading: true, error: "" })
-    const params = new URLSearchParams()
-    params.set("page", String(page))
-    params.set("pageSize", String(PAGE_SIZE))
-    if (search) params.set("search", search)
-    if (filters.event) params.set("event", filters.event)
-    if (filters.customer) params.set("customer", filters.customer)
-    if (filters.items) params.set("items", filters.items)
-    if (sort) {
-      params.set("sortKey", sort.key)
-      params.set("sortDir", sort.direction)
-    } else {
-      params.set("newestFirst", "true")
-    }
-
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 30_000)
-    try {
-      const res = await fetch(`/api/sheets/duplicate-form?${params}`, { signal: controller.signal, cache: "no-store" })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? "Failed to load")
-      dispatch({ type: "SET_PAGE_DATA", rows: data.rows, totalCount: data.totalCount, totalPages: data.totalPages, page: data.page })
-      setFetchState({ loading: false, error: "" })
-    } catch (err) {
-      const msg = err instanceof Error && err.name === "AbortError"
-        ? "Request timed out — please retry"
-        : err instanceof Error ? err.message : "Failed to load"
-      setFetchState({ loading: false, error: msg })
-    } finally {
-      clearTimeout(timer)
-    }
+  const onData = useCallback((data: PageData) => {
+    dispatch({ type: "SET_PAGE_DATA", rows: data.rows as FormRow[], totalCount: data.totalCount, totalPages: data.totalPages, page: data.page })
   }, [])
 
-  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const prevSearchRef = useRef(state.search)
-
-  useEffect(() => {
-    if (prevSearchRef.current !== state.search) {
-      prevSearchRef.current = state.search
-      if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
-      searchTimerRef.current = setTimeout(() => {
-        fetchPage(1, state.search, state.filters, state.sort)
-      }, 300)
-      return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current) }
-    }
-    fetchPage(state.currentPage, state.search, state.filters, state.sort)
-  }, [state.currentPage, state.filters, state.sort, state.search, fetchPage])
+  const { fetchState, refresh } = usePaginatedFetch({
+    endpoint: "/api/sheets/duplicate-form",
+    pageSize: PAGE_SIZE,
+    page: state.currentPage,
+    search: state.search,
+    filters: state.filters,
+    sort: state.sort,
+    onData,
+  })
 
   const visibleColumns = useMemo(
     () => ALL_COLUMNS.filter((c) => state.columnVisibility[c.id]),
@@ -409,7 +371,7 @@ export default function FormRecordsTable() {
         {/* Reload */}
         <button
           type="button"
-          onClick={() => fetchPage(state.currentPage, state.search, state.filters, state.sort)}
+          onClick={refresh}
           className={TOOLBAR_BTN}
           title="Reload"
         >
@@ -571,75 +533,6 @@ export default function FormRecordsTable() {
       )}
     </div>
   )
-}
-
-// ---------------------------------------------------------------------------
-// Pagination helpers
-// ---------------------------------------------------------------------------
-
-function PaginationButton({ children, onClick, disabled = false, active = false }: {
-  children: React.ReactNode; onClick: () => void; disabled?: boolean; active?: boolean
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className={`min-w-[2rem] h-8 px-2 text-xs rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
-        active ? "bg-brand text-white font-medium" : "border border-cream-border hover:bg-cream text-gray-600"
-      }`}
-    >
-      {children}
-    </button>
-  )
-}
-
-function PageJumpInput({ currentPage, totalPages, onJump }: {
-  currentPage: number
-  totalPages: number
-  onJump: (page: number) => void
-}) {
-  const [value, setValue] = useState(String(currentPage))
-
-  useEffect(() => { setValue(String(currentPage)) }, [currentPage])
-
-  function commit() {
-    const n = Number(value)
-    if (!Number.isInteger(n) || n < 1) {
-      setValue(String(currentPage))
-      return
-    }
-    const clamped = Math.min(totalPages, Math.max(1, n))
-    if (clamped !== currentPage) onJump(clamped)
-    else setValue(String(currentPage))
-  }
-
-  return (
-    <input
-      type="number"
-      min={1}
-      max={totalPages}
-      value={value}
-      onChange={(e) => setValue(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") { e.preventDefault(); commit(); (e.target as HTMLInputElement).blur() }
-      }}
-      aria-label="Jump to page"
-      className="w-12 text-center border border-cream-border rounded-md px-1 py-1 text-xs text-foreground bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-    />
-  )
-}
-
-function getPageNumbers(current: number, total: number): (number | "…")[] {
-  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1)
-  const pages: (number | "…")[] = [1]
-  if (current > 3) pages.push("…")
-  const start = Math.max(2, current - 1)
-  const end   = Math.min(total - 1, current + 1)
-  for (let p = start; p <= end; p++) pages.push(p)
-  if (current < total - 2) pages.push("…")
-  pages.push(total)
-  return pages
 }
 
 // ---------------------------------------------------------------------------
