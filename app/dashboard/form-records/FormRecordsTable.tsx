@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react"
 import type { FormRow } from "@/lib/db"
 import { useResizableColumns } from "@/hooks/useResizableColumns"
+import { useSheetOptions } from "@/hooks/useSheetOptions"
 
 // ---------------------------------------------------------------------------
 // Column definitions
@@ -57,6 +58,8 @@ type SortConfig = { key: SortKey; direction: SortDir } | null
 
 type State = {
   rows: FormRow[]
+  totalCount: number
+  totalPages: number
   currentPage: number
   filters: Filters
   sort: SortConfig
@@ -65,7 +68,7 @@ type State = {
 }
 
 type Action =
-  | { type: "SET_ROWS"; rows: FormRow[] }
+  | { type: "SET_PAGE_DATA"; rows: FormRow[]; totalCount: number; totalPages: number; page: number }
   | { type: "SET_PAGE"; page: number }
   | { type: "SET_FILTER"; field: keyof Filters; value: string }
   | { type: "CLEAR_FILTERS" }
@@ -77,6 +80,8 @@ type Action =
 
 const INITIAL: State = {
   rows: [],
+  totalCount: 0,
+  totalPages: 1,
   currentPage: 1,
   filters: { event: "", customer: "", items: "" },
   sort: null,
@@ -86,8 +91,8 @@ const INITIAL: State = {
 
 function reducer(state: State, action: Action): State {
   switch (action.type) {
-    case "SET_ROWS":
-      return { ...state, rows: action.rows, currentPage: 1 }
+    case "SET_PAGE_DATA":
+      return { ...state, rows: action.rows, totalCount: action.totalCount, totalPages: action.totalPages, currentPage: action.page }
     case "SET_PAGE":
       return { ...state, currentPage: action.page }
     case "SET_FILTER":
@@ -129,60 +134,6 @@ const SORTABLE_COLUMNS = new Set<ColumnId>([
   "event", "customer", "items", "unit", "unitBuy", "receipt",
   "unitArrive", "unitShip", "unitHold", "createdAt", "updatedAt",
 ])
-
-function getValue(row: FormRow, key: SortKey): string | number {
-  if (key === "unit")       return row.unit
-  if (key === "unitBuy")    return row.unitBuy    ?? -Infinity
-  if (key === "unitArrive") return row.unitArrive ?? -Infinity
-  if (key === "unitShip")   return row.unitShip   ?? -Infinity
-  if (key === "unitHold")   return row.unitHold   ?? -Infinity
-  return String(row[key as keyof FormRow] ?? "").toLowerCase()
-}
-
-function applySearch(rows: FormRow[], q: string): FormRow[] {
-  if (!q) return rows
-  const lq = q.toLowerCase()
-  return rows.filter(
-    (r) =>
-      r.event.toLowerCase().includes(lq) ||
-      r.customer.toLowerCase().includes(lq) ||
-      r.items.toLowerCase().includes(lq) ||
-      r.note.toLowerCase().includes(lq) ||
-      r.receipt.toLowerCase().includes(lq) ||
-      String(r.unit).includes(lq) ||
-      (r.unitBuy != null && String(r.unitBuy).includes(lq)),
-  )
-}
-
-function applyFilters(rows: FormRow[], f: Filters): FormRow[] {
-  return rows.filter((r) => {
-    if (f.event    && r.event    !== f.event)    return false
-    if (f.customer && r.customer !== f.customer) return false
-    if (f.items    && r.items    !== f.items)    return false
-    return true
-  })
-}
-
-function applySort(rows: FormRow[], sort: SortConfig): FormRow[] {
-  if (!sort) return rows
-  const { key, direction } = sort
-  return [...rows].sort((a, b) => {
-    const av = getValue(a, key)
-    const bv = getValue(b, key)
-    if (typeof av === "number" && typeof bv === "number") {
-      return direction === "asc" ? av - bv : bv - av
-    }
-    return direction === "asc"
-      ? String(av).localeCompare(String(bv))
-      : String(bv).localeCompare(String(av))
-  })
-}
-
-function uniqueSorted(rows: FormRow[], key: "event" | "customer" | "items"): string[] {
-  return [...new Set(rows.map((r) => r[key]).filter(Boolean))].sort((a, b) =>
-    a.localeCompare(b),
-  ) as string[]
-}
 
 function fmtNum(v: number | null): string {
   if (v == null) return "—"
@@ -226,8 +177,8 @@ export default function FormRecordsTable() {
   const [filtersOpen, setFiltersOpen] = useState(false)
   const columnsRef = useRef<HTMLDivElement>(null)
   const filtersRef = useRef<HTMLDivElement>(null)
+  const options = useSheetOptions()
 
-  // Close popovers on outside click
   useEffect(() => {
     function onPointerDown(e: PointerEvent) {
       if (columnsRef.current && !columnsRef.current.contains(e.target as Node)) setColumnsOpen(false)
@@ -237,20 +188,59 @@ export default function FormRecordsTable() {
     return () => document.removeEventListener("pointerdown", onPointerDown)
   }, [])
 
-  const loadRows = useCallback(async () => {
+  const fetchPage = useCallback(async (
+    page: number,
+    search: string,
+    filters: Filters,
+    sort: SortConfig,
+  ) => {
     setFetchState({ loading: true, error: "" })
+    const params = new URLSearchParams()
+    params.set("page", String(page))
+    params.set("pageSize", String(PAGE_SIZE))
+    if (search) params.set("search", search)
+    if (filters.event) params.set("event", filters.event)
+    if (filters.customer) params.set("customer", filters.customer)
+    if (filters.items) params.set("items", filters.items)
+    if (sort) {
+      params.set("sortKey", sort.key)
+      params.set("sortDir", sort.direction)
+    } else {
+      params.set("newestFirst", "true")
+    }
+
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 30_000)
     try {
-      const res = await fetch("/api/sheets/duplicate-form", { cache: "no-store" })
+      const res = await fetch(`/api/sheets/duplicate-form?${params}`, { signal: controller.signal, cache: "no-store" })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "Failed to load")
-      dispatch({ type: "SET_ROWS", rows: data.rows })
+      dispatch({ type: "SET_PAGE_DATA", rows: data.rows, totalCount: data.totalCount, totalPages: data.totalPages, page: data.page })
       setFetchState({ loading: false, error: "" })
     } catch (err) {
-      setFetchState({ loading: false, error: err instanceof Error ? err.message : "Failed to load" })
+      const msg = err instanceof Error && err.name === "AbortError"
+        ? "Request timed out — please retry"
+        : err instanceof Error ? err.message : "Failed to load"
+      setFetchState({ loading: false, error: msg })
+    } finally {
+      clearTimeout(timer)
     }
   }, [])
 
-  useEffect(() => { loadRows() }, [loadRows])
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const prevSearchRef = useRef(state.search)
+
+  useEffect(() => {
+    if (prevSearchRef.current !== state.search) {
+      prevSearchRef.current = state.search
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
+      searchTimerRef.current = setTimeout(() => {
+        fetchPage(1, state.search, state.filters, state.sort)
+      }, 300)
+      return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current) }
+    }
+    fetchPage(state.currentPage, state.search, state.filters, state.sort)
+  }, [state.currentPage, state.filters, state.sort, state.search, fetchPage])
 
   const visibleColumns = useMemo(
     () => ALL_COLUMNS.filter((c) => state.columnVisibility[c.id]),
@@ -263,21 +253,13 @@ export default function FormRecordsTable() {
     note: 130, createdAt: 120, updatedAt: 120,
   })
 
-  const searched  = useMemo(() => applySearch(state.rows, state.search),  [state.rows, state.search])
-  const filtered  = useMemo(() => applyFilters(searched, state.filters),  [searched, state.filters])
-  const sorted    = useMemo(() => applySort(filtered, state.sort),         [filtered, state.sort])
-  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE))
-  const pageStart  = (state.currentPage - 1) * PAGE_SIZE
-  const paged      = sorted.slice(pageStart, pageStart + PAGE_SIZE)
+  const pageStart = (state.currentPage - 1) * PAGE_SIZE
 
-  const filterOptions = useMemo(
-    () => ({
-      events:    uniqueSorted(state.rows, "event"),
-      customers: uniqueSorted(state.rows, "customer"),
-      items:     uniqueSorted(state.rows, "items"),
-    }),
-    [state.rows],
-  )
+  const filterOptions = useMemo(() => ({
+    events:    (options?.events ?? []).slice(),
+    customers: (options?.customers ?? []).slice(),
+    items:     (options?.items ?? []).map((it) => it.name),
+  }), [options])
 
   const hasFilters = state.filters.event || state.filters.customer || state.filters.items || state.search
   const filterCount = [state.filters.event, state.filters.customer, state.filters.items].filter(Boolean).length
@@ -301,7 +283,7 @@ export default function FormRecordsTable() {
     }
   }
 
-  if (fetchState.loading) {
+  if (fetchState.loading && state.rows.length === 0) {
     return (
       <div className="rounded-xl border border-cream-border bg-white p-10 text-center text-sm text-gray-400">
         Loading…
@@ -427,7 +409,7 @@ export default function FormRecordsTable() {
         {/* Reload */}
         <button
           type="button"
-          onClick={loadRows}
+          onClick={() => fetchPage(state.currentPage, state.search, state.filters, state.sort)}
           className={TOOLBAR_BTN}
           title="Reload"
         >
@@ -452,7 +434,7 @@ export default function FormRecordsTable() {
         )}
 
         <span className="ml-auto text-xs text-gray-400 shrink-0">
-          {sorted.length} {sorted.length === 1 ? "row" : "rows"}
+          {state.totalCount} {state.totalCount === 1 ? "row" : "rows"}
         </span>
       </div>
 
@@ -483,7 +465,7 @@ export default function FormRecordsTable() {
 
       {/* Table */}
       <div className="rounded-xl border border-cream-border bg-white overflow-hidden">
-        {paged.length === 0 ? (
+        {state.rows.length === 0 ? (
           <p className="px-5 py-10 text-sm text-gray-400 text-center">
             {hasFilters ? "No rows match the current filters." : "No records found."}
           </p>
@@ -518,7 +500,7 @@ export default function FormRecordsTable() {
                 </tr>
               </thead>
               <tbody>
-                {paged.map((row, i) => (
+                {state.rows.map((row, i) => (
                   <tr key={row.rowNumber} className="border-b border-cream-border last:border-0 hover:bg-cream/50 transition-colors">
                     {visibleColumns.map((col) => {
                       if (col.id === "index") {
@@ -547,25 +529,25 @@ export default function FormRecordsTable() {
       </div>
 
       {/* Pagination */}
-      {totalPages > 1 && (
+      {state.totalPages > 1 && (
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5 text-xs text-gray-400">
             <span>Page</span>
             <PageJumpInput
               currentPage={state.currentPage}
-              totalPages={totalPages}
+              totalPages={state.totalPages}
               onJump={(p) => dispatch({ type: "SET_PAGE", page: p })}
             />
-            <span>of {totalPages}</span>
+            <span>of {state.totalPages}</span>
           </div>
           <div className="flex items-center gap-1">
             <PaginationButton
               onClick={() => dispatch({ type: "SET_PAGE", page: state.currentPage - 1 })}
               disabled={state.currentPage === 1}
             >
-              ←
+              &#8592;
             </PaginationButton>
-            {getPageNumbers(state.currentPage, totalPages).map((p, idx) =>
+            {getPageNumbers(state.currentPage, state.totalPages).map((p, idx) =>
               p === "…" ? (
                 <span key={`e-${idx}`} className="px-2 text-xs text-gray-400">…</span>
               ) : (
@@ -580,9 +562,9 @@ export default function FormRecordsTable() {
             )}
             <PaginationButton
               onClick={() => dispatch({ type: "SET_PAGE", page: state.currentPage + 1 })}
-              disabled={state.currentPage === totalPages}
+              disabled={state.currentPage === state.totalPages}
             >
-              →
+              &#8594;
             </PaginationButton>
           </div>
         </div>

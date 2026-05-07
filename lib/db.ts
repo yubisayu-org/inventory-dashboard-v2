@@ -216,21 +216,103 @@ export async function getDuplicateFormRows(limit?: number): Promise<FormRow[]> {
     `
   }
 
-  return rows.map((r) => ({
-    rowNumber: r.id,
-    event: r.event,
-    customer: r.customer,
-    items: r.items,
-    unit: r.unit,
-    note: r.note,
-    createdAt: tsToString(r.created_at),
-    updatedAt: tsToString(r.updated_at),
-    unitBuy: r.unit_buy ?? null,
-    receipt: r.receipt ?? "",
-    unitArrive: r.unit_arrive ?? null,
-    unitShip: r.unit_ship ?? null,
-    unitHold: r.unit_hold ?? null,
-  }))
+  return rows.map(mapFormRow)
+}
+
+export interface PaginatedFormRows {
+  rows: FormRow[]
+  totalCount: number
+  page: number
+  pageSize: number
+  totalPages: number
+}
+
+export async function getDuplicateFormRowsPaginated(opts: {
+  page: number
+  pageSize: number
+  search?: string
+  event?: string
+  customer?: string
+  items?: string
+  sortKey?: string
+  sortDir?: "asc" | "desc"
+  newestFirst?: boolean
+}): Promise<PaginatedFormRows> {
+  const { page, pageSize, search, event, customer, items, newestFirst } = opts
+  const offset = (page - 1) * pageSize
+
+  const conditions: string[] = []
+  const params: (string | number)[] = []
+
+  if (event) {
+    params.push(event)
+    conditions.push(`event = $${params.length}`)
+  }
+  if (customer) {
+    params.push(customer)
+    conditions.push(`customer = $${params.length}`)
+  }
+  if (items) {
+    params.push(items)
+    conditions.push(`items = $${params.length}`)
+  }
+  if (search) {
+    params.push(`%${search.toLowerCase()}%`)
+    const p = `$${params.length}`
+    conditions.push(`(lower(event) LIKE ${p} OR lower(customer) LIKE ${p} OR lower(items) LIKE ${p} OR lower(note) LIKE ${p} OR CAST(unit AS TEXT) LIKE ${p})`)
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""
+
+  const SORT_COLUMNS: Record<string, string> = {
+    event: "event", customer: "customer", items: "items",
+    unit: "unit", note: "note", createdAt: "created_at",
+    unitBuy: "unit_buy", receipt: "receipt",
+    unitArrive: "unit_arrive", unitShip: "unit_ship", unitHold: "unit_hold",
+    updatedAt: "updated_at",
+  }
+  const sortCol = (opts.sortKey && SORT_COLUMNS[opts.sortKey]) || "id"
+  const sortDir = opts.sortDir === "desc" || (!opts.sortKey && newestFirst) ? "DESC" : "ASC"
+
+  const [countResult, dataRows] = await Promise.all([
+    sql.unsafe(`SELECT COUNT(*) AS count FROM orders ${where}`, params),
+    sql.unsafe(
+      `SELECT id, event, customer, items, unit, note,
+              created_at, updated_at, unit_buy, receipt,
+              unit_arrive, unit_ship, unit_hold
+       FROM orders ${where}
+       ORDER BY ${sortCol} ${sortDir}, id ${sortDir}
+       LIMIT ${pageSize} OFFSET ${offset}`,
+      params,
+    ),
+  ])
+
+  const totalCount = Number(countResult[0].count)
+  return {
+    rows: dataRows.map(mapFormRow),
+    totalCount,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(totalCount / pageSize)),
+  }
+}
+
+function mapFormRow(r: Record<string, unknown>): FormRow {
+  return {
+    rowNumber: r.id as number,
+    event: r.event as string,
+    customer: r.customer as string,
+    items: r.items as string,
+    unit: r.unit as number,
+    note: r.note as string,
+    createdAt: tsToString(r.created_at as Date | null),
+    updatedAt: tsToString(r.updated_at as Date | null),
+    unitBuy: (r.unit_buy as number) ?? null,
+    receipt: (r.receipt as string) ?? "",
+    unitArrive: (r.unit_arrive as number) ?? null,
+    unitShip: (r.unit_ship as number) ?? null,
+    unitHold: (r.unit_hold as number) ?? null,
+  }
 }
 
 export async function appendOrders(orders: OrderRow[]): Promise<void> {
