@@ -291,7 +291,7 @@ export default function SearchableSelect({
                 const idx = i + (showClearRow ? 1 : 0)
                 return (
                   <OptionItem
-                    key={opt.value}
+                    key={`${opt.value}-${i}`}
                     label={opt.label}
                     meta={opt.meta}
                     highlighted={highlightIdx === idx}
