@@ -449,7 +449,15 @@ export default function DataTable() {
         )}
 
         {/* Table */}
-        <div className="overflow-x-auto">
+        <div className="relative overflow-x-auto">
+          {fetchState.loading && table.rows.length > 0 && (
+            <div className="absolute inset-0 bg-white/60 z-10 flex items-center justify-center">
+              <svg className="animate-spin h-5 w-5 text-brand" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            </div>
+          )}
           <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
             <thead>
               <tr className="border-b border-cream-border bg-cream text-left">
@@ -560,6 +568,7 @@ export default function DataTable() {
         <AddOrderDrawer
           options={options}
           onClose={() => dispatch({ type: "TOGGLE_ADD_DRAWER" })}
+          onOrderAdded={() => fetchPage(1, table.search, table.filters, table.sort)}
         />
       )}
     </div>
@@ -827,9 +836,10 @@ function EditCell({ col, editForm, onChange, options, busy, error, onSave, onCan
 let _addLineId = 0
 function newAddLine() { return { id: _addLineId++, items: "", unit: "", note: "" } }
 
-function AddOrderDrawer({ options, onClose }: {
+function AddOrderDrawer({ options, onClose, onOrderAdded }: {
   options: SheetOptions | null
   onClose: () => void
+  onOrderAdded: () => void
 }) {
   const [event, setEvent]       = useState("")
   const [customer, setCustomer] = useState("")
@@ -870,8 +880,9 @@ function AddOrderDrawer({ options, onClose }: {
       })
       if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? "Failed to save") }
       const count = lines.length
-      setFeedback({ type: "success", message: `${count} order${count === 1 ? "" : "s"} added — refresh to see` })
+      setFeedback({ type: "success", message: `${count} order${count === 1 ? "" : "s"} added` })
       setEvent(""); setCustomer(""); setLines([newAddLine()])
+      onOrderAdded()
     } catch (err) {
       setFeedback({ type: "error", message: err instanceof Error ? err.message : "Failed to save" })
     } finally {
