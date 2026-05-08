@@ -34,7 +34,7 @@ CREATE TABLE products_indo (
 CREATE TABLE orders (
   id          SERIAL PRIMARY KEY,
   event       TEXT NOT NULL REFERENCES events(name) ON UPDATE CASCADE ON DELETE RESTRICT,
-  customer    TEXT NOT NULL,
+  customer    TEXT NOT NULL REFERENCES customers(instagram_id) ON UPDATE CASCADE ON DELETE RESTRICT,
   items       TEXT NOT NULL,
   unit        INTEGER NOT NULL,
   note        TEXT NOT NULL DEFAULT '',
@@ -67,7 +67,7 @@ CREATE INDEX idx_excess_event_items ON excess_purchase (event, items);
 CREATE TABLE shipments (
   id                SERIAL PRIMARY KEY,
   event             TEXT NOT NULL REFERENCES events(name) ON UPDATE CASCADE ON DELETE RESTRICT,
-  customer          TEXT NOT NULL,
+  customer          TEXT NOT NULL REFERENCES customers(instagram_id) ON UPDATE CASCADE ON DELETE RESTRICT,
   shipping_id       TEXT NOT NULL UNIQUE,
   invoicing         TEXT NOT NULL DEFAULT '',
   weight_estimation NUMERIC(10,2) NOT NULL DEFAULT 0,

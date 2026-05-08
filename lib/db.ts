@@ -317,11 +317,31 @@ function mapFormRow(r: Record<string, unknown>): FormRow {
   }
 }
 
+/** Normalize customer handle to lowercase with @ prefix */
+function normalizeCustomer(raw: string): string {
+  const lower = raw.trim().toLowerCase()
+  return lower.startsWith("@") ? lower : `@${lower}`
+}
+
 export async function appendOrders(orders: OrderRow[]): Promise<void> {
   if (orders.length === 0) return
+
+  const normalized = orders.map((o) => ({
+    ...o,
+    customer: normalizeCustomer(o.customer),
+  }))
+
+  // Auto-create customer records for any new customers
+  const uniqueCustomers = [...new Set(normalized.map((o) => o.customer))]
+  await sql`
+    INSERT INTO customers (instagram_id)
+    VALUES ${sql(uniqueCustomers.map((c) => [c]))}
+    ON CONFLICT (instagram_id) DO NOTHING
+  `
+
   await sql`
     INSERT INTO orders ${sql(
-      orders.map((o) => ({
+      normalized.map((o) => ({
         event: o.event,
         customer: o.customer,
         items: o.items,
@@ -336,9 +356,15 @@ export async function updateFormRow(
   rowNumber: number,
   data: Pick<FormRow, "event" | "customer" | "items" | "unit" | "note">,
 ): Promise<void> {
+  const customer = normalizeCustomer(data.customer)
+  // Auto-create customer record if it doesn't exist
+  await sql`
+    INSERT INTO customers (instagram_id) VALUES (${customer})
+    ON CONFLICT (instagram_id) DO NOTHING
+  `
   await sql`
     UPDATE orders
-    SET event = ${data.event}, customer = ${data.customer}, items = ${data.items},
+    SET event = ${data.event}, customer = ${customer}, items = ${data.items},
         unit = ${data.unit}, note = ${data.note}, updated_at = NOW()
     WHERE id = ${rowNumber}
   `
