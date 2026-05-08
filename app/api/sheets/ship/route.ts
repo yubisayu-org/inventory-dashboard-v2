@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { getShipOrders, shipCustomerOrders } from "@/lib/db"
+import { getShipOrdersFiltered, shipCustomerOrders, type ShipSegment } from "@/lib/db"
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
 
@@ -10,7 +10,12 @@ export async function GET() {
   if (roleError) return roleError
 
   try {
-    const data = await getShipOrders()
+    const url = req.nextUrl
+    const segment = (url.searchParams.get("segment") ?? "all") as ShipSegment
+    const search = url.searchParams.get("search") ?? ""
+    const event = url.searchParams.get("event") ?? ""
+
+    const data = await getShipOrdersFiltered({ segment, search, event })
     return NextResponse.json(data)
   } catch (err) {
     console.error("Failed to load ready-to-ship orders:", err)

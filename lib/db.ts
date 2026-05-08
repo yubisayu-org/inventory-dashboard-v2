@@ -1,5 +1,9 @@
 import sql from "./db-pool"
 
+function normalizeId(id: string | null | undefined): string {
+  return String(id ?? "").replace(/^@/, "").toLowerCase()
+}
+
 // ─── Types (same interfaces as the old sheets.ts) ───────────────────────────
 
 export interface ItemOption {
@@ -442,7 +446,7 @@ export async function deleteExcessRow(rowNumber: number): Promise<void> {
 // ─── Customers ──────────────────────────────────────────────────────────────
 
 export async function lookupCustomerDetail(instagramId: string): Promise<CustomerDetail | null> {
-  const searchId = instagramId.replace(/^@/, "").toLowerCase()
+  const searchId = normalizeId(instagramId)
   const rows = await sql`
     SELECT whatsapp, data_diri, ekspedisi, ongkos_kirim
     FROM customers
@@ -538,7 +542,7 @@ function parseShipments(
  * those fields, matching what a fresh start provides.
  */
 export async function getInvoiceForCustomer(instagramId: string): Promise<InvoiceResult> {
-  const searchId = instagramId.replace(/^@/, "").toLowerCase()
+  const searchId = normalizeId(instagramId)
 
   const [orderRows, customerDetail] = await Promise.all([
     sql`
@@ -615,51 +619,42 @@ export async function getInvoiceForCustomer(instagramId: string): Promise<Invoic
 
 // ─── Ship Orders ────────────────────────────────────────────────────────────
 
-export async function getShipOrders(): Promise<ShipCustomer[]> {
-  const [orderRows, customerRows] = await Promise.all([
-    sql`
-      SELECT id, event, customer, items, unit, unit_arrive, unit_ship
-      FROM orders
-      WHERE unit_arrive IS NOT NULL AND unit_arrive > 0
-      ORDER BY event, customer, id
-    `,
-    sql`SELECT instagram_id, whatsapp, data_diri, ekspedisi, ongkos_kirim FROM customers`,
-  ])
-
-  const detailMap = new Map<string, CustomerDetail>()
-  for (const r of customerRows) {
-    const id = String(r.instagram_id ?? "").replace(/^@/, "").toLowerCase()
-    if (id) {
-      detailMap.set(id, {
-        whatsapp: r.whatsapp ?? "",
-        dataDiri: r.data_diri ?? "",
-        ekspedisi: r.ekspedisi ?? "",
-        ongkosKirim: r.ongkos_kirim ?? 0,
-      })
-    }
+function buildSearchFilters(opts: { event?: string; search?: string }) {
+  const conditions: string[] = []
+  const params: (string | number)[] = []
+  if (opts.event) {
+    params.push(opts.event)
+    conditions.push(`event = $${params.length}`)
   }
+  if (opts.search) {
+    params.push(`%${normalizeId(opts.search)}%`)
+    conditions.push(`lower(replace(customer, '@', '')) LIKE $${params.length}`)
+  }
+  return { conditions, params }
+}
 
-  type ShipQueryRow = (typeof orderRows)[number]
-  const groupMap = new Map<string, { customer: string; event: string; rows: ShipQueryRow[] }>()
+function buildShipGroups(
+  orderRows: Record<string, unknown>[],
+  detailMap: Map<string, CustomerDetail>,
+): ShipCustomer[] {
+  const groupMap = new Map<string, { customer: string; event: string; rows: Record<string, unknown>[] }>()
   for (const row of orderRows) {
-    const customer = row.customer
-    const event = row.event
-    const key = `${customer.replace(/^@/, "").toLowerCase()}|${event}`
-    if (!groupMap.has(key)) groupMap.set(key, { customer, event, rows: [] })
+    const key = `${normalizeId(row.customer as string)}|${row.event}`
+    if (!groupMap.has(key)) groupMap.set(key, { customer: row.customer as string, event: row.event as string, rows: [] })
     groupMap.get(key)!.rows.push(row)
   }
 
   return Array.from(groupMap.values()).map(({ customer, event, rows }) => {
-    const customerKey = customer.replace(/^@/, "").toLowerCase()
+    const customerKey = normalizeId(customer)
     const orders: ShipOrderLine[] = rows.map((r) => {
-      const unitArrive = r.unit_arrive ?? 0
-      const unitShip = r.unit_ship ?? 0
+      const unitArrive = (r.unit_arrive as number) ?? 0
+      const unitShip = (r.unit_ship as number) ?? 0
       return {
-        rowNumber: r.id,
+        rowNumber: r.id as number,
         event,
         items: `${r.items} x ${r.unit}`,
-        rawOrder: r.items,
-        unit: r.unit,
+        rawOrder: r.items as string,
+        unit: r.unit as number,
         unitArrive,
         unitShip,
         toShip: Math.max(0, unitArrive - unitShip),
@@ -676,6 +671,107 @@ export async function getShipOrders(): Promise<ShipCustomer[]> {
       ongkirPerKg,
     }
   })
+}
+
+async function fetchCustomerDetails(customerIds: Set<string>): Promise<Map<string, CustomerDetail>> {
+  const detailMap = new Map<string, CustomerDetail>()
+  if (customerIds.size === 0) return detailMap
+  const rows = await sql`
+    SELECT instagram_id, whatsapp, data_diri, ekspedisi, ongkos_kirim
+    FROM customers
+    WHERE lower(replace(instagram_id, '@', '')) = ANY(${[...customerIds]})
+  `
+  for (const r of rows) {
+    const id = normalizeId(r.instagram_id)
+    if (id) {
+      detailMap.set(id, {
+        whatsapp: r.whatsapp ?? "",
+        dataDiri: r.data_diri ?? "",
+        ekspedisi: r.ekspedisi ?? "",
+        ongkosKirim: r.ongkos_kirim ?? 0,
+      })
+    }
+  }
+  return detailMap
+}
+
+export type ShipSegment = "all" | "not_arrived" | "ready" | "shipped"
+
+export interface ShipOrdersFiltered {
+  groups: ShipCustomer[]
+  totalCount: number
+  counts: Record<ShipSegment, number>
+}
+
+export async function getShipOrdersFiltered(opts: {
+  segment?: ShipSegment
+  search?: string
+  event?: string
+}): Promise<ShipOrdersFiltered> {
+  const { segment = "all", search, event } = opts
+
+  const { conditions, params } = buildSearchFilters({ event, search })
+
+  if (segment === "not_arrived") {
+    conditions.push("(unit_arrive IS NULL OR unit_arrive = 0)")
+  } else if (segment !== "all") {
+    conditions.push("unit_arrive IS NOT NULL AND unit_arrive > 0")
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""
+
+  const { conditions: countConds, params: countParams } = buildSearchFilters({ event, search })
+  const countWhere = countConds.length > 0 ? `WHERE ${countConds.join(" AND ")}` : ""
+
+  const [orderRows, countRows] = await Promise.all([
+    sql.unsafe(
+      `SELECT id, event, customer, items, unit, unit_arrive, unit_ship
+       FROM orders ${where}
+       ORDER BY event, customer, id`,
+      params,
+    ),
+    sql.unsafe(
+      `SELECT
+         customer, event,
+         bool_and(COALESCE(unit_arrive, 0) = 0) AS all_not_arrived,
+         COALESCE(SUM(GREATEST(0, COALESCE(unit_arrive, 0) - COALESCE(unit_ship, 0))), 0) AS total_to_ship
+       FROM orders ${countWhere}
+       GROUP BY customer, event`,
+      countParams,
+    ),
+  ])
+
+  const customerIds = new Set<string>()
+  for (const r of orderRows) customerIds.add(normalizeId(r.customer))
+
+  const detailMap = await fetchCustomerDetails(customerIds)
+  const allGroups = buildShipGroups(orderRows, detailMap)
+
+  const filteredGroups = segment === "ready"
+    ? allGroups.filter((g) => g.totalToShip > 0)
+    : segment === "shipped"
+      ? allGroups.filter((g) => g.totalToShip === 0)
+      : allGroups
+
+  let notArrivedCount = 0
+  let readyCount = 0
+  let shippedCount = 0
+  for (const r of countRows) {
+    if (r.all_not_arrived) notArrivedCount++
+    else if (Number(r.total_to_ship) > 0) readyCount++
+    else shippedCount++
+  }
+
+  return {
+    groups: filteredGroups,
+    totalCount: filteredGroups.length,
+    counts: {
+      all: notArrivedCount + readyCount + shippedCount,
+      not_arrived: notArrivedCount,
+      ready: readyCount,
+      shipped: shippedCount,
+    },
+  }
 }
 
 export async function shipCustomerOrders(params: ShipOrdersParams): Promise<{ shippingId: string }> {
@@ -696,7 +792,7 @@ export async function shipCustomerOrders(params: ShipOrdersParams): Promise<{ sh
       VALUES (${event}, ${customer}, ${shippingId}, ${invoicingText}, ${weightKg}, ${ongkirPerKg}, ${ongkirTotal}, true)
     `
 
-    const customerKey = customer.replace(/^@/, "").toLowerCase()
+    const customerKey = normalizeId(customer)
     for (const order of toShipRows) {
       await tx`
         UPDATE orders

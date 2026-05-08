@@ -1,13 +1,14 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import type { ShipCustomer, ShipOrdersParams } from "@/lib/db"
+import type { ShipCustomer, ShipOrdersParams, ShipSegment, ShipOrdersFiltered } from "@/lib/db"
 import { generateShippingLabel } from "@/lib/shipping-label"
 import { useModalDismiss } from "@/hooks/useModalDismiss"
 import { useResizableColumns } from "@/hooks/useResizableColumns"
+import { useSheetOptions } from "@/hooks/useSheetOptions"
 
-type Segment = "all" | "not_arrived" | "ready" | "shipped"
+type Segment = ShipSegment
 
 const SEGMENTS: { id: Segment; label: string }[] = [
   { id: "all", label: "Semua" },
@@ -16,76 +17,66 @@ const SEGMENTS: { id: Segment; label: string }[] = [
   { id: "shipped", label: "Sudah Dikirim" },
 ]
 
-function isNotArrived(c: ShipCustomer) {
-  return c.orders.every((o) => o.unitArrive === 0 && o.unitShip === 0)
-}
-function isShipped(c: ShipCustomer) {
-  return !isNotArrived(c) && c.totalToShip === 0
-}
-
 export default function ShipClient() {
   const router = useRouter()
-  const [data, setData] = useState<ShipCustomer[] | null>(null)
+  const sheetOptions = useSheetOptions()
+  const [groups, setGroups] = useState<ShipCustomer[]>([])
+  const [counts, setCounts] = useState<Record<Segment, number>>({ all: 0, not_arrived: 0, ready: 0, shipped: 0 })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [segment, setSegment] = useState<Segment>("ready")
   const [search, setSearch] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
   const [eventFilter, setEventFilter] = useState("")
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkShipping, setBulkShipping] = useState(false)
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null)
   const [bulkError, setBulkError] = useState<string | null>(null)
 
-  async function load() {
+  // Debounce search
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedSearch(search.trim()), 300)
+    return () => clearTimeout(id)
+  }, [search])
+
+  const abortRef = useRef<AbortController | null>(null)
+  useEffect(() => () => { abortRef.current?.abort() }, [])
+
+  const fetchData = useCallback(async (seg: Segment, srch: string, ev: string) => {
+    abortRef.current?.abort()
+    const ac = new AbortController()
+    abortRef.current = ac
+
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch("/api/sheets/ship")
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error ?? "Failed to load")
-      setData(json as ShipCustomer[])
+      const params = new URLSearchParams()
+      params.set("segment", seg)
+      if (srch) params.set("search", srch)
+      if (ev) params.set("event", ev)
+
+      const res = await fetch(`/api/sheets/ship?${params}`, { signal: ac.signal })
+      const json: ShipOrdersFiltered = await res.json()
+      if (!res.ok) throw new Error((json as unknown as { error: string }).error ?? "Failed to load")
+      setGroups(json.groups)
+      setCounts(json.counts)
     } catch (err) {
+      if ((err as Error).name === "AbortError") return
       setError(err instanceof Error ? err.message : "Failed to load")
     } finally {
-      setLoading(false)
+      if (!ac.signal.aborted) setLoading(false)
     }
+  }, [])
+
+  useEffect(() => {
+    fetchData(segment, debouncedSearch, eventFilter)
+  }, [segment, debouncedSearch, eventFilter, fetchData])
+
+  function refresh() {
+    fetchData(segment, debouncedSearch, eventFilter)
   }
 
-  useEffect(() => { load() }, [])
-
-  const events = useMemo(() => {
-    if (!data) return []
-    const set = new Set<string>()
-    for (const c of data) if (c.event) set.add(c.event)
-    return Array.from(set).sort()
-  }, [data])
-
-  const counts = useMemo(() => {
-    if (!data) return { all: 0, not_arrived: 0, ready: 0, shipped: 0 }
-    return {
-      all: data.length,
-      not_arrived: data.filter(isNotArrived).length,
-      ready: data.filter((c) => c.totalToShip > 0).length,
-      shipped: data.filter(isShipped).length,
-    }
-  }, [data])
-
-  const filtered = useMemo(() => {
-    if (!data) return []
-    return data.filter((c) => {
-      if (segment === "not_arrived" && !isNotArrived(c)) return false
-      if (segment === "ready" && c.totalToShip === 0) return false
-      if (segment === "shipped" && !isShipped(c)) return false
-      if (search) {
-        const q = search.replace(/^@/, "").toLowerCase()
-        if (!c.customer.replace(/^@/, "").toLowerCase().includes(q)) return false
-      }
-      if (eventFilter && c.event !== eventFilter) return false
-      return true
-    })
-  }, [data, segment, search, eventFilter])
-
-  const readyFiltered = useMemo(() => filtered.filter((c) => c.totalToShip > 0), [filtered])
+  const readyFiltered = groups.filter((c) => c.totalToShip > 0)
   const allSelected = readyFiltered.length > 0 && readyFiltered.every((c) => selected.has(`${c.customer}|${c.event}`))
 
   function toggleSelect(key: string) {
@@ -153,7 +144,7 @@ export default function ShipClient() {
           <button
             key={s.id}
             type="button"
-            onClick={() => setSegment(s.id)}
+            onClick={() => { setSegment(s.id); setSelected(new Set()) }}
             className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
               segment === s.id
                 ? "bg-brand text-white"
@@ -161,17 +152,15 @@ export default function ShipClient() {
             }`}
           >
             {s.label}
-            {data && (
-              <span
-                className={`text-xs rounded-full px-1.5 py-0.5 tabular-nums ${
-                  segment === s.id
-                    ? "bg-white/20 text-white"
-                    : "bg-gray-100 text-gray-500"
-                }`}
-              >
-                {counts[s.id]}
-              </span>
-            )}
+            <span
+              className={`text-xs rounded-full px-1.5 py-0.5 tabular-nums ${
+                segment === s.id
+                  ? "bg-white/20 text-white"
+                  : "bg-gray-100 text-gray-500"
+              }`}
+            >
+              {counts[s.id]}
+            </span>
           </button>
         ))}
       </div>
@@ -191,13 +180,13 @@ export default function ShipClient() {
           className="border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors text-gray-600"
         >
           <option value="">Semua Event</option>
-          {events.map((ev) => (
+          {(sheetOptions?.events ?? []).map((ev) => (
             <option key={ev} value={ev}>{ev}</option>
           ))}
         </select>
         <button
           type="button"
-          onClick={load}
+          onClick={refresh}
           disabled={loading}
           className="shrink-0 text-xs text-gray-500 hover:text-brand disabled:opacity-50 transition-colors px-3 py-2 rounded-lg border border-cream-border hover:border-brand"
         >
@@ -214,18 +203,18 @@ export default function ShipClient() {
           {error}
         </div>
       )}
-      {!loading && !error && filtered.length === 0 && (
+      {!loading && !error && groups.length === 0 && (
         <div className="rounded-xl border border-cream-border bg-white p-12 text-center text-gray-400 text-sm">
           Tidak ada pesanan.
         </div>
       )}
 
       {/* Results */}
-      {!loading && !error && filtered.length > 0 && (
+      {!loading && !error && groups.length > 0 && (
         <>
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm text-gray-500">
-              <span className="font-semibold text-foreground">{filtered.length}</span> customer
+              <span className="font-semibold text-foreground">{groups.length}</span> customer
             </p>
             {readyFiltered.length > 0 && (
               <div className="flex items-center gap-2">
@@ -257,7 +246,7 @@ export default function ShipClient() {
               {bulkError}
             </div>
           )}
-          {filtered.map((c) => {
+          {groups.map((c) => {
             const key = `${c.customer}|${c.event}`
             return (
               <CustomerCard
@@ -265,7 +254,7 @@ export default function ShipClient() {
                 customer={c}
                 isSelected={selected.has(key)}
                 onToggleSelect={c.totalToShip > 0 ? () => toggleSelect(key) : undefined}
-                onShipped={() => { setSegment("all"); load() }}
+                onShipped={() => { setSegment("all"); refresh() }}
               />
             )
           })}
@@ -273,6 +262,10 @@ export default function ShipClient() {
       )}
     </div>
   )
+}
+
+function isNotArrived(c: ShipCustomer) {
+  return c.orders.every((o) => o.unitArrive === 0 && o.unitShip === 0)
 }
 
 function CustomerCard({
