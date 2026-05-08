@@ -33,7 +33,7 @@ CREATE TABLE products_indo (
 
 CREATE TABLE orders (
   id          SERIAL PRIMARY KEY,
-  event       TEXT NOT NULL,
+  event       TEXT NOT NULL REFERENCES events(name) ON UPDATE CASCADE ON DELETE RESTRICT,
   customer    TEXT NOT NULL,
   items       TEXT NOT NULL,
   unit        INTEGER NOT NULL,
@@ -54,7 +54,7 @@ CREATE INDEX idx_orders_event_items ON orders (event, items);
 
 CREATE TABLE excess_purchase (
   id         SERIAL PRIMARY KEY,
-  event      TEXT NOT NULL,
+  event      TEXT NOT NULL REFERENCES events(name) ON UPDATE CASCADE ON DELETE RESTRICT,
   items      TEXT NOT NULL,
   unit_buy   INTEGER NOT NULL,
   receipt    TEXT NOT NULL DEFAULT '',
@@ -66,7 +66,7 @@ CREATE INDEX idx_excess_event_items ON excess_purchase (event, items);
 
 CREATE TABLE shipments (
   id                SERIAL PRIMARY KEY,
-  event             TEXT NOT NULL,
+  event             TEXT NOT NULL REFERENCES events(name) ON UPDATE CASCADE ON DELETE RESTRICT,
   customer          TEXT NOT NULL,
   shipping_id       TEXT NOT NULL UNIQUE,
   invoicing         TEXT NOT NULL DEFAULT '',
