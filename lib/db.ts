@@ -106,6 +106,7 @@ export interface ShipOrderLine {
   items: string
   productId: number
   productName: string
+  gram: number
   unit: number
   unitArrive: number
   unitShip: number
@@ -594,6 +595,7 @@ export async function getInvoiceForCustomer(instagramId: string): Promise<Invoic
              o.unit_price, o.product_id,
              o.unit_buy, o.receipt, o.unit_arrive, o.unit_ship, o.unit_hold,
              p.name AS product_name, COALESCE(p.store, '') AS store,
+             COALESCE(p.gram, 0) AS gram,
              COALESCE(e.eta, '') AS event_eta
       FROM orders o
       JOIN products p ON p.id = o.product_id
@@ -637,8 +639,9 @@ export async function getInvoiceForCustomer(instagramId: string): Promise<Invoic
     const totalUnit = orders.reduce((s, o) => s + o.unit, 0)
     const totalSubtotal = group.reduce((s, r) => s + r.unit_price * r.unit, 0)
     const totalArrive = orders.reduce((s, o) => s + o.unitArrive, 0)
-    const weightKg = 0
-    const estimasiOngkir = ongkirPerKg * weightKg
+    const totalGram = group.reduce((s, r) => s + (r.gram ?? 0) * r.unit, 0)
+    const weightKg = totalGram / 1000
+    const estimasiOngkir = Math.round(ongkirPerKg * weightKg)
 
     const eta = group[0]?.event_eta ?? ""
 
@@ -704,12 +707,14 @@ function buildShipGroups(
         items: `${r.product_name} x ${r.unit}`,
         productId: r.product_id as number,
         productName: r.product_name as string,
+        gram: (r.gram as number) ?? 0,
         unit: r.unit as number,
         unitArrive,
         unitShip,
         toShip: Math.max(0, unitArrive - unitShip),
       }
     })
+    const totalToShipGram = orders.reduce((s, o) => s + o.gram * o.toShip, 0)
     const ongkirPerKg = detailMap.get(customerKey)?.ongkosKirim ?? 0
     return {
       customer,
@@ -717,7 +722,7 @@ function buildShipGroups(
       customerDetail: detailMap.get(customerKey) ?? null,
       orders,
       totalToShip: orders.reduce((s, o) => s + o.toShip, 0),
-      weightKg: 0,
+      weightKg: totalToShipGram / 1000,
       ongkirPerKg,
     }
   })
@@ -776,7 +781,7 @@ export async function getShipOrdersFiltered(opts: {
   const [orderRows, countRows] = await Promise.all([
     sql.unsafe(
       `SELECT o.id, o.event, o.customer, o.product_id, p.name AS product_name,
-              o.unit, o.unit_arrive, o.unit_ship
+              COALESCE(p.gram, 0) AS gram, o.unit, o.unit_arrive, o.unit_ship
        FROM orders o
        JOIN products p ON p.id = o.product_id
        ${where}
