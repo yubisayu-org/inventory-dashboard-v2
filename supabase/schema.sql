@@ -21,6 +21,7 @@ CREATE TABLE products (
   name  TEXT NOT NULL,
   store TEXT NOT NULL DEFAULT '',
   price INTEGER NOT NULL DEFAULT 0,
+  gram  INTEGER NOT NULL DEFAULT 0,
   UNIQUE (name, store)
 );
 
