@@ -179,6 +179,16 @@ export interface PaymentRow {
   updatedAt: string
 }
 
+export interface AdjustmentRow {
+  rowNumber: number
+  event: string
+  customer: string
+  description: string
+  amount: number
+  createdAt: string
+  updatedAt: string
+}
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function formatTimestamp(d: Date = new Date()): string {
@@ -544,6 +554,10 @@ function buildInvoiceMessage(
         ? Math.round(invoice.estimasiOngkir / totals.weightKg)
         : 0
 
+  const biayaLine = invoice.biayaLainnya !== 0
+    ? [`Biaya Lainnya: Rp ${formatIdrNumber(invoice.biayaLainnya)}`]
+    : []
+
   return [
     "INVOICE",
     `${event.eventId} ${handle}`,
@@ -553,6 +567,7 @@ function buildInvoiceMessage(
     "",
     `Subtotal Barang: Rp ${formatIdrNumber(invoice.subtotalBarang)}`,
     `Estimasi Ongkir: ${formatIdrNumber(totals.weightKg)} kg x Rp ${formatIdrNumber(perKg)}`,
+    ...biayaLine,
     "",
     `Pelunasan: Rp ${formatIdrNumber(invoice.sisaPelunasan)}`,
     "",
@@ -602,7 +617,7 @@ function parseShipments(
 export async function getInvoiceForCustomer(instagramId: string): Promise<InvoiceResult> {
   const searchId = normalizeId(instagramId)
 
-  const [orderRows, customerDetail, paymentRows] = await Promise.all([
+  const [orderRows, customerDetail, paymentRows, adjustmentRows] = await Promise.all([
     sql`
       SELECT o.id, o.event, o.customer, o.unit, o.note,
              o.unit_price, o.product_id,
@@ -624,6 +639,12 @@ export async function getInvoiceForCustomer(instagramId: string): Promise<Invoic
         AND is_checked = true
       GROUP BY event
     `,
+    sql`
+      SELECT event, COALESCE(SUM(amount), 0) AS total_adj
+      FROM adjustments
+      WHERE lower(replace(customer, '@', '')) = ${searchId}
+      GROUP BY event
+    `,
   ])
 
   if (orderRows.length === 0) {
@@ -635,6 +656,9 @@ export async function getInvoiceForCustomer(instagramId: string): Promise<Invoic
 
   const paymentByEvent = new Map<string, number>()
   for (const r of paymentRows) paymentByEvent.set(r.event, Number(r.total_paid))
+
+  const adjustmentByEvent = new Map<string, number>()
+  for (const r of adjustmentRows) adjustmentByEvent.set(r.event, Number(r.total_adj))
 
   type OrderQueryRow = (typeof orderRows)[number]
   const groups: Record<string, OrderQueryRow[]> = {}
@@ -677,13 +701,14 @@ export async function getInvoiceForCustomer(instagramId: string): Promise<Invoic
       orders,
       totals: { unit: totalUnit, subtotal: totalSubtotal, arrive: totalArrive, weightKg },
       invoice: (() => {
-        const total = totalSubtotal + estimasiOngkir
+        const biayaLainnya = adjustmentByEvent.get(eid) ?? 0
+        const total = totalSubtotal + estimasiOngkir + biayaLainnya
         const pembayaran = paymentByEvent.get(eid) ?? 0
         return {
           subtotalBarang: totalSubtotal,
           estimasiOngkir,
           ongkirPerKg,
-          biayaLainnya: 0,
+          biayaLainnya,
           total,
           pembayaran,
           sisaPelunasan: total - pembayaran,
@@ -1048,4 +1073,68 @@ export async function togglePaymentChecked(
 
 export async function deletePayment(rowNumber: number): Promise<void> {
   await sql`DELETE FROM payments WHERE id = ${rowNumber}`
+}
+
+// ─── Adjustments ───────────────────────────────────────────────────────────
+
+export async function getAdjustmentRows(): Promise<AdjustmentRow[]> {
+  const rows = await sql`
+    SELECT id, event, customer, description, amount, created_at, updated_at
+    FROM adjustments ORDER BY id DESC
+  `
+  return rows.map((r) => ({
+    rowNumber: r.id,
+    event: r.event,
+    customer: r.customer,
+    description: r.description ?? "",
+    amount: r.amount ?? 0,
+    createdAt: tsToString(r.created_at),
+    updatedAt: tsToString(r.updated_at),
+  }))
+}
+
+export async function addAdjustment(data: {
+  event: string
+  customer: string
+  description: string
+  amount: number
+}): Promise<{ rowNumber: number }> {
+  const customer = normalizeCustomer(data.customer)
+  await sql`
+    INSERT INTO customers (instagram_id) VALUES (${customer})
+    ON CONFLICT (instagram_id) DO NOTHING
+  `
+  const [row] = await sql`
+    INSERT INTO adjustments (event, customer, description, amount)
+    VALUES (${data.event}, ${customer}, ${data.description}, ${data.amount})
+    RETURNING id
+  `
+  return { rowNumber: row.id }
+}
+
+export async function updateAdjustment(
+  rowNumber: number,
+  data: {
+    event: string
+    customer: string
+    description: string
+    amount: number
+  },
+): Promise<void> {
+  const customer = normalizeCustomer(data.customer)
+  await sql`
+    INSERT INTO customers (instagram_id) VALUES (${customer})
+    ON CONFLICT (instagram_id) DO NOTHING
+  `
+  await sql`
+    UPDATE adjustments
+    SET event = ${data.event}, customer = ${customer},
+        description = ${data.description}, amount = ${data.amount},
+        updated_at = NOW()
+    WHERE id = ${rowNumber}
+  `
+}
+
+export async function deleteAdjustment(rowNumber: number): Promise<void> {
+  await sql`DELETE FROM adjustments WHERE id = ${rowNumber}`
 }
