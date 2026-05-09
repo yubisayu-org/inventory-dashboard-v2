@@ -166,6 +166,19 @@ export interface ProductIndoRow {
   price: number
 }
 
+export interface PaymentRow {
+  rowNumber: number
+  event: string
+  customer: string
+  amount: number
+  account: string
+  isChecked: boolean
+  payDate: string
+  remarks: string
+  createdAt: string
+  updatedAt: string
+}
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function formatTimestamp(d: Date = new Date()): string {
@@ -951,4 +964,78 @@ export async function updateProductIndo(
     SET product = ${data.product}, store = ${data.store}, price = ${data.price}
     WHERE id = ${rowNumber}
   `
+}
+
+// ─── Payments ──────────────────────────────────────────────────────────────
+
+export async function getPaymentRows(): Promise<PaymentRow[]> {
+  const rows = await sql`
+    SELECT id, event, customer, amount, account, is_checked,
+           pay_date, remarks, created_at, updated_at
+    FROM payments ORDER BY id DESC
+  `
+  return rows.map((r) => ({
+    rowNumber: r.id,
+    event: r.event,
+    customer: r.customer,
+    amount: r.amount ?? 0,
+    account: r.account ?? "",
+    isChecked: r.is_checked ?? false,
+    payDate: r.pay_date ?? "",
+    remarks: r.remarks ?? "",
+    createdAt: tsToString(r.created_at),
+    updatedAt: tsToString(r.updated_at),
+  }))
+}
+
+export async function addPayment(data: {
+  event: string
+  customer: string
+  amount: number
+  account: string
+  isChecked: boolean
+  payDate: string
+  remarks: string
+}): Promise<{ rowNumber: number }> {
+  const customer = normalizeCustomer(data.customer)
+  await sql`
+    INSERT INTO customers (instagram_id) VALUES (${customer})
+    ON CONFLICT (instagram_id) DO NOTHING
+  `
+  const [row] = await sql`
+    INSERT INTO payments (event, customer, amount, account, is_checked, pay_date, remarks)
+    VALUES (${data.event}, ${customer}, ${data.amount}, ${data.account}, ${data.isChecked}, ${data.payDate}, ${data.remarks})
+    RETURNING id
+  `
+  return { rowNumber: row.id }
+}
+
+export async function updatePayment(
+  rowNumber: number,
+  data: {
+    event: string
+    customer: string
+    amount: number
+    account: string
+    isChecked: boolean
+    payDate: string
+    remarks: string
+  },
+): Promise<void> {
+  const customer = normalizeCustomer(data.customer)
+  await sql`
+    INSERT INTO customers (instagram_id) VALUES (${customer})
+    ON CONFLICT (instagram_id) DO NOTHING
+  `
+  await sql`
+    UPDATE payments
+    SET event = ${data.event}, customer = ${customer}, amount = ${data.amount},
+        account = ${data.account}, is_checked = ${data.isChecked},
+        pay_date = ${data.payDate}, remarks = ${data.remarks}, updated_at = NOW()
+    WHERE id = ${rowNumber}
+  `
+}
+
+export async function deletePayment(rowNumber: number): Promise<void> {
+  await sql`DELETE FROM payments WHERE id = ${rowNumber}`
 }
