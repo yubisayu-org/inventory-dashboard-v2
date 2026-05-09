@@ -1,10 +1,8 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useMemo } from "react"
 import type { ExcessRow } from "@/lib/db"
-import { useResizableColumns } from "@/hooks/useResizableColumns"
-
-const ROWS_PER_PAGE = 20
+import DataGrid, { numericFilter, textContainsFilter, type ColumnDef } from "@/components/DataGrid"
 
 type UpdatedRow = { rowNumber: number; customer: string; oldUnitBuy: number; unitBuy: number }
 type ApplyResult = { filled: UpdatedRow[]; remainder: number }
@@ -15,8 +13,6 @@ export default function ExcessTable() {
   const [rows, setRows] = useState<ExcessRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
-  const [search, setSearch] = useState("")
-  const [page, setPage] = useState(1)
   const [busyRow, setBusyRow] = useState<number | null>(null)
   const [pendingRow, setPendingRow] = useState<number | null>(null)
   const [pendingReceipt, setPendingReceipt] = useState("apply excess")
@@ -124,29 +120,95 @@ export default function ExcessTable() {
     }
   }
 
-  const { widths, startResize } = useResizableColumns({
-    index: 40, event: 120, items: 200, unitBuy: 80,
-    receipt: 140, createdAt: 110, updatedAt: 110, action: 90,
-  })
+  const columns = useMemo<ColumnDef<ExcessRow, unknown>[]>(
+    () => [
+      {
+        accessorKey: "event",
+        header: "Event",
+        filterFn: "textContains" as unknown as undefined,
+        size: 140,
+      },
+      {
+        accessorKey: "items",
+        header: "Item",
+        filterFn: "textContains" as unknown as undefined,
+        size: 220,
+      },
+      {
+        accessorKey: "unitBuy",
+        header: "Unit Buy",
+        filterFn: "numeric" as unknown as undefined,
+        size: 90,
+        meta: { align: "right" },
+        cell: ({ getValue }) => (
+          <span className="font-medium tabular-nums">{getValue<number>()}</span>
+        ),
+      },
+      {
+        accessorKey: "receipt",
+        header: "Receipt",
+        filterFn: "textContains" as unknown as undefined,
+        size: 150,
+        cell: ({ getValue }) => (
+          <span className="text-gray-500">{getValue<string>() || "—"}</span>
+        ),
+      },
+      {
+        accessorKey: "createdAt",
+        header: "Created At",
+        enableColumnFilter: false,
+        size: 120,
+        cell: ({ getValue }) => (
+          <span className="text-gray-400 text-xs whitespace-nowrap">{getValue<string>()}</span>
+        ),
+      },
+      {
+        accessorKey: "updatedAt",
+        header: "Updated At",
+        enableColumnFilter: false,
+        size: 120,
+        cell: ({ getValue }) => (
+          <span className="text-gray-400 text-xs whitespace-nowrap">{getValue<string>() || "—"}</span>
+        ),
+      },
+      {
+        id: "actions",
+        header: "",
+        enableSorting: false,
+        enableColumnFilter: false,
+        enableHiding: false,
+        size: 90,
+        cell: ({ row }) => {
+          const r = row.original
+          const busy = busyRow === r.rowNumber
+          const isPending = pendingRow === r.rowNumber
+          return (
+            <div className="text-right">
+              <button
+                type="button"
+                onClick={() => isPending ? cancelPending() : openPending(r.rowNumber)}
+                disabled={busy || busyRow !== null}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md bg-brand text-white hover:bg-brand-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {busy ? (
+                  <>
+                    <svg className="animate-spin" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                    </svg>
+                    Applying…
+                  </>
+                ) : isPending ? "Cancel" : "Apply"}
+              </button>
+            </div>
+          )
+        },
+      },
+    ],
+    [busyRow, pendingRow],
+  )
 
-  const q = search.trim().toLowerCase()
-  const filtered = q
-    ? rows.filter(
-        (r) =>
-          r.event.toLowerCase().includes(q) ||
-          r.items.toLowerCase().includes(q) ||
-          r.receipt.toLowerCase().includes(q),
-      )
-    : rows
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / ROWS_PER_PAGE))
-  const currentPage = Math.min(page, totalPages)
-  const visible = filtered.slice((currentPage - 1) * ROWS_PER_PAGE, currentPage * ROWS_PER_PAGE)
-
-  function onSearchChange(v: string) {
-    setSearch(v)
-    setPage(1)
-  }
+  // Find the row object for the pending modal
+  const pendingExcessRow = pendingRow != null ? rows.find((r) => r.rowNumber === pendingRow) : null
 
   if (loading) {
     return (
@@ -166,55 +228,6 @@ export default function ExcessTable() {
 
   return (
     <div className="space-y-3">
-      {/* Search */}
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <svg
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <circle cx="11" cy="11" r="8" />
-            <path d="m21 21-4.35-4.35" />
-          </svg>
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Search event, item, receipt…"
-            className="w-full border border-cream-border rounded-lg pl-8 pr-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
-          />
-        </div>
-        <span className="text-xs text-gray-400 shrink-0">
-          {filtered.length} {filtered.length === 1 ? "row" : "rows"}
-        </span>
-
-        {/* Bulk apply button */}
-        {rows.length > 0 && (
-          <button
-            type="button"
-            onClick={() => { setBulkPending((o) => !o); setBulkReceipt("apply excess"); setBulkResult(null) }}
-            disabled={bulkBusy || busyRow !== null}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-brand rounded-lg text-brand hover:bg-brand hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-          >
-            {bulkBusy ? (
-              <>
-                <svg className="animate-spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                </svg>
-                Applying…
-              </>
-            ) : bulkPending ? "Cancel" : "Apply All Excess"}
-          </button>
-        )}
-      </div>
-
       {/* Bulk pending form */}
       {bulkPending && (
         <div className="rounded-xl border border-brand/30 bg-brand/5 px-4 py-3 flex items-center gap-3 flex-wrap">
@@ -258,147 +271,96 @@ export default function ExcessTable() {
         />
       )}
 
-      {/* Table */}
-      <div className="rounded-xl border border-cream-border bg-white overflow-hidden">
-        {filtered.length === 0 ? (
-          <p className="px-5 py-8 text-sm text-gray-400 text-center">
-            {search ? "No rows match your search." : "No excess purchase records yet."}
-          </p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
-              <thead>
-                <tr className="border-b border-cream-border text-left bg-cream">
-                  <th className="px-4 py-3 text-xs font-medium text-gray-500 relative select-none" style={{ width: widths.index }}>
-                    #
-                    <div onMouseDown={(e) => startResize("index", e)} className="absolute inset-y-0 right-0 w-1 cursor-col-resize hover:bg-brand/30 active:bg-brand/60" />
-                  </th>
-                  <th className="px-4 py-3 text-xs font-medium text-gray-500 relative select-none" style={{ width: widths.event }}>
-                    Event
-                    <div onMouseDown={(e) => startResize("event", e)} className="absolute inset-y-0 right-0 w-1 cursor-col-resize hover:bg-brand/30 active:bg-brand/60" />
-                  </th>
-                  <th className="px-4 py-3 text-xs font-medium text-gray-500 relative select-none" style={{ width: widths.items }}>
-                    Item
-                    <div onMouseDown={(e) => startResize("items", e)} className="absolute inset-y-0 right-0 w-1 cursor-col-resize hover:bg-brand/30 active:bg-brand/60" />
-                  </th>
-                  <th className="px-4 py-3 text-xs font-medium text-gray-500 text-right relative select-none" style={{ width: widths.unitBuy }}>
-                    Unit Buy
-                    <div onMouseDown={(e) => startResize("unitBuy", e)} className="absolute inset-y-0 right-0 w-1 cursor-col-resize hover:bg-brand/30 active:bg-brand/60" />
-                  </th>
-                  <th className="px-4 py-3 text-xs font-medium text-gray-500 relative select-none" style={{ width: widths.receipt }}>
-                    Receipt
-                    <div onMouseDown={(e) => startResize("receipt", e)} className="absolute inset-y-0 right-0 w-1 cursor-col-resize hover:bg-brand/30 active:bg-brand/60" />
-                  </th>
-                  <th className="px-4 py-3 text-xs font-medium text-gray-500 relative select-none" style={{ width: widths.createdAt }}>
-                    Created At
-                    <div onMouseDown={(e) => startResize("createdAt", e)} className="absolute inset-y-0 right-0 w-1 cursor-col-resize hover:bg-brand/30 active:bg-brand/60" />
-                  </th>
-                  <th className="px-4 py-3 text-xs font-medium text-gray-500 relative select-none" style={{ width: widths.updatedAt }}>
-                    Updated At
-                    <div onMouseDown={(e) => startResize("updatedAt", e)} className="absolute inset-y-0 right-0 w-1 cursor-col-resize hover:bg-brand/30 active:bg-brand/60" />
-                  </th>
-                  <th className="px-4 py-3 relative select-none" style={{ width: widths.action }}>
-                    <div onMouseDown={(e) => startResize("action", e)} className="absolute inset-y-0 right-0 w-1 cursor-col-resize hover:bg-brand/30 active:bg-brand/60" />
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {visible.map((row, i) => {
-                  const busy = busyRow === row.rowNumber
-                  const isPending = pendingRow === row.rowNumber
-                  return (
-                    <>
-                      <tr
-                        key={row.rowNumber}
-                        className="border-b border-cream-border last:border-0 hover:bg-cream/50 transition-colors"
-                      >
-                        <td className="px-4 py-3 text-xs text-gray-400">
-                          {(currentPage - 1) * ROWS_PER_PAGE + i + 1}
-                        </td>
-                        <td className="px-4 py-3 text-foreground">{row.event}</td>
-                        <td className="px-4 py-3 text-foreground">{row.items}</td>
-                        <td className="px-4 py-3 text-foreground text-right font-medium tabular-nums">
-                          {row.unitBuy}
-                        </td>
-                        <td className="px-4 py-3 text-gray-500">{row.receipt || "—"}</td>
-                        <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">{row.createdAt}</td>
-                        <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">{row.updatedAt || "—"}</td>
-                        <td className="px-4 py-3 text-right">
-                          <button
-                            type="button"
-                            onClick={() => isPending ? cancelPending() : openPending(row.rowNumber)}
-                            disabled={busy || busyRow !== null}
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md bg-brand text-white hover:bg-brand-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            {busy ? (
-                              <>
-                                <svg className="animate-spin" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                                </svg>
-                                Applying…
-                              </>
-                            ) : isPending ? "Cancel" : "Apply"}
-                          </button>
-                        </td>
-                      </tr>
-                      {isPending && (
-                        <tr key={`${row.rowNumber}-pending`} className="border-b border-cream-border bg-cream/40">
-                          <td colSpan={8} className="px-4 py-3">
-                            <div className="flex items-center gap-2">
-                              <label className="text-xs text-gray-500 shrink-0">Receipt</label>
-                              <input
-                                type="text"
-                                value={pendingReceipt}
-                                onChange={(e) => setPendingReceipt(e.target.value)}
-                                className="flex-1 max-w-xs border border-cream-border rounded-md px-2.5 py-1 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
-                                autoFocus
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") handleApply(row)
-                                  if (e.key === "Escape") cancelPending()
-                                }}
-                              />
-                              <button
-                                type="button"
-                                onClick={() => handleApply(row)}
-                                className="px-3 py-1 text-xs font-medium rounded-md bg-brand text-white hover:bg-brand-hover transition-colors"
-                              >
-                                Confirm
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={currentPage === 1}
-            className="px-3 py-1.5 text-xs border border-cream-border rounded-lg text-gray-600 hover:bg-cream disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
-            Previous
-          </button>
-          <span className="text-xs text-gray-400">
-            Page {currentPage} of {totalPages}
-          </span>
-          <button
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={currentPage === totalPages}
-            className="px-3 py-1.5 text-xs border border-cream-border rounded-lg text-gray-600 hover:bg-cream disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
-            Next
-          </button>
-        </div>
+      {/* Apply excess modal */}
+      {pendingExcessRow && (
+        <ApplyExcessModal
+          row={pendingExcessRow}
+          receipt={pendingReceipt}
+          onReceiptChange={setPendingReceipt}
+          onConfirm={() => handleApply(pendingExcessRow)}
+          onCancel={cancelPending}
+        />
       )}
+
+      <DataGrid
+        data={rows}
+        columns={columns}
+        getRowId={(row) => String(row.rowNumber)}
+        searchPlaceholder="Search event, item, receipt…"
+        toolbarExtra={
+          rows.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => { setBulkPending((o) => !o); setBulkReceipt("apply excess"); setBulkResult(null) }}
+              disabled={bulkBusy || busyRow !== null}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-brand rounded-lg text-brand hover:bg-brand hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+            >
+              {bulkBusy ? (
+                <>
+                  <svg className="animate-spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                  </svg>
+                  Applying…
+                </>
+              ) : bulkPending ? "Cancel" : "Apply All Excess"}
+            </button>
+          ) : undefined
+        }
+      />
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Apply excess modal
+// ---------------------------------------------------------------------------
+
+function ApplyExcessModal({
+  row,
+  receipt,
+  onReceiptChange,
+  onConfirm,
+  onCancel,
+}: {
+  row: ExcessRow
+  receipt: string
+  onReceiptChange: (v: string) => void
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  return (
+    <div className="rounded-xl border border-brand/30 bg-brand/5 px-4 py-3 flex items-center gap-3 flex-wrap">
+      <span className="text-xs text-gray-600 shrink-0">
+        Apply excess: <strong>{row.items}</strong> ({row.unitBuy} units)
+      </span>
+      <div className="flex items-center gap-2 flex-1 min-w-0">
+        <label className="text-xs text-gray-500 shrink-0">Receipt</label>
+        <input
+          type="text"
+          value={receipt}
+          onChange={(e) => onReceiptChange(e.target.value)}
+          autoFocus
+          onKeyDown={(e) => {
+            if (e.key === "Enter") onConfirm()
+            if (e.key === "Escape") onCancel()
+          }}
+          className="flex-1 max-w-xs border border-cream-border rounded-md px-2.5 py-1 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+        />
+      </div>
+      <button
+        type="button"
+        onClick={onConfirm}
+        className="px-3 py-1 text-xs font-medium rounded-md bg-brand text-white hover:bg-brand-hover transition-colors shrink-0"
+      >
+        Confirm
+      </button>
+      <button
+        type="button"
+        onClick={onCancel}
+        className="px-3 py-1 text-xs font-medium rounded-md border border-cream-border text-gray-500 hover:bg-cream transition-colors shrink-0"
+      >
+        Cancel
+      </button>
     </div>
   )
 }

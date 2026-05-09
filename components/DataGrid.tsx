@@ -15,6 +15,7 @@ import {
   type Column,
   type Table as TanTable,
   type Row,
+  type RowSelectionState,
 } from "@tanstack/react-table"
 import { useState, useRef, useEffect, useCallback, useMemo } from "react"
 
@@ -55,7 +56,7 @@ export { numericFilter, textContainsFilter, booleanFilter }
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
-export type { ColumnDef, Row }
+export type { ColumnDef, Row, RowSelectionState }
 
 interface DataGridProps<T> {
   data: T[]
@@ -71,6 +72,12 @@ interface DataGridProps<T> {
   initialVisibility?: VisibilityState
   /** Optional initial sorting */
   initialSorting?: SortingState
+  /** Enable row selection with checkboxes */
+  enableRowSelection?: boolean
+  /** Controlled row selection state */
+  rowSelection?: RowSelectionState
+  /** Callback when row selection changes */
+  onRowSelectionChange?: (selection: RowSelectionState) => void
 }
 
 // ─── Component ─────────────────────────────────────────────────────────────
@@ -84,20 +91,32 @@ export default function DataGrid<T>({
   getRowId,
   initialVisibility,
   initialSorting,
+  enableRowSelection,
+  rowSelection: controlledRowSelection,
+  onRowSelectionChange,
 }: DataGridProps<T>) {
   const [sorting, setSorting] = useState<SortingState>(initialSorting ?? [])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(initialVisibility ?? {})
   const [globalFilter, setGlobalFilter] = useState("")
+  const [internalRowSelection, setInternalRowSelection] = useState<RowSelectionState>({})
+
+  const rowSelection = controlledRowSelection ?? internalRowSelection
+  const setRowSelection = useCallback((updater: RowSelectionState | ((old: RowSelectionState) => RowSelectionState)) => {
+    const next = typeof updater === "function" ? updater(controlledRowSelection ?? internalRowSelection) : updater
+    if (onRowSelectionChange) onRowSelectionChange(next)
+    else setInternalRowSelection(next)
+  }, [controlledRowSelection, internalRowSelection, onRowSelectionChange])
 
   const table = useReactTable({
     data,
     columns,
-    state: { sorting, columnFilters, columnVisibility, globalFilter },
+    state: { sorting, columnFilters, columnVisibility, globalFilter, ...(enableRowSelection ? { rowSelection } : {}) },
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
     onGlobalFilterChange: setGlobalFilter,
+    ...(enableRowSelection ? { enableRowSelection: true, onRowSelectionChange: setRowSelection } : {}),
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
@@ -150,6 +169,16 @@ export default function DataGrid<T>({
             <thead>
               {table.getHeaderGroups().map((hg) => (
                 <tr key={hg.id} className="text-left text-xs text-gray-500 border-b border-cream-border bg-cream">
+                  {enableRowSelection && (
+                    <th className="pl-4 pr-2 py-3 w-10">
+                      <input
+                        type="checkbox"
+                        checked={table.getIsAllPageRowsSelected()}
+                        onChange={table.getToggleAllPageRowsSelectedHandler()}
+                        className="rounded border-gray-300 text-brand focus:ring-brand/30 cursor-pointer"
+                      />
+                    </th>
+                  )}
                   {hg.headers.map((header) => {
                     const align = (header.column.columnDef.meta as { align?: string } | undefined)?.align
                     return (
@@ -184,13 +213,23 @@ export default function DataGrid<T>({
             <tbody>
               {table.getRowModel().rows.length === 0 ? (
                 <tr>
-                  <td colSpan={table.getVisibleLeafColumns().length} className="px-4 py-12 text-center text-gray-400 text-sm">
+                  <td colSpan={table.getVisibleLeafColumns().length + (enableRowSelection ? 1 : 0)} className="px-4 py-12 text-center text-gray-400 text-sm">
                     No data found.
                   </td>
                 </tr>
               ) : (
                 table.getRowModel().rows.map((row) => (
-                  <tr key={row.id} className="border-b border-cream-border/60 hover:bg-cream/30 transition-colors">
+                  <tr key={row.id} className={`border-b border-cream-border/60 transition-colors ${enableRowSelection && row.getIsSelected() ? "bg-brand-light/20" : "hover:bg-cream/30"}`}>
+                    {enableRowSelection && (
+                      <td className="pl-4 pr-2 py-3">
+                        <input
+                          type="checkbox"
+                          checked={row.getIsSelected()}
+                          onChange={row.getToggleSelectedHandler()}
+                          className="rounded border-gray-300 text-brand focus:ring-brand/30 cursor-pointer"
+                        />
+                      </td>
+                    )}
                     {row.getVisibleCells().map((cell) => {
                       const align = (cell.column.columnDef.meta as { align?: string } | undefined)?.align
                       return (

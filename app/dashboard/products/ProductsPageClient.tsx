@@ -174,14 +174,14 @@ export default function ProductsPageClient() {
     },
     {
       accessorKey: "cost",
-      header: "Cost",
+      header: "Base Cost",
       filterFn: "numeric" as unknown as undefined,
       cell: ({ row }) => <span className="tabular-nums">{!isAbroad(row.original) ? fmt(row.original.cost) : "—"}</span>,
       meta: { align: "right" },
     },
     {
       accessorKey: "profitFixed",
-      header: "Profit",
+      header: "Fixed Profit",
       filterFn: "numeric" as unknown as undefined,
       cell: ({ row }) => <span className="tabular-nums">{!isAbroad(row.original) ? fmt(row.original.profitFixed) : "—"}</span>,
       meta: { align: "right" },

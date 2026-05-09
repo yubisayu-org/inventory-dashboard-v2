@@ -1,13 +1,13 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import type { CountryRow } from "@/lib/db"
-import { useResizableColumns } from "@/hooks/useResizableColumns"
+import DataGrid, { type ColumnDef, numericFilter, textContainsFilter } from "@/components/DataGrid"
 
 const EMPTY_FORM = { name: "", currency: "", kurs: "", cargoPerKg: "" }
 
 const formInputCls = "border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
-const rowInputCls = "w-full border border-cream-border rounded-md px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors disabled:opacity-50"
+const modalInputCls = "w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors disabled:opacity-50"
 
 const fmt = (n: number) => n.toLocaleString("id-ID")
 
@@ -19,6 +19,8 @@ export default function CountriesClient() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
+
+  const [editRow, setEditRow] = useState<CountryRow | null>(null)
 
   async function load() {
     setLoading(true)
@@ -36,14 +38,6 @@ export default function CountriesClient() {
   }
 
   useEffect(() => { load() }, [])
-
-  const { widths, startResize } = useResizableColumns({
-    name: 180,
-    currency: 120,
-    kurs: 140,
-    cargoPerKg: 140,
-    action: 80,
-  })
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault()
@@ -79,8 +73,122 @@ export default function CountriesClient() {
     }
   }
 
+  async function handleDelete(row: CountryRow) {
+    if (!confirm(`Delete "${row.name}"? Products using this country will be affected.`)) return
+    try {
+      const res = await fetch(`/api/sheets/countries/${row.id}`, { method: "DELETE" })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? "Failed")
+      setData((prev) => prev?.filter((r) => r.id !== row.id) ?? null)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete")
+    }
+  }
+
+  const columns = useMemo<ColumnDef<CountryRow, unknown>[]>(() => [
+    {
+      accessorKey: "name",
+      header: "Country",
+      filterFn: "textContains" as unknown as undefined,
+      cell: ({ getValue }) => (
+        <span className="font-medium">{getValue<string>()}</span>
+      ),
+    },
+    {
+      accessorKey: "currency",
+      header: "Currency",
+      filterFn: "textContains" as unknown as undefined,
+      cell: ({ getValue }) => (
+        <span className="text-gray-600">{getValue<string>()}</span>
+      ),
+    },
+    {
+      accessorKey: "kurs",
+      header: "Kurs (IDR)",
+      filterFn: "numeric" as unknown as undefined,
+      meta: { align: "right" },
+      cell: ({ getValue }) => (
+        <span className="tabular-nums font-medium">{fmt(getValue<number>())}</span>
+      ),
+    },
+    {
+      accessorKey: "cargoPerKg",
+      header: "Cargo / kg",
+      filterFn: "numeric" as unknown as undefined,
+      meta: { align: "right" },
+      cell: ({ getValue }) => (
+        <span className="tabular-nums font-medium">{fmt(getValue<number>())}</span>
+      ),
+    },
+    {
+      accessorKey: "createdAt",
+      header: "Created",
+      enableColumnFilter: false,
+      cell: ({ getValue }) => {
+        const v = getValue<string | null>()
+        return v ? new Date(v).toLocaleDateString("id-ID") : ""
+      },
+    },
+    {
+      accessorKey: "updatedAt",
+      header: "Updated",
+      enableColumnFilter: false,
+      cell: ({ getValue }) => {
+        const v = getValue<string | null>()
+        return v ? new Date(v).toLocaleDateString("id-ID") : ""
+      },
+    },
+    {
+      id: "actions",
+      header: "",
+      enableSorting: false,
+      enableColumnFilter: false,
+      enableHiding: false,
+      size: 80,
+      cell: ({ row }) => (
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setEditRow(row.original)}
+            title="Edit"
+            className="text-gray-400 hover:text-brand transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleDelete(row.original)}
+            title="Delete"
+            className="text-gray-400 hover:text-red-500 transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 6h18" />
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+              <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            </svg>
+          </button>
+        </div>
+      ),
+    },
+  ], [])
+
+  const refreshButton = (
+    <button
+      type="button"
+      onClick={load}
+      disabled={loading}
+      className="text-xs text-gray-500 hover:text-brand disabled:opacity-50 transition-colors px-3 py-1.5 rounded-lg border border-cream-border hover:border-brand"
+    >
+      {loading ? "…" : "Refresh"}
+    </button>
+  )
+
   return (
     <div className="flex flex-col gap-6">
+      {/* Add form */}
       <form onSubmit={handleAdd} className="rounded-xl border border-cream-border bg-white p-5 flex flex-col gap-4">
         <div className="text-sm font-semibold text-foreground">Add Country</div>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -127,87 +235,52 @@ export default function CountriesClient() {
         </div>
       </form>
 
-      <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={load}
-          disabled={loading}
-          className="text-xs text-gray-500 hover:text-brand disabled:opacity-50 transition-colors px-3 py-1.5 rounded-lg border border-cream-border hover:border-brand"
-        >
-          {loading ? "…" : "Refresh"}
-        </button>
-      </div>
-
+      {/* Data grid */}
       {loading && <div className="text-sm text-gray-400 py-12 text-center">Loading…</div>}
       {error && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
       )}
-      {!loading && !error && data?.length === 0 && (
-        <div className="rounded-xl border border-cream-border bg-white p-12 text-center text-gray-400 text-sm">
-          No countries yet.
-        </div>
+      {!loading && !error && data && (
+        <DataGrid
+          data={data}
+          columns={columns}
+          pageSize={25}
+          searchPlaceholder="Search countries…"
+          toolbarExtra={refreshButton}
+          getRowId={(row) => String(row.id)}
+          initialVisibility={{ createdAt: false, updatedAt: false }}
+          initialSorting={[{ id: "name", desc: false }]}
+        />
       )}
-      {!loading && !error && data && data.length > 0 && (
-        <div className="rounded-xl border border-cream-border bg-white overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
-              <thead>
-                <tr className="text-left text-xs text-gray-500 border-b border-cream-border bg-cream">
-                  <th className="px-4 py-3 font-medium relative select-none" style={{ width: widths.name }}>
-                    Country
-                    <div onMouseDown={(e) => startResize("name", e)} className="absolute inset-y-0 right-0 w-1 cursor-col-resize hover:bg-brand/30 active:bg-brand/60" />
-                  </th>
-                  <th className="px-4 py-3 font-medium relative select-none" style={{ width: widths.currency }}>
-                    Currency
-                    <div onMouseDown={(e) => startResize("currency", e)} className="absolute inset-y-0 right-0 w-1 cursor-col-resize hover:bg-brand/30 active:bg-brand/60" />
-                  </th>
-                  <th className="px-4 py-3 font-medium text-right relative select-none" style={{ width: widths.kurs }}>
-                    Kurs (IDR)
-                    <div onMouseDown={(e) => startResize("kurs", e)} className="absolute inset-y-0 right-0 w-1 cursor-col-resize hover:bg-brand/30 active:bg-brand/60" />
-                  </th>
-                  <th className="px-4 py-3 font-medium text-right relative select-none" style={{ width: widths.cargoPerKg }}>
-                    Cargo / kg
-                    <div onMouseDown={(e) => startResize("cargoPerKg", e)} className="absolute inset-y-0 right-0 w-1 cursor-col-resize hover:bg-brand/30 active:bg-brand/60" />
-                  </th>
-                  <th className="px-4 py-3 font-medium relative select-none" style={{ width: widths.action }}>
-                    <div onMouseDown={(e) => startResize("action", e)} className="absolute inset-y-0 right-0 w-1 cursor-col-resize hover:bg-brand/30 active:bg-brand/60" />
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.map((row) => (
-                  <CountryRow
-                    key={row.id}
-                    row={row}
-                    onUpdated={(updated) =>
-                      setData((prev) =>
-                        prev?.map((r) => r.id === row.id ? { ...r, ...updated } : r) ?? null
-                      )
-                    }
-                    onDeleted={() =>
-                      setData((prev) => prev?.filter((r) => r.id !== row.id) ?? null)
-                    }
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+
+      {/* Edit modal */}
+      {editRow && (
+        <EditCountryModal
+          row={editRow}
+          onSave={(updated) => {
+            setData((prev) =>
+              prev?.map((r) => r.id === editRow.id ? { ...r, ...updated } : r) ?? null
+            )
+            setEditRow(null)
+          }}
+          onCancel={() => setEditRow(null)}
+        />
       )}
     </div>
   )
 }
 
-function CountryRow({
+// ─── Edit modal ────────────────────────────────────────────────────────────
+
+function EditCountryModal({
   row,
-  onUpdated,
-  onDeleted,
+  onSave,
+  onCancel,
 }: {
   row: CountryRow
-  onUpdated: (data: Partial<CountryRow>) => void
-  onDeleted: () => void
+  onSave: (updated: Partial<CountryRow>) => void
+  onCancel: () => void
 }) {
-  const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState({
     name: row.name,
     currency: row.currency,
@@ -216,27 +289,17 @@ function CountryRow({
   })
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [deleting, setDeleting] = useState(false)
   const firstInputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    if (editing) firstInputRef.current?.focus()
-  }, [editing])
+  useEffect(() => { firstInputRef.current?.focus() }, [])
 
-  function startEdit() {
-    setDraft({
-      name: row.name,
-      currency: row.currency,
-      kurs: String(row.kurs),
-      cargoPerKg: String(row.cargoPerKg),
-    })
-    setSaveError(null)
-    setEditing(true)
-  }
-
-  function cancelEdit() {
-    setEditing(false)
-    setSaveError(null)
+  function draftField(key: keyof typeof draft) {
+    return {
+      value: draft[key],
+      onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
+        setDraft((d) => ({ ...d, [key]: e.target.value })),
+      disabled: saving,
+    }
   }
 
   async function handleSave() {
@@ -257,8 +320,7 @@ function CountryRow({
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? "Failed")
-      onUpdated({ name: draft.name.trim(), currency: draft.currency.trim(), kurs, cargoPerKg })
-      setEditing(false)
+      onSave({ name: draft.name.trim(), currency: draft.currency.trim(), kurs, cargoPerKg })
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Failed to save")
     } finally {
@@ -266,112 +328,87 @@ function CountryRow({
     }
   }
 
-  async function handleDelete() {
-    if (!confirm(`Delete "${row.name}"? Products using this country will be affected.`)) return
-    setDeleting(true)
-    try {
-      const res = await fetch(`/api/sheets/countries/${row.id}`, { method: "DELETE" })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error ?? "Failed")
-      onDeleted()
-    } catch (err) {
-      setSaveError(err instanceof Error ? err.message : "Failed to delete")
-    } finally {
-      setDeleting(false)
-    }
-  }
-
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Enter") { e.preventDefault(); handleSave() }
-    if (e.key === "Escape") cancelEdit()
-  }
-
-  function draftField(key: keyof typeof draft) {
-    return {
-      value: draft[key],
-      onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
-        setDraft((d) => ({ ...d, [key]: e.target.value })),
-      onKeyDown: handleKeyDown,
-      disabled: saving,
-    }
+    if (e.key === "Escape") onCancel()
   }
 
   return (
-    <tr className="border-b border-cream-border/60 hover:bg-cream/30 transition-colors">
-      {editing ? (
-        <>
-          <td className="px-3 py-2">
-            <input ref={firstInputRef} {...draftField("name")} className={rowInputCls} placeholder="Country" />
-          </td>
-          <td className="px-3 py-2">
-            <input {...draftField("currency")} className={rowInputCls} placeholder="Currency" />
-          </td>
-          <td className="px-3 py-2">
-            <input {...draftField("kurs")} type="number" min="0" className={`${rowInputCls} text-right`} placeholder="Kurs" />
-          </td>
-          <td className="px-3 py-2">
-            <input {...draftField("cargoPerKg")} type="number" min="0" className={`${rowInputCls} text-right`} placeholder="Cargo/kg" />
-          </td>
-          <td className="px-3 py-2">
-            <div className="flex flex-col gap-1 items-end">
-              <div className="flex gap-1">
-                <button
-                  type="button"
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="px-2 py-1 rounded-md bg-brand text-white text-xs font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
-                >
-                  {saving ? "…" : "Save"}
-                </button>
-                <button
-                  type="button"
-                  onClick={cancelEdit}
-                  disabled={saving}
-                  className="px-2 py-1 rounded-md border border-cream-border text-gray-500 text-xs hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
-              {saveError && <p className="text-xs text-red-500 text-right">{saveError}</p>}
-            </div>
-          </td>
-        </>
-      ) : (
-        <>
-          <td className="px-4 py-3 font-medium">{row.name}</td>
-          <td className="px-4 py-3 text-gray-600">{row.currency}</td>
-          <td className="px-4 py-3 text-right tabular-nums font-medium">{fmt(row.kurs)}</td>
-          <td className="px-4 py-3 text-right tabular-nums font-medium">{fmt(row.cargoPerKg)}</td>
-          <td className="px-4 py-3">
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={startEdit}
-                title="Edit"
-                className="text-gray-400 hover:text-brand transition-colors"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
-                </svg>
-              </button>
-              <button
-                type="button"
-                onClick={handleDelete}
-                disabled={deleting}
-                title="Delete"
-                className="text-gray-400 hover:text-red-500 disabled:opacity-50 transition-colors"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M3 6h18" />
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-                  <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                </svg>
-              </button>
-            </div>
-          </td>
-        </>
-      )}
-    </tr>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onCancel}>
+      <div
+        className="bg-white rounded-xl border border-cream-border shadow-xl p-6 w-full max-w-md flex flex-col gap-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-semibold text-foreground">Edit Country</span>
+          <span className="text-xs text-gray-400">ID: {row.id}</span>
+        </div>
+
+        <div className="flex flex-col gap-3">
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-gray-500">Country Name</span>
+            <input
+              ref={firstInputRef}
+              {...draftField("name")}
+              onKeyDown={handleKeyDown}
+              placeholder="Country"
+              className={modalInputCls}
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-gray-500">Currency</span>
+            <input
+              {...draftField("currency")}
+              onKeyDown={handleKeyDown}
+              placeholder="Currency"
+              className={modalInputCls}
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-gray-500">Kurs (IDR)</span>
+            <input
+              {...draftField("kurs")}
+              onKeyDown={handleKeyDown}
+              type="number"
+              min="0"
+              placeholder="Kurs"
+              className={modalInputCls}
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-gray-500">Cargo / kg (IDR)</span>
+            <input
+              {...draftField("cargoPerKg")}
+              onKeyDown={handleKeyDown}
+              type="number"
+              min="0"
+              placeholder="Cargo per kg"
+              className={modalInputCls}
+            />
+          </label>
+        </div>
+
+        {saveError && <p className="text-xs text-red-500">{saveError}</p>}
+
+        <div className="flex items-center justify-end gap-2 pt-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={saving}
+            className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
+          >
+            {saving ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }

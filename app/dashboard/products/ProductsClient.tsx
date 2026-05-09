@@ -1,13 +1,15 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import type { ProductIndoRow } from "@/lib/db"
-import { useResizableColumns } from "@/hooks/useResizableColumns"
+import DataGrid, { numericFilter, textContainsFilter, type ColumnDef } from "@/components/DataGrid"
 
 const EMPTY_FORM = { product: "", store: "", price: "" }
 
-const formInputCls = "border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
-const rowInputCls = "w-full border border-cream-border rounded-md px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors disabled:opacity-50"
+const formInputCls =
+  "border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+
+const fmt = (n: number) => n.toLocaleString("id-ID")
 
 export default function ProductsClient() {
   const [data, setData] = useState<ProductIndoRow[] | null>(null)
@@ -17,6 +19,8 @@ export default function ProductsClient() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
+
+  const [editingRow, setEditingRow] = useState<ProductIndoRow | null>(null)
 
   async function load() {
     setLoading(true)
@@ -39,8 +43,6 @@ export default function ProductsClient() {
     if (!data) return []
     return [...new Set(data.map((r) => r.store).filter(Boolean))].sort()
   }, [data])
-
-  const { widths, startResize } = useResizableColumns({ product: 200, store: 160, price: 120, action: 60 })
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault()
@@ -74,6 +76,68 @@ export default function ProductsClient() {
         setForm((f) => ({ ...f, [key]: e.target.value })),
     }
   }
+
+  const columns = useMemo<ColumnDef<ProductIndoRow, unknown>[]>(() => [
+    {
+      accessorKey: "product",
+      header: "Product",
+      filterFn: "textContains" as unknown as undefined,
+      cell: ({ row }) => <span className="font-medium whitespace-nowrap">{row.original.product}</span>,
+    },
+    {
+      accessorKey: "store",
+      header: "Store",
+      filterFn: "textContains" as unknown as undefined,
+    },
+    {
+      accessorKey: "price",
+      header: "Price",
+      filterFn: "numeric" as unknown as undefined,
+      cell: ({ row }) => <span className="tabular-nums font-medium">{fmt(row.original.price)}</span>,
+      meta: { align: "right" },
+    },
+    {
+      accessorKey: "createdAt",
+      header: "Created",
+      filterFn: "textContains" as unknown as undefined,
+    },
+    {
+      accessorKey: "updatedAt",
+      header: "Updated",
+      filterFn: "textContains" as unknown as undefined,
+    },
+    {
+      id: "actions",
+      header: "",
+      enableSorting: false,
+      enableColumnFilter: false,
+      enableHiding: false,
+      cell: ({ row }) => (
+        <button
+          type="button"
+          onClick={() => setEditingRow(row.original)}
+          title="Edit"
+          className="text-gray-400 hover:text-brand transition-colors"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
+          </svg>
+        </button>
+      ),
+    },
+  ], [])
+
+  const refreshButton = (
+    <button
+      type="button"
+      onClick={load}
+      disabled={loading}
+      className="text-xs text-gray-500 hover:text-brand disabled:opacity-50 transition-colors px-3 py-1.5 rounded-lg border border-cream-border hover:border-brand"
+    >
+      {loading ? "…" : "Refresh"}
+    </button>
+  )
 
   return (
     <div className="flex flex-col gap-6">
@@ -122,78 +186,54 @@ export default function ProductsClient() {
         </div>
       </form>
 
-      <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={load}
-          disabled={loading}
-          className="text-xs text-gray-500 hover:text-brand disabled:opacity-50 transition-colors px-3 py-1.5 rounded-lg border border-cream-border hover:border-brand"
-        >
-          {loading ? "…" : "Refresh"}
-        </button>
-      </div>
-
       {loading && <div className="text-sm text-gray-400 py-12 text-center">Loading…</div>}
       {error && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
       )}
-      {!loading && !error && data?.length === 0 && (
-        <div className="rounded-xl border border-cream-border bg-white p-12 text-center text-gray-400 text-sm">
-          Belum ada produk.
-        </div>
+      {!loading && !error && data && (
+        <DataGrid
+          data={data}
+          columns={columns}
+          getRowId={(row) => String(row.rowNumber)}
+          searchPlaceholder="Search product, store…"
+          toolbarExtra={refreshButton}
+          initialVisibility={{
+            createdAt: false,
+            updatedAt: false,
+          }}
+        />
       )}
-      {!loading && !error && data && data.length > 0 && (
-        <div className="rounded-xl border border-cream-border bg-white overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
-              <thead>
-                <tr className="text-left text-xs text-gray-500 border-b border-cream-border bg-cream">
-                  <th className="px-4 py-3 font-medium relative select-none" style={{ width: widths.product }}>
-                    Product
-                    <div onMouseDown={(e) => startResize("product", e)} className="absolute inset-y-0 right-0 w-1 cursor-col-resize hover:bg-brand/30 active:bg-brand/60" />
-                  </th>
-                  <th className="px-4 py-3 font-medium relative select-none" style={{ width: widths.store }}>
-                    Store
-                    <div onMouseDown={(e) => startResize("store", e)} className="absolute inset-y-0 right-0 w-1 cursor-col-resize hover:bg-brand/30 active:bg-brand/60" />
-                  </th>
-                  <th className="px-4 py-3 font-medium text-right relative select-none" style={{ width: widths.price }}>
-                    Price
-                    <div onMouseDown={(e) => startResize("price", e)} className="absolute inset-y-0 right-0 w-1 cursor-col-resize hover:bg-brand/30 active:bg-brand/60" />
-                  </th>
-                  <th className="px-4 py-3 font-medium relative select-none" style={{ width: widths.action }}>
-                    <div onMouseDown={(e) => startResize("action", e)} className="absolute inset-y-0 right-0 w-1 cursor-col-resize hover:bg-brand/30 active:bg-brand/60" />
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.map((row) => (
-                  <ProductRow
-                    key={row.rowNumber}
-                    row={row}
-                    onUpdated={(updated) =>
-                      setData((prev) =>
-                        prev?.map((r) => r.rowNumber === row.rowNumber ? { ...r, ...updated } : r) ?? null
-                      )
-                    }
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+
+      {editingRow && (
+        <EditProductIndoModal
+          row={editingRow}
+          stores={stores}
+          onSave={(updated) => {
+            setData((prev) =>
+              prev?.map((r) => r.rowNumber === editingRow.rowNumber ? { ...r, ...updated } : r) ?? null,
+            )
+            setEditingRow(null)
+          }}
+          onCancel={() => setEditingRow(null)}
+        />
       )}
     </div>
   )
 }
 
-function ProductRow({
+// ─── Edit modal ────────────────────────────────────────────────────────────
+
+function EditProductIndoModal({
   row,
-  onUpdated,
+  stores,
+  onSave,
+  onCancel,
 }: {
   row: ProductIndoRow
-  onUpdated: (data: Partial<ProductIndoRow>) => void
+  stores: string[]
+  onSave: (updated: Partial<ProductIndoRow>) => void
+  onCancel: () => void
 }) {
-  const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState({
     product: row.product,
     store: row.store,
@@ -201,26 +241,6 @@ function ProductRow({
   })
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const firstInputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    if (editing) firstInputRef.current?.focus()
-  }, [editing])
-
-  function startEdit() {
-    setDraft({
-      product: row.product,
-      store: row.store,
-      price: String(row.price),
-    })
-    setSaveError(null)
-    setEditing(true)
-  }
-
-  function cancelEdit() {
-    setEditing(false)
-    setSaveError(null)
-  }
 
   async function handleSave() {
     setSaving(true)
@@ -239,8 +259,7 @@ function ProductRow({
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? "Failed")
-      onUpdated({ product: draft.product.trim(), store: draft.store.trim(), price })
-      setEditing(false)
+      onSave({ product: draft.product.trim(), store: draft.store.trim(), price })
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Failed to save")
     } finally {
@@ -250,78 +269,77 @@ function ProductRow({
 
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Enter") { e.preventDefault(); handleSave() }
-    if (e.key === "Escape") cancelEdit()
+    if (e.key === "Escape") onCancel()
   }
-
-  function draftField(key: keyof typeof draft) {
-    return {
-      value: draft[key],
-      onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
-        setDraft((d) => ({ ...d, [key]: e.target.value })),
-      onKeyDown: handleKeyDown,
-      disabled: saving,
-    }
-  }
-
-  const fmt = (n: number) => n.toLocaleString("id-ID")
 
   return (
-    <tr className="border-b border-cream-border/60 hover:bg-cream/30 transition-colors">
-      {editing ? (
-        <>
-          <td className="px-3 py-2">
-            <input ref={firstInputRef} {...draftField("product")} className={rowInputCls} placeholder="Product" />
-          </td>
-          <td className="px-3 py-2">
-            <input {...draftField("store")} list="stores-list" className={rowInputCls} placeholder="Store" />
-          </td>
-          <td className="px-3 py-2">
-            <input {...draftField("price")} type="number" min="0" className={`${rowInputCls} text-right`} placeholder="Price" />
-          </td>
-          <td className="px-3 py-2">
-            <div className="flex flex-col gap-1 items-end">
-              <div className="flex gap-1">
-                <button
-                  type="button"
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="px-2 py-1 rounded-md bg-brand text-white text-xs font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
-                >
-                  {saving ? "…" : "Simpan"}
-                </button>
-                <button
-                  type="button"
-                  onClick={cancelEdit}
-                  disabled={saving}
-                  className="px-2 py-1 rounded-md border border-cream-border text-gray-500 text-xs hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
-                >
-                  Batal
-                </button>
-              </div>
-              {saveError && <p className="text-xs text-red-500 text-right">{saveError}</p>}
-            </div>
-          </td>
-        </>
-      ) : (
-        <>
-          <td className="px-4 py-3 font-medium">{row.product}</td>
-          <td className="px-4 py-3 text-gray-600">{row.store}</td>
-          <td className="px-4 py-3 text-right tabular-nums font-medium">{fmt(row.price)}</td>
-          <td className="px-4 py-3">
-            <button
-              type="button"
-              onClick={startEdit}
-              title="Edit"
-              className="text-gray-400 hover:text-brand transition-colors"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
-              </svg>
-            </button>
-          </td>
-        </>
-      )}
-    </tr>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onCancel}>
+      <div className="bg-white rounded-xl border border-cream-border shadow-xl p-6 w-full max-w-md flex flex-col gap-4" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-semibold text-foreground">Edit Produk</span>
+          <span className="text-xs text-gray-400">Row: {row.rowNumber}</span>
+        </div>
+
+        <div className="flex flex-col gap-3">
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-gray-500">Product</span>
+            <input
+              value={draft.product}
+              onChange={(e) => setDraft((d) => ({ ...d, product: e.target.value }))}
+              onKeyDown={handleKeyDown}
+              disabled={saving}
+              autoFocus
+              className={formInputCls}
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-gray-500">Store</span>
+            <input
+              value={draft.store}
+              onChange={(e) => setDraft((d) => ({ ...d, store: e.target.value }))}
+              onKeyDown={handleKeyDown}
+              list="edit-stores-list"
+              disabled={saving}
+              className={formInputCls}
+            />
+            <datalist id="edit-stores-list">
+              {stores.map((s) => <option key={s} value={s} />)}
+            </datalist>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-gray-500">Price</span>
+            <input
+              value={draft.price}
+              onChange={(e) => setDraft((d) => ({ ...d, price: e.target.value }))}
+              onKeyDown={handleKeyDown}
+              type="number"
+              min="0"
+              disabled={saving}
+              className={formInputCls}
+            />
+          </label>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 pt-2 border-t border-cream-border">
+          {saveError && <p className="text-xs text-red-500">{saveError}</p>}
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={saving}
+            className="px-3 py-1.5 rounded-lg border border-cream-border text-gray-500 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+          >
+            Batal
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="px-4 py-1.5 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
+          >
+            {saving ? "Menyimpan…" : "Simpan"}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }

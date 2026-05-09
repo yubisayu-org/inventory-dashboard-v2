@@ -5,10 +5,17 @@ import type { ShippingRecord } from "@/lib/db"
 import { generateShippingLabel, generateMultipleShippingLabels } from "@/lib/shipping-label"
 import type { ShippingLabelParams } from "@/lib/shipping-label"
 import { useModalDismiss } from "@/hooks/useModalDismiss"
-import { useResizableColumns } from "@/hooks/useResizableColumns"
+import DataGrid, {
+  numericFilter,
+  textContainsFilter,
+  booleanFilter,
+  type ColumnDef,
+  type RowSelectionState,
+} from "@/components/DataGrid"
 
-type SortKey = "shippingId" | "event" | "customer" | "weightEstimation" | "ongkirTotal" | "createdAt"
-type ResiFilter = "all" | "filled" | "empty"
+const fmt = (n: number) => n.toLocaleString("id-ID")
+
+// ─── LabelModal ───────────────────────────────────────────────────────────
 
 function LabelModal({
   record,
@@ -116,18 +123,116 @@ function LabelModal({
   )
 }
 
+// ─── EditResiModal ────────────────────────────────────────────────────────
+
+function EditResiModal({
+  record,
+  onClose,
+  onSaved,
+}: {
+  record: ShippingRecord
+  onClose: () => void
+  onSaved: (trackingNumber: string) => void
+}) {
+  const [value, setValue] = useState(record.trackingNumber)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => { inputRef.current?.focus() }, [])
+  useModalDismiss(onClose)
+
+  async function handleSave() {
+    if (value === record.trackingNumber) { onClose(); return }
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await fetch("/api/sheets/shipments", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rowNumber: record.rowNumber, trackingNumber: value }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? "Failed")
+      onSaved(value)
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal menyimpan")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Enter") handleSave()
+    if (e.key === "Escape") onClose()
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-xl shadow-xl border border-cream-border w-full max-w-sm"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
+        <div className="px-5 py-4 border-b border-cream-border">
+          <div className="text-sm font-semibold text-foreground">Edit Nomor Resi</div>
+          <div className="text-xs text-gray-500 mt-0.5">
+            {record.customer.toUpperCase()} · <span className="font-mono">#{record.shippingId}</span>
+          </div>
+        </div>
+
+        <div className="px-5 py-4 flex flex-col gap-2">
+          <input
+            ref={inputRef}
+            type="text"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={handleKeyDown}
+            disabled={saving}
+            placeholder="Masukkan nomor resi"
+            className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors disabled:opacity-50"
+          />
+          {error && <p className="text-xs text-red-500">{error}</p>}
+        </div>
+
+        <div className="px-5 py-3 border-t border-cream-border flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="px-4 py-1.5 rounded-lg border border-cream-border text-gray-600 text-xs font-medium hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+          >
+            Batal
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="px-4 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
+          >
+            {saving ? "Menyimpan…" : "Simpan"}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Main component ───────────────────────────────────────────────────────
+
 export default function ShipmentsClient() {
   const [data, setData] = useState<ShippingRecord[] | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set())
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
   const [printingPdf, setPrintingPdf] = useState(false)
-
-  const [search, setSearch] = useState("")
-  const [eventFilter, setEventFilter] = useState("")
-  const [resiFilter, setResiFilter] = useState<ResiFilter>("all")
-  const [sortKey, setSortKey] = useState<SortKey>("createdAt")
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc")
+  const [labelRecord, setLabelRecord] = useState<ShippingRecord | null>(null)
+  const [editResiRecord, setEditResiRecord] = useState<ShippingRecord | null>(null)
 
   async function load() {
     setLoading(true)
@@ -137,7 +242,7 @@ export default function ShipmentsClient() {
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? "Failed to load")
       setData(json as ShippingRecord[])
-      setSelectedRows(new Set())
+      setRowSelection({})
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load")
     } finally {
@@ -147,63 +252,12 @@ export default function ShipmentsClient() {
 
   useEffect(() => { load() }, [])
 
-  // Clear selection whenever filters change
-  useEffect(() => { setSelectedRows(new Set()) }, [search, eventFilter, resiFilter])
-
-  const events = useMemo(
-    () => [...new Set((data ?? []).map((r) => r.event).filter(Boolean))].sort(),
-    [data]
-  )
-
-  const displayed = useMemo(() => {
-    let rows = data ?? []
-
-    if (search) {
-      const q = search.replace(/^@/, "").toLowerCase()
-      rows = rows.filter((r) => r.customer.replace(/^@/, "").toLowerCase().includes(q))
-    }
-    if (eventFilter) rows = rows.filter((r) => r.event === eventFilter)
-    if (resiFilter === "filled") rows = rows.filter((r) => Boolean(r.trackingNumber))
-    if (resiFilter === "empty") rows = rows.filter((r) => !r.trackingNumber)
-
-    return [...rows].sort((a, b) => {
-      let cmp: number
-      switch (sortKey) {
-        case "shippingId":        cmp = a.shippingId.localeCompare(b.shippingId); break
-        case "event":             cmp = a.event.localeCompare(b.event); break
-        case "customer":          cmp = a.customer.localeCompare(b.customer); break
-        case "weightEstimation":  cmp = a.weightEstimation - b.weightEstimation; break
-        case "ongkirTotal":       cmp = a.ongkirTotal - b.ongkirTotal; break
-        case "createdAt":         cmp = a.createdAt.localeCompare(b.createdAt); break
-        default:                  cmp = 0
-      }
-      return sortDir === "asc" ? cmp : -cmp
-    })
-  }, [data, search, eventFilter, resiFilter, sortKey, sortDir])
-
-  function handleSort(key: SortKey) {
-    if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"))
-    else { setSortKey(key); setSortDir("asc") }
-  }
-
-  function toggleSelect(rowNumber: number) {
-    setSelectedRows((prev) => {
-      const next = new Set(prev)
-      if (next.has(rowNumber)) next.delete(rowNumber)
-      else next.add(rowNumber)
-      return next
-    })
-  }
-
-  const allRowNumbers = displayed.map((r) => r.rowNumber)
-  const allSelected = allRowNumbers.length > 0 && allRowNumbers.every((n) => selectedRows.has(n))
-
-  function toggleSelectAll() {
-    setSelectedRows(allSelected ? new Set() : new Set(allRowNumbers))
-  }
+  const selectedCount = Object.keys(rowSelection).filter((k) => rowSelection[k]).length
 
   async function handlePrintPdf() {
-    const selected = displayed.filter((r) => selectedRows.has(r.rowNumber))
+    if (!data || selectedCount === 0) return
+    const selectedRowNumbers = Object.keys(rowSelection).filter((k) => rowSelection[k]).map(Number)
+    const selected = data.filter((r) => selectedRowNumbers.includes(r.rowNumber))
     if (selected.length === 0) return
     setPrintingPdf(true)
     try {
@@ -245,81 +299,206 @@ export default function ShipmentsClient() {
     }
   }
 
-  const hasFilters = search || eventFilter || resiFilter !== "all"
+  const columns = useMemo<ColumnDef<ShippingRecord, unknown>[]>(
+    () => [
+      {
+        accessorKey: "shippingId",
+        header: "ID",
+        filterFn: "textContains" as unknown as undefined,
+        size: 80,
+        cell: ({ getValue }) => (
+          <span className="font-mono text-xs text-gray-500">{getValue<string>()}</span>
+        ),
+      },
+      {
+        accessorKey: "event",
+        header: "Event",
+        filterFn: "textContains" as unknown as undefined,
+        size: 120,
+      },
+      {
+        accessorKey: "customer",
+        header: "Customer",
+        filterFn: "textContains" as unknown as undefined,
+        size: 140,
+      },
+      {
+        accessorKey: "invoicing",
+        header: "Items",
+        filterFn: "textContains" as unknown as undefined,
+        size: 220,
+        enableSorting: false,
+        cell: ({ getValue }) => (
+          <pre className="whitespace-pre-wrap font-sans text-xs text-gray-600 leading-relaxed max-w-[200px]">
+            {getValue<string>()}
+          </pre>
+        ),
+      },
+      {
+        accessorKey: "weightEstimation",
+        header: "Berat",
+        filterFn: "numeric" as unknown as undefined,
+        size: 90,
+        meta: { align: "right" },
+        cell: ({ getValue }) => (
+          <span className="whitespace-nowrap">{getValue<number>()} kg</span>
+        ),
+      },
+      {
+        accessorKey: "ongkirTotal",
+        header: "Ongkir",
+        filterFn: "numeric" as unknown as undefined,
+        size: 120,
+        meta: { align: "right" },
+        cell: ({ getValue }) => (
+          <span className="whitespace-nowrap">Rp {fmt(getValue<number>())}</span>
+        ),
+      },
+      {
+        accessorKey: "isLastShipment",
+        header: "Terakhir",
+        filterFn: "boolean" as unknown as undefined,
+        size: 90,
+        cell: ({ getValue }) =>
+          getValue<boolean>() ? (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+              Ya
+            </span>
+          ) : (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
+              Tidak
+            </span>
+          ),
+      },
+      {
+        accessorKey: "trackingNumber",
+        header: "Resi",
+        filterFn: "textContains" as unknown as undefined,
+        size: 200,
+        cell: ({ row }) => {
+          const record = row.original
+          return (
+            <button
+              type="button"
+              onClick={() => setEditResiRecord(record)}
+              className="group flex items-center gap-1.5 text-left"
+            >
+              <span
+                className={`text-xs ${record.trackingNumber ? "text-foreground font-mono" : "text-gray-400 italic"}`}
+              >
+                {record.trackingNumber || "Belum diisi"}
+              </span>
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="text-gray-400 group-hover:text-brand transition-colors shrink-0"
+              >
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
+              </svg>
+            </button>
+          )
+        },
+      },
+      {
+        accessorKey: "createdAt",
+        header: "Tanggal",
+        filterFn: "textContains" as unknown as undefined,
+        size: 160,
+        cell: ({ getValue }) => (
+          <span className="text-xs text-gray-400 whitespace-nowrap">{getValue<string>()}</span>
+        ),
+      },
+      {
+        accessorKey: "updatedAt",
+        header: "Diperbarui",
+        enableHiding: true,
+        size: 160,
+        cell: ({ getValue }) => (
+          <span className="text-xs text-gray-400 whitespace-nowrap">{getValue<string>()}</span>
+        ),
+      },
+      {
+        id: "actions",
+        header: "",
+        enableSorting: false,
+        enableHiding: false,
+        size: 44,
+        cell: ({ row }) => (
+          <button
+            type="button"
+            onClick={() => setLabelRecord(row.original)}
+            title="Lihat label pengiriman"
+            className="text-gray-400 hover:text-brand transition-colors"
+          >
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+          </button>
+        ),
+      },
+    ],
+    []
+  )
 
-  const { widths, startResize } = useResizableColumns({
-    checkbox: 40, shippingId: 70, event: 120, customer: 140,
-    items: 200, weightEstimation: 80, ongkirTotal: 110,
-    isLastShipment: 80, resi: 180, createdAt: 160, action: 44,
-  })
+  const toolbarExtra = (
+    <div className="flex items-center gap-2">
+      {selectedCount > 0 && (
+        <button
+          type="button"
+          onClick={handlePrintPdf}
+          disabled={printingPdf}
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-white bg-brand hover:bg-brand/90 disabled:opacity-50 transition-colors px-3 py-1.5 rounded-lg"
+        >
+          <svg
+            width="13"
+            height="13"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <polyline points="6 9 6 2 18 2 18 9" />
+            <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+            <rect x="6" y="14" width="12" height="8" />
+          </svg>
+          {printingPdf
+            ? "Generating…"
+            : `Print ${selectedCount} Label${selectedCount === 1 ? "" : "s"}`}
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={load}
+        disabled={loading}
+        className="text-xs text-gray-500 hover:text-brand disabled:opacity-50 transition-colors px-3 py-1.5 rounded-lg border border-cream-border hover:border-brand"
+      >
+        {loading ? "…" : "Refresh"}
+      </button>
+    </div>
+  )
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Filters + actions toolbar */}
-      <div className="flex flex-wrap items-center gap-2">
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Cari customer…"
-          className="flex-1 min-w-[160px] border border-cream-border rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
-        />
-        <select
-          value={eventFilter}
-          onChange={(e) => setEventFilter(e.target.value)}
-          className="border border-cream-border rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors text-gray-600"
-        >
-          <option value="">Semua Event</option>
-          {events.map((ev) => (
-            <option key={ev} value={ev}>{ev}</option>
-          ))}
-        </select>
-        <select
-          value={resiFilter}
-          onChange={(e) => setResiFilter(e.target.value as ResiFilter)}
-          className="border border-cream-border rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors text-gray-600"
-        >
-          <option value="all">Semua Resi</option>
-          <option value="filled">Sudah diisi</option>
-          <option value="empty">Belum diisi</option>
-        </select>
-        {hasFilters && (
-          <button
-            type="button"
-            onClick={() => { setSearch(""); setEventFilter(""); setResiFilter("all") }}
-            className="text-xs text-gray-400 hover:text-brand transition-colors px-2 py-1.5"
-          >
-            Reset
-          </button>
-        )}
-
-        <div className="flex items-center gap-2 ml-auto">
-          {selectedRows.size > 0 && (
-            <button
-              type="button"
-              onClick={handlePrintPdf}
-              disabled={printingPdf}
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-white bg-brand hover:bg-brand/90 disabled:opacity-50 transition-colors px-3 py-1.5 rounded-lg"
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="6 9 6 2 18 2 18 9" />
-                <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-                <rect x="6" y="14" width="12" height="8" />
-              </svg>
-              {printingPdf ? "Generating…" : `Print ${selectedRows.size} Label${selectedRows.size === 1 ? "" : "s"}`}
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={load}
-            disabled={loading}
-            className="text-xs text-gray-500 hover:text-brand disabled:opacity-50 transition-colors px-3 py-1.5 rounded-lg border border-cream-border hover:border-brand"
-          >
-            {loading ? "…" : "Refresh"}
-          </button>
-        </div>
-      </div>
-
       {loading && (
         <div className="text-sm text-gray-400 py-12 text-center">Loading…</div>
       )}
@@ -334,278 +513,36 @@ export default function ShipmentsClient() {
         </div>
       )}
       {!loading && !error && data && data.length > 0 && (
-        <>
-          <div className="text-xs text-gray-400">
-            {displayed.length === data.length
-              ? `${data.length} shipment${data.length === 1 ? "" : "s"}`
-              : `${displayed.length} dari ${data.length} shipment`}
-          </div>
-          {displayed.length === 0 ? (
-            <div className="rounded-xl border border-cream-border bg-white p-12 text-center text-gray-400 text-sm">
-              Tidak ada hasil yang cocok.
-            </div>
-          ) : (
-            <div className="rounded-xl border border-cream-border bg-white overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
-                  <thead>
-                    <tr className="text-left text-xs text-gray-500 border-b border-cream-border bg-cream">
-                      <th className="pl-4 pr-2 py-3 relative select-none" style={{ width: widths.checkbox }}>
-                        <input
-                          type="checkbox"
-                          checked={allSelected}
-                          onChange={toggleSelectAll}
-                          className="rounded border-gray-300 text-brand focus:ring-brand/30 cursor-pointer"
-                        />
-                        <div onMouseDown={(e) => startResize("checkbox", e)} className="absolute inset-y-0 right-0 w-1 cursor-col-resize hover:bg-brand/30 active:bg-brand/60" />
-                      </th>
-                      <SortTh label="ID" sortKey="shippingId" current={sortKey} dir={sortDir} onSort={handleSort} width={widths.shippingId} onStartResize={(e) => startResize("shippingId", e)} />
-                      <SortTh label="Event" sortKey="event" current={sortKey} dir={sortDir} onSort={handleSort} width={widths.event} onStartResize={(e) => startResize("event", e)} />
-                      <SortTh label="Customer" sortKey="customer" current={sortKey} dir={sortDir} onSort={handleSort} width={widths.customer} onStartResize={(e) => startResize("customer", e)} />
-                      <th className="px-4 py-3 font-medium relative select-none" style={{ width: widths.items }}>
-                        Items
-                        <div onMouseDown={(e) => startResize("items", e)} className="absolute inset-y-0 right-0 w-1 cursor-col-resize hover:bg-brand/30 active:bg-brand/60" />
-                      </th>
-                      <SortTh label="Berat" sortKey="weightEstimation" current={sortKey} dir={sortDir} onSort={handleSort} align="right" width={widths.weightEstimation} onStartResize={(e) => startResize("weightEstimation", e)} />
-                      <SortTh label="Ongkir" sortKey="ongkirTotal" current={sortKey} dir={sortDir} onSort={handleSort} align="right" width={widths.ongkirTotal} onStartResize={(e) => startResize("ongkirTotal", e)} />
-                      <th className="px-4 py-3 font-medium relative select-none" style={{ width: widths.isLastShipment }}>
-                        Terakhir
-                        <div onMouseDown={(e) => startResize("isLastShipment", e)} className="absolute inset-y-0 right-0 w-1 cursor-col-resize hover:bg-brand/30 active:bg-brand/60" />
-                      </th>
-                      <th className="px-4 py-3 font-medium relative select-none" style={{ width: widths.resi }}>
-                        Resi
-                        <div onMouseDown={(e) => startResize("resi", e)} className="absolute inset-y-0 right-0 w-1 cursor-col-resize hover:bg-brand/30 active:bg-brand/60" />
-                      </th>
-                      <SortTh label="Tanggal" sortKey="createdAt" current={sortKey} dir={sortDir} onSort={handleSort} width={widths.createdAt} onStartResize={(e) => startResize("createdAt", e)} />
-                      <th className="px-4 py-3 font-medium relative select-none" style={{ width: widths.action }}>
-                        <div onMouseDown={(e) => startResize("action", e)} className="absolute inset-y-0 right-0 w-1 cursor-col-resize hover:bg-brand/30 active:bg-brand/60" />
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {displayed.map((record) => (
-                      <ShipmentRow
-                        key={record.rowNumber}
-                        record={record}
-                        isSelected={selectedRows.has(record.rowNumber)}
-                        onToggleSelect={() => toggleSelect(record.rowNumber)}
-                        onUpdated={(trackingNumber) =>
-                          setData((prev) =>
-                            prev?.map((r) =>
-                              r.rowNumber === record.rowNumber ? { ...r, trackingNumber } : r
-                            ) ?? null
-                          )
-                        }
-                      />
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-        </>
+        <DataGrid<ShippingRecord>
+          data={data}
+          columns={columns}
+          getRowId={(row) => String(row.rowNumber)}
+          searchPlaceholder="Cari shipment…"
+          toolbarExtra={toolbarExtra}
+          enableRowSelection
+          rowSelection={rowSelection}
+          onRowSelectionChange={setRowSelection}
+          initialVisibility={{ updatedAt: false }}
+          initialSorting={[{ id: "createdAt", desc: true }]}
+        />
+      )}
+
+      {labelRecord && (
+        <LabelModal record={labelRecord} onClose={() => setLabelRecord(null)} />
+      )}
+      {editResiRecord && (
+        <EditResiModal
+          record={editResiRecord}
+          onClose={() => setEditResiRecord(null)}
+          onSaved={(trackingNumber) =>
+            setData((prev) =>
+              prev?.map((r) =>
+                r.rowNumber === editResiRecord.rowNumber ? { ...r, trackingNumber } : r
+              ) ?? null
+            )
+          }
+        />
       )}
     </div>
-  )
-}
-
-function SortTh({
-  label,
-  sortKey,
-  current,
-  dir,
-  onSort,
-  align = "left",
-  width,
-  onStartResize,
-}: {
-  label: string
-  sortKey: SortKey
-  current: SortKey
-  dir: "asc" | "desc"
-  onSort: (key: SortKey) => void
-  align?: "left" | "right"
-  width?: number
-  onStartResize?: (e: React.MouseEvent) => void
-}) {
-  const active = current === sortKey
-  return (
-    <th className={`px-4 py-3 font-medium relative select-none ${align === "right" ? "text-right" : ""}`} style={width != null ? { width } : undefined}>
-      <button
-        type="button"
-        onClick={() => onSort(sortKey)}
-        className={`inline-flex items-center gap-1 hover:text-brand transition-colors ${active ? "text-brand" : ""}`}
-      >
-        {label}
-        <span className="text-[10px] leading-none">
-          {active ? (dir === "asc" ? "↑" : "↓") : <span className="text-gray-300">↕</span>}
-        </span>
-      </button>
-      {onStartResize && (
-        <div onMouseDown={onStartResize} className="absolute inset-y-0 right-0 w-1 cursor-col-resize hover:bg-brand/30 active:bg-brand/60" />
-      )}
-    </th>
-  )
-}
-
-function ShipmentRow({
-  record,
-  onUpdated,
-  isSelected,
-  onToggleSelect,
-}: {
-  record: ShippingRecord
-  onUpdated: (trackingNumber: string) => void
-  isSelected: boolean
-  onToggleSelect: () => void
-}) {
-  const [editing, setEditing] = useState(false)
-  const [value, setValue] = useState(record.trackingNumber)
-  const [saving, setSaving] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
-  const [showLabel, setShowLabel] = useState(false)
-  const inputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    if (editing) inputRef.current?.focus()
-  }, [editing])
-
-  async function handleSave() {
-    if (value === record.trackingNumber) { setEditing(false); return }
-    setSaving(true)
-    setSaveError(null)
-    try {
-      const res = await fetch("/api/sheets/shipments", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rowNumber: record.rowNumber, trackingNumber: value }),
-      })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error ?? "Failed")
-      onUpdated(value)
-      setEditing(false)
-    } catch (err) {
-      setSaveError(err instanceof Error ? err.message : "Failed to save")
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Enter") handleSave()
-    if (e.key === "Escape") { setValue(record.trackingNumber); setEditing(false) }
-  }
-
-  const fmt = (n: number) => n.toLocaleString("id-ID")
-
-  return (
-    <tr className={`border-b border-cream-border/60 transition-colors ${isSelected ? "bg-brand-light/20" : "hover:bg-cream/30"}`}>
-      <td className="pl-4 pr-2 py-3">
-        <input
-          type="checkbox"
-          checked={isSelected}
-          onChange={onToggleSelect}
-          className="rounded border-gray-300 text-brand focus:ring-brand/30 cursor-pointer"
-        />
-      </td>
-      <td className="px-4 py-3 font-mono text-xs text-gray-500">{record.shippingId}</td>
-      <td className="px-4 py-3 whitespace-nowrap">{record.event}</td>
-      <td className="px-4 py-3 whitespace-nowrap">{record.customer}</td>
-      <td className="px-4 py-3">
-        <pre className="whitespace-pre-wrap font-sans text-xs text-gray-600 leading-relaxed max-w-[200px]">
-          {record.invoicing}
-        </pre>
-      </td>
-      <td className="px-4 py-3 text-right whitespace-nowrap">{record.weightEstimation} kg</td>
-      <td className="px-4 py-3 text-right whitespace-nowrap">Rp {fmt(record.ongkirTotal)}</td>
-      <td className="px-4 py-3">
-        {record.isLastShipment ? (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
-            Ya
-          </span>
-        ) : (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
-            Tidak
-          </span>
-        )}
-      </td>
-      <td className="px-4 py-3 min-w-[180px]">
-        {editing ? (
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-1.5">
-              <input
-                ref={inputRef}
-                type="text"
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
-                onKeyDown={handleKeyDown}
-                disabled={saving}
-                placeholder="Masukkan nomor resi"
-                className="flex-1 min-w-0 border border-cream-border rounded-md px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors disabled:opacity-50"
-              />
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={saving}
-                className="shrink-0 px-2 py-1 rounded-md bg-brand text-white text-xs font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
-              >
-                {saving ? "…" : "Simpan"}
-              </button>
-              <button
-                type="button"
-                onClick={() => { setValue(record.trackingNumber); setEditing(false) }}
-                disabled={saving}
-                className="shrink-0 px-2 py-1 rounded-md border border-cream-border text-gray-500 text-xs hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
-              >
-                Batal
-              </button>
-            </div>
-            {saveError && <p className="text-xs text-red-500">{saveError}</p>}
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setEditing(true)}
-            className="group flex items-center gap-1.5 text-left"
-          >
-            <span className={`text-xs ${record.trackingNumber ? "text-foreground font-mono" : "text-gray-400 italic"}`}>
-              {record.trackingNumber || "Belum diisi"}
-            </span>
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="text-gray-400 group-hover:text-brand transition-colors shrink-0"
-            >
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
-            </svg>
-          </button>
-        )}
-      </td>
-      <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap overflow-hidden">{record.createdAt}</td>
-      <td className="px-2 py-3 text-center">
-        <button
-          type="button"
-          onClick={() => setShowLabel(true)}
-          title="Lihat label pengiriman"
-          className="text-gray-400 hover:text-brand transition-colors"
-        >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="7 10 12 15 17 10" />
-            <line x1="12" y1="15" x2="12" y2="3" />
-          </svg>
-        </button>
-        {showLabel && (
-          <LabelModal record={record} onClose={() => setShowLabel(false)} />
-        )}
-      </td>
-    </tr>
   )
 }
