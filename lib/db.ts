@@ -159,6 +159,14 @@ export interface ShippingRecord {
   trackingNumber: string
 }
 
+export interface CountryRow {
+  id: number
+  name: string
+  currency: string
+  kurs: number
+  cargoPerKg: number
+}
+
 export interface ProductIndoRow {
   rowNumber: number
   product: string
@@ -1137,4 +1145,76 @@ export async function updateAdjustment(
 
 export async function deleteAdjustment(rowNumber: number): Promise<void> {
   await sql`DELETE FROM adjustments WHERE id = ${rowNumber}`
+}
+
+// ─── Countries ─────────────────────────────────────────────────────────────
+
+export async function getCountries(): Promise<CountryRow[]> {
+  const rows = await sql`
+    SELECT id, name, currency, kurs, cargo_per_kg FROM countries ORDER BY name
+  `
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    currency: r.currency ?? "",
+    kurs: r.kurs ?? 0,
+    cargoPerKg: r.cargo_per_kg ?? 0,
+  }))
+}
+
+export async function addCountry(data: {
+  name: string
+  currency: string
+  kurs: number
+  cargoPerKg: number
+}): Promise<{ id: number }> {
+  const [row] = await sql`
+    INSERT INTO countries (name, currency, kurs, cargo_per_kg)
+    VALUES (${data.name}, ${data.currency}, ${data.kurs}, ${data.cargoPerKg})
+    RETURNING id
+  `
+  return { id: row.id }
+}
+
+export async function updateCountry(
+  id: number,
+  data: { name: string; currency: string; kurs: number; cargoPerKg: number },
+): Promise<void> {
+  await sql`
+    UPDATE countries
+    SET name = ${data.name}, currency = ${data.currency},
+        kurs = ${data.kurs}, cargo_per_kg = ${data.cargoPerKg}
+    WHERE id = ${id}
+  `
+}
+
+export async function deleteCountry(id: number): Promise<void> {
+  await sql`DELETE FROM countries WHERE id = ${id}`
+}
+
+// ─── Price Calculation ─────────────────────────────────────────────────────
+
+/** Round up to the nearest multiple of 5000 */
+export function ceilTo5000(n: number): number {
+  return Math.ceil(n / 5000) * 5000
+}
+
+/** Calculate abroad product price from cost breakdown */
+export function calcAbroadPrice(input: {
+  valas: number
+  kurs: number
+  gramWeight: number
+  cargoPerKg: number
+  profitPct: number
+  operationalFee: number
+  packingFee: number
+}): { cogs: number; rawPrice: number; price: number } {
+  const cogs =
+    input.valas * input.kurs +
+    (input.gramWeight / 1000) * input.cargoPerKg
+  const rawPrice =
+    (cogs * 100) / (100 - input.profitPct) +
+    input.operationalFee +
+    input.packingFee
+  return { cogs, rawPrice, price: ceilTo5000(rawPrice) }
 }

@@ -1,0 +1,48 @@
+import { NextRequest, NextResponse } from "next/server"
+import { requireSession, requireRole } from "@/lib/api"
+import { getCountries, addCountry } from "@/lib/db"
+
+export async function GET() {
+  const { session, error: authError } = await requireSession()
+  if (authError) return authError
+
+  const roleError = requireRole(session)
+  if (roleError) return roleError
+
+  try {
+    const rows = await getCountries()
+    return NextResponse.json({ rows }, { headers: { "Cache-Control": "no-store" } })
+  } catch (err) {
+    console.error("Failed to fetch countries:", err)
+    return NextResponse.json({ error: "Failed to fetch countries" }, { status: 500 })
+  }
+}
+
+export async function POST(req: NextRequest) {
+  const { session, error: authError } = await requireSession()
+  if (authError) return authError
+
+  const roleError = requireRole(session)
+  if (roleError) return roleError
+
+  try {
+    const body = await req.json()
+    const { name, currency, kurs, cargoPerKg } = body
+
+    if (!name) {
+      return NextResponse.json({ error: "name is required" }, { status: 400 })
+    }
+
+    const result = await addCountry({
+      name: String(name),
+      currency: String(currency ?? ""),
+      kurs: Number(kurs ?? 0),
+      cargoPerKg: Number(cargoPerKg ?? 0),
+    })
+
+    return NextResponse.json({ success: true, id: result.id })
+  } catch (err) {
+    console.error("Failed to add country:", err)
+    return NextResponse.json({ error: "Failed to add country" }, { status: 500 })
+  }
+}

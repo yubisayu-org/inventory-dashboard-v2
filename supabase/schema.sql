@@ -16,12 +16,29 @@ CREATE TABLE customers (
   ongkos_kirim INTEGER NOT NULL DEFAULT 0
 );
 
+CREATE TABLE countries (
+  id            SERIAL PRIMARY KEY,
+  name          TEXT NOT NULL UNIQUE,
+  currency      TEXT NOT NULL DEFAULT '',
+  kurs          INTEGER NOT NULL DEFAULT 0,
+  cargo_per_kg  INTEGER NOT NULL DEFAULT 0
+);
+
 CREATE TABLE products (
-  id    SERIAL PRIMARY KEY,
-  name  TEXT NOT NULL,
-  store TEXT NOT NULL DEFAULT '',
-  price INTEGER NOT NULL DEFAULT 0,
-  gram  INTEGER NOT NULL DEFAULT 0,
+  id              SERIAL PRIMARY KEY,
+  name            TEXT NOT NULL,
+  store           TEXT NOT NULL DEFAULT '',
+  price           INTEGER NOT NULL DEFAULT 0,
+  gram            INTEGER NOT NULL DEFAULT 0,
+  country_id      INTEGER REFERENCES countries(id) ON DELETE RESTRICT,
+  valas           INTEGER NOT NULL DEFAULT 0,
+  kurs            INTEGER NOT NULL DEFAULT 0,
+  cargo_per_kg    INTEGER NOT NULL DEFAULT 0,
+  profit_pct      INTEGER NOT NULL DEFAULT 0,
+  operational_fee INTEGER NOT NULL DEFAULT 5000,
+  packing_fee     INTEGER NOT NULL DEFAULT 5000,
+  cost            INTEGER NOT NULL DEFAULT 0,
+  profit_fixed    INTEGER NOT NULL DEFAULT 0,
   UNIQUE (name, store)
 );
 
