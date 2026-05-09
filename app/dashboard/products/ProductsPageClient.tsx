@@ -39,6 +39,18 @@ function calcDomesticPrice(cost: number, profitFixed: number) {
   return cost + profitFixed
 }
 
+function defaultDomesticProfit(cost: number): number {
+  if (cost >= 800_000) return Math.round(cost * 0.15)
+  if (cost >= 700_000) return 80_000
+  if (cost > 498_000) return 55_000
+  if (cost > 398_000) return 45_000
+  if (cost > 298_000) return 35_000
+  if (cost > 198_000) return 25_000
+  if (cost > 98_000) return 20_000
+  if (cost > 28_000) return 10_000
+  return 5_000
+}
+
 function isAbroad(p: ProductRow) {
   return p.countryId != null
 }
@@ -270,6 +282,7 @@ function AddProductForm({
   const [packFee, setPackFee] = useState("5000")
   const [cost, setCost] = useState("")
   const [profitFixed, setProfitFixed] = useState("")
+  const [profitManual, setProfitManual] = useState(false)
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
 
@@ -335,6 +348,7 @@ function AddProductForm({
       setProfitPct("")
       setCost("")
       setProfitFixed("")
+      setProfitManual(false)
       onAdded()
     } catch (err) {
       setAddError(err instanceof Error ? err.message : "Failed to add")
@@ -428,10 +442,24 @@ function AddProductForm({
       {type === "domestic" && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <Field label="Base Cost (IDR)">
-            <input value={cost} onChange={(e) => setCost(e.target.value)} type="number" min="0" placeholder="0" disabled={adding} className={formInputCls} />
+            <input
+              value={cost}
+              onChange={(e) => {
+                const v = e.target.value
+                setCost(v)
+                if (!profitManual) {
+                  setProfitFixed(String(defaultDomesticProfit(Number(v) || 0)))
+                }
+              }}
+              type="number" min="0" placeholder="0" disabled={adding} className={formInputCls}
+            />
           </Field>
           <Field label="Fixed Profit (IDR)">
-            <input value={profitFixed} onChange={(e) => setProfitFixed(e.target.value)} type="number" min="0" placeholder="0" disabled={adding} className={formInputCls} />
+            <input
+              value={profitFixed}
+              onChange={(e) => { setProfitFixed(e.target.value); setProfitManual(true) }}
+              type="number" min="0" placeholder="0" disabled={adding} className={formInputCls}
+            />
           </Field>
         </div>
       )}
