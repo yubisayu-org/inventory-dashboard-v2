@@ -1036,6 +1036,16 @@ export async function updatePayment(
   `
 }
 
+export async function togglePaymentChecked(
+  rowNumber: number,
+  isChecked: boolean,
+): Promise<void> {
+  await sql`
+    UPDATE payments SET is_checked = ${isChecked}, updated_at = NOW()
+    WHERE id = ${rowNumber}
+  `
+}
+
 export async function deletePayment(rowNumber: number): Promise<void> {
   await sql`DELETE FROM payments WHERE id = ${rowNumber}`
 }

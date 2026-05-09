@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { updatePayment, deletePayment } from "@/lib/db"
+import { updatePayment, togglePaymentChecked, deletePayment } from "@/lib/db"
 
 type Params = { params: Promise<{ row: string }> }
 
@@ -39,6 +39,32 @@ export async function PUT(req: NextRequest, { params }: Params) {
   } catch (err) {
     console.error("Failed to update payment:", err)
     return NextResponse.json({ error: "Failed to update payment" }, { status: 500 })
+  }
+}
+
+export async function PATCH(req: NextRequest, { params }: Params) {
+  const { session, error: authError } = await requireSession()
+  if (authError) return authError
+
+  const roleError = requireRole(session)
+  if (roleError) return roleError
+
+  const { row } = await params
+  const rowNumber = Number(row)
+  if (!Number.isInteger(rowNumber) || rowNumber < 1) {
+    return NextResponse.json({ error: "Invalid row number" }, { status: 400 })
+  }
+
+  try {
+    const body = await req.json()
+    if (typeof body.isChecked !== "boolean") {
+      return NextResponse.json({ error: "isChecked (boolean) is required" }, { status: 400 })
+    }
+    await togglePaymentChecked(rowNumber, body.isChecked)
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    console.error("Failed to toggle payment:", err)
+    return NextResponse.json({ error: "Failed to toggle payment" }, { status: 500 })
   }
 }
 

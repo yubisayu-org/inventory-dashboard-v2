@@ -35,13 +35,10 @@ export default function PaymentsClient() {
   const [eventFilter, setEventFilter] = useState("")
   const [page, setPage] = useState(1)
 
-  // Inline editing
   const [editingRow, setEditingRow] = useState<number | null>(null)
   const [editForm, setEditForm] = useState<EditForm | null>(null)
   const [editSaving, setEditSaving] = useState(false)
   const [editError, setEditError] = useState("")
-
-  // Add form
   const [addOpen, setAddOpen] = useState(false)
 
   const { widths, startResize } = useResizableColumns({
@@ -62,13 +59,12 @@ export default function PaymentsClient() {
 
   useEffect(() => { fetchRows() }, [fetchRows])
 
-  // Filters
   const events = useMemo(() => [...new Set(rows.map((r) => r.event))].sort(), [rows])
 
-  const q = search.trim().toLowerCase()
   const filtered = useMemo(() => {
     let result = rows
     if (eventFilter) result = result.filter((r) => r.event === eventFilter)
+    const q = search.trim().toLowerCase()
     if (q) {
       result = result.filter(
         (r) =>
@@ -80,7 +76,7 @@ export default function PaymentsClient() {
       )
     }
     return result
-  }, [rows, eventFilter, q])
+  }, [rows, eventFilter, search])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / ROWS_PER_PAGE))
   const currentPage = Math.min(page, totalPages)
@@ -88,7 +84,6 @@ export default function PaymentsClient() {
 
   const hasFilters = Boolean(search || eventFilter)
 
-  // Edit handlers
   function startEdit(row: PaymentRow) {
     setEditingRow(row.rowNumber)
     setEditForm({
@@ -178,17 +173,9 @@ export default function PaymentsClient() {
     )
     try {
       const res = await fetch(`/api/sheets/payments/${row.rowNumber}`, {
-        method: "PUT",
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          event: row.event,
-          customer: row.customer,
-          amount: row.amount,
-          account: row.account,
-          isChecked: newChecked,
-          payDate: row.payDate,
-          remarks: row.remarks,
-        }),
+        body: JSON.stringify({ isChecked: newChecked }),
       })
       if (!res.ok) throw new Error("Failed")
     } catch {
@@ -216,7 +203,6 @@ export default function PaymentsClient() {
 
   return (
     <div className="space-y-3">
-      {/* Toolbar */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 max-w-sm min-w-[180px]">
           <svg
@@ -268,17 +254,14 @@ export default function PaymentsClient() {
         </button>
       </div>
 
-      {/* Add form */}
       {addOpen && (
         <AddPaymentForm
           options={options}
-          events={events}
           onClose={() => setAddOpen(false)}
           onAdded={() => { fetchRows(); setAddOpen(false) }}
         />
       )}
 
-      {/* Table */}
       <div className="rounded-xl border border-cream-border bg-white overflow-hidden">
         {filtered.length === 0 ? (
           <p className="px-5 py-8 text-sm text-gray-400 text-center">
@@ -415,7 +398,6 @@ export default function PaymentsClient() {
         )}
       </div>
 
-      {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
           <button
@@ -447,12 +429,10 @@ export default function PaymentsClient() {
 
 function AddPaymentForm({
   options,
-  events,
   onClose,
   onAdded,
 }: {
   options: ReturnType<typeof useSheetOptions>
-  events: string[]
   onClose: () => void
   onAdded: () => void
 }) {
@@ -510,7 +490,7 @@ function AddPaymentForm({
           <label className={LABEL}>Event <span className="text-brand">*</span></label>
           <select value={event} onChange={(e) => { setEvent(e.target.value); setFeedback(null) }} required className={DINPUT} style={{ width: "10rem" }}>
             <option value="">Select…</option>
-            {(options?.events ?? events).map((ev) => <option key={ev} value={ev}>{ev}</option>)}
+            {(options?.events ?? []).map((ev) => <option key={ev} value={ev}>{ev}</option>)}
           </select>
         </div>
         <div>
