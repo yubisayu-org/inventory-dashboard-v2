@@ -3,7 +3,8 @@
 
 CREATE TABLE events (
   id   SERIAL PRIMARY KEY,
-  name TEXT NOT NULL UNIQUE
+  name TEXT NOT NULL UNIQUE,
+  eta  TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE customers (

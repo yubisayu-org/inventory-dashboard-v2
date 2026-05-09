@@ -593,9 +593,11 @@ export async function getInvoiceForCustomer(instagramId: string): Promise<Invoic
       SELECT o.id, o.event, o.customer, o.unit, o.note,
              o.unit_price, o.product_id,
              o.unit_buy, o.receipt, o.unit_arrive, o.unit_ship, o.unit_hold,
-             p.name AS product_name, COALESCE(p.store, '') AS store
+             p.name AS product_name, COALESCE(p.store, '') AS store,
+             COALESCE(e.eta, '') AS event_eta
       FROM orders o
       JOIN products p ON p.id = o.product_id
+      LEFT JOIN events e ON e.name = o.event
       WHERE lower(replace(o.customer, '@', '')) = ${searchId}
       ORDER BY o.event, o.id
     `,
@@ -638,9 +640,11 @@ export async function getInvoiceForCustomer(instagramId: string): Promise<Invoic
     const weightKg = 0
     const estimasiOngkir = ongkirPerKg * weightKg
 
+    const eta = group[0]?.event_eta ?? ""
+
     const base = {
       eventId: eid,
-      eta: "",
+      eta,
       status: "",
       shipments: [] as InvoiceShipment[],
       showShipments: false,
