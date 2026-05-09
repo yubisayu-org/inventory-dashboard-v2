@@ -385,7 +385,7 @@ export default function PaymentsClient() {
                             <input type="checkbox" checked={editForm.isChecked} onChange={(e) => setEditForm({ ...editForm, isChecked: e.target.checked })} />
                           </td>
                           <td className="px-4 py-2">
-                            <input type="text" value={editForm.payDate} onChange={(e) => setEditForm({ ...editForm, payDate: e.target.value })} placeholder="e.g. 20-Jan" className={INPUT_CLASS} style={{ width: "5rem" }} />
+                            <input type="date" value={editForm.payDate} onChange={(e) => setEditForm({ ...editForm, payDate: e.target.value })} className={INPUT_CLASS} style={{ width: "9rem" }} />
                           </td>
                           <td className="px-4 py-2">
                             <input type="text" value={editForm.remarks} onChange={(e) => setEditForm({ ...editForm, remarks: e.target.value })} placeholder="Optional" className={INPUT_CLASS} />
@@ -606,7 +606,7 @@ function AddPaymentForm({
   const [amount, setAmount] = useState("")
   const [account, setAccount] = useState("BCA")
   const [isChecked, setIsChecked] = useState(true)
-  const [payDate, setPayDate] = useState("")
+  const [payDate, setPayDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [remarks, setRemarks] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null)
@@ -680,7 +680,7 @@ function AddPaymentForm({
         </div>
         <div>
           <label className={LABEL}>Date</label>
-          <input type="text" value={payDate} onChange={(e) => setPayDate(e.target.value)} placeholder="e.g. 20-Jan" className={INPUT_CLASS} style={{ width: "5rem" }} />
+          <input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} className={INPUT_CLASS} style={{ width: "9rem" }} />
         </div>
         <div className="flex items-center gap-1.5 pb-2">
           <input type="checkbox" checked={isChecked} onChange={(e) => setIsChecked(e.target.checked)} id="add-checked" className="accent-brand" />
