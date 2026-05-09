@@ -40,11 +40,20 @@ function formatAmount(n: number): string {
   return new Intl.NumberFormat("id-ID").format(n)
 }
 
+function formatDate(iso: string): string {
+  if (!iso) return "—"
+  const d = new Date(iso + "T00:00:00")
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+}
+
 function compareFn(a: PaymentRow, b: PaymentRow, key: SortKey, dir: SortDir): number {
   let cmp = 0
   switch (key) {
     case "amount":
       cmp = a.amount - b.amount
+      break
+    case "payDate":
+      cmp = (a.payDate || "").localeCompare(b.payDate || "")
       break
     default:
       cmp = a[key].localeCompare(b[key])
@@ -424,7 +433,7 @@ export default function PaymentsClient() {
                               className="accent-brand cursor-pointer"
                             />
                           </td>
-                          <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{row.payDate || "—"}</td>
+                          <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{formatDate(row.payDate)}</td>
                           <td className="px-4 py-3 text-gray-500 truncate" title={row.remarks}>{row.remarks || "—"}</td>
                           <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">{row.createdAt}</td>
                           <td className="px-4 py-3 text-right">

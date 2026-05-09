@@ -981,7 +981,7 @@ export async function getPaymentRows(): Promise<PaymentRow[]> {
     amount: r.amount ?? 0,
     account: r.account ?? "",
     isChecked: r.is_checked ?? false,
-    payDate: r.pay_date ?? "",
+    payDate: r.pay_date ? new Date(r.pay_date).toISOString().slice(0, 10) : "",
     remarks: r.remarks ?? "",
     createdAt: tsToString(r.created_at),
     updatedAt: tsToString(r.updated_at),
@@ -1004,7 +1004,7 @@ export async function addPayment(data: {
   `
   const [row] = await sql`
     INSERT INTO payments (event, customer, amount, account, is_checked, pay_date, remarks)
-    VALUES (${data.event}, ${customer}, ${data.amount}, ${data.account}, ${data.isChecked}, ${data.payDate}, ${data.remarks})
+    VALUES (${data.event}, ${customer}, ${data.amount}, ${data.account}, ${data.isChecked}, ${data.payDate || null}, ${data.remarks})
     RETURNING id
   `
   return { rowNumber: row.id }
@@ -1031,7 +1031,7 @@ export async function updatePayment(
     UPDATE payments
     SET event = ${data.event}, customer = ${customer}, amount = ${data.amount},
         account = ${data.account}, is_checked = ${data.isChecked},
-        pay_date = ${data.payDate}, remarks = ${data.remarks}, updated_at = NOW()
+        pay_date = ${data.payDate || null}, remarks = ${data.remarks}, updated_at = NOW()
     WHERE id = ${rowNumber}
   `
 }

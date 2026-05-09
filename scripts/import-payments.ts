@@ -85,7 +85,15 @@ async function main() {
     const amount = parseInt((row[2] ?? "0").replace(/,/g, ""), 10) || 0
     const account = row[3]?.trim() ?? ""
     const isChecked = (row[4] ?? "").toUpperCase() === "TRUE"
-    const payDate = row[5]?.trim() ?? ""
+    const rawDate = row[5]?.trim() ?? ""
+    // Convert "20-Jan" → "2026-01-20" for DATE column; leave empty as null
+    let payDate: string | null = null
+    if (rawDate) {
+      const parsed = new Date(`${rawDate}-2026`)
+      if (!isNaN(parsed.getTime())) {
+        payDate = parsed.toISOString().slice(0, 10)
+      }
+    }
     const remarks = row[6]?.trim() ?? ""
 
     if (!event || !customer) {

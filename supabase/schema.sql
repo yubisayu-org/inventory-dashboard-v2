@@ -92,7 +92,7 @@ CREATE TABLE payments (
   amount     INTEGER NOT NULL DEFAULT 0,
   account    TEXT NOT NULL DEFAULT '',
   is_checked BOOLEAN NOT NULL DEFAULT FALSE,
-  pay_date   TEXT NOT NULL DEFAULT '',
+  pay_date   DATE DEFAULT NULL,
   remarks    TEXT NOT NULL DEFAULT '',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ
