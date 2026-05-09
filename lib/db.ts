@@ -640,8 +640,8 @@ export async function getInvoiceForCustomer(instagramId: string): Promise<Invoic
     const totalSubtotal = group.reduce((s, r) => s + r.unit_price * r.unit, 0)
     const totalArrive = orders.reduce((s, o) => s + o.unitArrive, 0)
     const totalGram = group.reduce((s, r) => s + (r.gram ?? 0) * r.unit, 0)
-    const weightKg = totalGram / 1000
-    const estimasiOngkir = Math.round(ongkirPerKg * weightKg)
+    const weightKg = Math.ceil(totalGram / 1000)
+    const estimasiOngkir = ongkirPerKg * weightKg
 
     const eta = group[0]?.event_eta ?? ""
 
