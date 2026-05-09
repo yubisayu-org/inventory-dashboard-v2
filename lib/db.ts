@@ -165,6 +165,8 @@ export interface CountryRow {
   currency: string
   kurs: number
   cargoPerKg: number
+  createdAt: string
+  updatedAt: string
 }
 
 export interface ProductRow {
@@ -183,6 +185,8 @@ export interface ProductRow {
   packingFee: number
   cost: number
   profitFixed: number
+  createdAt: string
+  updatedAt: string
 }
 
 export interface ProductIndoRow {
@@ -190,6 +194,8 @@ export interface ProductIndoRow {
   product: string
   store: string
   price: number
+  createdAt: string
+  updatedAt: string
 }
 
 export interface PaymentRow {
@@ -982,7 +988,7 @@ export async function updateTrackingNumber(
 
 export async function getProductIndo(): Promise<ProductIndoRow[]> {
   const rows = await sql`
-    SELECT id, product, store, price FROM products_indo
+    SELECT id, product, store, price, created_at, updated_at FROM products_indo
     WHERE product != '' ORDER BY id ASC
   `
   return rows.map((r) => ({
@@ -990,6 +996,8 @@ export async function getProductIndo(): Promise<ProductIndoRow[]> {
     product: r.product,
     store: r.store,
     price: r.price ?? 0,
+    createdAt: tsToString(r.created_at),
+    updatedAt: tsToString(r.updated_at),
   }))
 }
 
@@ -1012,7 +1020,8 @@ export async function updateProductIndo(
 ): Promise<void> {
   await sql`
     UPDATE products_indo
-    SET product = ${data.product}, store = ${data.store}, price = ${data.price}
+    SET product = ${data.product}, store = ${data.store}, price = ${data.price},
+        updated_at = NOW()
     WHERE id = ${rowNumber}
   `
 }
@@ -1172,7 +1181,8 @@ export async function getProducts(): Promise<ProductRow[]> {
     SELECT p.id, p.name, p.store, p.price, p.gram,
            p.country_id, COALESCE(c.name, '') AS country_name,
            p.valas, p.kurs, p.cargo_per_kg, p.profit_pct,
-           p.operational_fee, p.packing_fee, p.cost, p.profit_fixed
+           p.operational_fee, p.packing_fee, p.cost, p.profit_fixed,
+           p.created_at, p.updated_at
     FROM products p
     LEFT JOIN countries c ON c.id = p.country_id
     WHERE p.name != ''
@@ -1194,6 +1204,8 @@ export async function getProducts(): Promise<ProductRow[]> {
     packingFee: r.packing_fee ?? 5000,
     cost: r.cost ?? 0,
     profitFixed: r.profit_fixed ?? 0,
+    createdAt: tsToString(r.created_at),
+    updatedAt: tsToString(r.updated_at),
   }))
 }
 
@@ -1249,7 +1261,7 @@ export async function updateProduct(
         valas = ${data.valas}, kurs = ${data.kurs}, cargo_per_kg = ${data.cargoPerKg},
         profit_pct = ${data.profitPct}, operational_fee = ${data.operationalFee},
         packing_fee = ${data.packingFee}, cost = ${data.cost},
-        profit_fixed = ${data.profitFixed}
+        profit_fixed = ${data.profitFixed}, updated_at = NOW()
     WHERE id = ${id}
   `
 }
@@ -1262,7 +1274,8 @@ export async function deleteProduct(id: number): Promise<void> {
 
 export async function getCountries(): Promise<CountryRow[]> {
   const rows = await sql`
-    SELECT id, name, currency, kurs, cargo_per_kg FROM countries ORDER BY name
+    SELECT id, name, currency, kurs, cargo_per_kg, created_at, updated_at
+    FROM countries ORDER BY name
   `
   return rows.map((r) => ({
     id: r.id,
@@ -1270,6 +1283,8 @@ export async function getCountries(): Promise<CountryRow[]> {
     currency: r.currency ?? "",
     kurs: r.kurs ?? 0,
     cargoPerKg: r.cargo_per_kg ?? 0,
+    createdAt: tsToString(r.created_at),
+    updatedAt: tsToString(r.updated_at),
   }))
 }
 
@@ -1294,7 +1309,8 @@ export async function updateCountry(
   await sql`
     UPDATE countries
     SET name = ${data.name}, currency = ${data.currency},
-        kurs = ${data.kurs}, cargo_per_kg = ${data.cargoPerKg}
+        kurs = ${data.kurs}, cargo_per_kg = ${data.cargoPerKg},
+        updated_at = NOW()
     WHERE id = ${id}
   `
 }

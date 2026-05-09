@@ -187,6 +187,16 @@ export default function ProductsPageClient() {
       meta: { align: "right" },
     },
     {
+      accessorKey: "createdAt",
+      header: "Created",
+      filterFn: "textContains" as unknown as undefined,
+    },
+    {
+      accessorKey: "updatedAt",
+      header: "Updated",
+      filterFn: "textContains" as unknown as undefined,
+    },
+    {
       id: "actions",
       header: "",
       enableSorting: false,
@@ -240,6 +250,8 @@ export default function ProductsPageClient() {
             cargoPerKg: false,
             operationalFee: false,
             packingFee: false,
+            createdAt: false,
+            updatedAt: false,
           }}
         />
       )}

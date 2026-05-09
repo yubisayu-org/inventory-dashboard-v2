@@ -6,14 +6,18 @@ CREATE TABLE countries (
   name          TEXT NOT NULL UNIQUE,
   currency      TEXT NOT NULL DEFAULT '',
   kurs          INTEGER NOT NULL DEFAULT 0,
-  cargo_per_kg  INTEGER NOT NULL DEFAULT 0
+  cargo_per_kg  INTEGER NOT NULL DEFAULT 0,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ
 );
 
 CREATE TABLE events (
   id         SERIAL PRIMARY KEY,
   name       TEXT NOT NULL UNIQUE,
   eta        TEXT NOT NULL DEFAULT '',
-  country_id INTEGER REFERENCES countries(id) ON DELETE RESTRICT
+  country_id INTEGER REFERENCES countries(id) ON DELETE RESTRICT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ
 );
 
 CREATE TABLE customers (
@@ -22,7 +26,9 @@ CREATE TABLE customers (
   whatsapp     TEXT NOT NULL DEFAULT '',
   data_diri    TEXT NOT NULL DEFAULT '',
   ekspedisi    TEXT NOT NULL DEFAULT '',
-  ongkos_kirim INTEGER NOT NULL DEFAULT 0
+  ongkos_kirim INTEGER NOT NULL DEFAULT 0,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ
 );
 
 CREATE TABLE products (
@@ -40,16 +46,20 @@ CREATE TABLE products (
   packing_fee     INTEGER NOT NULL DEFAULT 5000,
   cost            INTEGER NOT NULL DEFAULT 0,
   profit_fixed    INTEGER NOT NULL DEFAULT 0,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ,
   UNIQUE (name, store)
 );
 
 CREATE INDEX idx_products_name ON products (name);
 
 CREATE TABLE products_indo (
-  id      SERIAL PRIMARY KEY,
-  product TEXT NOT NULL,
-  store   TEXT NOT NULL DEFAULT '',
-  price   INTEGER NOT NULL DEFAULT 0
+  id         SERIAL PRIMARY KEY,
+  product    TEXT NOT NULL,
+  store      TEXT NOT NULL DEFAULT '',
+  price      INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ
 );
 
 CREATE TABLE orders (
