@@ -96,12 +96,6 @@ async function main() {
   const countryMap = new Map<string, number>()
   for (const c of countriesDb) {
     countryMap.set(c.name.toUpperCase(), c.id)
-    // Also map common abbreviations
-    if (c.name.toUpperCase() === "CHINA") countryMap.set("CN", c.id)
-    if (c.name.toUpperCase() === "JAPAN") countryMap.set("JP", c.id)
-    if (c.name.toUpperCase() === "KOREA") countryMap.set("KR", c.id)
-    if (c.name.toUpperCase() === "THAILAND") countryMap.set("TH", c.id)
-    if (c.name.toUpperCase() === "TAIWAN") countryMap.set("TW", c.id)
   }
   console.log("Countries in DB:", [...countryMap.entries()].map(([k, v]) => `${k}=${v}`).join(", "))
 
