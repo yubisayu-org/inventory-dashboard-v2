@@ -32,7 +32,7 @@ CREATE TABLE products (
   price           INTEGER NOT NULL DEFAULT 0,
   gram            INTEGER NOT NULL DEFAULT 0,
   country_id      INTEGER REFERENCES countries(id) ON DELETE RESTRICT,
-  valas           INTEGER NOT NULL DEFAULT 0,
+  valas           NUMERIC(12,2) NOT NULL DEFAULT 0,
   kurs            INTEGER NOT NULL DEFAULT 0,
   cargo_per_kg    INTEGER NOT NULL DEFAULT 0,
   profit_pct      INTEGER NOT NULL DEFAULT 0,
