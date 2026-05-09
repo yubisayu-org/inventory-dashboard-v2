@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { ProductRow, CountryRow } from "@/lib/db"
 import { PaginationButton, PageJumpInput, getPageNumbers } from "@/components/Pagination"
+import SearchableSelect from "@/components/SearchableSelect"
 
 type PricingType = "abroad" | "domestic"
 
@@ -370,11 +371,15 @@ function AddProductForm({
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Product name" required disabled={adding} className={formInputCls} />
         </Field>
         <Field label="Store">
-          <input value={store} onChange={(e) => setStore(e.target.value)} list="stores-list" placeholder="Store" disabled={adding} className={formInputCls} />
+          <SearchableSelect
+            value={store}
+            onChange={setStore}
+            options={stores.map((s) => ({ value: s, label: s }))}
+            placeholder="Select or type store…"
+            allowNewValue
+            disabled={adding}
+          />
         </Field>
-        <datalist id="stores-list">
-          {stores.map((s) => <option key={s} value={s} />)}
-        </datalist>
       </div>
 
       {/* Abroad fields */}
@@ -603,8 +608,14 @@ function ProductRowComp({
           <input ref={firstRef} value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} onKeyDown={handleKeyDown} disabled={saving} className={rowInputCls} />
         </td>
         <td className="px-3 py-2">
-          <input value={draft.store} onChange={(e) => setDraft((d) => ({ ...d, store: e.target.value }))} list="stores-list-edit" onKeyDown={handleKeyDown} disabled={saving} className={rowInputCls} />
-          <datalist id="stores-list-edit">{stores.map((s) => <option key={s} value={s} />)}</datalist>
+          <SearchableSelect
+            value={draft.store}
+            onChange={(v) => setDraft((d) => ({ ...d, store: v }))}
+            options={stores.map((s) => ({ value: s, label: s }))}
+            placeholder="Store…"
+            allowNewValue
+            disabled={saving}
+          />
         </td>
         <td className="px-3 py-2 text-right text-xs font-medium tabular-nums">{fmt(editPrice)}</td>
         <td className="px-3 py-2 text-center">
