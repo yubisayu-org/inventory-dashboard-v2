@@ -2,12 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { ProductRow, CountryRow } from "@/lib/db"
-import { PaginationButton, PageJumpInput, getPageNumbers } from "@/components/Pagination"
+import DataGrid, { numericFilter, textContainsFilter, type ColumnDef } from "@/components/DataGrid"
 import SearchableSelect from "@/components/SearchableSelect"
 
 type PricingType = "overseas" | "domestic"
-
-const PAGE_SIZE = 25
 
 const formInputCls =
   "border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
@@ -63,13 +61,6 @@ export default function ProductsPageClient() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Filters
-  const [tab, setTab] = useState<PricingType | "all">("all")
-  const [searchQ, setSearchQ] = useState("")
-  const [filterStore, setFilterStore] = useState("")
-  const [filterCountry, setFilterCountry] = useState("")
-  const [page, setPage] = useState(1)
-
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -93,168 +84,164 @@ export default function ProductsPageClient() {
     return [...new Set(data.map((r) => r.store).filter(Boolean))].sort()
   }, [data])
 
-  const filtered = useMemo(() => {
-    if (!data) return []
-    let rows = data
-    if (tab === "overseas") rows = rows.filter(isAbroad)
-    else if (tab === "domestic") rows = rows.filter((p) => !isAbroad(p))
-    if (searchQ) {
-      const q = searchQ.toLowerCase()
-      rows = rows.filter((r) => r.name.toLowerCase().includes(q) || r.store.toLowerCase().includes(q))
-    }
-    if (filterStore) rows = rows.filter((r) => r.store === filterStore)
-    if (filterCountry) rows = rows.filter((r) => r.countryName === filterCountry)
-    return rows
-  }, [data, tab, searchQ, filterStore, filterCountry])
+  const columns = useMemo<ColumnDef<ProductRow, unknown>[]>(() => [
+    {
+      accessorKey: "name",
+      header: "Name",
+      filterFn: "textContains" as unknown as undefined,
+      cell: ({ row }) => <span className="font-medium whitespace-nowrap">{row.original.name}</span>,
+    },
+    {
+      accessorKey: "store",
+      header: "Store",
+      filterFn: "textContains" as unknown as undefined,
+    },
+    {
+      accessorKey: "price",
+      header: "Price",
+      filterFn: "numeric" as unknown as undefined,
+      cell: ({ row }) => <span className="tabular-nums font-medium">{fmt(row.original.price)}</span>,
+      meta: { align: "right" },
+    },
+    {
+      id: "type",
+      header: "Type",
+      accessorFn: (row) => isAbroad(row) ? "Overseas" : "Domestic",
+      filterFn: "textContains" as unknown as undefined,
+      cell: ({ row }) => {
+        const abroad = isAbroad(row.original)
+        return (
+          <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-medium ${abroad ? "bg-blue-50 text-blue-600" : "bg-green-50 text-green-600"}`}>
+            {abroad ? "Overseas" : "Domestic"}
+          </span>
+        )
+      },
+    },
+    {
+      accessorKey: "countryName",
+      header: "Country",
+      filterFn: "textContains" as unknown as undefined,
+      cell: ({ row }) => <span className="text-gray-600">{row.original.countryName || "—"}</span>,
+    },
+    {
+      accessorKey: "valas",
+      header: "Valas",
+      filterFn: "numeric" as unknown as undefined,
+      cell: ({ row }) => <span className="tabular-nums">{isAbroad(row.original) ? row.original.valas : "—"}</span>,
+      meta: { align: "right" },
+    },
+    {
+      accessorKey: "gram",
+      header: "Gram",
+      filterFn: "numeric" as unknown as undefined,
+      cell: ({ row }) => <span className="tabular-nums">{row.original.gram || "—"}</span>,
+      meta: { align: "right" },
+    },
+    {
+      accessorKey: "kurs",
+      header: "Kurs",
+      filterFn: "numeric" as unknown as undefined,
+      cell: ({ row }) => <span className="tabular-nums">{isAbroad(row.original) ? fmt(row.original.kurs) : "—"}</span>,
+      meta: { align: "right" },
+    },
+    {
+      accessorKey: "cargoPerKg",
+      header: "Cargo/kg",
+      filterFn: "numeric" as unknown as undefined,
+      cell: ({ row }) => <span className="tabular-nums">{isAbroad(row.original) ? fmt(row.original.cargoPerKg) : "—"}</span>,
+      meta: { align: "right" },
+    },
+    {
+      accessorKey: "profitPct",
+      header: "%",
+      filterFn: "numeric" as unknown as undefined,
+      cell: ({ row }) => <span className="tabular-nums">{isAbroad(row.original) ? `${row.original.profitPct}%` : "—"}</span>,
+      meta: { align: "right" },
+    },
+    {
+      accessorKey: "operationalFee",
+      header: "Op Fee",
+      filterFn: "numeric" as unknown as undefined,
+      cell: ({ row }) => <span className="tabular-nums">{isAbroad(row.original) ? fmt(row.original.operationalFee) : "—"}</span>,
+      meta: { align: "right" },
+    },
+    {
+      accessorKey: "packingFee",
+      header: "Pack Fee",
+      filterFn: "numeric" as unknown as undefined,
+      cell: ({ row }) => <span className="tabular-nums">{isAbroad(row.original) ? fmt(row.original.packingFee) : "—"}</span>,
+      meta: { align: "right" },
+    },
+    {
+      accessorKey: "cost",
+      header: "Cost",
+      filterFn: "numeric" as unknown as undefined,
+      cell: ({ row }) => <span className="tabular-nums">{!isAbroad(row.original) ? fmt(row.original.cost) : "—"}</span>,
+      meta: { align: "right" },
+    },
+    {
+      accessorKey: "profitFixed",
+      header: "Profit",
+      filterFn: "numeric" as unknown as undefined,
+      cell: ({ row }) => <span className="tabular-nums">{!isAbroad(row.original) ? fmt(row.original.profitFixed) : "—"}</span>,
+      meta: { align: "right" },
+    },
+    {
+      id: "actions",
+      header: "",
+      enableSorting: false,
+      enableColumnFilter: false,
+      enableHiding: false,
+      cell: ({ row }) => (
+        <ProductActions
+          row={row.original}
+          countries={countries}
+          stores={stores}
+          onUpdated={(updated) =>
+            setData((prev) =>
+              prev?.map((r) => (r.id === row.original.id ? { ...r, ...updated } : r)) ?? null,
+            )
+          }
+          onDeleted={() => setData((prev) => prev?.filter((r) => r.id !== row.original.id) ?? null)}
+        />
+      ),
+    },
+  ], [countries, stores])
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
-  const safePage = Math.min(page, totalPages)
-  const pageRows = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
-
-  useEffect(() => { setPage(1) }, [tab, searchQ, filterStore, filterCountry])
+  const refreshButton = (
+    <button
+      type="button"
+      onClick={load}
+      disabled={loading}
+      className="text-xs text-gray-500 hover:text-brand disabled:opacity-50 transition-colors px-3 py-1.5 rounded-lg border border-cream-border hover:border-brand"
+    >
+      {loading ? "…" : "Refresh"}
+    </button>
+  )
 
   return (
     <div className="flex flex-col gap-6">
       {/* Add form */}
-      <AddProductForm
-        countries={countries}
-        stores={stores}
-        onAdded={() => load()}
-      />
+      <AddProductForm countries={countries} stores={stores} onAdded={() => load()} />
 
-      {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-3">
-        {/* Tabs */}
-        <div className="flex rounded-lg border border-cream-border overflow-hidden text-sm">
-          {(["all", "overseas", "domestic"] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`px-3 py-1.5 capitalize transition-colors ${
-                tab === t ? "bg-brand text-white font-medium" : "bg-white text-gray-600 hover:bg-cream"
-              }`}
-            >
-              {t === "all" ? `All (${data?.length ?? 0})` : t}
-            </button>
-          ))}
-        </div>
-
-        {/* Search */}
-        <input
-          type="text"
-          placeholder="Search name or store…"
-          value={searchQ}
-          onChange={(e) => setSearchQ(e.target.value)}
-          className="border border-cream-border rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors w-56"
-        />
-
-        {/* Store filter */}
-        <select
-          value={filterStore}
-          onChange={(e) => setFilterStore(e.target.value)}
-          className="border border-cream-border rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
-        >
-          <option value="">All stores</option>
-          {stores.map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
-
-        {/* Country filter */}
-        {tab !== "domestic" && (
-          <select
-            value={filterCountry}
-            onChange={(e) => setFilterCountry(e.target.value)}
-            className="border border-cream-border rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
-          >
-            <option value="">All countries</option>
-            {countries.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
-          </select>
-        )}
-
-        <div className="flex-1" />
-
-        <span className="text-xs text-gray-400">{filtered.length} products</span>
-
-        <button
-          type="button"
-          onClick={load}
-          disabled={loading}
-          className="text-xs text-gray-500 hover:text-brand disabled:opacity-50 transition-colors px-3 py-1.5 rounded-lg border border-cream-border hover:border-brand"
-        >
-          {loading ? "…" : "Refresh"}
-        </button>
-      </div>
-
-      {/* Table */}
       {loading && <div className="text-sm text-gray-400 py-12 text-center">Loading…</div>}
       {error && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
       )}
-      {!loading && !error && filtered.length === 0 && (
-        <div className="rounded-xl border border-cream-border bg-white p-12 text-center text-gray-400 text-sm">
-          No products found.
-        </div>
-      )}
-      {!loading && !error && pageRows.length > 0 && (
-        <div className="rounded-xl border border-cream-border bg-white overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm" style={{ tableLayout: "auto" }}>
-              <thead>
-                <tr className="text-left text-xs text-gray-500 border-b border-cream-border bg-cream">
-                  <th className="px-4 py-3 font-medium">Name</th>
-                  <th className="px-4 py-3 font-medium">Store</th>
-                  <th className="px-4 py-3 font-medium text-right">Price</th>
-                  <th className="px-4 py-3 font-medium text-center">Type</th>
-                  <th className="px-4 py-3 font-medium">Country</th>
-                  <th className="px-4 py-3 font-medium text-right">Valas</th>
-                  <th className="px-4 py-3 font-medium text-right">Gram</th>
-                  <th className="px-4 py-3 font-medium text-right">Kurs</th>
-                  <th className="px-4 py-3 font-medium text-right">Cargo/kg</th>
-                  <th className="px-4 py-3 font-medium text-right">%</th>
-                  <th className="px-4 py-3 font-medium text-right">Op Fee</th>
-                  <th className="px-4 py-3 font-medium text-right">Pack Fee</th>
-                  <th className="px-4 py-3 font-medium text-right">Cost</th>
-                  <th className="px-4 py-3 font-medium text-right">Profit</th>
-                  <th className="px-4 py-3 font-medium" />
-                </tr>
-              </thead>
-              <tbody>
-                {pageRows.map((row) => (
-                  <ProductRowComp
-                    key={row.id}
-                    row={row}
-                    countries={countries}
-                    stores={stores}
-                    onUpdated={(updated) =>
-                      setData((prev) =>
-                        prev?.map((r) => (r.id === row.id ? { ...r, ...updated } : r)) ?? null,
-                      )
-                    }
-                    onDeleted={() => setData((prev) => prev?.filter((r) => r.id !== row.id) ?? null)}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-1.5 flex-wrap">
-          <PaginationButton onClick={() => setPage(1)} disabled={safePage === 1}>«</PaginationButton>
-          <PaginationButton onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safePage === 1}>‹</PaginationButton>
-          {getPageNumbers(safePage, totalPages).map((n, i) =>
-            n === "…" ? (
-              <span key={`e${i}`} className="px-1 text-gray-400 text-xs">…</span>
-            ) : (
-              <PaginationButton key={n} onClick={() => setPage(n)} active={n === safePage}>{n}</PaginationButton>
-            ),
-          )}
-          <PaginationButton onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={safePage === totalPages}>›</PaginationButton>
-          <PaginationButton onClick={() => setPage(totalPages)} disabled={safePage === totalPages}>»</PaginationButton>
-          <PageJumpInput currentPage={safePage} totalPages={totalPages} onJump={setPage} />
-          <span className="text-xs text-gray-400 ml-1">of {totalPages}</span>
-        </div>
+      {!loading && !error && data && (
+        <DataGrid
+          data={data}
+          columns={columns}
+          getRowId={(row) => String(row.id)}
+          searchPlaceholder="Search name, store…"
+          toolbarExtra={refreshButton}
+          initialVisibility={{
+            kurs: false,
+            cargoPerKg: false,
+            operationalFee: false,
+            packingFee: false,
+          }}
+        />
       )}
     </div>
   )
@@ -286,10 +273,8 @@ function AddProductForm({
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
 
-  // Auto-fill kurs/cargo from selected country
   const selectedCountry = countries.find((c) => c.id === countryId)
 
-  // Calculate price preview
   const pricePreview = useMemo(() => {
     if (type === "overseas") {
       const { cogs, price } = calcAbroadPrice({
@@ -340,7 +325,6 @@ function AddProductForm({
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? "Failed to add")
 
-      // Reset
       setName("")
       setStore("")
       setValas("")
@@ -379,7 +363,6 @@ function AddProductForm({
         </div>
       </div>
 
-      {/* Common fields */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Field label="Product Name">
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Product name" required disabled={adding} className={formInputCls} />
@@ -396,7 +379,6 @@ function AddProductForm({
         </Field>
       </div>
 
-      {/* Abroad fields */}
       {type === "overseas" && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Field label="Country">
@@ -419,7 +401,7 @@ function AddProductForm({
             <input value={gram} onChange={(e) => setGram(e.target.value)} type="number" min="0" placeholder="0" disabled={adding} className={formInputCls} />
           </Field>
           <Field label="Profit %">
-            <input value={profitPct} onChange={(e) => setProfitPct(e.target.value)} type="number" min="0" max="99" placeholder="0" disabled={adding} className={formInputCls} />
+            <input value={profitPct} onChange={(e) => setProfitPct(e.target.value)} type="number" min="0" max="99" placeholder="30" disabled={adding} className={formInputCls} />
           </Field>
           <Field label="Operational Fee">
             <input value={opFee} onChange={(e) => setOpFee(e.target.value)} type="number" min="0" placeholder="5000" disabled={adding} className={formInputCls} />
@@ -439,7 +421,6 @@ function AddProductForm({
         </div>
       )}
 
-      {/* Domestic fields */}
       {type === "domestic" && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <Field label="Base Cost (IDR)">
@@ -465,7 +446,6 @@ function AddProductForm({
         </div>
       )}
 
-      {/* Price preview + submit */}
       <div className="flex items-center justify-between">
         <div className="text-sm">
           <span className="text-gray-500">Price: </span>
@@ -486,9 +466,9 @@ function AddProductForm({
   )
 }
 
-// ─── Table row ─────────────────────────────────────────────────────────────
+// ─── Product actions (edit/delete) ─────────────────────────────────────────
 
-function ProductRowComp({
+function ProductActions({
   row,
   countries,
   stores,
@@ -501,8 +481,70 @@ function ProductRowComp({
   onUpdated: (data: Partial<ProductRow>) => void
   onDeleted: () => void
 }) {
-  const abroad = isAbroad(row)
   const [editing, setEditing] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  async function handleDelete() {
+    if (!confirm(`Delete "${row.name}"?`)) return
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/sheets/products/${row.id}`, { method: "DELETE" })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? "Failed")
+      onDeleted()
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Failed to delete")
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  if (editing) {
+    return (
+      <EditProductModal
+        row={row}
+        countries={countries}
+        stores={stores}
+        onSave={(updated) => { onUpdated(updated); setEditing(false) }}
+        onCancel={() => setEditing(false)}
+      />
+    )
+  }
+
+  return (
+    <div className="flex gap-2 items-center">
+      <button type="button" onClick={() => { setSaveError(null); setEditing(true) }} title="Edit" className="text-gray-400 hover:text-brand transition-colors">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
+        </svg>
+      </button>
+      <button type="button" onClick={handleDelete} disabled={deleting} title="Delete" className="text-gray-400 hover:text-red-500 disabled:opacity-50 transition-colors">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+        </svg>
+      </button>
+      {saveError && <span className="text-xs text-red-500">{saveError}</span>}
+    </div>
+  )
+}
+
+// ─── Edit modal ────────────────────────────────────────────────────────────
+
+function EditProductModal({
+  row,
+  countries,
+  stores,
+  onSave,
+  onCancel,
+}: {
+  row: ProductRow
+  countries: CountryRow[]
+  stores: string[]
+  onSave: (updated: Partial<ProductRow>) => void
+  onCancel: () => void
+}) {
   const [draft, setDraft] = useState({
     name: row.name,
     store: row.store,
@@ -517,27 +559,6 @@ function ProductRowComp({
   })
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [deleting, setDeleting] = useState(false)
-  const firstRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => { if (editing) firstRef.current?.focus() }, [editing])
-
-  function startEdit() {
-    setDraft({
-      name: row.name,
-      store: row.store,
-      countryId: row.countryId,
-      valas: String(row.valas),
-      gram: String(row.gram),
-      profitPct: String(row.profitPct),
-      opFee: String(row.operationalFee),
-      packFee: String(row.packingFee),
-      cost: String(row.cost),
-      profitFixed: String(row.profitFixed),
-    })
-    setSaveError(null)
-    setEditing(true)
-  }
 
   const draftCountry = countries.find((c) => c.id === draft.countryId)
   const draftAbroad = draft.countryId != null
@@ -586,7 +607,7 @@ function ProductRowComp({
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? "Failed")
 
-      onUpdated({
+      onSave({
         name: draft.name.trim(),
         store: draft.store.trim(),
         price: editPrice,
@@ -602,7 +623,6 @@ function ProductRowComp({
         cost: Number(body.cost) || 0,
         profitFixed: Number(body.profitFixed) || 0,
       })
-      setEditing(false)
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Failed to save")
     } finally {
@@ -610,136 +630,93 @@ function ProductRowComp({
     }
   }
 
-  async function handleDelete() {
-    if (!confirm(`Delete "${row.name}"?`)) return
-    setDeleting(true)
-    try {
-      const res = await fetch(`/api/sheets/products/${row.id}`, { method: "DELETE" })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error ?? "Failed")
-      onDeleted()
-    } catch (err) {
-      setSaveError(err instanceof Error ? err.message : "Failed to delete")
-    } finally {
-      setDeleting(false)
-    }
-  }
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onCancel}>
+      <div className="bg-white rounded-xl border border-cream-border shadow-xl p-6 w-full max-w-lg flex flex-col gap-4" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-semibold text-foreground">Edit Product</span>
+          <span className="text-xs text-gray-400">ID: {row.id}</span>
+        </div>
 
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Enter") { e.preventDefault(); handleSave() }
-    if (e.key === "Escape") { setEditing(false); setSaveError(null) }
-  }
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Name">
+            <input value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} disabled={saving} className={formInputCls} />
+          </Field>
+          <Field label="Store">
+            <SearchableSelect
+              value={draft.store}
+              onChange={(v) => setDraft((d) => ({ ...d, store: v }))}
+              options={stores.map((s) => ({ value: s, label: s }))}
+              placeholder="Store…"
+              allowNewValue
+              disabled={saving}
+            />
+          </Field>
+        </div>
 
-  if (editing) {
-    return (
-      <tr className="border-b border-cream-border/60 bg-cream/20">
-        <td className="px-3 py-2">
-          <input ref={firstRef} value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} onKeyDown={handleKeyDown} disabled={saving} className={rowInputCls} />
-        </td>
-        <td className="px-3 py-2">
-          <SearchableSelect
-            value={draft.store}
-            onChange={(v) => setDraft((d) => ({ ...d, store: v }))}
-            options={stores.map((s) => ({ value: s, label: s }))}
-            placeholder="Store…"
-            allowNewValue
-            disabled={saving}
-          />
-        </td>
-        <td className="px-3 py-2 text-right text-xs font-medium tabular-nums">{fmt(editPrice)}</td>
-        <td className="px-3 py-2 text-center">
+        <Field label="Type">
           <select
             value={draft.countryId ?? ""}
             onChange={(e) => setDraft((d) => ({ ...d, countryId: e.target.value ? Number(e.target.value) : null }))}
             disabled={saving}
-            className={`${rowInputCls} text-center`}
+            className={formInputCls}
           >
             <option value="">Domestic</option>
-            {countries.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            {countries.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.currency})</option>)}
           </select>
-        </td>
-        <td className="px-3 py-2 text-xs text-gray-400">{draftCountry?.name ?? "—"}</td>
-        <td className="px-3 py-2">
-          <input value={draft.valas} onChange={(e) => setDraft((d) => ({ ...d, valas: e.target.value }))} type="number" step="any" min="0" onKeyDown={handleKeyDown} disabled={saving || !draftAbroad} className={`${rowInputCls} text-right`} />
-        </td>
-        <td className="px-3 py-2">
-          <input value={draft.gram} onChange={(e) => setDraft((d) => ({ ...d, gram: e.target.value }))} type="number" min="0" onKeyDown={handleKeyDown} disabled={saving} className={`${rowInputCls} text-right`} />
-        </td>
-        <td className="px-3 py-2 text-right text-xs tabular-nums text-gray-400">
-          {draftAbroad ? fmt(draftCountry?.kurs ?? row.kurs) : "—"}
-        </td>
-        <td className="px-3 py-2 text-right text-xs tabular-nums text-gray-400">
-          {draftAbroad ? fmt(draftCountry?.cargoPerKg ?? row.cargoPerKg) : "—"}
-        </td>
-        <td className="px-3 py-2">
-          <input value={draft.profitPct} onChange={(e) => setDraft((d) => ({ ...d, profitPct: e.target.value }))} type="number" min="0" max="99" onKeyDown={handleKeyDown} disabled={saving || !draftAbroad} className={`${rowInputCls} text-right`} />
-        </td>
-        <td className="px-3 py-2">
-          <input value={draft.opFee} onChange={(e) => setDraft((d) => ({ ...d, opFee: e.target.value }))} type="number" min="0" onKeyDown={handleKeyDown} disabled={saving || !draftAbroad} className={`${rowInputCls} text-right`} />
-        </td>
-        <td className="px-3 py-2">
-          <input value={draft.packFee} onChange={(e) => setDraft((d) => ({ ...d, packFee: e.target.value }))} type="number" min="0" onKeyDown={handleKeyDown} disabled={saving || !draftAbroad} className={`${rowInputCls} text-right`} />
-        </td>
-        <td className="px-3 py-2">
-          <input value={draft.cost} onChange={(e) => setDraft((d) => ({ ...d, cost: e.target.value }))} type="number" min="0" onKeyDown={handleKeyDown} disabled={saving || draftAbroad} className={`${rowInputCls} text-right`} />
-        </td>
-        <td className="px-3 py-2">
-          <input value={draft.profitFixed} onChange={(e) => setDraft((d) => ({ ...d, profitFixed: e.target.value }))} type="number" min="0" onKeyDown={handleKeyDown} disabled={saving || draftAbroad} className={`${rowInputCls} text-right`} />
-        </td>
-        <td className="px-3 py-2">
-          <div className="flex flex-col gap-1 items-end">
-            <div className="flex gap-1">
-              <button type="button" onClick={handleSave} disabled={saving} className="px-2 py-1 rounded-md bg-brand text-white text-xs font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors">
-                {saving ? "…" : "Save"}
-              </button>
-              <button type="button" onClick={() => { setEditing(false); setSaveError(null) }} disabled={saving} className="px-2 py-1 rounded-md border border-cream-border text-gray-500 text-xs hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
-                Cancel
-              </button>
-            </div>
-            {saveError && <p className="text-xs text-red-500 text-right">{saveError}</p>}
-          </div>
-        </td>
-      </tr>
-    )
-  }
+        </Field>
 
-  return (
-    <tr className="border-b border-cream-border/60 hover:bg-cream/30 transition-colors">
-      <td className="px-4 py-3 font-medium whitespace-nowrap">{row.name}</td>
-      <td className="px-4 py-3 text-gray-600">{row.store}</td>
-      <td className="px-4 py-3 text-right tabular-nums font-medium">{fmt(row.price)}</td>
-      <td className="px-4 py-3 text-center">
-        <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-medium ${abroad ? "bg-blue-50 text-blue-600" : "bg-green-50 text-green-600"}`}>
-          {abroad ? "Overseas" : "Domestic"}
-        </span>
-      </td>
-      <td className="px-4 py-3 text-gray-600">{row.countryName || "—"}</td>
-      <td className="px-4 py-3 text-right tabular-nums">{abroad ? row.valas : "—"}</td>
-      <td className="px-4 py-3 text-right tabular-nums">{row.gram || "—"}</td>
-      <td className="px-4 py-3 text-right tabular-nums">{abroad ? fmt(row.kurs) : "—"}</td>
-      <td className="px-4 py-3 text-right tabular-nums">{abroad ? fmt(row.cargoPerKg) : "—"}</td>
-      <td className="px-4 py-3 text-right tabular-nums">{abroad ? `${row.profitPct}%` : "—"}</td>
-      <td className="px-4 py-3 text-right tabular-nums">{abroad ? fmt(row.operationalFee) : "—"}</td>
-      <td className="px-4 py-3 text-right tabular-nums">{abroad ? fmt(row.packingFee) : "—"}</td>
-      <td className="px-4 py-3 text-right tabular-nums">{!abroad ? fmt(row.cost) : "—"}</td>
-      <td className="px-4 py-3 text-right tabular-nums">{!abroad ? fmt(row.profitFixed) : "—"}</td>
-      <td className="px-4 py-3">
-        <div className="flex gap-2">
-          <button type="button" onClick={startEdit} title="Edit" className="text-gray-400 hover:text-brand transition-colors">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
-            </svg>
-          </button>
-          <button type="button" onClick={handleDelete} disabled={deleting} title="Delete" className="text-gray-400 hover:text-red-500 disabled:opacity-50 transition-colors">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 6h18" />
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-              <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-            </svg>
-          </button>
+        {draftAbroad ? (
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Valas">
+              <input value={draft.valas} onChange={(e) => setDraft((d) => ({ ...d, valas: e.target.value }))} type="number" step="any" min="0" disabled={saving} className={formInputCls} />
+            </Field>
+            <Field label="Gram">
+              <input value={draft.gram} onChange={(e) => setDraft((d) => ({ ...d, gram: e.target.value }))} type="number" min="0" disabled={saving} className={formInputCls} />
+            </Field>
+            <Field label="Profit %">
+              <input value={draft.profitPct} onChange={(e) => setDraft((d) => ({ ...d, profitPct: e.target.value }))} type="number" min="0" max="99" disabled={saving} className={formInputCls} />
+            </Field>
+            <Field label="Op Fee">
+              <input value={draft.opFee} onChange={(e) => setDraft((d) => ({ ...d, opFee: e.target.value }))} type="number" min="0" disabled={saving} className={formInputCls} />
+            </Field>
+            <Field label="Pack Fee">
+              <input value={draft.packFee} onChange={(e) => setDraft((d) => ({ ...d, packFee: e.target.value }))} type="number" min="0" disabled={saving} className={formInputCls} />
+            </Field>
+            {draftCountry && (
+              <div className="col-span-2 flex gap-4 text-xs text-gray-500 items-center">
+                <span>Kurs: {fmt(draftCountry.kurs)}</span>
+                <span>Cargo/kg: {fmt(draftCountry.cargoPerKg)}</span>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Base Cost">
+              <input value={draft.cost} onChange={(e) => setDraft((d) => ({ ...d, cost: e.target.value }))} type="number" min="0" disabled={saving} className={formInputCls} />
+            </Field>
+            <Field label="Fixed Profit">
+              <input value={draft.profitFixed} onChange={(e) => setDraft((d) => ({ ...d, profitFixed: e.target.value }))} type="number" min="0" disabled={saving} className={formInputCls} />
+            </Field>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between pt-2 border-t border-cream-border">
+          <div className="text-sm">
+            <span className="text-gray-500">Price: </span>
+            <span className="font-semibold text-foreground">Rp {fmt(editPrice)}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            {saveError && <p className="text-xs text-red-500">{saveError}</p>}
+            <button type="button" onClick={onCancel} disabled={saving} className="px-3 py-1.5 rounded-lg border border-cream-border text-gray-500 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
+              Cancel
+            </button>
+            <button type="button" onClick={handleSave} disabled={saving} className="px-4 py-1.5 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors">
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </div>
         </div>
-      </td>
-    </tr>
+      </div>
+    </div>
   )
 }
