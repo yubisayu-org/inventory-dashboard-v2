@@ -109,8 +109,8 @@ export default function ShipClient() {
           event: c.event,
           orders: c.orders.map((o) => ({
             rowNumber: o.rowNumber,
-            items: o.items,
-            rawOrder: o.rawOrder,
+            productId: o.productId,
+            productName: o.productName,
             toShip: o.toShip,
             unitShip: o.unitShip,
           })),
@@ -449,8 +449,8 @@ function ShipConfirmModal({
       event: c.event,
       orders: c.orders.map((o) => ({
         rowNumber: o.rowNumber,
-        items: o.items,
-        rawOrder: o.rawOrder,
+        productId: o.productId,
+        productName: o.productName,
         toShip: o.toShip,
         unitShip: o.unitShip,
       })),
@@ -471,7 +471,7 @@ function ShipConfirmModal({
         customer: c.customer,
         shippingId: data.shippingId,
         dataDiri: c.customerDetail?.dataDiri ?? "",
-        packingLines: toShipRows.map((o) => `${o.rawOrder} x ${o.toShip}`),
+        packingLines: toShipRows.map((o) => `${o.productName} x ${o.toShip}`),
       })
       const url = URL.createObjectURL(blob)
       urlRef.current = url

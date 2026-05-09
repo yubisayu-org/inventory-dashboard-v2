@@ -48,14 +48,15 @@ export async function PUT(req: NextRequest, { params }: Params) {
 
     } else {
       // Stage 1 — order details
-      const { event, customer, items, unit, note } = body
-      if (!event || !customer || !items || !unit) {
+      const { event, customer, productId, unitPrice, unit, note } = body
+      if (!event || !customer || !productId || !unit) {
         return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
       }
       await updateFormRow(rowNumber, {
         event: String(event),
         customer: String(customer),
-        items: String(items),
+        productId: Number(productId),
+        unitPrice: Number(unitPrice ?? 0),
         unit: Number(unit),
         note: note ? String(note) : "",
       })

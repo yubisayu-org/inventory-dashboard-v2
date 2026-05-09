@@ -1,28 +1,22 @@
--- Merge all products with identical (name, store).
--- For exact duplicates (same price): delete extras, keep lowest id.
--- For same name+store with different prices: keep the highest price (latest procurement),
--- delete the rest.
+-- Handle duplicate products with same (name, store).
+-- Instead of merging/deleting, append a suffix to duplicate names so we can
+-- add a UNIQUE constraint. The duplicates can be cleaned up manually later.
+--
+-- For each (name, store) group, the row with the lowest id keeps its original
+-- name. All other rows get " (dup-N)" appended, where N is their position
+-- in the group (ordered by id).
 
--- Step 1: For each (name, store) group with duplicates, update the winner to have the highest price
-UPDATE products AS winner
-SET price = (
-  SELECT MAX(d.price)
-  FROM products d
-  WHERE d.name = winner.name AND d.store = winner.store
-)
-WHERE id IN (
-  SELECT MIN(id) FROM products
+-- Step 1: Rename duplicates (keep lowest id unchanged)
+UPDATE products AS p
+SET name = p.name || ' (dup-' || sub.rn || ')'
+FROM (
+  SELECT id,
+         ROW_NUMBER() OVER (PARTITION BY name, store ORDER BY id) AS rn
+  FROM products
   WHERE name != ''
-  GROUP BY name, store
-  HAVING COUNT(*) > 1
-);
+) sub
+WHERE sub.id = p.id
+  AND sub.rn > 1;
 
--- Step 2: Delete all duplicate rows (keep the lowest id per name+store)
-DELETE FROM products
-WHERE id NOT IN (
-  SELECT MIN(id) FROM products GROUP BY name, store
-)
-AND name != '';
-
--- Step 3: Add unique constraint
+-- Step 2: Add unique constraint (now safe — no duplicates remain)
 ALTER TABLE products ADD CONSTRAINT uq_products_name_store UNIQUE (name, store);

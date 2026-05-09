@@ -7,6 +7,7 @@ function normalizeId(id: string | null | undefined): string {
 // ─── Types (same interfaces as the old sheets.ts) ───────────────────────────
 
 export interface ItemOption {
+  id: number
   name: string
   store: string
   price: number
@@ -21,7 +22,8 @@ export interface SheetOptions {
 export interface OrderRow {
   event: string
   customer: string
-  items: string
+  productId: number
+  unitPrice: number
   unit: number
   note: string
 }
@@ -30,7 +32,9 @@ export interface FormRow {
   rowNumber: number
   event: string
   customer: string
+  productId: number
   items: string
+  unitPrice: number
   unit: number
   note: string
   createdAt: string
@@ -100,7 +104,8 @@ export interface ShipOrderLine {
   rowNumber: number
   event: string
   items: string
-  rawOrder: string
+  productId: number
+  productName: string
   unit: number
   unitArrive: number
   unitShip: number
@@ -133,7 +138,7 @@ export interface InvoiceResult {
 export interface ShipOrdersParams {
   customer: string
   event: string
-  orders: Array<{ rowNumber: number; items: string; rawOrder: string; toShip: number; unitShip: number }>
+  orders: Array<{ rowNumber: number; productId: number; productName: string; toShip: number; unitShip: number }>
   weightKg: number
   ongkirPerKg: number
 }
@@ -183,7 +188,7 @@ function tsToString(v: Date | null | undefined): string {
 export async function getSheetOptions(): Promise<SheetOptions> {
   const [eventsRows, productRows, customerRows] = await Promise.all([
     sql`SELECT name FROM events ORDER BY name`,
-    sql`SELECT name, store, price FROM products WHERE name != '' ORDER BY name`,
+    sql`SELECT id, name, store, price FROM products WHERE name != '' ORDER BY name`,
     sql`
       SELECT instagram_id FROM customers
       WHERE instagram_id NOT LIKE '\\_old%' AND instagram_id != 'gantialamat'
@@ -193,7 +198,7 @@ export async function getSheetOptions(): Promise<SheetOptions> {
 
   return {
     events: eventsRows.map((r) => r.name),
-    items: productRows.map((r) => ({ name: r.name, store: r.store, price: r.price })),
+    items: productRows.map((r) => ({ id: r.id, name: r.name, store: r.store, price: r.price })),
     customers: customerRows.map((r) => r.instagram_id),
   }
 }
@@ -205,18 +210,24 @@ export async function getDuplicateFormRows(limit?: number): Promise<FormRow[]> {
   if (limit && limit > 0) {
     rows = await sql`
       SELECT * FROM (
-        SELECT id, event, customer, items, unit, note,
-               created_at, updated_at, unit_buy, receipt,
-               unit_arrive, unit_ship, unit_hold
-        FROM orders ORDER BY id DESC LIMIT ${limit}
+        SELECT o.id, o.event, o.customer, o.product_id, o.unit_price,
+               p.name AS product_name, o.unit, o.note,
+               o.created_at, o.updated_at, o.unit_buy, o.receipt,
+               o.unit_arrive, o.unit_ship, o.unit_hold
+        FROM orders o
+        JOIN products p ON p.id = o.product_id
+        ORDER BY o.id DESC LIMIT ${limit}
       ) sub ORDER BY id ASC
     `
   } else {
     rows = await sql`
-      SELECT id, event, customer, items, unit, note,
-             created_at, updated_at, unit_buy, receipt,
-             unit_arrive, unit_ship, unit_hold
-      FROM orders ORDER BY id ASC
+      SELECT o.id, o.event, o.customer, o.product_id, o.unit_price,
+             p.name AS product_name, o.unit, o.note,
+             o.created_at, o.updated_at, o.unit_buy, o.receipt,
+             o.unit_arrive, o.unit_ship, o.unit_hold
+      FROM orders o
+      JOIN products p ON p.id = o.product_id
+      ORDER BY o.id ASC
     `
   }
 
@@ -250,41 +261,44 @@ export async function getDuplicateFormRowsPaginated(opts: {
 
   if (event) {
     params.push(event)
-    conditions.push(`event = $${params.length}`)
+    conditions.push(`o.event = $${params.length}`)
   }
   if (customer) {
     params.push(customer)
-    conditions.push(`customer = $${params.length}`)
+    conditions.push(`o.customer = $${params.length}`)
   }
   if (items) {
     params.push(items)
-    conditions.push(`items = $${params.length}`)
+    conditions.push(`p.name = $${params.length}`)
   }
   if (search) {
     params.push(`%${search.toLowerCase()}%`)
     const p = `$${params.length}`
-    conditions.push(`(lower(event) LIKE ${p} OR lower(customer) LIKE ${p} OR lower(items) LIKE ${p} OR lower(note) LIKE ${p} OR CAST(unit AS TEXT) LIKE ${p})`)
+    conditions.push(`(lower(o.event) LIKE ${p} OR lower(o.customer) LIKE ${p} OR lower(p.name) LIKE ${p} OR lower(o.note) LIKE ${p} OR CAST(o.unit AS TEXT) LIKE ${p})`)
   }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""
 
   const SORT_COLUMNS: Record<string, string> = {
-    event: "event", customer: "customer", items: "items",
-    unit: "unit", note: "note", createdAt: "created_at",
-    unitBuy: "unit_buy", receipt: "receipt",
-    unitArrive: "unit_arrive", unitShip: "unit_ship", unitHold: "unit_hold",
-    updatedAt: "updated_at",
+    event: "o.event", customer: "o.customer", items: "p.name",
+    unit: "o.unit", note: "o.note", createdAt: "o.created_at",
+    unitBuy: "o.unit_buy", receipt: "o.receipt",
+    unitArrive: "o.unit_arrive", unitShip: "o.unit_ship", unitHold: "o.unit_hold",
+    updatedAt: "o.updated_at",
   }
-  const sortCol = (opts.sortKey && SORT_COLUMNS[opts.sortKey]) || "id"
+  const sortCol = (opts.sortKey && SORT_COLUMNS[opts.sortKey]) || "o.id"
   const sortDir = opts.sortDir === "desc" || (!opts.sortKey && newestFirst) ? "DESC" : "ASC"
 
   const dataRows = await sql.unsafe(
-    `SELECT id, event, customer, items, unit, note,
-            created_at, updated_at, unit_buy, receipt,
-            unit_arrive, unit_ship, unit_hold,
+    `SELECT o.id, o.event, o.customer, o.product_id, o.unit_price,
+            p.name AS product_name, o.unit, o.note,
+            o.created_at, o.updated_at, o.unit_buy, o.receipt,
+            o.unit_arrive, o.unit_ship, o.unit_hold,
             COUNT(*) OVER() AS _total_count
-     FROM orders ${where}
-     ORDER BY ${sortCol} ${sortDir}, id ${sortDir}
+     FROM orders o
+     JOIN products p ON p.id = o.product_id
+     ${where}
+     ORDER BY ${sortCol} ${sortDir}, o.id ${sortDir}
      LIMIT ${pageSize} OFFSET ${offset}`,
     params,
   )
@@ -304,7 +318,9 @@ function mapFormRow(r: Record<string, unknown>): FormRow {
     rowNumber: r.id as number,
     event: r.event as string,
     customer: r.customer as string,
-    items: r.items as string,
+    productId: r.product_id as number,
+    items: r.product_name as string,
+    unitPrice: r.unit_price as number,
     unit: r.unit as number,
     note: r.note as string,
     createdAt: tsToString(r.created_at as Date | null),
@@ -344,7 +360,8 @@ export async function appendOrders(orders: OrderRow[]): Promise<void> {
       normalized.map((o) => ({
         event: o.event,
         customer: o.customer,
-        items: o.items,
+        product_id: o.productId,
+        unit_price: o.unitPrice,
         unit: o.unit,
         note: o.note,
       }))
@@ -354,7 +371,7 @@ export async function appendOrders(orders: OrderRow[]): Promise<void> {
 
 export async function updateFormRow(
   rowNumber: number,
-  data: Pick<FormRow, "event" | "customer" | "items" | "unit" | "note">,
+  data: Pick<FormRow, "event" | "customer" | "productId" | "unitPrice" | "unit" | "note">,
 ): Promise<void> {
   const customer = normalizeCustomer(data.customer)
   // Auto-create customer record if it doesn't exist
@@ -364,8 +381,9 @@ export async function updateFormRow(
   `
   await sql`
     UPDATE orders
-    SET event = ${data.event}, customer = ${customer}, items = ${data.items},
-        unit = ${data.unit}, note = ${data.note}, updated_at = NOW()
+    SET event = ${data.event}, customer = ${customer}, product_id = ${data.productId},
+        unit_price = ${data.unitPrice}, unit = ${data.unit}, note = ${data.note},
+        updated_at = NOW()
     WHERE id = ${rowNumber}
   `
 }
@@ -572,11 +590,12 @@ export async function getInvoiceForCustomer(instagramId: string): Promise<Invoic
 
   const [orderRows, customerDetail] = await Promise.all([
     sql`
-      SELECT o.id, o.event, o.customer, o.items, o.unit, o.note,
+      SELECT o.id, o.event, o.customer, o.unit, o.note,
+             o.unit_price, o.product_id,
              o.unit_buy, o.receipt, o.unit_arrive, o.unit_ship, o.unit_hold,
-             COALESCE(p.price, 0) AS price, COALESCE(p.store, '') AS store
+             p.name AS product_name, COALESCE(p.store, '') AS store
       FROM orders o
-      LEFT JOIN products p ON p.name = o.items
+      JOIN products p ON p.id = o.product_id
       WHERE lower(replace(o.customer, '@', '')) = ${searchId}
       ORDER BY o.event, o.id
     `,
@@ -606,15 +625,15 @@ export async function getInvoiceForCustomer(instagramId: string): Promise<Invoic
     const group = groups[eid]
 
     const orders: InvoiceOrderLine[] = group.map((r) => ({
-      order: `${r.items} x ${r.unit}`,
+      order: `${r.product_name} x ${r.unit}`,
       unit: r.unit,
-      price: formatIdrNumber(r.price),
-      subtotal: formatIdrNumber(r.price * r.unit),
+      price: formatIdrNumber(r.unit_price),
+      subtotal: formatIdrNumber(r.unit_price * r.unit),
       unitArrive: r.unit_arrive ?? 0,
     }))
 
     const totalUnit = orders.reduce((s, o) => s + o.unit, 0)
-    const totalSubtotal = group.reduce((s, r) => s + r.price * r.unit, 0)
+    const totalSubtotal = group.reduce((s, r) => s + r.unit_price * r.unit, 0)
     const totalArrive = orders.reduce((s, o) => s + o.unitArrive, 0)
     const weightKg = 0
     const estimasiOngkir = ongkirPerKg * weightKg
@@ -650,11 +669,11 @@ function buildSearchFilters(opts: { event?: string; search?: string }) {
   const params: (string | number)[] = []
   if (opts.event) {
     params.push(opts.event)
-    conditions.push(`event = $${params.length}`)
+    conditions.push(`o.event = $${params.length}`)
   }
   if (opts.search) {
     params.push(`%${normalizeId(opts.search)}%`)
-    conditions.push(`lower(replace(customer, '@', '')) LIKE $${params.length}`)
+    conditions.push(`lower(replace(o.customer, '@', '')) LIKE $${params.length}`)
   }
   return { conditions, params }
 }
@@ -678,8 +697,9 @@ function buildShipGroups(
       return {
         rowNumber: r.id as number,
         event,
-        items: `${r.items} x ${r.unit}`,
-        rawOrder: r.items as string,
+        items: `${r.product_name} x ${r.unit}`,
+        productId: r.product_id as number,
+        productName: r.product_name as string,
         unit: r.unit as number,
         unitArrive,
         unitShip,
@@ -739,9 +759,9 @@ export async function getShipOrdersFiltered(opts: {
   const { conditions, params } = buildSearchFilters({ event, search })
 
   if (segment === "not_arrived") {
-    conditions.push("(unit_arrive IS NULL OR unit_arrive = 0)")
+    conditions.push("(o.unit_arrive IS NULL OR o.unit_arrive = 0)")
   } else if (segment !== "all") {
-    conditions.push("unit_arrive IS NOT NULL AND unit_arrive > 0")
+    conditions.push("o.unit_arrive IS NOT NULL AND o.unit_arrive > 0")
   }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""
@@ -751,18 +771,21 @@ export async function getShipOrdersFiltered(opts: {
 
   const [orderRows, countRows] = await Promise.all([
     sql.unsafe(
-      `SELECT id, event, customer, items, unit, unit_arrive, unit_ship
-       FROM orders ${where}
-       ORDER BY event, customer, id`,
+      `SELECT o.id, o.event, o.customer, o.product_id, p.name AS product_name,
+              o.unit, o.unit_arrive, o.unit_ship
+       FROM orders o
+       JOIN products p ON p.id = o.product_id
+       ${where}
+       ORDER BY o.event, o.customer, o.id`,
       params,
     ),
     sql.unsafe(
       `SELECT
-         customer, event,
-         bool_and(COALESCE(unit_arrive, 0) = 0) AS all_not_arrived,
-         COALESCE(SUM(GREATEST(0, COALESCE(unit_arrive, 0) - COALESCE(unit_ship, 0))), 0) AS total_to_ship
-       FROM orders ${countWhere}
-       GROUP BY customer, event`,
+         o.customer, o.event,
+         bool_and(COALESCE(o.unit_arrive, 0) = 0) AS all_not_arrived,
+         COALESCE(SUM(GREATEST(0, COALESCE(o.unit_arrive, 0) - COALESCE(o.unit_ship, 0))), 0) AS total_to_ship
+       FROM orders o ${countWhere}
+       GROUP BY o.customer, o.event`,
       countParams,
     ),
   ])
@@ -810,7 +833,7 @@ export async function shipCustomerOrders(params: ShipOrdersParams): Promise<{ sh
     const shippingId = String((maxRow.max_id ?? 0) + 1).padStart(4, "0")
 
     const toShipRows = orders.filter((o) => o.toShip > 0)
-    const invoicingText = toShipRows.map((o) => `${o.rawOrder} x ${o.toShip}`).join("\n")
+    const invoicingText = toShipRows.map((o) => `${o.productName} x ${o.toShip}`).join("\n")
     const ongkirTotal = ongkirPerKg * weightKg
 
     await tx`
@@ -818,14 +841,11 @@ export async function shipCustomerOrders(params: ShipOrdersParams): Promise<{ sh
       VALUES (${event}, ${customer}, ${shippingId}, ${invoicingText}, ${weightKg}, ${ongkirPerKg}, ${ongkirTotal}, true)
     `
 
-    const customerKey = normalizeId(customer)
     for (const order of toShipRows) {
       await tx`
         UPDATE orders
         SET unit_ship = COALESCE(unit_ship, 0) + ${order.toShip}, updated_at = NOW()
-        WHERE lower(replace(customer, '@', '')) = ${customerKey}
-          AND event = ${event}
-          AND items = ${order.rawOrder}
+        WHERE id = ${order.rowNumber}
       `
     }
 

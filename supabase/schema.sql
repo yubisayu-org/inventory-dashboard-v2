@@ -36,7 +36,8 @@ CREATE TABLE orders (
   id          SERIAL PRIMARY KEY,
   event       TEXT NOT NULL REFERENCES events(name) ON UPDATE CASCADE ON DELETE RESTRICT,
   customer    TEXT NOT NULL REFERENCES customers(instagram_id) ON UPDATE CASCADE ON DELETE RESTRICT,
-  items       TEXT NOT NULL,
+  product_id  INTEGER NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
+  unit_price  INTEGER NOT NULL DEFAULT 0,
   unit        INTEGER NOT NULL,
   note        TEXT NOT NULL DEFAULT '',
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -51,7 +52,7 @@ CREATE TABLE orders (
 CREATE INDEX idx_orders_event ON orders (event);
 CREATE INDEX idx_orders_customer ON orders (lower(customer));
 CREATE INDEX idx_orders_customer_normalized ON orders (lower(replace(customer, '@', '')));
-CREATE INDEX idx_orders_event_items ON orders (event, items);
+CREATE INDEX idx_orders_event_product ON orders (event, product_id);
 
 CREATE TABLE excess_purchase (
   id         SERIAL PRIMARY KEY,

@@ -18,8 +18,8 @@ export async function POST(req: NextRequest) {
     }
 
     for (const row of rows) {
-      if (!row.event || !row.customer || !row.items || !row.unit) {
-        return NextResponse.json({ error: "Each row requires event, customer, items, and unit" }, { status: 400 })
+      if (!row.event || !row.customer || !row.productId || !row.unit) {
+        return NextResponse.json({ error: "Each row requires event, customer, productId, and unit" }, { status: 400 })
       }
     }
 
@@ -27,7 +27,8 @@ export async function POST(req: NextRequest) {
       rows.map((r) => ({
         event: String(r.event),
         customer: String(r.customer),
-        items: String(r.items),
+        productId: Number(r.productId),
+        unitPrice: Number(r.unitPrice ?? 0),
         unit: Number(r.unit),
         note: r.note ? String(r.note) : "",
       })),

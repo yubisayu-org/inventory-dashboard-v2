@@ -162,7 +162,7 @@ const TOOLBAR_BTN =
 // Main component
 // ---------------------------------------------------------------------------
 
-type EditForm = { event: string; customer: string; items: string; unit: string; note: string }
+type EditForm = { event: string; customer: string; productId: string; unit: string; note: string }
 
 export default function DataTable() {
   const [table, dispatch] = useReducer(tableReducer, INITIAL_STATE)
@@ -258,7 +258,7 @@ export default function DataTable() {
 
   function startEdit(row: FormRow) {
     setEditingRowNumber(row.rowNumber)
-    setEditForm({ event: row.event, customer: row.customer, items: row.items, unit: String(row.unit), note: row.note })
+    setEditForm({ event: row.event, customer: row.customer, productId: String(row.productId), unit: String(row.unit), note: row.note })
     setEditError("")
     if (table.addDrawerOpen) dispatch({ type: "TOGGLE_ADD_DRAWER" })
   }
@@ -273,13 +273,16 @@ export default function DataTable() {
     if (!editForm) return
     setEditSaving(true); setEditError("")
     try {
+      const pid = Number(editForm.productId)
+      const product = options?.items.find((it) => it.id === pid)
+      const unitPrice = product?.price ?? 0
       const res = await fetch(`/api/sheets/duplicate-form/${rowNumber}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stage: "1", event: editForm.event, customer: editForm.customer, items: editForm.items, unit: Number(editForm.unit), note: editForm.note }),
+        body: JSON.stringify({ stage: "1", event: editForm.event, customer: editForm.customer, productId: pid, unitPrice, unit: Number(editForm.unit), note: editForm.note }),
       })
       if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? "Failed to save") }
-      dispatch({ type: "APPLY_UPDATE", rowNumber, patch: { event: editForm.event, customer: editForm.customer, items: editForm.items, unit: Number(editForm.unit), note: editForm.note } })
+      dispatch({ type: "APPLY_UPDATE", rowNumber, patch: { event: editForm.event, customer: editForm.customer, productId: pid, items: product?.name ?? "", unitPrice, unit: Number(editForm.unit), note: editForm.note } })
       cancelEdit()
     } catch (err) {
       setEditError(err instanceof Error ? err.message : "Failed to save")
@@ -713,7 +716,7 @@ function EditCell({ col, editForm, onChange, options, busy, error, onSave, onCan
     [options],
   )
   const itemOptions = useMemo(
-    () => (options?.items ?? []).map((it) => ({ value: it.name, label: it.name, meta: it.store || undefined })),
+    () => (options?.items ?? []).map((it) => ({ value: String(it.id), label: it.name, meta: it.store || undefined })),
     [options],
   )
 
@@ -740,8 +743,8 @@ function EditCell({ col, editForm, onChange, options, busy, error, onSave, onCan
     case "items":
       return (
         <SearchableSelect
-          value={editForm.items}
-          onChange={(v) => onChange({ items: v })}
+          value={editForm.productId}
+          onChange={(v) => onChange({ productId: v })}
           options={itemOptions}
           placeholder="Search item..."
         />
@@ -793,7 +796,7 @@ function EditCell({ col, editForm, onChange, options, busy, error, onSave, onCan
 // ---------------------------------------------------------------------------
 
 let _addLineId = 0
-function newAddLine() { return { id: _addLineId++, items: "", unit: "", note: "" } }
+function newAddLine() { return { id: _addLineId++, productId: "", unit: "", note: "" } }
 
 function AddOrderDrawer({ options, onClose, onOrderAdded }: {
   options: SheetOptions | null
@@ -811,11 +814,11 @@ function AddOrderDrawer({ options, onClose, onOrderAdded }: {
     [options],
   )
   const itemOptions = useMemo(
-    () => (options?.items ?? []).map((it) => ({ value: it.name, label: it.name, meta: it.store || undefined })),
+    () => (options?.items ?? []).map((it) => ({ value: String(it.id), label: it.name, meta: it.store || undefined })),
     [options],
   )
 
-  function updateLine(id: number, field: "items" | "unit" | "note", value: string) {
+  function updateLine(id: number, field: "productId" | "unit" | "note", value: string) {
     setLines((prev) => prev.map((l) => l.id === id ? { ...l, [field]: value } : l))
     setFeedback(null)
   }
@@ -823,7 +826,7 @@ function AddOrderDrawer({ options, onClose, onOrderAdded }: {
   function removeLine(id: number) { setLines((prev) => prev.filter((l) => l.id !== id)) }
 
   const canSubmit = Boolean(event) && Boolean(customer) &&
-    lines.length > 0 && lines.every((l) => l.items && l.unit && Number(l.unit) > 0)
+    lines.length > 0 && lines.every((l) => l.productId && l.unit && Number(l.unit) > 0)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -834,7 +837,11 @@ function AddOrderDrawer({ options, onClose, onOrderAdded }: {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          rows: lines.map((l) => ({ event, customer, items: l.items, unit: Number(l.unit), note: l.note })),
+          rows: lines.map((l) => {
+            const pid = Number(l.productId)
+            const product = options?.items.find((it) => it.id === pid)
+            return { event, customer, productId: pid, unitPrice: product?.price ?? 0, unit: Number(l.unit), note: l.note }
+          }),
         }),
       })
       if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? "Failed to save") }
@@ -906,8 +913,8 @@ function AddOrderDrawer({ options, onClose, onOrderAdded }: {
                 <div>
                   <label className={LABEL}>Item {lines.length > 1 ? idx + 1 : ""}</label>
                   <SearchableSelect
-                    value={line.items}
-                    onChange={(v) => updateLine(line.id, "items", v)}
+                    value={line.productId}
+                    onChange={(v) => updateLine(line.id, "productId", v)}
                     options={itemOptions}
                     placeholder="Search item..."
                   />
