@@ -589,7 +589,7 @@ function parseShipments(
 export async function getInvoiceForCustomer(instagramId: string): Promise<InvoiceResult> {
   const searchId = normalizeId(instagramId)
 
-  const [orderRows, customerDetail] = await Promise.all([
+  const [orderRows, customerDetail, paymentRows] = await Promise.all([
     sql`
       SELECT o.id, o.event, o.customer, o.unit, o.note,
              o.unit_price, o.product_id,
@@ -604,6 +604,13 @@ export async function getInvoiceForCustomer(instagramId: string): Promise<Invoic
       ORDER BY o.event, o.id
     `,
     lookupCustomerDetail(instagramId),
+    sql`
+      SELECT event, COALESCE(SUM(amount), 0) AS total_paid
+      FROM payments
+      WHERE lower(replace(customer, '@', '')) = ${searchId}
+        AND is_checked = true
+      GROUP BY event
+    `,
   ])
 
   if (orderRows.length === 0) {
@@ -612,6 +619,9 @@ export async function getInvoiceForCustomer(instagramId: string): Promise<Invoic
 
   const customer = orderRows[0].customer
   const ongkirPerKg = customerDetail?.ongkosKirim ?? 0
+
+  const paymentByEvent = new Map<string, number>()
+  for (const r of paymentRows) paymentByEvent.set(r.event, Number(r.total_paid))
 
   type OrderQueryRow = (typeof orderRows)[number]
   const groups: Record<string, OrderQueryRow[]> = {}
@@ -653,15 +663,19 @@ export async function getInvoiceForCustomer(instagramId: string): Promise<Invoic
       showShipments: false,
       orders,
       totals: { unit: totalUnit, subtotal: totalSubtotal, arrive: totalArrive, weightKg },
-      invoice: {
-        subtotalBarang: totalSubtotal,
-        estimasiOngkir,
-        ongkirPerKg,
-        biayaLainnya: 0,
-        total: totalSubtotal + estimasiOngkir,
-        pembayaran: 0,
-        sisaPelunasan: totalSubtotal + estimasiOngkir,
-      },
+      invoice: (() => {
+        const total = totalSubtotal + estimasiOngkir
+        const pembayaran = paymentByEvent.get(eid) ?? 0
+        return {
+          subtotalBarang: totalSubtotal,
+          estimasiOngkir,
+          ongkirPerKg,
+          biayaLainnya: 0,
+          total,
+          pembayaran,
+          sisaPelunasan: total - pembayaran,
+        }
+      })(),
     }
     return { ...base, message: buildInvoiceMessage(base, customer) }
   })
