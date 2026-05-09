@@ -15,6 +15,15 @@ const rowInputCls =
 
 const fmt = (n: number) => n.toLocaleString("id-ID")
 
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-xs font-medium text-gray-500">{label}</span>
+      {children}
+    </label>
+  )
+}
+
 function calcAbroadPrice(p: {
   valas: number; kurs: number; gram: number; cargoPerKg: number
   profitPct: number; operationalFee: number; packingFee: number
@@ -357,8 +366,12 @@ function AddProductForm({
 
       {/* Common fields */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Product name" required disabled={adding} className={formInputCls} />
-        <input value={store} onChange={(e) => setStore(e.target.value)} list="stores-list" placeholder="Store" disabled={adding} className={formInputCls} />
+        <Field label="Product Name">
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Product name" required disabled={adding} className={formInputCls} />
+        </Field>
+        <Field label="Store">
+          <input value={store} onChange={(e) => setStore(e.target.value)} list="stores-list" placeholder="Store" disabled={adding} className={formInputCls} />
+        </Field>
         <datalist id="stores-list">
           {stores.map((s) => <option key={s} value={s} />)}
         </datalist>
@@ -367,22 +380,34 @@ function AddProductForm({
       {/* Abroad fields */}
       {type === "abroad" && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <select
-            value={countryId ?? ""}
-            onChange={(e) => setCountryId(e.target.value ? Number(e.target.value) : null)}
-            disabled={adding}
-            className={formInputCls}
-          >
-            <option value="">Select country</option>
-            {countries.map((c) => (
-              <option key={c.id} value={c.id}>{c.name} ({c.currency})</option>
-            ))}
-          </select>
-          <input value={valas} onChange={(e) => setValas(e.target.value)} type="number" step="any" min="0" placeholder="Valas" disabled={adding} className={formInputCls} />
-          <input value={gram} onChange={(e) => setGram(e.target.value)} type="number" min="0" placeholder="Gram" disabled={adding} className={formInputCls} />
-          <input value={profitPct} onChange={(e) => setProfitPct(e.target.value)} type="number" min="0" max="99" placeholder="Profit %" disabled={adding} className={formInputCls} />
-          <input value={opFee} onChange={(e) => setOpFee(e.target.value)} type="number" min="0" placeholder="Op. fee" disabled={adding} className={formInputCls} />
-          <input value={packFee} onChange={(e) => setPackFee(e.target.value)} type="number" min="0" placeholder="Pack fee" disabled={adding} className={formInputCls} />
+          <Field label="Country">
+            <select
+              value={countryId ?? ""}
+              onChange={(e) => setCountryId(e.target.value ? Number(e.target.value) : null)}
+              disabled={adding}
+              className={formInputCls}
+            >
+              <option value="">Select country</option>
+              {countries.map((c) => (
+                <option key={c.id} value={c.id}>{c.name} ({c.currency})</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Valas">
+            <input value={valas} onChange={(e) => setValas(e.target.value)} type="number" step="any" min="0" placeholder="0" disabled={adding} className={formInputCls} />
+          </Field>
+          <Field label="Gram">
+            <input value={gram} onChange={(e) => setGram(e.target.value)} type="number" min="0" placeholder="0" disabled={adding} className={formInputCls} />
+          </Field>
+          <Field label="Profit %">
+            <input value={profitPct} onChange={(e) => setProfitPct(e.target.value)} type="number" min="0" max="99" placeholder="0" disabled={adding} className={formInputCls} />
+          </Field>
+          <Field label="Operational Fee">
+            <input value={opFee} onChange={(e) => setOpFee(e.target.value)} type="number" min="0" placeholder="5000" disabled={adding} className={formInputCls} />
+          </Field>
+          <Field label="Packing Fee">
+            <input value={packFee} onChange={(e) => setPackFee(e.target.value)} type="number" min="0" placeholder="5000" disabled={adding} className={formInputCls} />
+          </Field>
 
           {selectedCountry && (
             <div className="col-span-2 flex gap-4 text-xs text-gray-500 items-center">
@@ -397,8 +422,12 @@ function AddProductForm({
       {/* Domestic fields */}
       {type === "domestic" && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <input value={cost} onChange={(e) => setCost(e.target.value)} type="number" min="0" placeholder="Base cost (IDR)" disabled={adding} className={formInputCls} />
-          <input value={profitFixed} onChange={(e) => setProfitFixed(e.target.value)} type="number" min="0" placeholder="Fixed profit (IDR)" disabled={adding} className={formInputCls} />
+          <Field label="Base Cost (IDR)">
+            <input value={cost} onChange={(e) => setCost(e.target.value)} type="number" min="0" placeholder="0" disabled={adding} className={formInputCls} />
+          </Field>
+          <Field label="Fixed Profit (IDR)">
+            <input value={profitFixed} onChange={(e) => setProfitFixed(e.target.value)} type="number" min="0" placeholder="0" disabled={adding} className={formInputCls} />
+          </Field>
         </div>
       )}
 
