@@ -226,6 +226,7 @@ interface Props {
 
 export default function SidebarClient({ user }: Props) {
   const [collapsed, setCollapsed] = useState(false)
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({})
   const pathname = usePathname()
 
   const visibleSections = NAV_SECTIONS
@@ -235,6 +236,10 @@ export default function SidebarClient({ user }: Props) {
   const initials = user.name
     ? user.name.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase()
     : "?"
+
+  function toggleSection(name: string) {
+    setCollapsedSections((prev) => ({ ...prev, [name]: !prev[name] }))
+  }
 
   return (
     <aside
@@ -275,41 +280,65 @@ export default function SidebarClient({ user }: Props) {
 
       {/* Nav links */}
       <nav className="flex-1 py-3 flex flex-col overflow-y-auto px-2">
-        {visibleSections.map((section, si) => (
-          <div key={si} className={si > 0 ? "mt-4" : ""}>
-            {section.section && !collapsed && (
-              <p className="px-2 mb-1 text-[10px] font-semibold uppercase tracking-widest text-gray-400 select-none">
-                {section.section}
-              </p>
-            )}
-            {section.section && collapsed && (
-              <div className="my-2 mx-auto w-4 border-t border-cream-border" />
-            )}
-            <div className="flex flex-col gap-0.5">
-              {section.items.map((link) => {
-                const isActive = pathname === link.href
-                return (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    title={collapsed ? link.label : undefined}
-                    className={`
-                      flex items-center gap-3 px-2 py-2 rounded-md text-sm transition-colors
-                      ${isActive
-                        ? "bg-brand-light text-brand font-medium"
-                        : "text-gray-600 hover:bg-brand-light hover:text-brand"
-                      }
-                      ${collapsed ? "justify-center" : ""}
-                    `}
+        {visibleSections.map((section, si) => {
+          const sectionCollapsed = section.section ? (collapsedSections[section.section] ?? false) : false
+          return (
+            <div key={si} className={si > 0 ? "mt-4" : ""}>
+              {section.section && !collapsed && (
+                <button
+                  type="button"
+                  onClick={() => toggleSection(section.section!)}
+                  className="w-full flex items-center justify-between px-2 mb-1 group"
+                >
+                  <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 group-hover:text-brand transition-colors select-none">
+                    {section.section}
+                  </span>
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className={`text-gray-300 group-hover:text-brand transition-all duration-200 ${sectionCollapsed ? "-rotate-90" : ""}`}
                   >
-                    <span className="shrink-0">{link.icon}</span>
-                    {!collapsed && <span className="truncate">{link.label}</span>}
-                  </Link>
-                )
-              })}
+                    <path d="M6 9l6 6 6-6" />
+                  </svg>
+                </button>
+              )}
+              {section.section && collapsed && (
+                <div className="my-2 mx-auto w-4 border-t border-cream-border" />
+              )}
+              {!sectionCollapsed && (
+                <div className="flex flex-col gap-0.5">
+                  {section.items.map((link) => {
+                    const isActive = pathname === link.href
+                    return (
+                      <Link
+                        key={link.href}
+                        href={link.href}
+                        title={collapsed ? link.label : undefined}
+                        className={`
+                          flex items-center gap-3 px-2 py-2 rounded-md text-sm transition-colors
+                          ${isActive
+                            ? "bg-brand-light text-brand font-medium"
+                            : "text-gray-600 hover:bg-brand-light hover:text-brand"
+                          }
+                          ${collapsed ? "justify-center" : ""}
+                        `}
+                      >
+                        <span className="shrink-0">{link.icon}</span>
+                        {!collapsed && <span className="truncate">{link.label}</span>}
+                      </Link>
+                    )
+                  })}
+                </div>
+              )}
             </div>
-          </div>
-        ))}
+          )
+        })}
       </nav>
 
       {/* Profile + sign out */}
