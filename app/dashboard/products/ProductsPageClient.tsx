@@ -5,7 +5,7 @@ import type { ProductRow, CountryRow } from "@/lib/db"
 import { PaginationButton, PageJumpInput, getPageNumbers } from "@/components/Pagination"
 import SearchableSelect from "@/components/SearchableSelect"
 
-type PricingType = "abroad" | "domestic"
+type PricingType = "overseas" | "domestic"
 
 const PAGE_SIZE = 25
 
@@ -96,7 +96,7 @@ export default function ProductsPageClient() {
   const filtered = useMemo(() => {
     if (!data) return []
     let rows = data
-    if (tab === "abroad") rows = rows.filter(isAbroad)
+    if (tab === "overseas") rows = rows.filter(isAbroad)
     else if (tab === "domestic") rows = rows.filter((p) => !isAbroad(p))
     if (searchQ) {
       const q = searchQ.toLowerCase()
@@ -126,7 +126,7 @@ export default function ProductsPageClient() {
       <div className="flex flex-wrap items-center gap-3">
         {/* Tabs */}
         <div className="flex rounded-lg border border-cream-border overflow-hidden text-sm">
-          {(["all", "abroad", "domestic"] as const).map((t) => (
+          {(["all", "overseas", "domestic"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -271,13 +271,13 @@ function AddProductForm({
   stores: string[]
   onAdded: () => void
 }) {
-  const [type, setType] = useState<PricingType>("abroad")
+  const [type, setType] = useState<PricingType>("overseas")
   const [name, setName] = useState("")
   const [store, setStore] = useState("")
   const [countryId, setCountryId] = useState<number | null>(countries[0]?.id ?? null)
   const [valas, setValas] = useState("")
   const [gram, setGram] = useState("")
-  const [profitPct, setProfitPct] = useState("")
+  const [profitPct, setProfitPct] = useState("30")
   const [opFee, setOpFee] = useState("5000")
   const [packFee, setPackFee] = useState("5000")
   const [cost, setCost] = useState("")
@@ -291,7 +291,7 @@ function AddProductForm({
 
   // Calculate price preview
   const pricePreview = useMemo(() => {
-    if (type === "abroad") {
+    if (type === "overseas") {
       const { cogs, price } = calcAbroadPrice({
         valas: Number(valas) || 0,
         kurs: selectedCountry?.kurs ?? 0,
@@ -318,7 +318,7 @@ function AddProductForm({
         price: pricePreview.price,
       }
 
-      if (type === "abroad") {
+      if (type === "overseas") {
         body.countryId = countryId
         body.valas = Number(valas) || 0
         body.gram = Number(gram) || 0
@@ -345,7 +345,7 @@ function AddProductForm({
       setStore("")
       setValas("")
       setGram("")
-      setProfitPct("")
+      setProfitPct("30")
       setCost("")
       setProfitFixed("")
       setProfitManual(false)
@@ -364,10 +364,10 @@ function AddProductForm({
         <div className="flex rounded-lg border border-cream-border overflow-hidden text-xs">
           <button
             type="button"
-            onClick={() => setType("abroad")}
-            className={`px-3 py-1 transition-colors ${type === "abroad" ? "bg-brand text-white font-medium" : "bg-white text-gray-600 hover:bg-cream"}`}
+            onClick={() => setType("overseas")}
+            className={`px-3 py-1 transition-colors ${type === "overseas" ? "bg-brand text-white font-medium" : "bg-white text-gray-600 hover:bg-cream"}`}
           >
-            Abroad
+            Overseas
           </button>
           <button
             type="button"
@@ -397,7 +397,7 @@ function AddProductForm({
       </div>
 
       {/* Abroad fields */}
-      {type === "abroad" && (
+      {type === "overseas" && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Field label="Country">
             <select
@@ -433,6 +433,7 @@ function AddProductForm({
               <span>Kurs: {fmt(selectedCountry.kurs)}</span>
               <span>Cargo/kg: {fmt(selectedCountry.cargoPerKg)}</span>
               <span>COGS: {fmt(Math.round(pricePreview.cogs))}</span>
+              <span>Profit: {fmt(Math.round(pricePreview.price - pricePreview.cogs - (Number(opFee) || 0) - (Number(packFee) || 0)))}</span>
             </div>
           )}
         </div>
@@ -709,7 +710,7 @@ function ProductRowComp({
       <td className="px-4 py-3 text-right tabular-nums font-medium">{fmt(row.price)}</td>
       <td className="px-4 py-3 text-center">
         <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-medium ${abroad ? "bg-blue-50 text-blue-600" : "bg-green-50 text-green-600"}`}>
-          {abroad ? "Abroad" : "Domestic"}
+          {abroad ? "Overseas" : "Domestic"}
         </span>
       </td>
       <td className="px-4 py-3 text-gray-600">{row.countryName || "—"}</td>
