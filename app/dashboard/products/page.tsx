@@ -1,15 +1,15 @@
 import PageShell from "@/components/PageShell"
 import PageHeader from "@/components/PageHeader"
-import ProductsClient from "./ProductsClient"
+import ProductsPageClient from "./ProductsPageClient"
 
 export default function ProductsPage() {
   return (
     <PageShell>
       <PageHeader
         title="Products"
-        subtitle="Manage the Product_Indo catalogue"
+        subtitle="Manage product catalogue and pricing"
       />
-      <ProductsClient />
+      <ProductsPageClient />
     </PageShell>
   )
 }

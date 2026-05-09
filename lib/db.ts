@@ -167,6 +167,24 @@ export interface CountryRow {
   cargoPerKg: number
 }
 
+export interface ProductRow {
+  id: number
+  name: string
+  store: string
+  price: number
+  gram: number
+  countryId: number | null
+  countryName: string
+  valas: number
+  kurs: number
+  cargoPerKg: number
+  profitPct: number
+  operationalFee: number
+  packingFee: number
+  cost: number
+  profitFixed: number
+}
+
 export interface ProductIndoRow {
   rowNumber: number
   product: string
@@ -1145,6 +1163,99 @@ export async function updateAdjustment(
 
 export async function deleteAdjustment(rowNumber: number): Promise<void> {
   await sql`DELETE FROM adjustments WHERE id = ${rowNumber}`
+}
+
+// ─── Products (abroad + domestic) ─────────────────────────────────────────
+
+export async function getProducts(): Promise<ProductRow[]> {
+  const rows = await sql`
+    SELECT p.id, p.name, p.store, p.price, p.gram,
+           p.country_id, COALESCE(c.name, '') AS country_name,
+           p.valas, p.kurs, p.cargo_per_kg, p.profit_pct,
+           p.operational_fee, p.packing_fee, p.cost, p.profit_fixed
+    FROM products p
+    LEFT JOIN countries c ON c.id = p.country_id
+    WHERE p.name != ''
+    ORDER BY p.name
+  `
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    store: r.store ?? "",
+    price: r.price ?? 0,
+    gram: r.gram ?? 0,
+    countryId: r.country_id,
+    countryName: r.country_name ?? "",
+    valas: Number(r.valas) || 0,
+    kurs: r.kurs ?? 0,
+    cargoPerKg: r.cargo_per_kg ?? 0,
+    profitPct: r.profit_pct ?? 0,
+    operationalFee: r.operational_fee ?? 5000,
+    packingFee: r.packing_fee ?? 5000,
+    cost: r.cost ?? 0,
+    profitFixed: r.profit_fixed ?? 0,
+  }))
+}
+
+export async function addProduct(data: {
+  name: string
+  store: string
+  price: number
+  gram: number
+  countryId: number | null
+  valas: number
+  kurs: number
+  cargoPerKg: number
+  profitPct: number
+  operationalFee: number
+  packingFee: number
+  cost: number
+  profitFixed: number
+}): Promise<{ id: number }> {
+  const [row] = await sql`
+    INSERT INTO products (name, store, price, gram, country_id, valas, kurs,
+      cargo_per_kg, profit_pct, operational_fee, packing_fee, cost, profit_fixed)
+    VALUES (${data.name}, ${data.store}, ${data.price}, ${data.gram},
+      ${data.countryId}, ${data.valas}, ${data.kurs}, ${data.cargoPerKg},
+      ${data.profitPct}, ${data.operationalFee}, ${data.packingFee},
+      ${data.cost}, ${data.profitFixed})
+    RETURNING id
+  `
+  return { id: row.id }
+}
+
+export async function updateProduct(
+  id: number,
+  data: {
+    name: string
+    store: string
+    price: number
+    gram: number
+    countryId: number | null
+    valas: number
+    kurs: number
+    cargoPerKg: number
+    profitPct: number
+    operationalFee: number
+    packingFee: number
+    cost: number
+    profitFixed: number
+  },
+): Promise<void> {
+  await sql`
+    UPDATE products
+    SET name = ${data.name}, store = ${data.store}, price = ${data.price},
+        gram = ${data.gram}, country_id = ${data.countryId},
+        valas = ${data.valas}, kurs = ${data.kurs}, cargo_per_kg = ${data.cargoPerKg},
+        profit_pct = ${data.profitPct}, operational_fee = ${data.operationalFee},
+        packing_fee = ${data.packingFee}, cost = ${data.cost},
+        profit_fixed = ${data.profitFixed}
+    WHERE id = ${id}
+  `
+}
+
+export async function deleteProduct(id: number): Promise<void> {
+  await sql`DELETE FROM products WHERE id = ${id}`
 }
 
 // ─── Countries ─────────────────────────────────────────────────────────────
