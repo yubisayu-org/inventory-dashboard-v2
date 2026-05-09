@@ -1,10 +1,19 @@
 -- Yubisayu Inventory Dashboard — Supabase (Postgres) schema
 -- Run this against your Supabase project via the SQL editor.
 
+CREATE TABLE countries (
+  id            SERIAL PRIMARY KEY,
+  name          TEXT NOT NULL UNIQUE,
+  currency      TEXT NOT NULL DEFAULT '',
+  kurs          INTEGER NOT NULL DEFAULT 0,
+  cargo_per_kg  INTEGER NOT NULL DEFAULT 0
+);
+
 CREATE TABLE events (
-  id   SERIAL PRIMARY KEY,
-  name TEXT NOT NULL UNIQUE,
-  eta  TEXT NOT NULL DEFAULT ''
+  id         SERIAL PRIMARY KEY,
+  name       TEXT NOT NULL UNIQUE,
+  eta        TEXT NOT NULL DEFAULT '',
+  country_id INTEGER REFERENCES countries(id) ON DELETE RESTRICT
 );
 
 CREATE TABLE customers (
@@ -14,14 +23,6 @@ CREATE TABLE customers (
   data_diri    TEXT NOT NULL DEFAULT '',
   ekspedisi    TEXT NOT NULL DEFAULT '',
   ongkos_kirim INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE countries (
-  id            SERIAL PRIMARY KEY,
-  name          TEXT NOT NULL UNIQUE,
-  currency      TEXT NOT NULL DEFAULT '',
-  kurs          INTEGER NOT NULL DEFAULT 0,
-  cargo_per_kg  INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE products (
