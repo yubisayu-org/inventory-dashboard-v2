@@ -1325,26 +1325,20 @@ export interface EventRow {
   id: number
   name: string
   eta: string
-  countryId: number | null
-  countryName: string
   createdAt: string
   updatedAt: string
 }
 
 export async function getEvents(): Promise<EventRow[]> {
   const rows = await sql`
-    SELECT e.id, e.name, e.eta, e.country_id, c.name AS country_name,
-           e.created_at, e.updated_at
-    FROM events e
-    LEFT JOIN countries c ON c.id = e.country_id
-    ORDER BY e.id DESC
+    SELECT id, name, eta, created_at, updated_at
+    FROM events
+    ORDER BY id DESC
   `
   return rows.map((r) => ({
     id: r.id,
     name: r.name,
     eta: r.eta ?? "",
-    countryId: r.country_id ?? null,
-    countryName: r.country_name ?? "",
     createdAt: tsToString(r.created_at),
     updatedAt: tsToString(r.updated_at),
   }))
@@ -1353,11 +1347,10 @@ export async function getEvents(): Promise<EventRow[]> {
 export async function addEvent(data: {
   name: string
   eta: string
-  countryId: number | null
 }): Promise<{ id: number }> {
   const [row] = await sql`
-    INSERT INTO events (name, eta, country_id)
-    VALUES (${data.name}, ${data.eta}, ${data.countryId})
+    INSERT INTO events (name, eta)
+    VALUES (${data.name}, ${data.eta})
     RETURNING id
   `
   return { id: row.id }
@@ -1365,12 +1358,11 @@ export async function addEvent(data: {
 
 export async function updateEvent(
   id: number,
-  data: { name: string; eta: string; countryId: number | null },
+  data: { name: string; eta: string },
 ): Promise<void> {
   await sql`
     UPDATE events
-    SET name = ${data.name}, eta = ${data.eta},
-        country_id = ${data.countryId}, updated_at = NOW()
+    SET name = ${data.name}, eta = ${data.eta}, updated_at = NOW()
     WHERE id = ${id}
   `
 }

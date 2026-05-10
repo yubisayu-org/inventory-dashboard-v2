@@ -19,7 +19,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
 
   try {
     const body = await req.json()
-    const { name, eta, countryId } = body
+    const { name, eta } = body
 
     if (!name) {
       return NextResponse.json({ error: "name is required" }, { status: 400 })
@@ -28,7 +28,6 @@ export async function PUT(req: NextRequest, { params }: Params) {
     await updateEvent(id, {
       name: String(name),
       eta: String(eta ?? ""),
-      countryId: countryId ? Number(countryId) : null,
     })
 
     return NextResponse.json({ success: true })

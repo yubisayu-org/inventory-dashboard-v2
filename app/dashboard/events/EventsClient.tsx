@@ -1,17 +1,16 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import type { CountryRow, EventRow } from "@/lib/db"
+import type { EventRow } from "@/lib/db"
 import DataGrid, { type ColumnDef } from "@/components/DataGrid"
 
-const EMPTY_FORM = { name: "", eta: "", countryId: "" }
+const EMPTY_FORM = { name: "", eta: "" }
 
 const formInputCls = "border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
 const modalInputCls = "w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors disabled:opacity-50"
 
 export default function EventsClient() {
   const [data, setData] = useState<EventRow[] | null>(null)
-  const [countries, setCountries] = useState<CountryRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -25,15 +24,10 @@ export default function EventsClient() {
     setLoading(true)
     setError(null)
     try {
-      const [evRes, coRes] = await Promise.all([
-        fetch("/api/sheets/events"),
-        fetch("/api/sheets/countries"),
-      ])
-      const [evJson, coJson] = await Promise.all([evRes.json(), coRes.json()])
-      if (!evRes.ok) throw new Error(evJson.error ?? "Failed to load events")
-      if (!coRes.ok) throw new Error(coJson.error ?? "Failed to load countries")
-      setData(evJson.rows as EventRow[])
-      setCountries(coJson.rows as CountryRow[])
+      const res = await fetch("/api/sheets/events")
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? "Failed to load events")
+      setData(json.rows as EventRow[])
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load")
     } finally {
@@ -54,7 +48,6 @@ export default function EventsClient() {
         body: JSON.stringify({
           name: form.name.trim(),
           eta: form.eta.trim(),
-          countryId: form.countryId ? Number(form.countryId) : null,
         }),
       })
       const json = await res.json()
@@ -71,7 +64,7 @@ export default function EventsClient() {
   function field(key: keyof typeof EMPTY_FORM) {
     return {
       value: form[key],
-      onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+      onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
         setForm((f) => ({ ...f, [key]: e.target.value })),
     }
   }
@@ -101,15 +94,6 @@ export default function EventsClient() {
     {
       accessorKey: "eta",
       header: "ETA",
-      filterFn: "textContains" as unknown as undefined,
-      cell: ({ getValue }) => {
-        const v = getValue<string>()
-        return <span className={v ? "text-foreground" : "text-gray-400"}>{v || "—"}</span>
-      },
-    },
-    {
-      accessorKey: "countryName",
-      header: "Country",
       filterFn: "textContains" as unknown as undefined,
       cell: ({ getValue }) => {
         const v = getValue<string>()
@@ -187,7 +171,7 @@ export default function EventsClient() {
       {/* Add form */}
       <form onSubmit={handleAdd} className="rounded-xl border border-cream-border bg-white p-5 flex flex-col gap-4">
         <div className="text-sm font-semibold text-foreground">Add Event</div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <input
             {...field("name")}
             placeholder="Event name"
@@ -201,14 +185,6 @@ export default function EventsClient() {
             disabled={adding}
             className={formInputCls}
           />
-          <select
-            {...field("countryId")}
-            disabled={adding}
-            className={formInputCls}
-          >
-            <option value="">No country</option>
-            {countries.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
         </div>
 
         <div className="flex items-center justify-end gap-3">
@@ -245,7 +221,6 @@ export default function EventsClient() {
       {editRow && (
         <EditEventModal
           row={editRow}
-          countries={countries}
           onSave={(updated) => {
             setData((prev) =>
               prev?.map((r) => r.id === editRow.id ? { ...r, ...updated } : r) ?? null
@@ -263,19 +238,16 @@ export default function EventsClient() {
 
 function EditEventModal({
   row,
-  countries,
   onSave,
   onCancel,
 }: {
   row: EventRow
-  countries: CountryRow[]
   onSave: (updated: Partial<EventRow>) => void
   onCancel: () => void
 }) {
   const [draft, setDraft] = useState({
     name: row.name,
     eta: row.eta,
-    countryId: row.countryId ? String(row.countryId) : "",
   })
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -286,7 +258,7 @@ function EditEventModal({
   function draftField(key: keyof typeof draft) {
     return {
       value: draft[key],
-      onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+      onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
         setDraft((d) => ({ ...d, [key]: e.target.value })),
       disabled: saving,
     }
@@ -295,7 +267,6 @@ function EditEventModal({
   async function handleSave() {
     setSaving(true)
     setSaveError(null)
-    const countryId = draft.countryId ? Number(draft.countryId) : null
     try {
       const res = await fetch(`/api/sheets/events/${row.id}`, {
         method: "PUT",
@@ -303,17 +274,13 @@ function EditEventModal({
         body: JSON.stringify({
           name: draft.name.trim(),
           eta: draft.eta.trim(),
-          countryId,
         }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? "Failed")
-      const country = countries.find((c) => c.id === countryId)
       onSave({
         name: draft.name.trim(),
         eta: draft.eta.trim(),
-        countryId,
-        countryName: country?.name ?? "",
       })
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Failed to save")
@@ -357,13 +324,6 @@ function EditEventModal({
               placeholder="ETA (e.g. 2026-06-15)"
               className={modalInputCls}
             />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-500">Country</span>
-            <select {...draftField("countryId")} className={modalInputCls}>
-              <option value="">No country</option>
-              {countries.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
           </label>
         </div>
 

@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json()
-    const { name, eta, countryId } = body
+    const { name, eta } = body
 
     if (!name) {
       return NextResponse.json({ error: "name is required" }, { status: 400 })
@@ -36,7 +36,6 @@ export async function POST(req: NextRequest) {
     const result = await addEvent({
       name: String(name),
       eta: String(eta ?? ""),
-      countryId: countryId ? Number(countryId) : null,
     })
 
     return NextResponse.json({ success: true, id: result.id })
