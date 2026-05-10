@@ -13,6 +13,7 @@ function computeFill(orders: ShoppingListOrder[], quantityBought: number) {
   let remaining = quantityBought
   const filled: ShoppingListOrder[] = []
   const unfilled: ShoppingListOrder[] = []
+  const totalOrdered = orders.reduce((s, o) => s + o.unit, 0)
   for (const o of orders) {
     if (remaining >= o.unit) {
       filled.push(o)
@@ -21,7 +22,8 @@ function computeFill(orders: ShoppingListOrder[], quantityBought: number) {
       unfilled.push(o)
     }
   }
-  return { filled, unfilled, excessUnits: remaining }
+  // Excess only when bought > total needed; leftover from skipped orders is not excess
+  return { filled, unfilled, excessUnits: Math.max(0, quantityBought - totalOrdered) }
 }
 
 export default function ShoppingListClient() {
@@ -214,6 +216,7 @@ function BuyModal({
   onSuccess: (filledOrderIds: number[]) => void
 }) {
   const [qty, setQty] = useState(String(item.totalUnits))
+  const [receipt, setReceipt] = useState("")
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
@@ -233,6 +236,7 @@ function BuyModal({
           productId: item.productId,
           productName: item.productName,
           quantityBought,
+          receipt: receipt.trim(),
         }),
       })
       const data = await res.json()
@@ -269,20 +273,35 @@ function BuyModal({
           </button>
         </div>
 
-        {/* Qty input */}
-        <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-medium text-gray-500">
-            Units bought <span className="text-gray-400">(needed: {item.totalUnits})</span>
-          </label>
-          <input
-            type="number"
-            min="1"
-            value={qty}
-            onChange={(e) => setQty(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") handleSubmit(); if (e.key === "Escape") onClose() }}
-            autoFocus
-            className="border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
-          />
+        {/* Qty + Receipt inputs */}
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium text-gray-500">
+              Units bought <span className="text-gray-400">(needed: {item.totalUnits})</span>
+            </label>
+            <input
+              type="number"
+              min="1"
+              value={qty}
+              onChange={(e) => setQty(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleSubmit(); if (e.key === "Escape") onClose() }}
+              autoFocus
+              className="border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium text-gray-500">
+              Receipt <span className="text-gray-400 font-normal">(optional)</span>
+            </label>
+            <input
+              type="text"
+              value={receipt}
+              onChange={(e) => setReceipt(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleSubmit(); if (e.key === "Escape") onClose() }}
+              placeholder="e.g. INV-001"
+              className="border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+            />
+          </div>
         </div>
 
         {/* Live preview */}
