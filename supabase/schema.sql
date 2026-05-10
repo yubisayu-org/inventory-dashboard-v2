@@ -34,6 +34,8 @@ CREATE TABLE customers (
   updated_at   TIMESTAMPTZ
 );
 
+CREATE INDEX idx_customers_instagram_normalized ON customers (lower(replace(instagram_id, '@', '')));
+
 CREATE TABLE products (
   id              SERIAL PRIMARY KEY,
   name            TEXT NOT NULL,
@@ -130,6 +132,7 @@ CREATE TABLE payments (
 );
 
 CREATE INDEX idx_payments_event_customer ON payments (event, lower(customer));
+CREATE INDEX idx_payments_customer_normalized ON payments (lower(replace(customer, '@', '')));
 
 CREATE TABLE adjustments (
   id          SERIAL PRIMARY KEY,
@@ -142,6 +145,7 @@ CREATE TABLE adjustments (
 );
 
 CREATE INDEX idx_adjustments_event_customer ON adjustments (event, lower(customer));
+CREATE INDEX idx_adjustments_customer_normalized ON adjustments (lower(replace(customer, '@', '')));
 
 CREATE TABLE refunds (
   id              SERIAL PRIMARY KEY,
