@@ -73,6 +73,10 @@ export interface InvoiceOrderLine {
   price: string
   subtotal: string
   unitArrive: number
+  // Raw fields for pre-filling the refund modal
+  orderId: number
+  productName: string
+  rawUnitPrice: number
 }
 
 export interface InvoiceShipment {
@@ -757,6 +761,9 @@ export async function getInvoiceForCustomer(instagramId: string): Promise<Invoic
       price: formatIdrNumber(r.unit_price),
       subtotal: formatIdrNumber(r.unit_price * r.unit),
       unitArrive: r.unit_arrive ?? 0,
+      orderId: r.id as number,
+      productName: r.product_name as string,
+      rawUnitPrice: r.unit_price as number,
     }))
 
     const totalUnit = orders.reduce((s, o) => s + o.unit, 0)
