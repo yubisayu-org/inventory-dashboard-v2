@@ -126,12 +126,12 @@ export default function ShoppingListClient() {
       cell: ({ row }) => (
         <button
           onClick={() => setBuyingItem(row.original)}
-          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md bg-green-50 text-green-700 hover:bg-green-100 transition-colors whitespace-nowrap"
+          title="Mark as bought"
+          className="text-gray-400 hover:text-green-600 transition-colors"
         >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M20 6 9 17l-5-5" />
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 5v14M5 12h14" />
           </svg>
-          Bought
         </button>
       ),
     },
