@@ -130,9 +130,12 @@ function CustomerBadge({ count, customers }: { count: number; customers: string[
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="text-xs text-gray-400 hover:text-brand transition-colors cursor-pointer"
+        className="inline-flex items-center gap-1 text-gray-400 hover:text-brand transition-colors cursor-pointer"
       >
-        · {count} {count === 1 ? "customer" : "customers"}
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
+        </svg>
+        <span className="text-xs">{count}</span>
       </button>
       {open && (
         <div className="absolute left-0 top-full mt-1 z-30 min-w-[140px] rounded-lg border border-cream-border bg-white shadow-lg py-1">
@@ -343,7 +346,6 @@ export default function ShoppingListClient() {
                 )
               }
 
-              // type === "item"
               return (
                 <tr
                   key={`${row.event}|${row.store}|${row.item.productId}`}
@@ -381,7 +383,8 @@ export default function ShoppingListClient() {
                       className="text-gray-400 hover:text-green-600 transition-colors"
                     >
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M12 5v14M5 12h14" />
+                        <circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" />
+                        <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
                       </svg>
                     </button>
                   </td>
