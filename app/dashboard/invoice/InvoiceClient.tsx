@@ -478,24 +478,21 @@ function RefundFromInvoiceModal({
   customer: string
   onClose: () => void
 }) {
-  const affectedUnitsDefault = Math.max(0, line.unit - line.unitArrive)
-  const defaultReason: RefundReason = affectedUnitsDefault > 0 ? "shipping_loss" : "other"
+  const unfulfilledUnits = Math.max(0, line.unit - line.unitArrive)
+  const defaultReason: RefundReason = unfulfilledUnits > 0 ? "shipping_loss" : "other"
 
   const [reason, setReason] = useState<RefundReason>(defaultReason)
-  const [affectedUnits, setAffectedUnits] = useState(String(affectedUnitsDefault || line.unit))
-  const [refundAmount, setRefundAmount] = useState(
-    String((affectedUnitsDefault || line.unit) * line.rawUnitPrice),
-  )
+  const [affectedUnits, setAffectedUnits] = useState(String(line.unit))
+  const [refundAmount, setRefundAmount] = useState(String(line.unit * line.rawUnitPrice))
   const [note, setNote] = useState("")
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
 
-  // Recalculate refund amount when affected units changes
   function handleAffectedUnitsChange(val: string) {
     setAffectedUnits(val)
     const n = Number(val)
-    if (Number.isFinite(n) && n > 0) {
+    if (Number.isFinite(n)) {
       setRefundAmount(String(n * line.rawUnitPrice))
     }
   }
@@ -597,7 +594,7 @@ function RefundFromInvoiceModal({
                   className={INPUT_CLASS}
                 />
                 <span className="text-xs text-gray-400">
-                  Auto: {Number(affectedUnits)} × Rp {new Intl.NumberFormat("id-ID").format(line.rawUnitPrice)}
+                  {Number(affectedUnits)} × Rp {new Intl.NumberFormat("id-ID").format(line.rawUnitPrice)}
                 </span>
               </label>
               <label className="flex flex-col gap-1">
