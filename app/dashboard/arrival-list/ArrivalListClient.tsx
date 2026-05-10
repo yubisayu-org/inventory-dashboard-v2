@@ -7,19 +7,19 @@ import { useSheetOptions } from "@/hooks/useSheetOptions"
 const INPUT_CLASS =
   "border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
 
-// Greedy FIFO fill — mirrors the server-side logic for live preview
+// Partial FIFO fill — mirrors the server-side markProductArrived logic.
+// Allocates oldest orders first; an order can be partially filled if remaining < pending.
 function computeFill(orders: ArrivalListOrder[], quantityArrived: number) {
   let remaining = quantityArrived
-  const filled: ArrivalListOrder[] = []
+  const filled: { order: ArrivalListOrder; allocated: number }[] = []
   const unfilled: ArrivalListOrder[] = []
   const totalPending = orders.reduce((s, o) => s + o.pending, 0)
   for (const o of orders) {
-    if (remaining >= o.pending) {
-      filled.push(o)
-      remaining -= o.pending
-    } else {
-      unfilled.push(o)
-    }
+    if (remaining <= 0) { unfilled.push(o); continue }
+    const allocate = Math.min(o.pending, remaining)
+    if (allocate <= 0) { unfilled.push(o); continue }
+    filled.push({ order: o, allocated: allocate })
+    remaining -= allocate
   }
   return { filled, unfilled, unassignedUnits: Math.max(0, quantityArrived - totalPending) }
 }
@@ -227,28 +227,10 @@ export default function ArrivalListClient() {
     fetchItems(selectedEvent || undefined)
   }, [fetchItems, selectedEvent])
 
-  function handleArrivedSuccess(item: ArrivalListItem, filledOrderIds: number[]) {
-    const remaining = item.orders.filter((o) => !filledOrderIds.includes(o.id))
-    if (remaining.length === 0) {
-      setItems((prev) =>
-        prev.filter((i) => !(i.event === item.event && i.productId === item.productId)),
-      )
-    } else {
-      setItems((prev) =>
-        prev.map((i) => {
-          if (i.event !== item.event || i.productId !== item.productId) return i
-          const uniqueCustomers = [...new Set(remaining.map((o) => o.customer))].sort()
-          return {
-            ...i,
-            orders: remaining,
-            orderIds: remaining.map((o) => o.id),
-            totalPending: remaining.reduce((sum, o) => sum + o.pending, 0),
-            customerCount: uniqueCustomers.length,
-            customers: uniqueCustomers,
-          }
-        }),
-      )
-    }
+  // Partial fills change multiple orders' pending qty in non-trivial ways.
+  // Refetching is simpler and more correct than incremental local state updates.
+  function handleArrivedSuccess() {
+    fetchItems(selectedEvent || undefined)
   }
 
   function toggleEvent(event: string) {
@@ -420,6 +402,11 @@ export default function ArrivalListClient() {
                   </td>
                   <td className="px-4 py-2.5 text-right">
                     <span className="tabular-nums font-bold text-foreground">{row.item.totalPending}</span>
+                    {row.item.totalPending < row.item.totalBought && (
+                      <span className="text-xs text-gray-400 font-normal tabular-nums" title="Partially arrived">
+                        {" "}/ {row.item.totalBought}
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-2.5">
                     <button
@@ -445,8 +432,8 @@ export default function ArrivalListClient() {
         <ArriveModal
           item={arrivingItem}
           onClose={() => setArrivingItem(null)}
-          onSuccess={(filledOrderIds) => {
-            handleArrivedSuccess(arrivingItem, filledOrderIds)
+          onSuccess={() => {
+            handleArrivedSuccess()
             setArrivingItem(null)
           }}
         />
@@ -464,7 +451,7 @@ function ArriveModal({
 }: {
   item: ArrivalListItem
   onClose: () => void
-  onSuccess: (filledOrderIds: number[]) => void
+  onSuccess: () => void
 }) {
   const [qty, setQty] = useState(String(item.totalPending))
   const [saving, setSaving] = useState(false)
@@ -489,7 +476,7 @@ function ArriveModal({
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "Failed to mark as arrived")
-      onSuccess(data.filledOrderIds ?? [])
+      onSuccess()
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Failed to mark as arrived")
     } finally {
@@ -539,12 +526,17 @@ function ArriveModal({
           <div className="flex flex-col gap-2 text-xs">
             {preview.filled.length > 0 && (
               <div>
-                <div className="font-medium text-gray-500 mb-1">Will mark as arrived ({preview.filled.reduce((s, o) => s + o.pending, 0)} units):</div>
+                <div className="font-medium text-gray-500 mb-1">Will mark as arrived ({preview.filled.reduce((s, f) => s + f.allocated, 0)} units):</div>
                 <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto pr-0.5">
-                  {preview.filled.map((o) => (
-                    <div key={o.id} className="flex items-center justify-between px-2 py-1 rounded-md bg-blue-50">
-                      <span className="text-blue-800 truncate">{o.customer}</span>
-                      <span className="text-blue-700 font-medium ml-2 shrink-0">{o.pending}×</span>
+                  {preview.filled.map((f) => (
+                    <div key={f.order.id} className="flex items-center justify-between px-2 py-1 rounded-md bg-blue-50">
+                      <span className="text-blue-800 truncate">{f.order.customer}</span>
+                      <span className="text-blue-700 font-medium ml-2 shrink-0 tabular-nums">
+                        {f.allocated}×
+                        {f.allocated < f.order.pending && (
+                          <span className="text-blue-600/70 font-normal"> of {f.order.pending}</span>
+                        )}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -558,7 +550,7 @@ function ArriveModal({
                   {preview.unfilled.map((o) => (
                     <div key={o.id} className="flex items-center justify-between px-2 py-1 rounded-md bg-gray-50">
                       <span className="text-gray-500 truncate">{o.customer}</span>
-                      <span className="text-gray-400 font-medium ml-2 shrink-0">{o.pending}×</span>
+                      <span className="text-gray-400 font-medium ml-2 shrink-0 tabular-nums">{o.pending}×</span>
                     </div>
                   ))}
                 </div>

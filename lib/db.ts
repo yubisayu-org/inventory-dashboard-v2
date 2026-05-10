@@ -1847,7 +1847,8 @@ export interface ArrivalListItem {
   productId: number
   productName: string
   store: string
-  totalPending: number
+  totalPending: number   // remaining to arrive
+  totalBought: number    // full quantity we bought (for partial-state display)
   customerCount: number
   customers: string[]
   orderIds: number[]
@@ -1868,6 +1869,7 @@ export async function getArrivalList(event?: string): Promise<ArrivalListItem[]>
           p.name AS product_name,
           p.store,
           SUM(o.unit_buy - COALESCE(o.unit_arrive, 0))::int AS total_pending,
+          SUM(o.unit_buy)::int AS total_bought,
           COUNT(DISTINCT o.customer)::int AS customer_count,
           ARRAY_AGG(DISTINCT o.customer ORDER BY o.customer) AS customers,
           ARRAY_AGG(o.id ORDER BY o.id) AS order_ids,
@@ -1894,6 +1896,7 @@ export async function getArrivalList(event?: string): Promise<ArrivalListItem[]>
           p.name AS product_name,
           p.store,
           SUM(o.unit_buy - COALESCE(o.unit_arrive, 0))::int AS total_pending,
+          SUM(o.unit_buy)::int AS total_bought,
           COUNT(DISTINCT o.customer)::int AS customer_count,
           ARRAY_AGG(DISTINCT o.customer ORDER BY o.customer) AS customers,
           ARRAY_AGG(o.id ORDER BY o.id) AS order_ids,
@@ -1919,6 +1922,7 @@ export async function getArrivalList(event?: string): Promise<ArrivalListItem[]>
     productName: r.product_name as string,
     store: r.store as string,
     totalPending: r.total_pending as number,
+    totalBought: r.total_bought as number,
     customerCount: r.customer_count as number,
     customers: r.customers as string[],
     orderIds: r.order_ids as number[],
@@ -1927,18 +1931,22 @@ export async function getArrivalList(event?: string): Promise<ArrivalListItem[]>
 }
 
 /**
- * Greedy FIFO fill — assigns arrived units to oldest pending orders first.
- * Each order is filled atomically (unit_arrive becomes equal to unit_buy)
- * only if the remaining quantity covers the full pending amount for that order.
+ * Partial-fill FIFO: shipments often arrive in batches, so allocate as much as
+ * possible to oldest pending orders first, even if it doesn't fully satisfy a
+ * single order line. An order can have unit_arrive < unit_buy and still appear
+ * in the arrival list with a reduced "pending" quantity.
  */
 export async function markProductArrived(data: {
   event: string
   productId: number
   quantityArrived: number
 }): Promise<{ filledOrderIds: number[]; unassignedUnits: number }> {
-  const orders = await sql`
+  type Row = { id: number; unitBuy: number; unitArrive: number; pending: number }
+  const orders = (await sql`
     SELECT
       id,
+      unit_buy::int AS "unitBuy",
+      COALESCE(unit_arrive, 0)::int AS "unitArrive",
       (unit_buy - COALESCE(unit_arrive, 0))::int AS pending
     FROM orders
     WHERE event = ${data.event}
@@ -1946,24 +1954,39 @@ export async function markProductArrived(data: {
       AND unit_buy IS NOT NULL
       AND (unit_arrive IS NULL OR unit_arrive < unit_buy)
     ORDER BY id ASC
-  `
+  `) as unknown as Row[]
 
   let remaining = data.quantityArrived
-  const filledIds: number[] = []
-  for (const o of orders as unknown as { id: number; pending: number }[]) {
-    if (remaining >= o.pending) {
-      filledIds.push(o.id)
-      remaining -= o.pending
-    }
+  const totalPending = orders.reduce((s, o) => s + o.pending, 0)
+  const updates: { id: number; newUnitArrive: number; fullyFilled: boolean }[] = []
+  for (const o of orders) {
+    if (remaining <= 0) break
+    const allocate = Math.min(o.pending, remaining)
+    if (allocate <= 0) continue
+    const newUnitArrive = o.unitArrive + allocate
+    updates.push({
+      id: o.id,
+      newUnitArrive,
+      fullyFilled: newUnitArrive >= o.unitBuy,
+    })
+    remaining -= allocate
+  }
+  const unassignedUnits = Math.max(0, data.quantityArrived - totalPending)
+
+  if (updates.length > 0) {
+    await sql.begin(async (tx) => {
+      for (const u of updates) {
+        await tx`
+          UPDATE orders
+          SET unit_arrive = ${u.newUnitArrive}, updated_at = NOW()
+          WHERE id = ${u.id}
+        `
+      }
+    })
   }
 
-  if (filledIds.length > 0) {
-    await sql`
-      UPDATE orders
-      SET unit_arrive = unit_buy, updated_at = NOW()
-      WHERE id = ANY(${filledIds})
-    `
+  return {
+    filledOrderIds: updates.filter((u) => u.fullyFilled).map((u) => u.id),
+    unassignedUnits,
   }
-
-  return { filledOrderIds: filledIds, unassignedUnits: remaining }
 }
