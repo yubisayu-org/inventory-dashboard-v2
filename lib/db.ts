@@ -1345,3 +1345,72 @@ export function calcAbroadPrice(input: {
     input.packingFee
   return { cogs, rawPrice, price: ceilTo5000(rawPrice) }
 }
+
+// ─── Shopping List ────────────────────────────────────────────────────────
+
+export interface ShoppingListItem {
+  event: string
+  productId: number
+  productName: string
+  store: string
+  totalUnits: number
+  customerCount: number
+  customers: string[]
+  orderIds: number[]
+}
+
+export async function getShoppingList(event?: string): Promise<ShoppingListItem[]> {
+  const rows = event
+    ? await sql`
+        SELECT
+          o.event,
+          o.product_id,
+          p.name AS product_name,
+          p.store,
+          SUM(o.unit)::int AS total_units,
+          COUNT(DISTINCT o.customer)::int AS customer_count,
+          ARRAY_AGG(DISTINCT o.customer ORDER BY o.customer) AS customers,
+          ARRAY_AGG(o.id ORDER BY o.id) AS order_ids
+        FROM orders o
+        JOIN products p ON p.id = o.product_id
+        WHERE o.unit_buy IS NULL AND o.event = ${event}
+        GROUP BY o.event, o.product_id, p.name, p.store
+        ORDER BY p.name, p.store
+      `
+    : await sql`
+        SELECT
+          o.event,
+          o.product_id,
+          p.name AS product_name,
+          p.store,
+          SUM(o.unit)::int AS total_units,
+          COUNT(DISTINCT o.customer)::int AS customer_count,
+          ARRAY_AGG(DISTINCT o.customer ORDER BY o.customer) AS customers,
+          ARRAY_AGG(o.id ORDER BY o.id) AS order_ids
+        FROM orders o
+        JOIN products p ON p.id = o.product_id
+        WHERE o.unit_buy IS NULL
+        GROUP BY o.event, o.product_id, p.name, p.store
+        ORDER BY o.event, p.name, p.store
+      `
+
+  return rows.map((r) => ({
+    event: r.event as string,
+    productId: r.product_id as number,
+    productName: r.product_name as string,
+    store: r.store as string,
+    totalUnits: r.total_units as number,
+    customerCount: r.customer_count as number,
+    customers: r.customers as string[],
+    orderIds: r.order_ids as number[],
+  }))
+}
+
+export async function markOrdersAsBought(orderIds: number[]): Promise<void> {
+  if (orderIds.length === 0) return
+  await sql`
+    UPDATE orders
+    SET unit_buy = unit, updated_at = NOW()
+    WHERE id = ANY(${orderIds}) AND unit_buy IS NULL
+  `
+}
