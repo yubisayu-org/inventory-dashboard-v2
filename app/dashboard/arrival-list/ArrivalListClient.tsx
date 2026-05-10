@@ -132,7 +132,11 @@ function CustomerBadge({ orders }: { orders: { customer: string; qty: number }[]
         setOpen(false)
       }
     }
-    function onScroll() { setOpen(false) }
+    function onScroll(e: Event) {
+      // Ignore scrolls inside the popup itself
+      if (popupRef.current?.contains(e.target as Node)) return
+      setOpen(false)
+    }
     document.addEventListener("pointerdown", onPointerDown)
     window.addEventListener("scroll", onScroll, true)
     return () => {
