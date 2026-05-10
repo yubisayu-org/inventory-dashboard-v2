@@ -16,6 +16,8 @@ import {
   type Table as TanTable,
   type Row,
   type RowSelectionState,
+  type PaginationState,
+  type OnChangeFn,
 } from "@tanstack/react-table"
 import { useState, useRef, useEffect, useCallback, useMemo } from "react"
 
@@ -56,7 +58,27 @@ export { numericFilter, textContainsFilter, booleanFilter }
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
-export type { ColumnDef, Row, RowSelectionState }
+export type { ColumnDef, Row, RowSelectionState, SortingState, ColumnFiltersState, PaginationState }
+
+/** Server-side mode — data is already filtered/sorted/paginated by the server */
+export interface ServerSideConfig {
+  /** Total row count from server (for pagination) */
+  rowCount: number
+  /** Show loading overlay during fetch */
+  loading?: boolean
+  /** Controlled sorting state */
+  sorting: SortingState
+  onSortingChange: OnChangeFn<SortingState>
+  /** Controlled column filters state */
+  columnFilters: ColumnFiltersState
+  onColumnFiltersChange: OnChangeFn<ColumnFiltersState>
+  /** Controlled global filter (search) state */
+  globalFilter: string
+  onGlobalFilterChange: OnChangeFn<string>
+  /** Controlled pagination state */
+  pagination: PaginationState
+  onPaginationChange: OnChangeFn<PaginationState>
+}
 
 interface DataGridProps<T> {
   data: T[]
@@ -78,6 +100,8 @@ interface DataGridProps<T> {
   rowSelection?: RowSelectionState
   /** Callback when row selection changes */
   onRowSelectionChange?: (selection: RowSelectionState) => void
+  /** Server-side mode configuration */
+  serverSide?: ServerSideConfig
 }
 
 // ─── Component ─────────────────────────────────────────────────────────────
@@ -94,7 +118,9 @@ export default function DataGrid<T>({
   enableRowSelection,
   rowSelection: controlledRowSelection,
   onRowSelectionChange,
+  serverSide,
 }: DataGridProps<T>) {
+  // Client-side state (ignored when serverSide is provided)
   const [sorting, setSorting] = useState<SortingState>(initialSorting ?? [])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(initialVisibility ?? {})
@@ -108,25 +134,44 @@ export default function DataGrid<T>({
     else setInternalRowSelection(next)
   }, [controlledRowSelection, internalRowSelection, onRowSelectionChange])
 
+  const ss = serverSide
+
   const table = useReactTable({
     data,
     columns,
-    state: { sorting, columnFilters, columnVisibility, globalFilter, ...(enableRowSelection ? { rowSelection } : {}) },
-    onSortingChange: setSorting,
-    onColumnFiltersChange: setColumnFilters,
+    state: {
+      sorting: ss ? ss.sorting : sorting,
+      columnFilters: ss ? ss.columnFilters : columnFilters,
+      columnVisibility,
+      globalFilter: ss ? ss.globalFilter : globalFilter,
+      ...(ss ? { pagination: ss.pagination } : {}),
+      ...(enableRowSelection ? { rowSelection } : {}),
+    },
+    onSortingChange: ss ? ss.onSortingChange : setSorting,
+    onColumnFiltersChange: ss ? ss.onColumnFiltersChange : setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
-    onGlobalFilterChange: setGlobalFilter,
-    ...(enableRowSelection ? { enableRowSelection: true, onRowSelectionChange: setRowSelection } : {}),
+    onGlobalFilterChange: ss ? ss.onGlobalFilterChange : setGlobalFilter,
+    ...(ss ? {
+      onPaginationChange: ss.onPaginationChange,
+      manualFiltering: true,
+      manualSorting: true,
+      manualPagination: true,
+      rowCount: ss.rowCount,
+      autoResetPageIndex: false,
+    } : {}),
     getCoreRowModel: getCoreRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
+    ...(!ss ? {
+      getFilteredRowModel: getFilteredRowModel(),
+      getSortedRowModel: getSortedRowModel(),
+      getPaginationRowModel: getPaginationRowModel(),
+    } : {}),
+    ...(enableRowSelection ? { enableRowSelection: true, onRowSelectionChange: setRowSelection } : {}),
     getRowId: getRowId as ((row: T) => string) | undefined,
-    initialState: { pagination: { pageSize } },
+    ...(!ss ? { initialState: { pagination: { pageSize } } } : {}),
     filterFns: { numeric: numericFilter, textContains: textContainsFilter, boolean: booleanFilter },
   })
 
-  const totalRows = table.getFilteredRowModel().rows.length
+  const totalRows = ss ? ss.rowCount : table.getFilteredRowModel().rows.length
   const pageCount = table.getPageCount()
   const currentPage = table.getState().pagination.pageIndex + 1
 
@@ -142,8 +187,8 @@ export default function DataGrid<T>({
           </svg>
           <input
             type="text"
-            value={globalFilter}
-            onChange={(e) => setGlobalFilter(e.target.value)}
+            value={table.getState().globalFilter ?? ""}
+            onChange={(e) => table.setGlobalFilter(e.target.value)}
             placeholder={searchPlaceholder}
             className="border border-cream-border rounded-lg pl-8 pr-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors w-56"
           />
@@ -164,7 +209,15 @@ export default function DataGrid<T>({
 
       {/* Table */}
       <div className="rounded-xl border border-cream-border bg-white overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto relative">
+          {ss?.loading && data.length > 0 && (
+            <div className="absolute inset-0 bg-white/60 z-10 flex items-center justify-center">
+              <svg className="animate-spin h-5 w-5 text-brand" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            </div>
+          )}
           <table className="w-full text-sm" style={{ tableLayout: "auto" }}>
             <thead>
               {table.getHeaderGroups().map((hg) => (
