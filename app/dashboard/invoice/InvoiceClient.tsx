@@ -478,12 +478,18 @@ function RefundFromInvoiceModal({
   customer: string
   onClose: () => void
 }) {
+  // Resolve unit price: use raw if valid, otherwise parse the formatted string ("390.000" → 390000)
+  const unitPrice =
+    Number(line.rawUnitPrice) > 0
+      ? Number(line.rawUnitPrice)
+      : Number(String(line.price ?? "").replace(/\D/g, "")) || 0
+
   const unfulfilledUnits = Math.max(0, line.unit - line.unitArrive)
   const defaultReason: RefundReason = unfulfilledUnits > 0 ? "shipping_loss" : "other"
 
   const [reason, setReason] = useState<RefundReason>(defaultReason)
   const [affectedUnits, setAffectedUnits] = useState(String(line.unit))
-  const [refundAmount, setRefundAmount] = useState(String(line.unit * line.rawUnitPrice))
+  const [refundAmount, setRefundAmount] = useState(String(line.unit * unitPrice))
   const [note, setNote] = useState("")
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -493,7 +499,7 @@ function RefundFromInvoiceModal({
     setAffectedUnits(val)
     const n = Number(val)
     if (Number.isFinite(n)) {
-      setRefundAmount(String(n * line.rawUnitPrice))
+      setRefundAmount(String(n * unitPrice))
     }
   }
 
@@ -535,7 +541,9 @@ function RefundFromInvoiceModal({
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="text-sm font-semibold text-foreground">Create Refund</div>
-            <div className="text-xs text-gray-400 mt-0.5">{line.productName} × {line.unit}</div>
+            <div className="text-xs text-gray-400 mt-0.5">
+              {line.productName || (line.order ?? "").replace(/ x \d+$/, "")} × {line.unit}
+            </div>
           </div>
           <button type="button" onClick={onClose} className="text-gray-400 hover:text-brand transition-colors shrink-0">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
@@ -594,7 +602,7 @@ function RefundFromInvoiceModal({
                   className={INPUT_CLASS}
                 />
                 <span className="text-xs text-gray-400">
-                  {Number(affectedUnits)} × Rp {new Intl.NumberFormat("id-ID").format(line.rawUnitPrice)}
+                  {Number(affectedUnits)} × Rp {new Intl.NumberFormat("id-ID").format(unitPrice)}
                 </span>
               </label>
               <label className="flex flex-col gap-1">
