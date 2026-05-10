@@ -1319,6 +1319,66 @@ export async function deleteCountry(id: number): Promise<void> {
   await sql`DELETE FROM countries WHERE id = ${id}`
 }
 
+// ─── Events ───────────────────────────────────────────────────────────────
+
+export interface EventRow {
+  id: number
+  name: string
+  eta: string
+  countryId: number | null
+  countryName: string
+  createdAt: string
+  updatedAt: string
+}
+
+export async function getEvents(): Promise<EventRow[]> {
+  const rows = await sql`
+    SELECT e.id, e.name, e.eta, e.country_id, c.name AS country_name,
+           e.created_at, e.updated_at
+    FROM events e
+    LEFT JOIN countries c ON c.id = e.country_id
+    ORDER BY e.id DESC
+  `
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    eta: r.eta ?? "",
+    countryId: r.country_id ?? null,
+    countryName: r.country_name ?? "",
+    createdAt: tsToString(r.created_at),
+    updatedAt: tsToString(r.updated_at),
+  }))
+}
+
+export async function addEvent(data: {
+  name: string
+  eta: string
+  countryId: number | null
+}): Promise<{ id: number }> {
+  const [row] = await sql`
+    INSERT INTO events (name, eta, country_id)
+    VALUES (${data.name}, ${data.eta}, ${data.countryId})
+    RETURNING id
+  `
+  return { id: row.id }
+}
+
+export async function updateEvent(
+  id: number,
+  data: { name: string; eta: string; countryId: number | null },
+): Promise<void> {
+  await sql`
+    UPDATE events
+    SET name = ${data.name}, eta = ${data.eta},
+        country_id = ${data.countryId}, updated_at = NOW()
+    WHERE id = ${id}
+  `
+}
+
+export async function deleteEvent(id: number): Promise<void> {
+  await sql`DELETE FROM events WHERE id = ${id}`
+}
+
 // ─── Price Calculation ─────────────────────────────────────────────────────
 
 /** Round up to the nearest multiple of 5000 */
