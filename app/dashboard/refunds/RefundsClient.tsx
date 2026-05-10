@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import type { RefundRow, RefundReason, RefundStatus } from "@/lib/db"
+import type { OverpaymentCandidate, RefundRow, RefundReason, RefundStatus } from "@/lib/db"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 
 const INPUT_CLASS =
@@ -50,6 +50,7 @@ function formatRp(n: number) {
 export default function RefundsClient() {
   const options = useSheetOptions()
   const [rows, setRows] = useState<RefundRow[]>([])
+  const [candidates, setCandidates] = useState<OverpaymentCandidate[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [tab, setTab] = useState<RefundStatus>("pending")
@@ -57,22 +58,67 @@ export default function RefundsClient() {
   const [search, setSearch] = useState("")
   const [creating, setCreating] = useState(false)
   const [editRow, setEditRow] = useState<RefundRow | null>(null)
+  const [creatingCandidates, setCreatingCandidates] = useState<Set<string>>(new Set())
 
   const fetchRows = useCallback(() => {
     setLoading(true)
     const params = new URLSearchParams()
     if (selectedEvent) params.set("event", selectedEvent)
-    fetch(`/api/sheets/refunds?${params}`, { cache: "no-store" })
-      .then((r) => r.json())
-      .then((data: { rows?: RefundRow[]; error?: string }) => {
-        if (data.error) throw new Error(data.error)
-        setRows(data.rows ?? [])
+    Promise.all([
+      fetch(`/api/sheets/refunds?${params}`, { cache: "no-store" }).then((r) => r.json()),
+      fetch("/api/sheets/refunds/overpayments", { cache: "no-store" }).then((r) => r.json()),
+    ])
+      .then(([refundsData, candidatesData]) => {
+        if (refundsData.error) throw new Error(refundsData.error)
+        setRows(refundsData.rows ?? [])
+        setCandidates(candidatesData.candidates ?? [])
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"))
       .finally(() => setLoading(false))
   }, [selectedEvent])
 
   useEffect(() => { fetchRows() }, [fetchRows])
+
+  async function createFromCandidate(c: OverpaymentCandidate) {
+    const key = `${c.event}|${c.customer}`
+    setCreatingCandidates((prev) => new Set(prev).add(key))
+    try {
+      const res = await fetch("/api/sheets/refunds", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          event: c.event,
+          customer: c.customer,
+          reason: "overpayment",
+          refundAmount: c.overpayment,
+          note: `Auto-detected: paid Rp ${c.totalPaid.toLocaleString("id-ID")} of Rp ${c.invoiceTotal.toLocaleString("id-ID")}`,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "Failed")
+      setRows((prev) => [data.row, ...prev])
+      setCandidates((prev) => prev.filter((x) => !(x.event === c.event && x.customer === c.customer)))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create refund")
+    } finally {
+      setCreatingCandidates((prev) => {
+        const next = new Set(prev)
+        next.delete(key)
+        return next
+      })
+    }
+  }
+
+  async function createAllCandidates() {
+    for (const c of visibleCandidates) {
+      await createFromCandidate(c)
+    }
+  }
+
+  const visibleCandidates = useMemo(() => {
+    if (!selectedEvent) return candidates
+    return candidates.filter((c) => c.event === selectedEvent)
+  }, [candidates, selectedEvent])
 
   const doneStatuses: RefundStatus[] = ["refunded", "applied_to_next_order", "cancelled"]
 
@@ -152,7 +198,8 @@ export default function RefundsClient() {
       {/* Tabs */}
       <div className="flex border-b border-cream-border gap-0">
         {ACTIVE_TABS.map(({ key, label }) => {
-          const count = key === "refunded" ? counts.done : counts[key as RefundStatus]
+          const baseCount = key === "refunded" ? counts.done : counts[key as RefundStatus]
+          const count = key === "pending" ? (baseCount ?? 0) + visibleCandidates.length : baseCount
           const active = tab === key || (key === "refunded" && doneStatuses.includes(tab))
           return (
             <button
@@ -174,6 +221,59 @@ export default function RefundsClient() {
           )
         })}
       </div>
+
+      {/* Auto-detected overpayments — only on Pending tab */}
+      {tab === "pending" && visibleCandidates.length > 0 && (
+        <div className="rounded-xl border border-yellow-200 bg-yellow-50/50 overflow-hidden">
+          <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-yellow-200 bg-yellow-100/60">
+            <div className="flex items-center gap-2 text-sm">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-yellow-700">
+                <circle cx="12" cy="12" r="10" /><path d="M12 8v4" /><path d="M12 16h.01" />
+              </svg>
+              <span className="font-medium text-yellow-800">
+                {visibleCandidates.length} auto-detected overpayment{visibleCandidates.length === 1 ? "" : "s"}
+              </span>
+            </div>
+            {visibleCandidates.length > 1 && (
+              <button
+                onClick={createAllCandidates}
+                disabled={creatingCandidates.size > 0}
+                className="text-xs px-3 py-1.5 rounded-lg border border-yellow-300 text-yellow-800 hover:bg-yellow-100 disabled:opacity-50 transition-colors"
+              >
+                Create all ({visibleCandidates.length})
+              </button>
+            )}
+          </div>
+          <div className="divide-y divide-yellow-200/60">
+            {visibleCandidates.map((c) => {
+              const key = `${c.event}|${c.customer}`
+              const busy = creatingCandidates.has(key)
+              return (
+                <div key={key} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium text-foreground">{c.customer}</span>
+                      <span className="text-gray-500">·</span>
+                      <span className="text-gray-600">{c.event}</span>
+                    </div>
+                    <div className="text-xs text-gray-500 mt-0.5">
+                      paid {formatRp(c.totalPaid)} of {formatRp(c.invoiceTotal)} →{" "}
+                      <span className="font-semibold text-yellow-800">+{formatRp(c.overpayment)}</span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => createFromCandidate(c)}
+                    disabled={busy}
+                    className="shrink-0 text-xs px-3 py-1.5 rounded-lg bg-yellow-600 text-white font-medium hover:bg-yellow-700 disabled:opacity-50 transition-colors"
+                  >
+                    {busy ? "Creating…" : "+ Create"}
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Table */}
       <div className="rounded-xl border border-cream-border bg-white overflow-hidden">

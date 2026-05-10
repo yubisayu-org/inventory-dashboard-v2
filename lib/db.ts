@@ -149,6 +149,14 @@ export interface RefundRow {
   updatedAt: string | null
 }
 
+export interface OverpaymentCandidate {
+  event: string
+  customer: string
+  invoiceTotal: number
+  totalPaid: number
+  overpayment: number
+}
+
 export interface ShipCustomer {
   customer: string
   event: string
@@ -1716,4 +1724,66 @@ export async function executeRefund(
 
 export async function deleteRefund(id: number): Promise<void> {
   await sql`DELETE FROM refunds WHERE id = ${id} AND status != 'refunded'`
+}
+
+/**
+ * Find (event, customer) pairs where total checked payments > invoice total,
+ * excluding pairs that already have an active overpayment refund.
+ * Mirrors the invoice math in getInvoiceForCustomer.
+ */
+export async function getOverpaymentCandidates(): Promise<OverpaymentCandidate[]> {
+  const rows = await sql`
+    WITH order_aggregates AS (
+      SELECT
+        o.event,
+        o.customer,
+        SUM(o.unit_price * o.unit) AS subtotal,
+        SUM(COALESCE(p.gram, 0) * o.unit) AS total_gram
+      FROM orders o
+      JOIN products p ON p.id = o.product_id
+      GROUP BY o.event, o.customer
+    ),
+    payment_aggregates AS (
+      SELECT event, customer, SUM(amount) AS total_paid
+      FROM payments
+      WHERE is_checked = true
+      GROUP BY event, customer
+    ),
+    adjustment_aggregates AS (
+      SELECT event, customer, SUM(amount) AS total_adj
+      FROM adjustments
+      GROUP BY event, customer
+    )
+    SELECT
+      oa.event,
+      oa.customer,
+      (oa.subtotal
+        + COALESCE(c.ongkos_kirim, 0) * CEIL(oa.total_gram::numeric / 1000)
+        + COALESCE(adj.total_adj, 0))::int AS invoice_total,
+      COALESCE(pa.total_paid, 0)::int AS total_paid
+    FROM order_aggregates oa
+    LEFT JOIN customers c ON c.instagram_id = oa.customer
+    LEFT JOIN payment_aggregates pa ON pa.event = oa.event AND pa.customer = oa.customer
+    LEFT JOIN adjustment_aggregates adj ON adj.event = oa.event AND adj.customer = oa.customer
+    LEFT JOIN refunds r ON r.event = oa.event AND r.customer = oa.customer
+      AND r.reason = 'overpayment' AND r.status != 'cancelled'
+    WHERE r.id IS NULL
+      AND COALESCE(pa.total_paid, 0) > (
+        oa.subtotal
+        + COALESCE(c.ongkos_kirim, 0) * CEIL(oa.total_gram::numeric / 1000)
+        + COALESCE(adj.total_adj, 0)
+      )
+    ORDER BY (COALESCE(pa.total_paid, 0) - (
+      oa.subtotal
+      + COALESCE(c.ongkos_kirim, 0) * CEIL(oa.total_gram::numeric / 1000)
+      + COALESCE(adj.total_adj, 0)
+    )) DESC
+  `
+  return rows.map((r) => ({
+    event: r.event as string,
+    customer: r.customer as string,
+    invoiceTotal: r.invoice_total as number,
+    totalPaid: r.total_paid as number,
+    overpayment: (r.total_paid as number) - (r.invoice_total as number),
+  }))
 }
