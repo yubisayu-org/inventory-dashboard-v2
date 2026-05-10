@@ -44,7 +44,6 @@ export default function DataTable() {
   const [totalCount, setTotalCount] = useState(0)
 
   // -- UI state --
-  const [addDrawerOpen, setAddDrawerOpen] = useState(false)
   const [editingRow, setEditingRow] = useState<FormRow | null>(null)
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
   const [bulkDeleting, setBulkDeleting] = useState(false)
@@ -240,18 +239,6 @@ export default function DataTable() {
           <path d="M21 12a9 9 0 1 1-6.22-8.56" /><polyline points="21 3 21 9 15 9" />
         </svg>
       </button>
-
-      <button
-        onClick={() => { setAddDrawerOpen((o) => !o); setEditingRow(null) }}
-        className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg transition-colors ${
-          addDrawerOpen ? "bg-brand-light text-brand border border-brand/30" : "bg-brand text-white hover:bg-brand-hover"
-        }`}
-      >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-          <path d="M12 5v14M5 12h14" />
-        </svg>
-        Add Order
-      </button>
     </>
   )
 
@@ -271,47 +258,42 @@ export default function DataTable() {
   }
 
   return (
-    <div className="flex gap-4 items-start">
-      <div className="flex-1 min-w-0">
-        {fetchState.refreshError && (
-          <div className="flex items-center justify-between gap-3 px-4 py-2 mb-3 rounded-lg border border-red-200 bg-red-50 text-xs text-red-600">
-            <span>Refresh failed: {fetchState.refreshError}</span>
-            <button onClick={refresh} className="underline hover:no-underline shrink-0">Retry</button>
-          </div>
-        )}
+    <div className="flex flex-col gap-6">
+      <AddOrderForm
+        options={options}
+        onOrderAdded={() => refreshRef.current()}
+      />
 
-        <DataGrid
-          data={rows}
-          columns={columns}
-          getRowId={(row) => String(row.rowNumber)}
-          searchPlaceholder="Search orders..."
-          toolbarExtra={toolbarExtra}
-          initialVisibility={{ note: false, createdAt: false, updatedAt: false }}
-          enableRowSelection
-          rowSelection={rowSelection}
-          onRowSelectionChange={setRowSelection}
-          serverSide={{
-            rowCount: totalCount,
-            loading: fetchState.loading,
-            sorting,
-            onSortingChange: handleSortingChange,
-            columnFilters,
-            onColumnFiltersChange: handleColumnFiltersChange,
-            globalFilter,
-            onGlobalFilterChange: handleGlobalFilterChange,
-            pagination,
-            onPaginationChange: setPagination,
-          }}
-        />
-      </div>
-
-      {addDrawerOpen && (
-        <AddOrderDrawer
-          options={options}
-          onClose={() => setAddDrawerOpen(false)}
-          onOrderAdded={() => refreshRef.current()}
-        />
+      {fetchState.refreshError && (
+        <div className="flex items-center justify-between gap-3 px-4 py-2 rounded-lg border border-red-200 bg-red-50 text-xs text-red-600">
+          <span>Refresh failed: {fetchState.refreshError}</span>
+          <button onClick={refresh} className="underline hover:no-underline shrink-0">Retry</button>
+        </div>
       )}
+
+      <DataGrid
+        data={rows}
+        columns={columns}
+        getRowId={(row) => String(row.rowNumber)}
+        searchPlaceholder="Search orders..."
+        toolbarExtra={toolbarExtra}
+        initialVisibility={{ note: false, createdAt: false, updatedAt: false }}
+        enableRowSelection
+        rowSelection={rowSelection}
+        onRowSelectionChange={setRowSelection}
+        serverSide={{
+          rowCount: totalCount,
+          loading: fetchState.loading,
+          sorting,
+          onSortingChange: handleSortingChange,
+          columnFilters,
+          onColumnFiltersChange: handleColumnFiltersChange,
+          globalFilter,
+          onGlobalFilterChange: handleGlobalFilterChange,
+          pagination,
+          onPaginationChange: setPagination,
+        }}
+      />
 
       {editingRow && (
         <EditOrderModal
@@ -554,15 +536,14 @@ function EditOrderModal({ row, options, onClose, onSaved, onDelete }: {
 }
 
 // ---------------------------------------------------------------------------
-// Add Order Drawer
+// Add Order Form (above table)
 // ---------------------------------------------------------------------------
 
 let _addLineId = 0
 function newAddLine() { return { id: _addLineId++, productId: "", unit: "", note: "" } }
 
-function AddOrderDrawer({ options, onClose, onOrderAdded }: {
+function AddOrderForm({ options, onOrderAdded }: {
   options: SheetOptions | null
-  onClose: () => void
   onOrderAdded: () => void
 }) {
   const [event, setEvent] = useState("")
@@ -619,20 +600,15 @@ function AddOrderDrawer({ options, onClose, onOrderAdded }: {
   }
 
   const LABEL = "text-xs text-gray-500 mb-1 block"
-  const DINPUT = "w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
 
   return (
-    <div className="w-80 shrink-0 rounded-xl border border-cream-border bg-white flex flex-col sticky top-6 max-h-[calc(100vh-6rem)] overflow-y-auto">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-cream-border sticky top-0 bg-white z-10">
-        <h3 className="text-sm font-semibold text-foreground">New Order</h3>
-        <button onClick={onClose} className="text-gray-400 hover:text-brand transition-colors p-0.5 rounded">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-        </button>
-      </div>
-      <form onSubmit={handleSubmit} className="p-4 space-y-4">
+    <form onSubmit={handleSubmit} className="rounded-xl border border-cream-border bg-white p-5 flex flex-col gap-4">
+      <div className="text-sm font-semibold text-foreground">Add Order</div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
           <label className={LABEL}>Event <span className="text-brand">*</span></label>
-          <select value={event} onChange={(e) => { setEvent(e.target.value); setFeedback(null) }} required className={DINPUT}>
+          <select value={event} onChange={(e) => { setEvent(e.target.value); setFeedback(null) }} required className={INPUT_CLS}>
             <option value="">Select event...</option>
             {(options?.events ?? []).map((ev) => <option key={ev} value={ev}>{ev}</option>)}
           </select>
@@ -647,26 +623,17 @@ function AddOrderDrawer({ options, onClose, onOrderAdded }: {
             allowNewValue
           />
         </div>
-        <div>
-          <div className="flex items-center justify-between mb-1.5">
-            <label className={LABEL + " mb-0"}>Items <span className="text-brand">*</span></label>
-            <button type="button" onClick={addLine} className="text-xs text-brand hover:underline">+ Add item</button>
-          </div>
-          <div className="space-y-3">
-            {lines.map((line, idx) => (
-              <div key={line.id} className="rounded-lg border border-cream-border p-2.5 space-y-2 relative">
-                {lines.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => removeLine(line.id)}
-                    className="absolute top-2 right-2 text-gray-300 hover:text-red-400 transition-colors"
-                    aria-label="Remove"
-                  >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                      <path d="M18 6 6 18M6 6l12 12" />
-                    </svg>
-                  </button>
-                )}
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <span className={LABEL + " mb-0"}>Items <span className="text-brand">*</span></span>
+          <button type="button" onClick={addLine} className="text-xs text-brand hover:underline">+ Add item</button>
+        </div>
+        <div className="space-y-3">
+          {lines.map((line, idx) => (
+            <div key={line.id} className="rounded-lg border border-cream-border p-3 relative">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto_auto]">
                 <div>
                   <label className={LABEL}>Item {lines.length > 1 ? idx + 1 : ""}</label>
                   <SearchableSelect
@@ -676,29 +643,42 @@ function AddOrderDrawer({ options, onClose, onOrderAdded }: {
                     placeholder="Search item..."
                   />
                 </div>
-                <div className="flex gap-2">
-                  <div className="flex-1">
-                    <label className={LABEL}>Unit</label>
-                    <input type="number" min="1" value={line.unit} onChange={(e) => updateLine(line.id, "unit", e.target.value)} placeholder="Qty" className={DINPUT} />
-                  </div>
-                  <div className="flex-1">
-                    <label className={LABEL}>Note</label>
-                    <input type="text" value={line.note} onChange={(e) => updateLine(line.id, "note", e.target.value)} placeholder="Optional" className={DINPUT} />
-                  </div>
+                <div className="w-24">
+                  <label className={LABEL}>Qty</label>
+                  <input type="number" min="1" value={line.unit} onChange={(e) => updateLine(line.id, "unit", e.target.value)} placeholder="Qty" className={INPUT_CLS} />
+                </div>
+                <div className="w-32">
+                  <label className={LABEL}>Note</label>
+                  <input type="text" value={line.note} onChange={(e) => updateLine(line.id, "note", e.target.value)} placeholder="Optional" className={INPUT_CLS} />
                 </div>
               </div>
-            ))}
-          </div>
+              {lines.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => removeLine(line.id)}
+                  className="absolute top-2 right-2 text-gray-300 hover:text-red-400 transition-colors"
+                  aria-label="Remove"
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <path d="M18 6 6 18M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          ))}
         </div>
+      </div>
+
+      <div className="flex items-center justify-end gap-3">
         {feedback && <p className={`text-xs ${feedback.type === "success" ? "text-green-600" : "text-red-600"}`}>{feedback.message}</p>}
         <button
           type="submit"
           disabled={submitting || !canSubmit}
-          className="w-full py-2 text-sm font-medium rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {submitting ? "Saving..." : `Submit ${lines.length > 1 ? `${lines.length} Orders` : "Order"}`}
         </button>
-      </form>
-    </div>
+      </div>
+    </form>
   )
 }
