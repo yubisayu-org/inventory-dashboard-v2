@@ -27,6 +27,9 @@ CREATE TABLE customers (
   data_diri    TEXT NOT NULL DEFAULT '',
   ekspedisi    TEXT NOT NULL DEFAULT '',
   ongkos_kirim INTEGER NOT NULL DEFAULT 0,
+  bank_name           TEXT NOT NULL DEFAULT '',
+  bank_account_number TEXT NOT NULL DEFAULT '',
+  bank_account_holder TEXT NOT NULL DEFAULT '',
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at   TIMESTAMPTZ
 );
@@ -139,3 +142,26 @@ CREATE TABLE adjustments (
 );
 
 CREATE INDEX idx_adjustments_event_customer ON adjustments (event, lower(customer));
+
+CREATE TABLE refunds (
+  id              SERIAL PRIMARY KEY,
+  event           TEXT NOT NULL REFERENCES events(name) ON UPDATE CASCADE ON DELETE RESTRICT,
+  customer        TEXT NOT NULL REFERENCES customers(instagram_id) ON UPDATE CASCADE ON DELETE RESTRICT,
+  reason          TEXT NOT NULL DEFAULT 'overpayment',
+  refund_amount   INTEGER NOT NULL DEFAULT 0,
+  status          TEXT NOT NULL DEFAULT 'pending',
+  bank_name           TEXT NOT NULL DEFAULT '',
+  bank_account_number TEXT NOT NULL DEFAULT '',
+  bank_account_holder TEXT NOT NULL DEFAULT '',
+  transfer_reference  TEXT NOT NULL DEFAULT '',
+  payment_id     INTEGER REFERENCES payments(id) ON DELETE SET NULL,
+  order_id       INTEGER REFERENCES orders(id) ON DELETE SET NULL,
+  affected_units INTEGER NOT NULL DEFAULT 0,
+  note       TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ
+);
+
+CREATE INDEX idx_refunds_event_customer ON refunds (event, lower(customer));
+CREATE INDEX idx_refunds_status ON refunds (status);
+CREATE INDEX idx_refunds_customer ON refunds (lower(customer));
