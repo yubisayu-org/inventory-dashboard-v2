@@ -42,10 +42,8 @@ export default function InvoiceClient() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<InvoiceResult | null>(null)
-  const [searched, setSearched] = useState(false)
+  // Initialize empty to match SSR; hydrate from localStorage after mount
   const [recent, setRecent] = useState<string[]>([])
-
-  // Hydrate recent list on mount
   useEffect(() => { setRecent(loadRecent()) }, [])
 
   const customerOptions = useMemo(
@@ -60,13 +58,11 @@ export default function InvoiceClient() {
     setLoading(true)
     setError(null)
     setResult(null)
-    setSearched(true)
     try {
       const res = await fetch(`/api/sheets/invoice?customer=${encodeURIComponent(trimmed)}`, { cache: "no-store" })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "Failed to load")
       setResult(data as InvoiceResult)
-      // Promote this customer to top of recents
       setRecent((prev) => {
         const next = [trimmed, ...prev.filter((c) => c !== trimmed)].slice(0, RECENT_MAX)
         saveRecent(next)
@@ -131,7 +127,7 @@ export default function InvoiceClient() {
         </div>
       )}
 
-      {!loading && !error && searched && result && result.events.length === 0 && (
+      {!loading && !error && result && result.events.length === 0 && (
         <div className="mt-4 rounded-xl border border-cream-border bg-white p-8 text-center text-gray-400 text-sm">
           No orders found for &quot;{query}&quot;.
         </div>
