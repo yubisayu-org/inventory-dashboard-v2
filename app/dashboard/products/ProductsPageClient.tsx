@@ -86,6 +86,12 @@ export default function ProductsPageClient() {
 
   const columns = useMemo<ColumnDef<ProductRow, unknown>[]>(() => [
     {
+      accessorKey: "id",
+      header: "ID",
+      enableColumnFilter: false,
+      size: 60,
+    },
+    {
       accessorKey: "name",
       header: "Name",
       filterFn: "textContains" as unknown as undefined,
@@ -245,7 +251,9 @@ export default function ProductsPageClient() {
           getRowId={(row) => String(row.id)}
           searchPlaceholder="Search name, store…"
           toolbarExtra={refreshButton}
+          initialSorting={[{ id: "id", desc: true }]}
           initialVisibility={{
+            id: false,
             kurs: false,
             cargoPerKg: false,
             operationalFee: false,
