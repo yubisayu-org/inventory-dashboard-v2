@@ -118,6 +118,31 @@ export interface CustomerDetail {
   dataDiri: string
   ekspedisi: string
   ongkosKirim: number
+  bankName: string
+  bankAccountNumber: string
+  bankAccountHolder: string
+}
+
+export type RefundReason = "overpayment" | "unavailable" | "shipping_loss" | "damaged" | "goodwill" | "other"
+export type RefundStatus = "pending" | "awaiting_bank_info" | "ready_to_refund" | "refunded" | "applied_to_next_order" | "cancelled"
+
+export interface RefundRow {
+  id: number
+  event: string
+  customer: string
+  reason: RefundReason
+  refundAmount: number
+  status: RefundStatus
+  bankName: string
+  bankAccountNumber: string
+  bankAccountHolder: string
+  transferReference: string
+  paymentId: number | null
+  orderId: number | null
+  affectedUnits: number
+  note: string
+  createdAt: string | null
+  updatedAt: string | null
 }
 
 export interface ShipCustomer {
@@ -548,7 +573,8 @@ export async function deleteExcessRow(rowNumber: number): Promise<void> {
 export async function lookupCustomerDetail(instagramId: string): Promise<CustomerDetail | null> {
   const searchId = normalizeId(instagramId)
   const rows = await sql`
-    SELECT whatsapp, data_diri, ekspedisi, ongkos_kirim
+    SELECT whatsapp, data_diri, ekspedisi, ongkos_kirim,
+           bank_name, bank_account_number, bank_account_holder
     FROM customers
     WHERE lower(replace(instagram_id, '@', '')) = ${searchId}
     LIMIT 1
@@ -560,7 +586,25 @@ export async function lookupCustomerDetail(instagramId: string): Promise<Custome
     dataDiri: r.data_diri ?? "",
     ekspedisi: r.ekspedisi ?? "",
     ongkosKirim: r.ongkos_kirim ?? 0,
+    bankName: r.bank_name ?? "",
+    bankAccountNumber: r.bank_account_number ?? "",
+    bankAccountHolder: r.bank_account_holder ?? "",
   }
+}
+
+export async function updateCustomerBankInfo(
+  instagramId: string,
+  data: { bankName: string; bankAccountNumber: string; bankAccountHolder: string },
+): Promise<void> {
+  const searchId = normalizeId(instagramId)
+  await sql`
+    UPDATE customers
+    SET bank_name           = ${data.bankName},
+        bank_account_number = ${data.bankAccountNumber},
+        bank_account_holder = ${data.bankAccountHolder},
+        updated_at          = NOW()
+    WHERE lower(replace(instagram_id, '@', '')) = ${searchId}
+  `
 }
 
 // ─── Invoice ────────────────────────────────────────────────────────────────
@@ -828,6 +872,9 @@ async function fetchCustomerDetails(customerIds: Set<string>): Promise<Map<strin
         dataDiri: r.data_diri ?? "",
         ekspedisi: r.ekspedisi ?? "",
         ongkosKirim: r.ongkos_kirim ?? 0,
+        bankName: r.bank_name ?? "",
+        bankAccountNumber: r.bank_account_number ?? "",
+        bankAccountHolder: r.bank_account_holder ?? "",
       })
     }
   }
@@ -1523,4 +1570,143 @@ export async function markProductBought(data: {
   })
 
   return { filledOrderIds: filledIds, excessUnits }
+}
+
+// ─── Refunds ─────────────────────────────────────────────────────────────────
+
+function mapRefundRow(r: Record<string, unknown>): RefundRow {
+  return {
+    id: r.id as number,
+    event: r.event as string,
+    customer: r.customer as string,
+    reason: r.reason as RefundReason,
+    refundAmount: r.refund_amount as number,
+    status: r.status as RefundStatus,
+    bankName: (r.bank_name as string) ?? "",
+    bankAccountNumber: (r.bank_account_number as string) ?? "",
+    bankAccountHolder: (r.bank_account_holder as string) ?? "",
+    transferReference: (r.transfer_reference as string) ?? "",
+    paymentId: (r.payment_id as number | null) ?? null,
+    orderId: (r.order_id as number | null) ?? null,
+    affectedUnits: (r.affected_units as number) ?? 0,
+    note: (r.note as string) ?? "",
+    createdAt: tsToString(r.created_at as Date | null | undefined),
+    updatedAt: tsToString(r.updated_at as Date | null | undefined),
+  }
+}
+
+export async function getRefunds(filters?: { event?: string; status?: string; customer?: string }): Promise<RefundRow[]> {
+  const conditions: string[] = []
+  const params: (string | number)[] = []
+
+  if (filters?.event) {
+    params.push(filters.event)
+    conditions.push(`r.event = $${params.length}`)
+  }
+  if (filters?.status) {
+    params.push(filters.status)
+    conditions.push(`r.status = $${params.length}`)
+  }
+  if (filters?.customer) {
+    params.push(normalizeId(filters.customer))
+    conditions.push(`lower(replace(r.customer, '@', '')) = $${params.length}`)
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""
+  const rows = await sql.unsafe(
+    `SELECT r.* FROM refunds r ${where} ORDER BY r.created_at DESC`,
+    params,
+  )
+  return rows.map(mapRefundRow)
+}
+
+export async function createRefund(data: {
+  event: string
+  customer: string
+  reason: RefundReason
+  refundAmount: number
+  orderId?: number | null
+  affectedUnits?: number
+  note?: string
+}): Promise<RefundRow> {
+  const customer = normalizeCustomer(data.customer)
+  const [row] = await sql`
+    INSERT INTO refunds (event, customer, reason, refund_amount, order_id, affected_units, note)
+    VALUES (
+      ${data.event}, ${customer}, ${data.reason}, ${data.refundAmount},
+      ${data.orderId ?? null}, ${data.affectedUnits ?? 0}, ${data.note ?? ""}
+    )
+    RETURNING *
+  `
+  return mapRefundRow(row)
+}
+
+export async function updateRefund(
+  id: number,
+  data: Partial<{
+    status: RefundStatus
+    refundAmount: number
+    bankName: string
+    bankAccountNumber: string
+    bankAccountHolder: string
+    transferReference: string
+    note: string
+  }>,
+): Promise<void> {
+  const fields: string[] = []
+  const params: (string | number)[] = []
+
+  if (data.status !== undefined) { params.push(data.status); fields.push(`status = $${params.length}`) }
+  if (data.refundAmount !== undefined) { params.push(data.refundAmount); fields.push(`refund_amount = $${params.length}`) }
+  if (data.bankName !== undefined) { params.push(data.bankName); fields.push(`bank_name = $${params.length}`) }
+  if (data.bankAccountNumber !== undefined) { params.push(data.bankAccountNumber); fields.push(`bank_account_number = $${params.length}`) }
+  if (data.bankAccountHolder !== undefined) { params.push(data.bankAccountHolder); fields.push(`bank_account_holder = $${params.length}`) }
+  if (data.transferReference !== undefined) { params.push(data.transferReference); fields.push(`transfer_reference = $${params.length}`) }
+  if (data.note !== undefined) { params.push(data.note); fields.push(`note = $${params.length}`) }
+
+  if (fields.length === 0) return
+  params.push(id)
+  await sql.unsafe(
+    `UPDATE refunds SET ${fields.join(", ")}, updated_at = NOW() WHERE id = $${params.length}`,
+    params as (string | number)[],
+  )
+}
+
+export async function executeRefund(
+  refundId: number,
+  transferReference: string,
+): Promise<void> {
+  const [refund] = await sql`SELECT * FROM refunds WHERE id = ${refundId}`
+  if (!refund) throw new Error("Refund not found")
+  if (refund.status === "refunded") throw new Error("Refund already executed")
+
+  await sql.begin(async (tx) => {
+    const [payment] = await tx`
+      INSERT INTO payments (event, customer, amount, account, is_checked, remarks)
+      VALUES (
+        ${refund.event as string},
+        ${refund.customer as string},
+        ${-(refund.refund_amount as number)},
+        ${refund.bank_account_number as string},
+        true,
+        ${`Refund: ${refund.reason}`}
+      )
+      RETURNING id
+    `
+    await tx`
+      UPDATE refunds
+      SET status             = 'refunded',
+          transfer_reference = ${transferReference},
+          bank_name          = ${refund.bank_name as string},
+          bank_account_number = ${refund.bank_account_number as string},
+          bank_account_holder = ${refund.bank_account_holder as string},
+          payment_id         = ${payment.id as number},
+          updated_at         = NOW()
+      WHERE id = ${refundId}
+    `
+  })
+}
+
+export async function deleteRefund(id: number): Promise<void> {
+  await sql`DELETE FROM refunds WHERE id = ${id} AND status != 'refunded'`
 }
