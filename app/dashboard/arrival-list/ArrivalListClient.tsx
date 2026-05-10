@@ -110,41 +110,84 @@ function CollapseBtn({ collapsed, onClick }: { collapsed: boolean; onClick: () =
   )
 }
 
-function CustomerBadge({ count, customers }: { count: number; customers: string[] }) {
+function CustomerBadge({ orders }: { orders: { customer: string; qty: number }[] }) {
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLSpanElement>(null)
+  const [popupStyle, setPopupStyle] = useState<React.CSSProperties>({})
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const popupRef = useRef<HTMLDivElement>(null)
+
+  const entries = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const o of orders) map.set(o.customer, (map.get(o.customer) ?? 0) + o.qty)
+    return [...map.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([customer, qty]) => ({ customer, qty }))
+  }, [orders])
 
   useEffect(() => {
     if (!open) return
     function onPointerDown(e: PointerEvent) {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false)
+      const target = e.target as Node
+      if (!triggerRef.current?.contains(target) && !popupRef.current?.contains(target)) {
+        setOpen(false)
+      }
     }
+    function onScroll() { setOpen(false) }
     document.addEventListener("pointerdown", onPointerDown)
-    return () => document.removeEventListener("pointerdown", onPointerDown)
+    window.addEventListener("scroll", onScroll, true)
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown)
+      window.removeEventListener("scroll", onScroll, true)
+    }
   }, [open])
 
+  function handleToggle() {
+    if (!open && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect()
+      const POPUP_HEIGHT = 260
+      const spaceBelow = window.innerHeight - rect.bottom
+      const flipUp = spaceBelow < POPUP_HEIGHT && rect.top > POPUP_HEIGHT
+      setPopupStyle({
+        position: "fixed",
+        top: flipUp ? rect.top - POPUP_HEIGHT - 4 : rect.bottom + 4,
+        left: rect.left,
+        minWidth: 200,
+      })
+    }
+    setOpen((o) => !o)
+  }
+
   return (
-    <span ref={ref} className="relative inline-block">
+    <>
       <button
+        ref={triggerRef}
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={handleToggle}
         className="inline-flex items-center gap-1 text-gray-400 hover:text-brand transition-colors cursor-pointer"
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
         </svg>
-        <span className="text-xs">{count}</span>
+        <span className="text-xs">{entries.length}</span>
       </button>
       {open && (
-        <div className="absolute left-0 top-full mt-1 z-30 min-w-[140px] max-h-64 overflow-y-auto rounded-lg border border-cream-border bg-white shadow-lg py-1">
-          {customers.map((c) => (
-            <div key={c} className="px-3 py-1 text-xs text-foreground hover:bg-gray-50 whitespace-nowrap">
-              {c}
+        <div
+          ref={popupRef}
+          style={popupStyle}
+          className="z-50 max-h-64 overflow-y-auto rounded-lg border border-cream-border bg-white shadow-lg py-1"
+        >
+          {entries.map((e) => (
+            <div
+              key={e.customer}
+              className="flex items-center justify-between gap-3 px-3 py-1 text-xs hover:bg-gray-50 whitespace-nowrap"
+            >
+              <span className="text-foreground truncate">{e.customer}</span>
+              <span className="text-gray-500 tabular-nums shrink-0">{e.qty}×</span>
             </div>
           ))}
         </div>
       )}
-    </span>
+    </>
   )
 }
 
@@ -366,7 +409,9 @@ export default function ArrivalListClient() {
                   <td className="px-4 py-2.5">
                     <div className="flex items-baseline gap-1.5">
                       <span className="text-foreground">{row.item.productName}</span>
-                      <CustomerBadge count={row.item.customerCount} customers={row.item.customers} />
+                      <CustomerBadge
+                        orders={row.item.orders.map((o) => ({ customer: o.customer, qty: o.pending }))}
+                      />
                     </div>
                   </td>
                   <td className="px-4 py-2.5 text-right">
