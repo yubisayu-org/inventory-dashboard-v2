@@ -1,8 +1,9 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import type { DashboardSummary, DashboardEvent } from "@/lib/db"
+import { fetchJson } from "@/lib/api-fetch"
 
 function formatRp(n: number): string {
   return `Rp ${new Intl.NumberFormat("id-ID").format(n)}`
@@ -34,19 +35,18 @@ export default function DashboardClient() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setLoading(true)
+    setError(null)
     let active = true
-    fetch("/api/sheets/dashboard", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((data: DashboardSummary & { error?: string }) => {
-        if (!active) return
-        if (data.error) throw new Error(data.error)
-        setSummary(data)
-      })
+    fetchJson<DashboardSummary>("/api/sheets/dashboard")
+      .then((data) => active && setSummary(data))
       .catch((err) => active && setError(err instanceof Error ? err.message : "Failed to load"))
       .finally(() => active && setLoading(false))
     return () => { active = false }
   }, [])
+
+  useEffect(() => load(), [load])
 
   if (loading) {
     return (
@@ -58,8 +58,14 @@ export default function DashboardClient() {
 
   if (error || !summary) {
     return (
-      <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-sm text-red-700">
-        {error ?? "Failed to load"}
+      <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-sm text-red-700 flex items-center justify-between gap-3">
+        <span>{error ?? "Failed to load"}</span>
+        <button
+          onClick={load}
+          className="text-xs px-3 py-1.5 rounded-lg border border-red-300 text-red-700 hover:bg-red-100 transition-colors shrink-0"
+        >
+          Retry
+        </button>
       </div>
     )
   }
