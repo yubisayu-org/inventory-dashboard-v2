@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { ShoppingListItem, ShoppingListOrder } from "@/lib/db"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 
@@ -109,6 +109,41 @@ function CollapseBtn({ collapsed, onClick }: { collapsed: boolean; onClick: () =
     >
       {collapsed ? "+" : "−"}
     </button>
+  )
+}
+
+function CustomerBadge({ count, customers }: { count: number; customers: string[] }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLSpanElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function onPointerDown(e: PointerEvent) {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener("pointerdown", onPointerDown)
+    return () => document.removeEventListener("pointerdown", onPointerDown)
+  }, [open])
+
+  return (
+    <span ref={ref} className="relative inline-block">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="text-xs text-gray-400 hover:text-brand transition-colors cursor-pointer"
+      >
+        · {count} {count === 1 ? "customer" : "customers"}
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full mt-1 z-30 min-w-[140px] rounded-lg border border-cream-border bg-white shadow-lg py-1">
+          {customers.map((c) => (
+            <div key={c} className="px-3 py-1 text-xs text-foreground hover:bg-gray-50 whitespace-nowrap">
+              {c}
+            </div>
+          ))}
+        </div>
+      )}
+    </span>
   )
 }
 
@@ -331,14 +366,9 @@ export default function ShoppingListClient() {
                     </td>
                   )}
                   <td className="px-4 py-2.5">
-                    <div className="flex flex-col gap-0.5">
+                    <div className="flex items-baseline gap-1.5">
                       <span className="text-foreground">{row.item.productName}</span>
-                      <span
-                        className="text-xs text-gray-400 cursor-help"
-                        title={row.item.customers.join(", ")}
-                      >
-                        {row.item.customerCount} {row.item.customerCount === 1 ? "customer" : "customers"}
-                      </span>
+                      <CustomerBadge count={row.item.customerCount} customers={row.item.customers} />
                     </div>
                   </td>
                   <td className="px-4 py-2.5 text-right">
