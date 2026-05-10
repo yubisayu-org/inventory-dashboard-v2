@@ -503,6 +503,7 @@ function ProductActions({
 }) {
   const [editing, setEditing] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [recalculating, setRecalculating] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
   async function handleDelete() {
@@ -520,6 +521,52 @@ function ProductActions({
     }
   }
 
+  async function handleRecalculate() {
+    const country = countries.find((c) => c.id === row.countryId)
+    if (!country) return
+    const { price } = calcAbroadPrice({
+      valas: row.valas,
+      kurs: country.kurs,
+      gram: row.gram,
+      cargoPerKg: country.cargoPerKg,
+      profitPct: row.profitPct,
+      operationalFee: row.operationalFee,
+      packingFee: row.packingFee,
+    })
+    if (price === row.price && country.kurs === row.kurs && country.cargoPerKg === row.cargoPerKg) return
+    if (!confirm(`Recalculate price for "${row.name}"?\n\nRp ${fmt(row.price)} → Rp ${fmt(price)}\n(using current kurs ${fmt(country.kurs)})`)) return
+    setRecalculating(true)
+    setSaveError(null)
+    try {
+      const res = await fetch(`/api/sheets/products/${row.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: row.name,
+          store: row.store,
+          price,
+          gram: row.gram,
+          countryId: row.countryId,
+          valas: row.valas,
+          kurs: country.kurs,
+          cargoPerKg: country.cargoPerKg,
+          profitPct: row.profitPct,
+          operationalFee: row.operationalFee,
+          packingFee: row.packingFee,
+          cost: row.cost,
+          profitFixed: row.profitFixed,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? "Failed")
+      onUpdated({ price, kurs: country.kurs, cargoPerKg: country.cargoPerKg })
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Failed to recalculate")
+    } finally {
+      setRecalculating(false)
+    }
+  }
+
   if (editing) {
     return (
       <EditProductModal
@@ -534,6 +581,19 @@ function ProductActions({
 
   return (
     <div className="flex gap-2 items-center">
+      {isAbroad(row) && (
+        <button
+          type="button"
+          onClick={handleRecalculate}
+          disabled={recalculating}
+          title="Recalculate price from current kurs"
+          className="text-gray-400 hover:text-amber-500 disabled:opacity-50 transition-colors"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 12a9 9 0 1 1-6.22-8.56" /><polyline points="21 3 21 9 15 9" />
+          </svg>
+        </button>
+      )}
       <button type="button" onClick={() => { setSaveError(null); setEditing(true) }} title="Edit" className="text-gray-400 hover:text-brand transition-colors">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
