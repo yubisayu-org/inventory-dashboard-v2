@@ -136,7 +136,7 @@ function CustomerBadge({ count, customers }: { count: number; customers: string[
         <span className="text-xs">{count}</span>
       </button>
       {open && (
-        <div className="absolute left-0 top-full mt-1 z-30 min-w-[140px] rounded-lg border border-cream-border bg-white shadow-lg py-1">
+        <div className="absolute left-0 top-full mt-1 z-30 min-w-[140px] max-h-64 overflow-y-auto rounded-lg border border-cream-border bg-white shadow-lg py-1">
           {customers.map((c) => (
             <div key={c} className="px-3 py-1 text-xs text-foreground hover:bg-gray-50 whitespace-nowrap">
               {c}
@@ -454,7 +454,7 @@ function ArriveModal({
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-xl border border-cream-border shadow-xl w-full max-w-sm flex flex-col gap-5 p-6"
+        className="bg-white rounded-xl border border-cream-border shadow-xl w-full max-w-sm flex flex-col gap-5 p-6 max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3">
@@ -491,7 +491,7 @@ function ArriveModal({
             {preview.filled.length > 0 && (
               <div>
                 <div className="font-medium text-gray-500 mb-1">Will mark as arrived ({preview.filled.reduce((s, o) => s + o.pending, 0)} units):</div>
-                <div className="flex flex-col gap-0.5">
+                <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto pr-0.5">
                   {preview.filled.map((o) => (
                     <div key={o.id} className="flex items-center justify-between px-2 py-1 rounded-md bg-blue-50">
                       <span className="text-blue-800 truncate">{o.customer}</span>
@@ -505,7 +505,7 @@ function ArriveModal({
             {preview.unfilled.length > 0 && (
               <div>
                 <div className="font-medium text-gray-500 mb-1">Stays in list ({preview.unfilled.reduce((s, o) => s + o.pending, 0)} units):</div>
-                <div className="flex flex-col gap-0.5">
+                <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto pr-0.5">
                   {preview.unfilled.map((o) => (
                     <div key={o.id} className="flex items-center justify-between px-2 py-1 rounded-md bg-gray-50">
                       <span className="text-gray-500 truncate">{o.customer}</span>
