@@ -1476,3 +1476,46 @@ export async function markOrdersAsBought(orderIds: number[]): Promise<void> {
     WHERE id = ANY(${orderIds}) AND unit_buy IS NULL
   `
 }
+
+export async function markProductBought(data: {
+  event: string
+  productId: number
+  productName: string
+  quantityBought: number
+}): Promise<{ filledOrderIds: number[]; excessUnits: number }> {
+  // Re-fetch unbought orders from DB to avoid race conditions, sorted FIFO
+  const orders = await sql`
+    SELECT id, unit::int AS unit FROM orders
+    WHERE event = ${data.event} AND product_id = ${data.productId} AND unit_buy IS NULL
+    ORDER BY id ASC
+  `
+
+  // Greedy fill: take each order if it fits within remaining budget
+  let remaining = data.quantityBought
+  const filledIds: number[] = []
+  for (const o of orders) {
+    const unit = o.unit as number
+    if (remaining >= unit) {
+      filledIds.push(o.id as number)
+      remaining -= unit
+    }
+  }
+  const excessUnits = remaining
+
+  await sql.begin(async (tx) => {
+    if (filledIds.length > 0) {
+      await tx`
+        UPDATE orders SET unit_buy = unit, updated_at = NOW()
+        WHERE id = ANY(${filledIds}) AND unit_buy IS NULL
+      `
+    }
+    if (excessUnits > 0) {
+      await tx`
+        INSERT INTO excess_purchase (event, items, unit_buy, receipt)
+        VALUES (${data.event}, ${data.productName}, ${excessUnits}, '')
+      `
+    }
+  })
+
+  return { filledOrderIds: filledIds, excessUnits }
+}

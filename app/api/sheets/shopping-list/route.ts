@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { getShoppingList, markOrdersAsBought } from "@/lib/db"
+import { getShoppingList, markProductBought } from "@/lib/db"
 
 export async function GET(req: NextRequest) {
   const { session, error: authError } = await requireSession()
@@ -26,12 +26,12 @@ export async function POST(req: NextRequest) {
   if (roleError) return roleError
 
   try {
-    const { orderIds } = await req.json()
-    if (!Array.isArray(orderIds) || orderIds.length === 0) {
-      return NextResponse.json({ error: "orderIds is required" }, { status: 400 })
+    const { event, productId, productName, quantityBought } = await req.json()
+    if (!event || !productId || !productName || typeof quantityBought !== "number" || quantityBought < 1) {
+      return NextResponse.json({ error: "event, productId, productName and quantityBought are required" }, { status: 400 })
     }
-    await markOrdersAsBought(orderIds)
-    return NextResponse.json({ success: true })
+    const result = await markProductBought({ event, productId: Number(productId), productName, quantityBought })
+    return NextResponse.json({ success: true, ...result })
   } catch (err) {
     console.error("Failed to mark orders as bought:", err)
     return NextResponse.json({ error: "Failed to mark as bought" }, { status: 500 })
