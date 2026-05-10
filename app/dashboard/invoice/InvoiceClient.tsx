@@ -1,29 +1,62 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import type { CustomerDetail, InvoiceEvent, InvoiceOrderLine, InvoiceResult, RefundReason } from "@/lib/db"
 import { useCopyFeedback } from "@/hooks/useCopyFeedback"
 import { useResizableColumns } from "@/hooks/useResizableColumns"
+import { useSheetOptions } from "@/hooks/useSheetOptions"
+import SearchableSelect from "@/components/SearchableSelect"
 
 function formatNumber(n: number | null | undefined): string {
   const v = Number(n)
   return new Intl.NumberFormat("id-ID").format(Number.isFinite(v) ? v : 0)
 }
 
-const FIELD =
-  "w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+const RECENT_KEY = "invoice:recent-customers"
+const RECENT_MAX = 5
+
+function loadRecent(): string[] {
+  if (typeof window === "undefined") return []
+  try {
+    const raw = window.localStorage.getItem(RECENT_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : []
+  } catch {
+    return []
+  }
+}
+
+function saveRecent(list: string[]) {
+  if (typeof window === "undefined") return
+  try {
+    window.localStorage.setItem(RECENT_KEY, JSON.stringify(list))
+  } catch {
+    // ignore quota / privacy errors
+  }
+}
 
 export default function InvoiceClient() {
+  const options = useSheetOptions()
   const [query, setQuery] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<InvoiceResult | null>(null)
   const [searched, setSearched] = useState(false)
+  const [recent, setRecent] = useState<string[]>([])
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    const trimmed = query.trim()
+  // Hydrate recent list on mount
+  useEffect(() => { setRecent(loadRecent()) }, [])
+
+  const customerOptions = useMemo(
+    () => (options?.customers ?? []).map((c) => ({ value: c, label: c })),
+    [options?.customers],
+  )
+
+  const runSearch = useCallback(async (rawValue: string) => {
+    const trimmed = rawValue.trim()
     if (!trimmed) return
+    setQuery(trimmed)
     setLoading(true)
     setError(null)
     setResult(null)
@@ -33,35 +66,64 @@ export default function InvoiceClient() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "Failed to load")
       setResult(data as InvoiceResult)
+      // Promote this customer to top of recents
+      setRecent((prev) => {
+        const next = [trimmed, ...prev.filter((c) => c !== trimmed)].slice(0, RECENT_MAX)
+        saveRecent(next)
+        return next
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load")
     } finally {
       setLoading(false)
     }
+  }, [])
+
+  function handleClearRecent() {
+    setRecent([])
+    saveRecent([])
   }
 
   return (
     <div className="max-w-3xl">
-      <form
-        onSubmit={handleSubmit}
-        className="rounded-xl border border-cream-border bg-white p-4 flex gap-2 items-center"
-      >
-        <input
-          type="text"
+      <div className="rounded-xl border border-cream-border bg-white p-4 flex flex-col gap-3">
+        <SearchableSelect
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="@instagram_id"
-          autoComplete="off"
-          className={FIELD}
+          onChange={runSearch}
+          options={customerOptions}
+          placeholder="Type to search @instagram_id…"
+          allowNewValue
         />
-        <button
-          type="submit"
-          disabled={loading || !query.trim()}
-          className="shrink-0 px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
-          {loading ? "Searching…" : "Search"}
-        </button>
-      </form>
+
+        {recent.length > 0 && !result && !loading && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-gray-400 shrink-0">Recent:</span>
+            {recent.map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => runSearch(c)}
+                className="text-xs px-2.5 py-1 rounded-full border border-cream-border bg-cream/40 text-gray-700 hover:border-brand hover:text-brand transition-colors"
+              >
+                {c}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={handleClearRecent}
+              className="text-xs text-gray-400 hover:text-red-500 ml-auto transition-colors"
+            >
+              Clear
+            </button>
+          </div>
+        )}
+      </div>
+
+      {loading && (
+        <div className="mt-4 rounded-xl border border-cream-border bg-white p-8 text-center text-gray-400 text-sm">
+          Loading invoice…
+        </div>
+      )}
 
       {error && (
         <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
