@@ -1435,6 +1435,7 @@ export async function getShoppingList(event?: string): Promise<ShoppingListItem[
         JOIN products p ON p.id = o.product_id
         WHERE o.unit_buy IS NULL AND o.event = ${event}
         GROUP BY o.event, o.product_id, p.name, p.store
+        HAVING SUM(o.unit) > 0
         ORDER BY p.name, p.store
       `
     : await sql`
@@ -1452,6 +1453,7 @@ export async function getShoppingList(event?: string): Promise<ShoppingListItem[
         JOIN products p ON p.id = o.product_id
         WHERE o.unit_buy IS NULL
         GROUP BY o.event, o.product_id, p.name, p.store
+        HAVING SUM(o.unit) > 0
         ORDER BY o.event, p.name, p.store
       `
 
