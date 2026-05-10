@@ -1465,7 +1465,9 @@ export function calcAbroadPrice(input: {
 export interface ShoppingListOrder {
   id: number
   customer: string
-  unit: number
+  unit: number       // original ordered qty
+  unitBuy: number    // already bought (0 if none)
+  pending: number    // unit - unitBuy
 }
 
 export interface ShoppingListItem {
@@ -1473,7 +1475,8 @@ export interface ShoppingListItem {
   productId: number
   productName: string
   store: string
-  totalUnits: number
+  totalUnits: number      // remaining to buy
+  totalOriginal: number   // full ordered qty (for partial-state display)
   customerCount: number
   customers: string[]
   orderIds: number[]
@@ -1481,6 +1484,9 @@ export interface ShoppingListItem {
 }
 
 export async function getShoppingList(event?: string): Promise<ShoppingListItem[]> {
+  // Includes partially-bought orders (unit_buy < unit), not just untouched ones.
+  // Aggregations expose both the remaining-to-buy quantity and the full ordered
+  // quantity so the UI can show "5 / 10" when an order is partially fulfilled.
   const rows = event
     ? await sql`
         SELECT
@@ -1488,16 +1494,23 @@ export async function getShoppingList(event?: string): Promise<ShoppingListItem[
           o.product_id,
           p.name AS product_name,
           p.store,
-          SUM(o.unit)::int AS total_units,
+          SUM(o.unit - COALESCE(o.unit_buy, 0))::int AS total_pending,
+          SUM(o.unit)::int AS total_original,
           COUNT(DISTINCT o.customer)::int AS customer_count,
           ARRAY_AGG(DISTINCT o.customer ORDER BY o.customer) AS customers,
           ARRAY_AGG(o.id ORDER BY o.id) AS order_ids,
-          JSON_AGG(JSON_BUILD_OBJECT('id', o.id, 'customer', o.customer, 'unit', o.unit) ORDER BY o.customer, o.id) AS orders
+          JSON_AGG(JSON_BUILD_OBJECT(
+            'id', o.id,
+            'customer', o.customer,
+            'unit', o.unit,
+            'unitBuy', COALESCE(o.unit_buy, 0),
+            'pending', o.unit - COALESCE(o.unit_buy, 0)
+          ) ORDER BY o.customer, o.id) AS orders
         FROM orders o
         JOIN products p ON p.id = o.product_id
-        WHERE o.unit_buy IS NULL AND o.event = ${event}
+        WHERE (o.unit_buy IS NULL OR o.unit_buy < o.unit) AND o.event = ${event}
         GROUP BY o.event, o.product_id, p.name, p.store
-        HAVING SUM(o.unit) > 0
+        HAVING SUM(o.unit - COALESCE(o.unit_buy, 0)) > 0
         ORDER BY p.name, p.store
       `
     : await sql`
@@ -1506,16 +1519,23 @@ export async function getShoppingList(event?: string): Promise<ShoppingListItem[
           o.product_id,
           p.name AS product_name,
           p.store,
-          SUM(o.unit)::int AS total_units,
+          SUM(o.unit - COALESCE(o.unit_buy, 0))::int AS total_pending,
+          SUM(o.unit)::int AS total_original,
           COUNT(DISTINCT o.customer)::int AS customer_count,
           ARRAY_AGG(DISTINCT o.customer ORDER BY o.customer) AS customers,
           ARRAY_AGG(o.id ORDER BY o.id) AS order_ids,
-          JSON_AGG(JSON_BUILD_OBJECT('id', o.id, 'customer', o.customer, 'unit', o.unit) ORDER BY o.customer, o.id) AS orders
+          JSON_AGG(JSON_BUILD_OBJECT(
+            'id', o.id,
+            'customer', o.customer,
+            'unit', o.unit,
+            'unitBuy', COALESCE(o.unit_buy, 0),
+            'pending', o.unit - COALESCE(o.unit_buy, 0)
+          ) ORDER BY o.customer, o.id) AS orders
         FROM orders o
         JOIN products p ON p.id = o.product_id
-        WHERE o.unit_buy IS NULL
+        WHERE o.unit_buy IS NULL OR o.unit_buy < o.unit
         GROUP BY o.event, o.product_id, p.name, p.store
-        HAVING SUM(o.unit) > 0
+        HAVING SUM(o.unit - COALESCE(o.unit_buy, 0)) > 0
         ORDER BY o.event, p.name, p.store
       `
 
@@ -1524,7 +1544,8 @@ export async function getShoppingList(event?: string): Promise<ShoppingListItem[
     productId: r.product_id as number,
     productName: r.product_name as string,
     store: r.store as string,
-    totalUnits: r.total_units as number,
+    totalUnits: r.total_pending as number,
+    totalOriginal: r.total_original as number,
     customerCount: r.customer_count as number,
     customers: r.customers as string[],
     orderIds: r.order_ids as number[],
@@ -1548,32 +1569,52 @@ export async function markProductBought(data: {
   quantityBought: number
   receipt: string
 }): Promise<{ filledOrderIds: number[]; excessUnits: number }> {
-  // Re-fetch unbought orders from DB to avoid race conditions, sorted FIFO
-  const orders = await sql`
-    SELECT id, unit::int AS unit FROM orders
-    WHERE event = ${data.event} AND product_id = ${data.productId} AND unit_buy IS NULL
+  // Partial-fill (matches /api/sheets/purchasing distribute logic): allocate as
+  // much as possible to oldest pending orders first, even if it doesn't fully
+  // satisfy a single order line. An order can have unit_buy < unit and still
+  // appear in the shopping list with reduced "remaining" quantity.
+  type Row = { id: number; unit: number; unitBuy: number; receipt: string; pending: number }
+  const orders = (await sql`
+    SELECT
+      id,
+      unit::int AS unit,
+      COALESCE(unit_buy, 0)::int AS "unitBuy",
+      COALESCE(receipt, '') AS receipt,
+      (unit - COALESCE(unit_buy, 0))::int AS pending
+    FROM orders
+    WHERE event = ${data.event}
+      AND product_id = ${data.productId}
+      AND (unit_buy IS NULL OR unit_buy < unit)
     ORDER BY id ASC
-  `
+  `) as unknown as Row[]
 
-  // Greedy fill: take each order if it fits within remaining budget
   let remaining = data.quantityBought
-  const filledIds: number[] = []
-  const totalOrdered = (orders as unknown as { unit: number }[]).reduce((s, o) => s + o.unit, 0)
+  const totalPending = orders.reduce((s, o) => s + o.pending, 0)
+  const updates: { id: number; newUnitBuy: number; combinedReceipt: string; fullyFilled: boolean }[] = []
   for (const o of orders) {
-    const unit = o.unit as number
-    if (remaining >= unit) {
-      filledIds.push(o.id as number)
-      remaining -= unit
-    }
+    if (remaining <= 0) break
+    const allocate = Math.min(o.pending, remaining)
+    if (allocate <= 0) continue
+    const newUnitBuy = o.unitBuy + allocate
+    const combinedReceipt = data.receipt
+      ? (o.receipt ? `${o.receipt}, ${data.receipt}` : data.receipt)
+      : o.receipt
+    updates.push({
+      id: o.id,
+      newUnitBuy,
+      combinedReceipt,
+      fullyFilled: newUnitBuy >= o.unit,
+    })
+    remaining -= allocate
   }
-  // Excess only when bought > total needed; leftover from skipped orders is not excess
-  const excessUnits = Math.max(0, data.quantityBought - totalOrdered)
+  const excessUnits = Math.max(0, data.quantityBought - totalPending)
 
   await sql.begin(async (tx) => {
-    if (filledIds.length > 0) {
+    for (const u of updates) {
       await tx`
-        UPDATE orders SET unit_buy = unit, receipt = ${data.receipt}, updated_at = NOW()
-        WHERE id = ANY(${filledIds}) AND unit_buy IS NULL
+        UPDATE orders
+        SET unit_buy = ${u.newUnitBuy}, receipt = ${u.combinedReceipt}, updated_at = NOW()
+        WHERE id = ${u.id}
       `
     }
     if (excessUnits > 0) {
@@ -1584,7 +1625,10 @@ export async function markProductBought(data: {
     }
   })
 
-  return { filledOrderIds: filledIds, excessUnits }
+  return {
+    filledOrderIds: updates.filter((u) => u.fullyFilled).map((u) => u.id),
+    excessUnits,
+  }
 }
 
 // ─── Refunds ─────────────────────────────────────────────────────────────────
