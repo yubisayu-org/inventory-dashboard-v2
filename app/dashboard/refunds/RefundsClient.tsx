@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import type { OverpaymentCandidate, RefundRow, RefundReason, RefundStatus } from "@/lib/db"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
+import { fetchJson } from "@/lib/api-fetch"
 
 const INPUT_CLASS =
   "border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
@@ -63,14 +64,14 @@ export default function RefundsClient() {
 
   const fetchRows = useCallback(() => {
     setLoading(true)
+    setError("")
     const params = new URLSearchParams()
     if (selectedEvent) params.set("event", selectedEvent)
     Promise.all([
-      fetch(`/api/sheets/refunds?${params}`, { cache: "no-store" }).then((r) => r.json()),
-      fetch("/api/sheets/refunds/overpayments", { cache: "no-store" }).then((r) => r.json()),
+      fetchJson<{ rows: RefundRow[] }>(`/api/sheets/refunds?${params}`),
+      fetchJson<{ candidates: OverpaymentCandidate[] }>("/api/sheets/refunds/overpayments"),
     ])
       .then(([refundsData, candidatesData]) => {
-        if (refundsData.error) throw new Error(refundsData.error)
         setRows(refundsData.rows ?? [])
         setCandidates(candidatesData.candidates ?? [])
       })

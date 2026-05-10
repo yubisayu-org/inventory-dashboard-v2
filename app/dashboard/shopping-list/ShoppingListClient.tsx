@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { ShoppingListItem, ShoppingListOrder } from "@/lib/db"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import { allocateFifo } from "@/lib/fifo-fill"
+import { fetchJson } from "@/lib/api-fetch"
 
 const INPUT_CLASS =
   "border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
@@ -204,15 +205,12 @@ export default function ShoppingListClient() {
 
   const fetchItems = useCallback((event?: string) => {
     setLoading(true)
+    setError("")
     const url = event
       ? `/api/sheets/shopping-list?event=${encodeURIComponent(event)}`
       : "/api/sheets/shopping-list"
-    fetch(url, { cache: "no-store" })
-      .then((r) => r.json())
-      .then((data: { items?: ShoppingListItem[]; error?: string }) => {
-        if (data.error) throw new Error(data.error)
-        setItems(data.items ?? [])
-      })
+    fetchJson<{ items: ShoppingListItem[] }>(url)
+      .then((data) => setItems(data.items ?? []))
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"))
       .finally(() => setLoading(false))
   }, [])
@@ -271,8 +269,14 @@ export default function ShoppingListClient() {
 
   if (error) {
     return (
-      <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-red-500">
-        {error}
+      <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-sm text-red-700 flex items-center justify-between gap-3">
+        <span>{error}</span>
+        <button
+          onClick={() => fetchItems(selectedEvent || undefined)}
+          className="text-xs px-3 py-1.5 rounded-lg border border-red-300 text-red-700 hover:bg-red-100 transition-colors shrink-0"
+        >
+          Retry
+        </button>
       </div>
     )
   }
