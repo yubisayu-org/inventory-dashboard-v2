@@ -768,6 +768,27 @@ function RefundDetailModal({
               <div>Holder: <span className="font-medium">{row.bankAccountHolder}</span></div>
             </div>
           )}
+
+          {/* Cancelled / applied — allow reopening if pressed by mistake */}
+          {(row.status === "cancelled" || row.status === "applied_to_next_order") && (
+            <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-gray-50 border border-gray-200">
+              <div className="text-xs text-gray-600">
+                {row.status === "cancelled"
+                  ? "This refund was cancelled."
+                  : "This refund was applied to a next order."}
+                <br />
+                <span className="text-gray-400">Pressed by mistake? Reopen to continue processing.</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleStatusChange("pending")}
+                disabled={saving}
+                className="shrink-0 text-xs px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+              >
+                ↩ Reopen
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Footer */}
