@@ -59,6 +59,7 @@ export default function RefundsClient() {
   const [creating, setCreating] = useState(false)
   const [editRow, setEditRow] = useState<RefundRow | null>(null)
   const [creatingCandidates, setCreatingCandidates] = useState<Set<string>>(new Set())
+  const [candidatesCollapsed, setCandidatesCollapsed] = useState(false)
 
   const fetchRows = useCallback(() => {
     setLoading(true)
@@ -225,8 +226,25 @@ export default function RefundsClient() {
       {/* Auto-detected overpayments — only on Pending tab */}
       {tab === "pending" && visibleCandidates.length > 0 && (
         <div className="rounded-xl border border-yellow-200 bg-yellow-50/50 overflow-hidden">
-          <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-yellow-200 bg-yellow-100/60">
+          <button
+            type="button"
+            onClick={() => setCandidatesCollapsed((c) => !c)}
+            className={`w-full flex items-center justify-between gap-2 px-4 py-2.5 bg-yellow-100/60 hover:bg-yellow-100 transition-colors ${candidatesCollapsed ? "" : "border-b border-yellow-200"}`}
+          >
             <div className="flex items-center gap-2 text-sm">
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className={`text-yellow-700 transition-transform duration-200 ${candidatesCollapsed ? "-rotate-90" : ""}`}
+              >
+                <path d="M6 9l6 6 6-6" />
+              </svg>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-yellow-700">
                 <circle cx="12" cy="12" r="10" /><path d="M12 8v4" /><path d="M12 16h.01" />
               </svg>
@@ -234,16 +252,20 @@ export default function RefundsClient() {
                 {visibleCandidates.length} auto-detected overpayment{visibleCandidates.length === 1 ? "" : "s"}
               </span>
             </div>
-            {visibleCandidates.length > 1 && (
-              <button
-                onClick={createAllCandidates}
-                disabled={creatingCandidates.size > 0}
-                className="text-xs px-3 py-1.5 rounded-lg border border-yellow-300 text-yellow-800 hover:bg-yellow-100 disabled:opacity-50 transition-colors"
+            {!candidatesCollapsed && visibleCandidates.length > 1 && (
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={(e) => { e.stopPropagation(); createAllCandidates() }}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); createAllCandidates() } }}
+                aria-disabled={creatingCandidates.size > 0}
+                className={`text-xs px-3 py-1.5 rounded-lg border border-yellow-300 text-yellow-800 hover:bg-yellow-100 transition-colors ${creatingCandidates.size > 0 ? "opacity-50 pointer-events-none" : ""}`}
               >
                 Create all ({visibleCandidates.length})
-              </button>
+              </span>
             )}
-          </div>
+          </button>
+          {!candidatesCollapsed && (
           <div className="divide-y divide-yellow-200/60">
             {visibleCandidates.map((c) => {
               const key = `${c.event}|${c.customer}`
@@ -272,6 +294,7 @@ export default function RefundsClient() {
               )
             })}
           </div>
+          )}
         </div>
       )}
 
