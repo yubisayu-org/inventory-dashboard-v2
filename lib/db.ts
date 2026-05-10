@@ -1400,6 +1400,12 @@ export function calcAbroadPrice(input: {
 
 // ─── Shopping List ────────────────────────────────────────────────────────
 
+export interface ShoppingListOrder {
+  id: number
+  customer: string
+  unit: number
+}
+
 export interface ShoppingListItem {
   event: string
   productId: number
@@ -1409,6 +1415,7 @@ export interface ShoppingListItem {
   customerCount: number
   customers: string[]
   orderIds: number[]
+  orders: ShoppingListOrder[]
 }
 
 export async function getShoppingList(event?: string): Promise<ShoppingListItem[]> {
@@ -1422,7 +1429,8 @@ export async function getShoppingList(event?: string): Promise<ShoppingListItem[
           SUM(o.unit)::int AS total_units,
           COUNT(DISTINCT o.customer)::int AS customer_count,
           ARRAY_AGG(DISTINCT o.customer ORDER BY o.customer) AS customers,
-          ARRAY_AGG(o.id ORDER BY o.id) AS order_ids
+          ARRAY_AGG(o.id ORDER BY o.id) AS order_ids,
+          JSON_AGG(JSON_BUILD_OBJECT('id', o.id, 'customer', o.customer, 'unit', o.unit) ORDER BY o.customer, o.id) AS orders
         FROM orders o
         JOIN products p ON p.id = o.product_id
         WHERE o.unit_buy IS NULL AND o.event = ${event}
@@ -1438,7 +1446,8 @@ export async function getShoppingList(event?: string): Promise<ShoppingListItem[
           SUM(o.unit)::int AS total_units,
           COUNT(DISTINCT o.customer)::int AS customer_count,
           ARRAY_AGG(DISTINCT o.customer ORDER BY o.customer) AS customers,
-          ARRAY_AGG(o.id ORDER BY o.id) AS order_ids
+          ARRAY_AGG(o.id ORDER BY o.id) AS order_ids,
+          JSON_AGG(JSON_BUILD_OBJECT('id', o.id, 'customer', o.customer, 'unit', o.unit) ORDER BY o.customer, o.id) AS orders
         FROM orders o
         JOIN products p ON p.id = o.product_id
         WHERE o.unit_buy IS NULL
@@ -1455,6 +1464,7 @@ export async function getShoppingList(event?: string): Promise<ShoppingListItem[
     customerCount: r.customer_count as number,
     customers: r.customers as string[],
     orderIds: r.order_ids as number[],
+    orders: r.orders as ShoppingListOrder[],
   }))
 }
 
