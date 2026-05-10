@@ -1787,3 +1787,139 @@ export async function getOverpaymentCandidates(): Promise<OverpaymentCandidate[]
     overpayment: (r.total_paid as number) - (r.invoice_total as number),
   }))
 }
+
+// ─── Arrival List ──────────────────────────────────────────────────────────
+
+export interface ArrivalListOrder {
+  id: number
+  customer: string
+  unitBuy: number
+  unitArrive: number
+  pending: number
+}
+
+export interface ArrivalListItem {
+  event: string
+  productId: number
+  productName: string
+  store: string
+  totalPending: number
+  customerCount: number
+  customers: string[]
+  orderIds: number[]
+  orders: ArrivalListOrder[]
+}
+
+/**
+ * Items that have been bought (unit_buy IS NOT NULL) but haven't fully arrived yet
+ * (unit_arrive IS NULL OR unit_arrive < unit_buy). Grouped by event + product, with
+ * the per-customer order list nested for the mark-arrived modal.
+ */
+export async function getArrivalList(event?: string): Promise<ArrivalListItem[]> {
+  const rows = event
+    ? await sql`
+        SELECT
+          o.event,
+          o.product_id,
+          p.name AS product_name,
+          p.store,
+          SUM(o.unit_buy - COALESCE(o.unit_arrive, 0))::int AS total_pending,
+          COUNT(DISTINCT o.customer)::int AS customer_count,
+          ARRAY_AGG(DISTINCT o.customer ORDER BY o.customer) AS customers,
+          ARRAY_AGG(o.id ORDER BY o.id) AS order_ids,
+          JSON_AGG(JSON_BUILD_OBJECT(
+            'id', o.id,
+            'customer', o.customer,
+            'unitBuy', o.unit_buy,
+            'unitArrive', COALESCE(o.unit_arrive, 0),
+            'pending', o.unit_buy - COALESCE(o.unit_arrive, 0)
+          ) ORDER BY o.customer, o.id) AS orders
+        FROM orders o
+        JOIN products p ON p.id = o.product_id
+        WHERE o.unit_buy IS NOT NULL
+          AND (o.unit_arrive IS NULL OR o.unit_arrive < o.unit_buy)
+          AND o.event = ${event}
+        GROUP BY o.event, o.product_id, p.name, p.store
+        HAVING SUM(o.unit_buy - COALESCE(o.unit_arrive, 0)) > 0
+        ORDER BY p.name, p.store
+      `
+    : await sql`
+        SELECT
+          o.event,
+          o.product_id,
+          p.name AS product_name,
+          p.store,
+          SUM(o.unit_buy - COALESCE(o.unit_arrive, 0))::int AS total_pending,
+          COUNT(DISTINCT o.customer)::int AS customer_count,
+          ARRAY_AGG(DISTINCT o.customer ORDER BY o.customer) AS customers,
+          ARRAY_AGG(o.id ORDER BY o.id) AS order_ids,
+          JSON_AGG(JSON_BUILD_OBJECT(
+            'id', o.id,
+            'customer', o.customer,
+            'unitBuy', o.unit_buy,
+            'unitArrive', COALESCE(o.unit_arrive, 0),
+            'pending', o.unit_buy - COALESCE(o.unit_arrive, 0)
+          ) ORDER BY o.customer, o.id) AS orders
+        FROM orders o
+        JOIN products p ON p.id = o.product_id
+        WHERE o.unit_buy IS NOT NULL
+          AND (o.unit_arrive IS NULL OR o.unit_arrive < o.unit_buy)
+        GROUP BY o.event, o.product_id, p.name, p.store
+        HAVING SUM(o.unit_buy - COALESCE(o.unit_arrive, 0)) > 0
+        ORDER BY o.event, p.name, p.store
+      `
+
+  return rows.map((r) => ({
+    event: r.event as string,
+    productId: r.product_id as number,
+    productName: r.product_name as string,
+    store: r.store as string,
+    totalPending: r.total_pending as number,
+    customerCount: r.customer_count as number,
+    customers: r.customers as string[],
+    orderIds: r.order_ids as number[],
+    orders: r.orders as ArrivalListOrder[],
+  }))
+}
+
+/**
+ * Greedy FIFO fill — assigns arrived units to oldest pending orders first.
+ * Each order is filled atomically (unit_arrive becomes equal to unit_buy)
+ * only if the remaining quantity covers the full pending amount for that order.
+ */
+export async function markProductArrived(data: {
+  event: string
+  productId: number
+  quantityArrived: number
+}): Promise<{ filledOrderIds: number[]; unassignedUnits: number }> {
+  const orders = await sql`
+    SELECT
+      id,
+      (unit_buy - COALESCE(unit_arrive, 0))::int AS pending
+    FROM orders
+    WHERE event = ${data.event}
+      AND product_id = ${data.productId}
+      AND unit_buy IS NOT NULL
+      AND (unit_arrive IS NULL OR unit_arrive < unit_buy)
+    ORDER BY id ASC
+  `
+
+  let remaining = data.quantityArrived
+  const filledIds: number[] = []
+  for (const o of orders as unknown as { id: number; pending: number }[]) {
+    if (remaining >= o.pending) {
+      filledIds.push(o.id)
+      remaining -= o.pending
+    }
+  }
+
+  if (filledIds.length > 0) {
+    await sql`
+      UPDATE orders
+      SET unit_arrive = unit_buy, updated_at = NOW()
+      WHERE id = ANY(${filledIds})
+    `
+  }
+
+  return { filledOrderIds: filledIds, unassignedUnits: remaining }
+}

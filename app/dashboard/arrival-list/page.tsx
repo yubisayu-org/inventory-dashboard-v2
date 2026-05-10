@@ -1,0 +1,15 @@
+import PageShell from "@/components/PageShell"
+import PageHeader from "@/components/PageHeader"
+import ArrivalListClient from "./ArrivalListClient"
+
+export default function ArrivalListPage() {
+  return (
+    <PageShell>
+      <PageHeader
+        title="Arrival List"
+        subtitle="Track which purchased items haven't arrived yet"
+      />
+      <ArrivalListClient />
+    </PageShell>
+  )
+}
