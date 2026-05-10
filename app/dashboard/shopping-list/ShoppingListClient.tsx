@@ -86,9 +86,20 @@ export default function ShoppingListClient() {
       header: "Product",
       enableHiding: false,
       filterFn: "textContains" as unknown as undefined,
-      cell: ({ row }) => (
-        <span className="font-medium text-foreground">{row.original.productName}</span>
-      ),
+      cell: ({ row }) => {
+        const { productName, customerCount, customers } = row.original
+        return (
+          <div className="flex flex-col gap-0.5">
+            <span className="font-medium text-foreground">{productName}</span>
+            <span
+              className="text-xs text-gray-400 cursor-help"
+              title={customers.join(", ")}
+            >
+              {customerCount} {customerCount === 1 ? "customer" : "customers"}
+            </span>
+          </div>
+        )
+      },
     },
     {
       accessorKey: "store",
@@ -104,32 +115,6 @@ export default function ShoppingListClient() {
       meta: { align: "right" },
       cell: ({ row }) => (
         <span className="tabular-nums font-bold text-foreground">{row.original.totalUnits}</span>
-      ),
-    },
-    {
-      accessorKey: "customerCount",
-      header: "Customers",
-      meta: { align: "right" },
-      cell: ({ row }) => (
-        <span
-          className="tabular-nums text-gray-500 cursor-help"
-          title={row.original.customers.join(", ")}
-        >
-          {row.original.customerCount}
-        </span>
-      ),
-    },
-    {
-      accessorKey: "customers",
-      header: "Customer List",
-      enableSorting: false,
-      cell: ({ row }) => (
-        <span
-          className="text-xs text-gray-400 truncate block max-w-[200px]"
-          title={row.original.customers.join(", ")}
-        >
-          {row.original.customers.join(", ")}
-        </span>
       ),
     },
     {
@@ -201,7 +186,6 @@ export default function ShoppingListClient() {
         getRowId={(row) => `${row.event}-${row.productId}`}
         searchPlaceholder="Search shopping list..."
         toolbarExtra={toolbarExtra}
-        initialVisibility={{ customers: false }}
       />
 
       {buyingItem && (
