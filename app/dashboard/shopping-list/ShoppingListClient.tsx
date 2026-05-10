@@ -7,22 +7,21 @@ import { useSheetOptions } from "@/hooks/useSheetOptions"
 const INPUT_CLASS =
   "border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
 
-// Greedy FIFO fill — mirrors the server-side logic for live preview
+// Partial FIFO fill — mirrors the server-side markProductBought logic.
+// Allocates oldest orders first; an order can be partially filled if remaining < pending.
 function computeFill(orders: ShoppingListOrder[], quantityBought: number) {
   let remaining = quantityBought
-  const filled: ShoppingListOrder[] = []
+  const filled: { order: ShoppingListOrder; allocated: number }[] = []
   const unfilled: ShoppingListOrder[] = []
-  const totalOrdered = orders.reduce((s, o) => s + o.unit, 0)
+  const totalPending = orders.reduce((s, o) => s + o.pending, 0)
   for (const o of orders) {
-    if (remaining >= o.unit) {
-      filled.push(o)
-      remaining -= o.unit
-    } else {
-      unfilled.push(o)
-    }
+    if (remaining <= 0) { unfilled.push(o); continue }
+    const allocate = Math.min(o.pending, remaining)
+    if (allocate <= 0) { unfilled.push(o); continue }
+    filled.push({ order: o, allocated: allocate })
+    remaining -= allocate
   }
-  // Excess only when bought > total needed; leftover from skipped orders is not excess
-  return { filled, unfilled, excessUnits: Math.max(0, quantityBought - totalOrdered) }
+  return { filled, unfilled, excessUnits: Math.max(0, quantityBought - totalPending) }
 }
 
 // ─── Grouping helpers ───────────────────────────────────────────────────────
@@ -229,28 +228,10 @@ export default function ShoppingListClient() {
     fetchItems(selectedEvent || undefined)
   }, [fetchItems, selectedEvent])
 
-  function handleBoughtSuccess(item: ShoppingListItem, filledOrderIds: number[]) {
-    const remaining = item.orders.filter((o) => !filledOrderIds.includes(o.id))
-    if (remaining.length === 0) {
-      setItems((prev) =>
-        prev.filter((i) => !(i.event === item.event && i.productId === item.productId)),
-      )
-    } else {
-      setItems((prev) =>
-        prev.map((i) => {
-          if (i.event !== item.event || i.productId !== item.productId) return i
-          const uniqueCustomers = [...new Set(remaining.map((o) => o.customer))].sort()
-          return {
-            ...i,
-            orders: remaining,
-            orderIds: remaining.map((o) => o.id),
-            totalUnits: remaining.reduce((sum, o) => sum + o.unit, 0),
-            customerCount: uniqueCustomers.length,
-            customers: uniqueCustomers,
-          }
-        }),
-      )
-    }
+  // Partial fills change multiple orders' pending qty in non-trivial ways.
+  // Refetching is simpler and more correct than incremental local state updates.
+  function handleBoughtSuccess() {
+    fetchItems(selectedEvent || undefined)
   }
 
   function toggleEvent(event: string) {
@@ -418,12 +399,17 @@ export default function ShoppingListClient() {
                     <div className="flex items-baseline gap-1.5">
                       <span className="text-foreground">{row.item.productName}</span>
                       <CustomerBadge
-                        orders={row.item.orders.map((o) => ({ customer: o.customer, qty: o.unit }))}
+                        orders={row.item.orders.map((o) => ({ customer: o.customer, qty: o.pending }))}
                       />
                     </div>
                   </td>
                   <td className="px-4 py-2.5 text-right">
                     <span className="tabular-nums font-bold text-foreground">{row.item.totalUnits}</span>
+                    {row.item.totalUnits < row.item.totalOriginal && (
+                      <span className="text-xs text-gray-400 font-normal tabular-nums" title="Partially bought">
+                        {" "}/ {row.item.totalOriginal}
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-2.5">
                     <button
@@ -448,8 +434,8 @@ export default function ShoppingListClient() {
         <BuyModal
           item={buyingItem}
           onClose={() => setBuyingItem(null)}
-          onSuccess={(filledOrderIds) => {
-            handleBoughtSuccess(buyingItem, filledOrderIds)
+          onSuccess={() => {
+            handleBoughtSuccess()
             setBuyingItem(null)
           }}
         />
@@ -467,7 +453,7 @@ function BuyModal({
 }: {
   item: ShoppingListItem
   onClose: () => void
-  onSuccess: (filledOrderIds: number[]) => void
+  onSuccess: () => void
 }) {
   const [qty, setQty] = useState(String(item.totalUnits))
   const [receipt, setReceipt] = useState("")
@@ -495,7 +481,7 @@ function BuyModal({
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "Failed to mark as bought")
-      onSuccess(data.filledOrderIds ?? [])
+      onSuccess()
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Failed to mark as bought")
     } finally {
@@ -531,7 +517,7 @@ function BuyModal({
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-medium text-gray-500">
-              Units bought <span className="text-gray-400">(needed: {item.totalUnits})</span>
+              Units bought <span className="text-gray-400">(remaining: {item.totalUnits})</span>
             </label>
             <input
               type="number"
@@ -563,12 +549,17 @@ function BuyModal({
           <div className="flex flex-col gap-2 text-xs">
             {preview.filled.length > 0 && (
               <div>
-                <div className="font-medium text-gray-500 mb-1">Will fill ({preview.filled.reduce((s, o) => s + o.unit, 0)} units):</div>
+                <div className="font-medium text-gray-500 mb-1">Will buy ({preview.filled.reduce((s, f) => s + f.allocated, 0)} units):</div>
                 <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto pr-0.5">
-                  {preview.filled.map((o) => (
-                    <div key={o.id} className="flex items-center justify-between px-2 py-1 rounded-md bg-green-50">
-                      <span className="text-green-800 truncate">{o.customer}</span>
-                      <span className="text-green-700 font-medium ml-2 shrink-0">{o.unit}×</span>
+                  {preview.filled.map((f) => (
+                    <div key={f.order.id} className="flex items-center justify-between px-2 py-1 rounded-md bg-green-50">
+                      <span className="text-green-800 truncate">{f.order.customer}</span>
+                      <span className="text-green-700 font-medium ml-2 shrink-0 tabular-nums">
+                        {f.allocated}×
+                        {f.allocated < f.order.pending && (
+                          <span className="text-green-600/70 font-normal"> of {f.order.pending}</span>
+                        )}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -577,12 +568,12 @@ function BuyModal({
 
             {preview.unfilled.length > 0 && (
               <div>
-                <div className="font-medium text-gray-500 mb-1">Stays in list ({preview.unfilled.reduce((s, o) => s + o.unit, 0)} units):</div>
+                <div className="font-medium text-gray-500 mb-1">Stays in list ({preview.unfilled.reduce((s, o) => s + o.pending, 0)} units):</div>
                 <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto pr-0.5">
                   {preview.unfilled.map((o) => (
                     <div key={o.id} className="flex items-center justify-between px-2 py-1 rounded-md bg-gray-50">
                       <span className="text-gray-500 truncate">{o.customer}</span>
-                      <span className="text-gray-400 font-medium ml-2 shrink-0">{o.unit}×</span>
+                      <span className="text-gray-400 font-medium ml-2 shrink-0 tabular-nums">{o.pending}×</span>
                     </div>
                   ))}
                 </div>
