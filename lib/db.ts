@@ -1,4 +1,5 @@
 import sql from "./db-pool"
+import { allocateFifo } from "./fifo-fill"
 
 function normalizeId(id: string | null | undefined): string {
   return String(id ?? "").replace(/^@/, "").toLowerCase()
@@ -1569,10 +1570,8 @@ export async function markProductBought(data: {
   quantityBought: number
   receipt: string
 }): Promise<{ filledOrderIds: number[]; excessUnits: number }> {
-  // Partial-fill (matches /api/sheets/purchasing distribute logic): allocate as
-  // much as possible to oldest pending orders first, even if it doesn't fully
-  // satisfy a single order line. An order can have unit_buy < unit and still
-  // appear in the shopping list with reduced "remaining" quantity.
+  // Partial allocation lets an order have unit_buy < unit, so it stays in the
+  // shopping list with reduced "remaining" qty. Mirrors /api/sheets/purchasing.
   type Row = { id: number; unit: number; unitBuy: number; receipt: string; pending: number }
   const orders = (await sql`
     SELECT
@@ -1588,33 +1587,20 @@ export async function markProductBought(data: {
     ORDER BY id ASC
   `) as unknown as Row[]
 
-  let remaining = data.quantityBought
-  const totalPending = orders.reduce((s, o) => s + o.pending, 0)
-  const updates: { id: number; newUnitBuy: number; combinedReceipt: string; fullyFilled: boolean }[] = []
-  for (const o of orders) {
-    if (remaining <= 0) break
-    const allocate = Math.min(o.pending, remaining)
-    if (allocate <= 0) continue
-    const newUnitBuy = o.unitBuy + allocate
-    const combinedReceipt = data.receipt
-      ? (o.receipt ? `${o.receipt}, ${data.receipt}` : data.receipt)
-      : o.receipt
-    updates.push({
-      id: o.id,
-      newUnitBuy,
-      combinedReceipt,
-      fullyFilled: newUnitBuy >= o.unit,
-    })
-    remaining -= allocate
-  }
-  const excessUnits = Math.max(0, data.quantityBought - totalPending)
+  const { allocations, excess: excessUnits } = allocateFifo(orders, (o) => o.pending, data.quantityBought)
+  const filledOrderIds: number[] = []
 
   await sql.begin(async (tx) => {
-    for (const u of updates) {
+    for (const { item: o, allocated } of allocations) {
+      const newUnitBuy = o.unitBuy + allocated
+      const combinedReceipt = data.receipt
+        ? (o.receipt ? `${o.receipt}, ${data.receipt}` : data.receipt)
+        : o.receipt
+      if (newUnitBuy >= o.unit) filledOrderIds.push(o.id)
       await tx`
         UPDATE orders
-        SET unit_buy = ${u.newUnitBuy}, receipt = ${u.combinedReceipt}, updated_at = NOW()
-        WHERE id = ${u.id}
+        SET unit_buy = ${newUnitBuy}, receipt = ${combinedReceipt}, updated_at = NOW()
+        WHERE id = ${o.id}
       `
     }
     if (excessUnits > 0) {
@@ -1625,10 +1611,7 @@ export async function markProductBought(data: {
     }
   })
 
-  return {
-    filledOrderIds: updates.filter((u) => u.fullyFilled).map((u) => u.id),
-    excessUnits,
-  }
+  return { filledOrderIds, excessUnits }
 }
 
 // ─── Refunds ─────────────────────────────────────────────────────────────────
@@ -1931,10 +1914,9 @@ export async function getArrivalList(event?: string): Promise<ArrivalListItem[]>
 }
 
 /**
- * Partial-fill FIFO: shipments often arrive in batches, so allocate as much as
- * possible to oldest pending orders first, even if it doesn't fully satisfy a
- * single order line. An order can have unit_arrive < unit_buy and still appear
- * in the arrival list with a reduced "pending" quantity.
+ * Partial allocation: shipments arrive in batches, so an order can have
+ * unit_arrive < unit_buy and still appear in the arrival list with reduced
+ * pending qty.
  */
 export async function markProductArrived(data: {
   event: string
@@ -1956,37 +1938,22 @@ export async function markProductArrived(data: {
     ORDER BY id ASC
   `) as unknown as Row[]
 
-  let remaining = data.quantityArrived
-  const totalPending = orders.reduce((s, o) => s + o.pending, 0)
-  const updates: { id: number; newUnitArrive: number; fullyFilled: boolean }[] = []
-  for (const o of orders) {
-    if (remaining <= 0) break
-    const allocate = Math.min(o.pending, remaining)
-    if (allocate <= 0) continue
-    const newUnitArrive = o.unitArrive + allocate
-    updates.push({
-      id: o.id,
-      newUnitArrive,
-      fullyFilled: newUnitArrive >= o.unitBuy,
-    })
-    remaining -= allocate
-  }
-  const unassignedUnits = Math.max(0, data.quantityArrived - totalPending)
+  const { allocations, excess: unassignedUnits } = allocateFifo(orders, (o) => o.pending, data.quantityArrived)
+  const filledOrderIds: number[] = []
 
-  if (updates.length > 0) {
+  if (allocations.length > 0) {
     await sql.begin(async (tx) => {
-      for (const u of updates) {
+      for (const { item: o, allocated } of allocations) {
+        const newUnitArrive = o.unitArrive + allocated
+        if (newUnitArrive >= o.unitBuy) filledOrderIds.push(o.id)
         await tx`
           UPDATE orders
-          SET unit_arrive = ${u.newUnitArrive}, updated_at = NOW()
-          WHERE id = ${u.id}
+          SET unit_arrive = ${newUnitArrive}, updated_at = NOW()
+          WHERE id = ${o.id}
         `
       }
     })
   }
 
-  return {
-    filledOrderIds: updates.filter((u) => u.fullyFilled).map((u) => u.id),
-    unassignedUnits,
-  }
+  return { filledOrderIds, unassignedUnits }
 }

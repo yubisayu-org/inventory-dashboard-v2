@@ -3,25 +3,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { ShoppingListItem, ShoppingListOrder } from "@/lib/db"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
+import { allocateFifo } from "@/lib/fifo-fill"
 
 const INPUT_CLASS =
   "border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
 
-// Partial FIFO fill — mirrors the server-side markProductBought logic.
-// Allocates oldest orders first; an order can be partially filled if remaining < pending.
 function computeFill(orders: ShoppingListOrder[], quantityBought: number) {
-  let remaining = quantityBought
-  const filled: { order: ShoppingListOrder; allocated: number }[] = []
-  const unfilled: ShoppingListOrder[] = []
-  const totalPending = orders.reduce((s, o) => s + o.pending, 0)
-  for (const o of orders) {
-    if (remaining <= 0) { unfilled.push(o); continue }
-    const allocate = Math.min(o.pending, remaining)
-    if (allocate <= 0) { unfilled.push(o); continue }
-    filled.push({ order: o, allocated: allocate })
-    remaining -= allocate
+  const { allocations, unallocated, excess } = allocateFifo(orders, (o) => o.pending, quantityBought)
+  return {
+    filled: allocations.map(({ item, allocated }) => ({ order: item, allocated })),
+    unfilled: unallocated,
+    excessUnits: excess,
   }
-  return { filled, unfilled, excessUnits: Math.max(0, quantityBought - totalPending) }
 }
 
 // ─── Grouping helpers ───────────────────────────────────────────────────────
