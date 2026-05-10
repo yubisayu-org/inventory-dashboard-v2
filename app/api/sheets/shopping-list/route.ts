@@ -26,11 +26,11 @@ export async function POST(req: NextRequest) {
   if (roleError) return roleError
 
   try {
-    const { event, productId, productName, quantityBought } = await req.json()
+    const { event, productId, productName, quantityBought, receipt } = await req.json()
     if (!event || !productId || !productName || typeof quantityBought !== "number" || quantityBought < 1) {
       return NextResponse.json({ error: "event, productId, productName and quantityBought are required" }, { status: 400 })
     }
-    const result = await markProductBought({ event, productId: Number(productId), productName, quantityBought })
+    const result = await markProductBought({ event, productId: Number(productId), productName, quantityBought, receipt: receipt ?? "" })
     return NextResponse.json({ success: true, ...result })
   } catch (err) {
     console.error("Failed to mark orders as bought:", err)

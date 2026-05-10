@@ -1484,6 +1484,7 @@ export async function markProductBought(data: {
   productId: number
   productName: string
   quantityBought: number
+  receipt: string
 }): Promise<{ filledOrderIds: number[]; excessUnits: number }> {
   // Re-fetch unbought orders from DB to avoid race conditions, sorted FIFO
   const orders = await sql`
@@ -1495,6 +1496,7 @@ export async function markProductBought(data: {
   // Greedy fill: take each order if it fits within remaining budget
   let remaining = data.quantityBought
   const filledIds: number[] = []
+  const totalOrdered = (orders as unknown as { unit: number }[]).reduce((s, o) => s + o.unit, 0)
   for (const o of orders) {
     const unit = o.unit as number
     if (remaining >= unit) {
@@ -1502,19 +1504,20 @@ export async function markProductBought(data: {
       remaining -= unit
     }
   }
-  const excessUnits = remaining
+  // Excess only when bought > total needed; leftover from skipped orders is not excess
+  const excessUnits = Math.max(0, data.quantityBought - totalOrdered)
 
   await sql.begin(async (tx) => {
     if (filledIds.length > 0) {
       await tx`
-        UPDATE orders SET unit_buy = unit, updated_at = NOW()
+        UPDATE orders SET unit_buy = unit, receipt = ${data.receipt}, updated_at = NOW()
         WHERE id = ANY(${filledIds}) AND unit_buy IS NULL
       `
     }
     if (excessUnits > 0) {
       await tx`
         INSERT INTO excess_purchase (event, items, unit_buy, receipt)
-        VALUES (${data.event}, ${data.productName}, ${excessUnits}, '')
+        VALUES (${data.event}, ${data.productName}, ${excessUnits}, ${data.receipt})
       `
     }
   })
