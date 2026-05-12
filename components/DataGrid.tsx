@@ -239,17 +239,11 @@ export default function DataGrid<T>({
                       <div className={`flex items-center gap-1 ${align === "right" ? "justify-end" : ""}`}>
                         {header.isPlaceholder ? null : (
                           <>
-                            <span
-                              className={header.column.getCanSort() ? "cursor-pointer hover:text-brand transition-colors" : ""}
-                              onClick={header.column.getToggleSortingHandler()}
-                            >
+                            <span>
                               {flexRender(header.column.columnDef.header, header.getContext())}
                             </span>
-                            {header.column.getIsSorted() === "asc" && (
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-brand shrink-0"><path d="M12 19V5m-7 7 7-7 7 7" /></svg>
-                            )}
-                            {header.column.getIsSorted() === "desc" && (
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-brand shrink-0"><path d="M12 5v14m7-7-7 7-7-7" /></svg>
+                            {header.column.getCanSort() && (
+                              <ColumnSortButton column={header.column} />
                             )}
                             {header.column.getCanFilter() && (
                               <ColumnFilterButton column={header.column} />
@@ -308,6 +302,34 @@ export default function DataGrid<T>({
 }
 
 // ─── Column filter button ──────────────────────────────────────────────────
+
+function ColumnSortButton<T>({ column }: { column: Column<T, unknown> }) {
+  const sorted = column.getIsSorted()
+  const isActive = sorted !== false
+
+  return (
+    <button
+      type="button"
+      onClick={column.getToggleSortingHandler()}
+      className={`p-0.5 rounded transition-colors shrink-0 ${isActive ? "text-brand" : "text-gray-300 opacity-0 group-hover:opacity-100 hover:text-brand"}`}
+      title={sorted === "asc" ? "Sorted ascending — click for descending" : sorted === "desc" ? "Sorted descending — click to clear" : "Sort column"}
+    >
+      {sorted === "asc" ? (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 19V5m-7 7 7-7 7 7" />
+        </svg>
+      ) : sorted === "desc" ? (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 5v14m7-7-7 7-7-7" />
+        </svg>
+      ) : (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="m7 15 5 5 5-5M7 9l5-5 5 5" />
+        </svg>
+      )}
+    </button>
+  )
+}
 
 function ColumnFilterButton<T>({ column }: { column: Column<T, unknown> }) {
   const [open, setOpen] = useState(false)

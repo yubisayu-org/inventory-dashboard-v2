@@ -1,5 +1,6 @@
 "use client"
 
+import TableSkeleton from "@/components/TableSkeleton"
 import { useEffect, useMemo, useRef, useState } from "react"
 import type { CountryRow } from "@/lib/db"
 import DataGrid, { type ColumnDef, numericFilter, textContainsFilter } from "@/components/DataGrid"
@@ -236,7 +237,7 @@ export default function CountriesClient() {
       </form>
 
       {/* Data grid */}
-      {loading && <div className="text-sm text-gray-400 py-12 text-center">Loading…</div>}
+      {loading && <TableSkeleton />}
       {error && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
       )}

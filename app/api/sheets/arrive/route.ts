@@ -1,10 +1,17 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { getDuplicateFormRows, bulkUpdateArrive } from "@/lib/db"
+import { getDuplicateFormRows, bulkUpdateArrive, appendExcessPurchase } from "@/lib/db"
 
-type ItemLine = { item: string; qty: number }
+type ItemLine = { item: string; qty: number; expectedItem?: string }
 type UpdatedRow = { rowNumber: number; customer: string; oldUnitArrive: number; unitArrive: number }
 type FormRows = Awaited<ReturnType<typeof getDuplicateFormRows>>
+type ItemResult = {
+  item: string
+  expectedItem?: string
+  rows: UpdatedRow[]
+  unmatched: number
+  loggedAs?: "overship" | "wrong_product"
+}
 
 function buildEligibleMap(rows: FormRows, event: string): Map<string, FormRows> {
   const map = new Map<string, FormRows>()
@@ -25,10 +32,7 @@ function distribute(
   eligible: FormRows,
   item: string,
   qty: number,
-): {
-  updates: UpdatedRow[]
-  itemResult: { item: string; rows: UpdatedRow[]; unmatched: number }
-} {
+): { updates: UpdatedRow[]; unmatched: number } {
   let remaining = qty
   const updates: UpdatedRow[] = []
 
@@ -46,10 +50,7 @@ function distribute(
     remaining -= allocate
   }
 
-  return {
-    updates,
-    itemResult: { item, rows: updates, unmatched: remaining },
-  }
+  return { updates, unmatched: remaining }
 }
 
 export async function POST(req: NextRequest) {
@@ -67,32 +68,83 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "event and at least one item are required" }, { status: 400 })
     }
 
-    const normalized: { item: string; qty: number }[] = []
+    const normalized: ItemLine[] = []
     for (const line of items) {
       if (!line.item) return NextResponse.json({ error: "Each line must have an item" }, { status: 400 })
       const q = Number(line.qty)
       if (!Number.isFinite(q) || q <= 0) {
         return NextResponse.json({ error: `qty for "${line.item}" must be a positive number` }, { status: 400 })
       }
-      normalized.push({ item: line.item, qty: q })
+      const expectedItem = line.expectedItem?.trim() || undefined
+      if (expectedItem && expectedItem === line.item) {
+        return NextResponse.json(
+          { error: `Expected item cannot equal received item for "${line.item}"` },
+          { status: 400 },
+        )
+      }
+      normalized.push({ item: line.item, qty: q, expectedItem })
     }
 
     const rows = await getDuplicateFormRows()
     const eligibleMap = buildEligibleMap(rows, event)
 
     const allUpdates: UpdatedRow[] = []
-    const results: { item: string; rows: UpdatedRow[]; unmatched: number }[] = []
+    const results: ItemResult[] = []
+    const excessRows: {
+      event: string
+      items: string
+      unitBuy: number
+      receipt: string
+      reason: "overship" | "wrong_product"
+      expectedItem?: string
+    }[] = []
 
     for (const line of normalized) {
+      if (line.expectedItem) {
+        // Wrong product: skip FIFO, log entire qty to excess_purchase as wrong_product
+        excessRows.push({
+          event,
+          items: line.item,
+          unitBuy: line.qty,
+          receipt: "",
+          reason: "wrong_product",
+          expectedItem: line.expectedItem,
+        })
+        results.push({
+          item: line.item,
+          expectedItem: line.expectedItem,
+          rows: [],
+          unmatched: line.qty,
+          loggedAs: "wrong_product",
+        })
+        continue
+      }
+
       const eligible = eligibleMap.get(line.item) ?? []
-      const { updates, itemResult } = distribute(eligible, line.item, line.qty)
+      const { updates, unmatched } = distribute(eligible, line.item, line.qty)
       allUpdates.push(...updates)
-      results.push(itemResult)
+
+      const result: ItemResult = { item: line.item, rows: updates, unmatched }
+      if (unmatched > 0) {
+        // Supplier shipped extras of the correct SKU → log as overship
+        excessRows.push({
+          event,
+          items: line.item,
+          unitBuy: unmatched,
+          receipt: "",
+          reason: "overship",
+        })
+        result.loggedAs = "overship"
+      }
+      results.push(result)
     }
 
-    await bulkUpdateArrive(
-      allUpdates.map(({ rowNumber, unitArrive }) => ({ rowNumber, unitArrive })),
-    )
+    await Promise.all([
+      bulkUpdateArrive(
+        allUpdates.map(({ rowNumber, unitArrive }) => ({ rowNumber, unitArrive })),
+      ),
+      appendExcessPurchase(excessRows),
+    ])
 
     return NextResponse.json({ results })
   } catch (err) {

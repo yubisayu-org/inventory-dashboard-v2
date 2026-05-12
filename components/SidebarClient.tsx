@@ -34,8 +34,33 @@ const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
-    section: "Events",
+    section: "Database",
     items: [
+      {
+        href: "/dashboard/customers",
+        label: "Customers",
+        roles: ["owner"],
+        icon: (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+            <circle cx="9" cy="7" r="4" />
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+          </svg>
+        ),
+      },
+      {
+        href: "/dashboard/countries",
+        label: "Currencies",
+        roles: ["owner"],
+        icon: (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M2 12h20" />
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+          </svg>
+        ),
+      },
       {
         href: "/dashboard/events",
         label: "Events",
@@ -58,18 +83,6 @@ const NAV_SECTIONS: NavSection[] = [
             <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
             <path d="m3.3 7 8.7 5 8.7-5" />
             <path d="M12 22V12" />
-          </svg>
-        ),
-      },
-      {
-        href: "/dashboard/countries",
-        label: "Countries",
-        roles: ["owner"],
-        icon: (
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10" />
-            <path d="M2 12h20" />
-            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
           </svg>
         ),
       },
@@ -107,20 +120,8 @@ const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
-    section: "Purchasing",
+    section: "Procurement",
     items: [
-      {
-        href: "/dashboard/purchasing",
-        label: "Purchasing",
-        roles: ["admin", "owner"],
-        icon: (
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" />
-            <path d="M3 6h18" />
-            <path d="M16 10a4 4 0 0 1-8 0" />
-          </svg>
-        ),
-      },
       {
         href: "/dashboard/shopping-list",
         label: "Shopping List",
@@ -130,6 +131,18 @@ const NAV_SECTIONS: NavSection[] = [
             <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
             <rect x="9" y="3" width="6" height="4" rx="1" />
             <path d="m9 14 2 2 4-4" />
+          </svg>
+        ),
+      },
+      {
+        href: "/dashboard/arrival-list",
+        label: "Receiving List",
+        roles: ["admin", "owner"],
+        icon: (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
+            <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+            <line x1="12" y1="22.08" x2="12" y2="12" />
           </svg>
         ),
       },
@@ -164,6 +177,16 @@ const NAV_SECTIONS: NavSection[] = [
         ),
       },
       {
+        href: "/dashboard/adjustments",
+        label: "Adjustments",
+        roles: ["admin", "owner"],
+        icon: (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+          </svg>
+        ),
+      },
+      {
         href: "/dashboard/refunds",
         label: "Refunds",
         roles: ["admin", "owner"],
@@ -175,47 +198,14 @@ const NAV_SECTIONS: NavSection[] = [
           </svg>
         ),
       },
-      {
-        href: "/dashboard/adjustments",
-        label: "Adjustments",
-        roles: ["admin", "owner"],
-        icon: (
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-          </svg>
-        ),
-      },
     ],
   },
   {
     section: "Shipping",
     items: [
       {
-        href: "/dashboard/arrive",
-        label: "Unit Arrive",
-        roles: ["admin", "owner"],
-        icon: (
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 2v20" /><path d="m17 15-5 5-5-5" />
-            <path d="M2 12h4" /><path d="M18 12h4" />
-          </svg>
-        ),
-      },
-      {
-        href: "/dashboard/arrival-list",
-        label: "Arrival List",
-        roles: ["admin", "owner"],
-        icon: (
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
-            <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
-            <line x1="12" y1="22.08" x2="12" y2="12" />
-          </svg>
-        ),
-      },
-      {
         href: "/dashboard/ship",
-        label: "Ready to Ship",
+        label: "Packing List",
         roles: ["admin", "owner"],
         icon: (
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

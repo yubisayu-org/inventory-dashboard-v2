@@ -1,7 +1,8 @@
 "use client"
 
+import { displayIg } from "@/lib/format"
 import { useCallback, useEffect, useMemo, useState } from "react"
-import type { CustomerDetail, InvoiceEvent, InvoiceOrderLine, InvoiceResult, RefundReason } from "@/lib/db"
+import type { CustomerDetail, InvoiceEvent, InvoiceOrderLine, InvoiceResult, PaymentStatus, PaymentStatusRow, RefundReason } from "@/lib/db"
 import { useCopyFeedback } from "@/hooks/useCopyFeedback"
 import { useResizableColumns } from "@/hooks/useResizableColumns"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
@@ -12,134 +13,485 @@ function formatNumber(n: number | null | undefined): string {
   return new Intl.NumberFormat("id-ID").format(Number.isFinite(v) ? v : 0)
 }
 
-const RECENT_KEY = "invoice:recent-customers"
-const RECENT_MAX = 5
-
-function loadRecent(): string[] {
-  if (typeof window === "undefined") return []
-  try {
-    const raw = window.localStorage.getItem(RECENT_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : []
-  } catch {
-    return []
-  }
-}
-
-function saveRecent(list: string[]) {
-  if (typeof window === "undefined") return
-  try {
-    window.localStorage.setItem(RECENT_KEY, JSON.stringify(list))
-  } catch {
-    // ignore quota / privacy errors
-  }
-}
-
 export default function InvoiceClient() {
   const options = useSheetOptions()
-  const [query, setQuery] = useState("")
-  const [loading, setLoading] = useState(false)
+  const [selectedCustomer, setSelectedCustomer] = useState<string | null>(null)
+
+  return (
+    <div className="max-w-6xl">
+      <PaymentStatusPanel
+        events={options?.events ?? []}
+        customers={options?.customers ?? []}
+        onOpenCustomer={setSelectedCustomer}
+      />
+      {selectedCustomer && (
+        <InvoiceDetailDrawer
+          customer={selectedCustomer}
+          onClose={() => setSelectedCustomer(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─── Invoice Detail Drawer ───────────────────────────────────────────────────
+
+function InvoiceDetailDrawer({
+  customer,
+  onClose,
+}: {
+  customer: string
+  onClose: () => void
+}) {
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<InvoiceResult | null>(null)
-  // Initialize empty to match SSR; hydrate from localStorage after mount
-  const [recent, setRecent] = useState<string[]>([])
-  useEffect(() => { setRecent(loadRecent()) }, [])
 
-  const customerOptions = useMemo(
-    () => (options?.customers ?? []).map((c) => ({ value: c, label: c })),
-    [options?.customers],
-  )
+  // Lock body scroll while open + ESC to close
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose()
+    }
+    document.addEventListener("keydown", onKey)
+    const prev = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    return () => {
+      document.removeEventListener("keydown", onKey)
+      document.body.style.overflow = prev
+    }
+  }, [onClose])
 
-  const runSearch = useCallback(async (rawValue: string) => {
-    const trimmed = rawValue.trim()
-    if (!trimmed) return
-    setQuery(trimmed)
+  useEffect(() => {
+    let cancelled = false
     setLoading(true)
     setError(null)
     setResult(null)
+    fetch(`/api/sheets/invoice?customer=${encodeURIComponent(customer)}`, { cache: "no-store" })
+      .then(async (res) => {
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error ?? "Failed to load")
+        return data as InvoiceResult
+      })
+      .then((data) => { if (!cancelled) setResult(data) })
+      .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load") })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [customer])
+
+  return (
+    <div className="fixed inset-0 z-40 flex justify-end" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/30 transition-opacity" />
+      <div
+        className="relative w-full max-w-3xl h-full bg-cream shadow-2xl border-l border-cream-border flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
+        {/* Header */}
+        <div className="px-5 py-3 border-b border-cream-border bg-white shrink-0 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-foreground truncate">
+              {displayIg(result?.customer || customer)}
+            </div>
+            {result && (
+              <div className="text-xs text-gray-400 mt-0.5">
+                {result.events.length} event{result.events.length === 1 ? "" : "s"}
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="text-gray-400 hover:text-foreground transition-colors p-1 rounded shrink-0"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6 6 18" /><path d="m6 6 12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          {loading && (
+            <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-gray-400 text-sm">
+              Loading invoice…
+            </div>
+          )}
+
+          {error && (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {error}
+            </div>
+          )}
+
+          {!loading && !error && result && result.events.length === 0 && (
+            <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-gray-400 text-sm">
+              No orders found for &quot;{customer}&quot;.
+            </div>
+          )}
+
+          {result && result.events.length > 0 && (
+            <div className="flex flex-col gap-4">
+              {[...result.events].reverse().map((ev) => (
+                <EventCard
+                  key={ev.eventId}
+                  event={ev}
+                  customer={result.customer}
+                  customerDetail={result.customerDetail}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Payment Status Panel ────────────────────────────────────────────────────
+
+const STATUS_LABELS: Record<PaymentStatus, string> = {
+  unpaid: "Unpaid",
+  partial: "Partial",
+  paid: "Paid",
+  overpaid: "Overpaid",
+}
+
+const STATUS_COLORS: Record<PaymentStatus, string> = {
+  unpaid: "bg-red-50 text-red-700 border-red-200",
+  partial: "bg-yellow-50 text-yellow-700 border-yellow-200",
+  paid: "bg-green-50 text-green-700 border-green-200",
+  overpaid: "bg-purple-50 text-purple-700 border-purple-200",
+}
+
+type StatusFilter = "all" | PaymentStatus
+type SortKey = "customer" | "invoiceTotal" | "totalPaid" | "outstanding" | "status"
+type SortDir = "asc" | "desc"
+
+const STATUS_RANK: Record<PaymentStatus, number> = {
+  unpaid: 0,
+  overpaid: 1,
+  partial: 2,
+  paid: 3,
+}
+
+function SortableHeader({
+  sortKey,
+  currentKey,
+  dir,
+  onClick,
+  align,
+  widthClass,
+  children,
+}: {
+  sortKey: SortKey
+  currentKey: SortKey
+  dir: SortDir
+  onClick: (key: SortKey) => void
+  align: "left" | "right"
+  widthClass?: string
+  children: React.ReactNode
+}) {
+  const active = currentKey === sortKey
+  return (
+    <th className={`px-4 py-2.5 font-medium text-gray-500 ${align === "right" ? "text-right" : "text-left"} ${widthClass ?? ""}`}>
+      <button
+        type="button"
+        onClick={() => onClick(sortKey)}
+        className={`group inline-flex items-center gap-1 ${align === "right" ? "ml-auto" : ""} transition-colors ${active ? "text-brand" : "hover:text-foreground"}`}
+      >
+        {children}
+        <svg
+          width="10"
+          height="10"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={`transition-opacity ${active ? "opacity-100" : "opacity-0 group-hover:opacity-60"}`}
+        >
+          {active && dir === "asc" ? (
+            <path d="m18 15-6-6-6 6" />
+          ) : (
+            <path d="m6 9 6 6 6-6" />
+          )}
+        </svg>
+      </button>
+    </th>
+  )
+}
+
+function PaymentStatusPanel({
+  events,
+  customers,
+  onOpenCustomer,
+}: {
+  events: string[]
+  customers: string[]
+  onOpenCustomer: (customer: string) => void
+}) {
+  const [event, setEvent] = useState<string>("")
+  const [rows, setRows] = useState<PaymentStatusRow[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [search, setSearch] = useState("")
+  const [filter, setFilter] = useState<StatusFilter>("all")
+  const [sortKey, setSortKey] = useState<SortKey>("outstanding")
+  const [sortDir, setSortDir] = useState<SortDir>("desc")
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"))
+    } else {
+      setSortKey(key)
+      // Sensible default: text ascending, numbers/status descending
+      setSortDir(key === "customer" ? "asc" : "desc")
+    }
+  }
+
+  // Default the event to the most recent (lexicographically last; events like "LSCN202601" sort chronologically)
+  useEffect(() => {
+    if (!event && events.length > 0) {
+      const sorted = [...events].sort()
+      setEvent(sorted[sorted.length - 1])
+    }
+  }, [events, event])
+
+  const fetchRows = useCallback(async (ev: string) => {
+    if (!ev) return
+    setLoading(true)
+    setError(null)
     try {
-      const res = await fetch(`/api/sheets/invoice?customer=${encodeURIComponent(trimmed)}`, { cache: "no-store" })
+      const res = await fetch(`/api/sheets/invoice/payment-status?event=${encodeURIComponent(ev)}`, { cache: "no-store" })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "Failed to load")
-      setResult(data as InvoiceResult)
-      setRecent((prev) => {
-        const next = [trimmed, ...prev.filter((c) => c !== trimmed)].slice(0, RECENT_MAX)
-        saveRecent(next)
-        return next
-      })
+      setRows(data.rows ?? [])
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load")
+      setRows([])
     } finally {
       setLoading(false)
     }
   }, [])
 
-  function handleClearRecent() {
-    setRecent([])
-    saveRecent([])
-  }
+  useEffect(() => {
+    if (event) fetchRows(event)
+  }, [event, fetchRows])
+
+  const counts = useMemo(() => {
+    const c: Record<PaymentStatus, number> = { unpaid: 0, partial: 0, paid: 0, overpaid: 0 }
+    for (const r of rows) c[r.status]++
+    return c
+  }, [rows])
+
+  const totals = useMemo(() => {
+    const invoiceTotal = rows.reduce((s, r) => s + r.invoiceTotal, 0)
+    const paidTotal = rows.reduce((s, r) => s + r.totalPaid, 0)
+    return { invoiceTotal, paidTotal, outstanding: invoiceTotal - paidTotal }
+  }, [rows])
+
+  const filteredRows = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return rows.filter((r) => {
+      if (filter !== "all" && r.status !== filter) return false
+      if (q && !r.customer.toLowerCase().includes(q)) return false
+      return true
+    })
+  }, [rows, search, filter])
+
+  const sortedRows = useMemo(() => {
+    const arr = [...filteredRows]
+    arr.sort((a, b) => {
+      let cmp = 0
+      switch (sortKey) {
+        case "customer":
+          cmp = a.customer.localeCompare(b.customer)
+          break
+        case "invoiceTotal":
+          cmp = a.invoiceTotal - b.invoiceTotal
+          break
+        case "totalPaid":
+          cmp = a.totalPaid - b.totalPaid
+          break
+        case "outstanding":
+          cmp = a.outstanding - b.outstanding
+          break
+        case "status":
+          cmp = STATUS_RANK[a.status] - STATUS_RANK[b.status]
+          if (cmp === 0) cmp = b.outstanding - a.outstanding
+          break
+      }
+      return sortDir === "asc" ? cmp : -cmp
+    })
+    return arr
+  }, [filteredRows, sortKey, sortDir])
+
+  const filters: { key: StatusFilter; label: string; count: number }[] = [
+    { key: "all", label: "All", count: rows.length },
+    { key: "unpaid", label: "Unpaid", count: counts.unpaid },
+    { key: "partial", label: "Partial", count: counts.partial },
+    { key: "paid", label: "Paid", count: counts.paid },
+    { key: "overpaid", label: "Overpaid", count: counts.overpaid },
+  ]
+
+  const customerLookupOptions = useMemo(
+    () => customers.map((c) => ({ value: c, label: c })),
+    [customers],
+  )
 
   return (
-    <div className="max-w-3xl">
-      <div className="rounded-xl border border-cream-border bg-white p-4 flex flex-col gap-3">
-        <SearchableSelect
-          value={query}
-          onChange={runSearch}
-          options={customerOptions}
-          placeholder="Type to search @instagram_id…"
-          allowNewValue
+    <div className="flex flex-col gap-3">
+      {/* Toolbar: event + search + lookup + refresh */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <select
+          value={event}
+          onChange={(e) => setEvent(e.target.value)}
+          className="border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+          style={{ width: "12rem" }}
+        >
+          {events.length === 0 && <option value="">No events</option>}
+          {events.map((ev) => (
+            <option key={ev} value={ev}>{ev}</option>
+          ))}
+        </select>
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Filter customers in this event…"
+          className="flex-1 min-w-[180px] border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
         />
-
-        {recent.length > 0 && !result && !loading && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-gray-400 shrink-0">Recent:</span>
-            {recent.map((c) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => runSearch(c)}
-                className="text-xs px-2.5 py-1 rounded-full border border-cream-border bg-cream/40 text-gray-700 hover:border-brand hover:text-brand transition-colors"
-              >
-                {c}
-              </button>
-            ))}
-            <button
-              type="button"
-              onClick={handleClearRecent}
-              className="text-xs text-gray-400 hover:text-red-500 ml-auto transition-colors"
-            >
-              Clear
-            </button>
-          </div>
-        )}
+        <div className="w-56">
+          <SearchableSelect
+            value=""
+            onChange={(v) => { if (v.trim()) onOpenCustomer(v.trim()) }}
+            options={customerLookupOptions}
+            placeholder="Look up any customer…"
+            allowNewValue
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() => fetchRows(event)}
+          title="Refresh"
+          className="p-1.5 text-gray-400 hover:text-brand transition-colors rounded"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 12a9 9 0 1 1-6.22-8.56" /><polyline points="21 3 21 9 15 9" />
+          </svg>
+        </button>
       </div>
 
-      {loading && (
-        <div className="mt-4 rounded-xl border border-cream-border bg-white p-8 text-center text-gray-400 text-sm">
-          Loading invoice…
+      {/* Status filter chips */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {filters.map((f) => {
+          const active = filter === f.key
+          return (
+            <button
+              key={f.key}
+              type="button"
+              onClick={() => setFilter(f.key)}
+              className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
+                active
+                  ? "bg-brand text-white border-brand"
+                  : "bg-white text-gray-600 border-cream-border hover:border-brand hover:text-brand"
+              }`}
+            >
+              {f.label}
+              {f.count > 0 && (
+                <span className={`ml-1.5 text-[10px] ${active ? "text-white/80" : "text-gray-400"}`}>
+                  {f.count}
+                </span>
+              )}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Summary */}
+      {rows.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-xs text-gray-500 px-1">
+          <div>
+            <span className="text-gray-400">Invoice total:</span>{" "}
+            <span className="text-foreground font-medium tabular-nums">Rp {formatNumber(totals.invoiceTotal)}</span>
+          </div>
+          <div>
+            <span className="text-gray-400">Paid:</span>{" "}
+            <span className="text-foreground font-medium tabular-nums">Rp {formatNumber(totals.paidTotal)}</span>
+          </div>
+          <div>
+            <span className="text-gray-400">Outstanding:</span>{" "}
+            <span className={`font-medium tabular-nums ${totals.outstanding > 0 ? "text-red-600" : totals.outstanding < 0 ? "text-purple-600" : "text-green-600"}`}>
+              Rp {formatNumber(totals.outstanding)}
+            </span>
+          </div>
         </div>
       )}
 
-      {error && (
-        <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </div>
-      )}
-
-      {!loading && !error && result && result.events.length === 0 && (
-        <div className="mt-4 rounded-xl border border-cream-border bg-white p-8 text-center text-gray-400 text-sm">
-          No orders found for &quot;{query}&quot;.
-        </div>
-      )}
-
-      {result && result.events.length > 0 && (
-        <div className="mt-6 flex flex-col gap-4">
-          {[...result.events].reverse().map((ev) => (
-            <EventCard key={ev.eventId} event={ev} customer={result.customer} customerDetail={result.customerDetail} />
-          ))}
-        </div>
-      )}
+      {/* Table */}
+      <div className="rounded-xl border border-cream-border bg-white overflow-hidden">
+        {loading ? (
+          <div className="py-12 text-center text-sm text-gray-400">Loading…</div>
+        ) : error ? (
+          <div className="py-8 px-4 text-sm text-red-500">{error}</div>
+        ) : (
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr className="border-b border-cream-border bg-gray-50/80">
+                <SortableHeader sortKey="customer" currentKey={sortKey} dir={sortDir} onClick={toggleSort} align="left">
+                  Customer
+                </SortableHeader>
+                <SortableHeader sortKey="invoiceTotal" currentKey={sortKey} dir={sortDir} onClick={toggleSort} align="right" widthClass="w-36">
+                  Invoice Total
+                </SortableHeader>
+                <SortableHeader sortKey="totalPaid" currentKey={sortKey} dir={sortDir} onClick={toggleSort} align="right" widthClass="w-32">
+                  Paid
+                </SortableHeader>
+                <SortableHeader sortKey="outstanding" currentKey={sortKey} dir={sortDir} onClick={toggleSort} align="right" widthClass="w-32">
+                  Outstanding
+                </SortableHeader>
+                <SortableHeader sortKey="status" currentKey={sortKey} dir={sortDir} onClick={toggleSort} align="left" widthClass="w-28">
+                  Status
+                </SortableHeader>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedRows.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-12 text-center text-sm text-gray-400">
+                    {rows.length === 0 ? "No customers for this event" : "No matches"}
+                  </td>
+                </tr>
+              ) : sortedRows.map((r) => (
+                <tr
+                  key={r.customer}
+                  className="border-b border-cream-border hover:bg-gray-50/50 transition-colors cursor-pointer"
+                  onClick={() => onOpenCustomer(r.customer)}
+                >
+                  <td className="px-4 py-2.5 font-medium text-foreground">{displayIg(r.customer)}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums text-foreground">
+                    Rp {formatNumber(r.invoiceTotal)}
+                  </td>
+                  <td className="px-4 py-2.5 text-right tabular-nums text-foreground">
+                    Rp {formatNumber(r.totalPaid)}
+                  </td>
+                  <td className={`px-4 py-2.5 text-right tabular-nums font-medium ${r.outstanding > 0 ? "text-red-600" : r.outstanding < 0 ? "text-purple-600" : "text-green-600"}`}>
+                    {r.outstanding > 0 ? "Rp " + formatNumber(r.outstanding) : r.outstanding < 0 ? "−Rp " + formatNumber(Math.abs(r.outstanding)) : "—"}
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${STATUS_COLORS[r.status]}`}>
+                      {STATUS_LABELS[r.status]}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   )
 }
@@ -178,7 +530,7 @@ function CustomerInfoModal({
         aria-modal="true"
       >
         <div className="px-5 py-3 border-b border-cream-border flex items-center justify-between">
-          <div className="text-sm font-semibold text-foreground">{customer.toUpperCase()}</div>
+          <div className="text-sm font-semibold text-foreground">{displayIg(customer).toUpperCase()}</div>
           <button
             type="button"
             onClick={onClose}
@@ -246,7 +598,7 @@ function EventCard({
       <div className="px-5 py-4 bg-cream border-b border-cream-border">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-1.5">
-            <span className="text-sm font-semibold text-foreground">{customer.toUpperCase()}</span>
+            <span className="text-sm font-semibold text-foreground">{displayIg(customer).toUpperCase()}</span>
             {customerDetail && (
               <button
                 type="button"

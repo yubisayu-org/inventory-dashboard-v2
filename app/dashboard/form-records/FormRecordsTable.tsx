@@ -1,5 +1,7 @@
 "use client"
 
+import { displayIg } from "@/lib/format"
+import TableSkeleton from "@/components/TableSkeleton"
 import { useCallback, useMemo, useState } from "react"
 import type { FormRow } from "@/lib/db"
 import { usePaginatedFetch, type PageData } from "@/hooks/usePaginatedFetch"
@@ -19,7 +21,7 @@ const PAGE_SIZE = 30
 
 function fmtNum(v: number | null): string {
   if (v == null) return "—"
-  return String(v)
+  return v.toLocaleString("id-ID")
 }
 
 // ---------------------------------------------------------------------------
@@ -95,6 +97,7 @@ export default function FormRecordsTable() {
       accessorKey: "customer",
       header: "Customer",
       filterFn: "textContains" as unknown as undefined,
+      cell: ({ getValue }) => <span>{displayIg(getValue<string>())}</span>,
     },
     {
       accessorKey: "items",
@@ -196,13 +199,7 @@ export default function FormRecordsTable() {
   )
 
   // -- Loading / error states --
-  if (fetchState.loading && rows.length === 0) {
-    return (
-      <div className="rounded-xl border border-cream-border bg-white p-10 text-center text-sm text-gray-400">
-        Loading…
-      </div>
-    )
-  }
+  if (fetchState.loading && rows.length === 0) return <TableSkeleton />
 
   if (fetchState.error) {
     return (

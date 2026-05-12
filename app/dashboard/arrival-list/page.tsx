@@ -6,7 +6,7 @@ export default function ArrivalListPage() {
   return (
     <PageShell>
       <PageHeader
-        title="Arrival List"
+        title="Receiving List"
         subtitle="Track which purchased items haven't arrived yet"
       />
       <ArrivalListClient />

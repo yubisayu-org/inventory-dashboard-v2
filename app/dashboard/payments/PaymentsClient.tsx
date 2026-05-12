@@ -1,5 +1,7 @@
 "use client"
 
+import { displayIg } from "@/lib/format"
+import TableSkeleton from "@/components/TableSkeleton"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import type { PaymentRow } from "@/lib/db"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
@@ -15,6 +17,7 @@ import DataGrid, {
 const INPUT_CLASS =
   "w-full border border-cream-border rounded-md px-2 py-1 text-sm text-foreground bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
 const LABEL = "text-xs text-gray-500 mb-1 block"
+const ACCOUNT_OPTIONS = ["BCA", "JAGO", "QRIS", "TRANSFER"] as const
 
 type EditForm = {
   event: string
@@ -86,6 +89,7 @@ export default function PaymentsClient() {
       accessorKey: "customer",
       header: "Customer",
       filterFn: "textContains" as unknown as undefined,
+      cell: ({ getValue }) => <span>{displayIg(getValue<string>())}</span>,
     },
     {
       accessorKey: "amount",
@@ -191,13 +195,7 @@ export default function PaymentsClient() {
     </>
   ), [addOpen, fetchRows])
 
-  if (loading) {
-    return (
-      <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">
-        Loading…
-      </div>
-    )
-  }
+  if (loading) return <TableSkeleton />
 
   if (error) {
     return (
@@ -377,7 +375,10 @@ function EditPaymentModal({
           </div>
           <div>
             <label className={LABEL}>Account</label>
-            <input type="text" value={form.account} onChange={(e) => setForm({ ...form, account: e.target.value })} className={INPUT_CLASS} />
+            <select value={form.account} onChange={(e) => setForm({ ...form, account: e.target.value })} className={INPUT_CLASS}>
+              <option value="">Select…</option>
+              {ACCOUNT_OPTIONS.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
           </div>
           <div className="flex items-center gap-2">
             <input type="checkbox" checked={form.isChecked} onChange={(e) => setForm({ ...form, isChecked: e.target.checked })} id="edit-checked" className="accent-brand" />
@@ -434,7 +435,7 @@ function AddPaymentForm({
   const [customer, setCustomer] = useState("")
   const [amount, setAmount] = useState("")
   const [account, setAccount] = useState("BCA")
-  const [isChecked, setIsChecked] = useState(true)
+  const [isChecked, setIsChecked] = useState(false)
   const [payDate, setPayDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [remarks, setRemarks] = useState("")
   const [submitting, setSubmitting] = useState(false)
@@ -505,7 +506,9 @@ function AddPaymentForm({
         </div>
         <div>
           <label className={LABEL}>Account</label>
-          <input type="text" value={account} onChange={(e) => setAccount(e.target.value)} className={INPUT_CLASS} style={{ width: "5rem" }} />
+          <select value={account} onChange={(e) => setAccount(e.target.value)} className={INPUT_CLASS} style={{ width: "7rem" }}>
+            {ACCOUNT_OPTIONS.map((a) => <option key={a} value={a}>{a}</option>)}
+          </select>
         </div>
         <div>
           <label className={LABEL}>Date</label>

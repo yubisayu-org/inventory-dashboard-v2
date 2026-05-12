@@ -1,5 +1,7 @@
 "use client"
 
+import { displayIg } from "@/lib/format"
+import TableSkeleton from "@/components/TableSkeleton"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import type { OverpaymentCandidate, RefundRow, RefundReason, RefundStatus } from "@/lib/db"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
@@ -275,7 +277,7 @@ export default function RefundsClient() {
                 <div key={key} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-medium text-foreground">{c.customer}</span>
+                      <span className="font-medium text-foreground">{displayIg(c.customer)}</span>
                       <span className="text-gray-500">·</span>
                       <span className="text-gray-600">{c.event}</span>
                     </div>
@@ -302,7 +304,7 @@ export default function RefundsClient() {
       {/* Table */}
       <div className="rounded-xl border border-cream-border bg-white overflow-hidden">
         {loading ? (
-          <div className="py-12 text-center text-sm text-gray-400">Loading…</div>
+          <TableSkeleton />
         ) : error ? (
           <div className="py-8 px-4 text-sm text-red-500">{error}</div>
         ) : (
@@ -330,7 +332,7 @@ export default function RefundsClient() {
                   className="border-b border-cream-border hover:bg-gray-50/50 transition-colors cursor-pointer"
                   onClick={() => setEditRow(row)}
                 >
-                  <td className="px-4 py-3 font-medium text-foreground">{row.customer}</td>
+                  <td className="px-4 py-3 font-medium text-foreground">{displayIg(row.customer)}</td>
                   <td className="px-4 py-3 text-gray-600">{row.event}</td>
                   <td className="px-4 py-3 text-gray-600">{REASON_LABELS[row.reason]}</td>
                   <td className="px-4 py-3 text-right tabular-nums font-semibold text-foreground">
@@ -523,6 +525,7 @@ function RefundDetailModal({
   const [refundAmount, setRefundAmount] = useState(String(row.refundAmount))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
 
   const isReadOnly = row.status === "refunded" || row.status === "cancelled" || row.status === "applied_to_next_order"
 
@@ -588,9 +591,18 @@ function RefundDetailModal({
     }
   }
 
-  const waMessage = encodeURIComponent(
-    `Halo ${row.customer} 👋\n\nKami ingin menginformasikan bahwa terdapat pengembalian dana untuk event *${row.event}* sebesar *${formatRp(row.refundAmount)}*.\n\nMohon balas pesan ini dengan informasi rekening bank:\n- Nama Bank:\n- Nomor Rekening:\n- Nama Pemilik Rekening:\n\nTerima kasih 🙏`,
-  )
+  const waMessageText = `Halo ${row.customer} 👋\n\nKami ingin menginformasikan bahwa ada barang yang tidak tersedia dari sesi *${row.event}* sehingga perlu dilakukan pengembalian dana sebesar *${formatRp(row.refundAmount)}*.\n\nMohon balas pesan ini dengan informasi rekening bank:\n- Nama Bank:\n- Nomor Rekening:\n- Nama Pemilik Rekening:\n\nTerima kasih 🙏`
+  const waMessage = encodeURIComponent(waMessageText)
+
+  async function handleCopyMessage() {
+    try {
+      await navigator.clipboard.writeText(waMessageText)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      setError("Failed to copy")
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
@@ -601,7 +613,7 @@ function RefundDetailModal({
         {/* Header */}
         <div className="flex items-start justify-between gap-3 px-6 py-4 border-b border-cream-border">
           <div>
-            <div className="text-sm font-semibold text-foreground">{row.customer}</div>
+            <div className="text-sm font-semibold text-foreground">{displayIg(row.customer)}</div>
             <div className="text-xs text-gray-400 mt-0.5">{row.event} · {REASON_LABELS[row.reason]}</div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -658,11 +670,36 @@ function RefundDetailModal({
           {/* WhatsApp message (pending / awaiting) */}
           {(row.status === "pending" || row.status === "awaiting_bank_info") && (
             <div className="flex flex-col gap-2 p-3 rounded-lg bg-green-50 border border-green-200">
-              <div className="text-xs font-medium text-green-800">WhatsApp Message</div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-xs font-medium text-green-800">WhatsApp Message</div>
+                <button
+                  type="button"
+                  onClick={handleCopyMessage}
+                  title="Copy message"
+                  className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-green-300 text-green-700 hover:bg-green-100 transition-colors shrink-0"
+                >
+                  {copied ? (
+                    <>
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M20 6 9 17l-5-5" />
+                      </svg>
+                      Copied
+                    </>
+                  ) : (
+                    <>
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="9" y="9" width="13" height="13" rx="2" />
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                      </svg>
+                      Copy
+                    </>
+                  )}
+                </button>
+              </div>
               <p className="text-xs text-green-700 whitespace-pre-wrap leading-relaxed">
-                {decodeURIComponent(waMessage)}
+                {waMessageText}
               </p>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <a
                   href={`https://wa.me/?text=${waMessage}`}
                   target="_blank"
