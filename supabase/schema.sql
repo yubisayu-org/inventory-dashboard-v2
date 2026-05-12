@@ -90,16 +90,20 @@ CREATE INDEX idx_orders_customer_normalized ON orders (lower(replace(customer, '
 CREATE INDEX idx_orders_event_product ON orders (event, product_id);
 
 CREATE TABLE excess_purchase (
-  id         SERIAL PRIMARY KEY,
-  event      TEXT NOT NULL REFERENCES events(name) ON UPDATE CASCADE ON DELETE RESTRICT,
-  items      TEXT NOT NULL,
-  unit_buy   INTEGER NOT NULL,
-  receipt    TEXT NOT NULL DEFAULT '',
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ
+  id            SERIAL PRIMARY KEY,
+  event         TEXT NOT NULL REFERENCES events(name) ON UPDATE CASCADE ON DELETE RESTRICT,
+  items         TEXT NOT NULL,
+  unit_buy      INTEGER NOT NULL,
+  receipt       TEXT NOT NULL DEFAULT '',
+  reason        TEXT NOT NULL DEFAULT 'overbuy',
+  -- 'overbuy' | 'overship' | 'wrong_product'
+  expected_item TEXT,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ
 );
 
 CREATE INDEX idx_excess_event_items ON excess_purchase (event, items);
+CREATE INDEX idx_excess_reason ON excess_purchase (reason);
 
 CREATE TABLE shipments (
   id                SERIAL PRIMARY KEY,

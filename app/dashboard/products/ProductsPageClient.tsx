@@ -1,5 +1,6 @@
 "use client"
 
+import TableSkeleton from "@/components/TableSkeleton"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { ProductRow, CountryRow } from "@/lib/db"
 import DataGrid, { numericFilter, textContainsFilter, type ColumnDef } from "@/components/DataGrid"
@@ -133,14 +134,14 @@ export default function ProductsPageClient() {
       accessorKey: "valas",
       header: "Valas",
       filterFn: "numeric" as unknown as undefined,
-      cell: ({ row }) => <span className="tabular-nums">{isAbroad(row.original) ? row.original.valas : "—"}</span>,
+      cell: ({ row }) => <span className="tabular-nums">{isAbroad(row.original) ? fmt(row.original.valas) : "—"}</span>,
       meta: { align: "right" },
     },
     {
       accessorKey: "gram",
       header: "Gram",
       filterFn: "numeric" as unknown as undefined,
-      cell: ({ row }) => <span className="tabular-nums">{row.original.gram || "—"}</span>,
+      cell: ({ row }) => <span className="tabular-nums">{row.original.gram ? fmt(row.original.gram) : "—"}</span>,
       meta: { align: "right" },
     },
     {
@@ -240,7 +241,7 @@ export default function ProductsPageClient() {
       {/* Add form */}
       <AddProductForm countries={countries} stores={stores} onAdded={() => load()} />
 
-      {loading && <div className="text-sm text-gray-400 py-12 text-center">Loading…</div>}
+      {loading && <TableSkeleton />}
       {error && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
       )}
@@ -698,10 +699,24 @@ function EditProductModal({
               <input value={draft.profitPct} onChange={(e) => setDraft((d) => ({ ...d, profitPct: e.target.value }))} type="number" min="0" max="99" disabled={saving} className={formInputCls} />
             </Field>
             <Field label="Op Fee">
-              <input value={draft.opFee} onChange={(e) => setDraft((d) => ({ ...d, opFee: e.target.value }))} type="number" min="0" disabled={saving} className={formInputCls} />
+              <input
+                value={draft.opFee}
+                type="number"
+                disabled
+                readOnly
+                title="Locked — set when the product is created. Re-create the product to change this."
+                className={`${formInputCls} bg-gray-50 text-gray-400 cursor-not-allowed`}
+              />
             </Field>
             <Field label="Pack Fee">
-              <input value={draft.packFee} onChange={(e) => setDraft((d) => ({ ...d, packFee: e.target.value }))} type="number" min="0" disabled={saving} className={formInputCls} />
+              <input
+                value={draft.packFee}
+                type="number"
+                disabled
+                readOnly
+                title="Locked — set when the product is created. Re-create the product to change this."
+                className={`${formInputCls} bg-gray-50 text-gray-400 cursor-not-allowed`}
+              />
             </Field>
             {draftCountry && (
               <div className="col-span-2 flex gap-4 text-xs text-gray-500 items-center">

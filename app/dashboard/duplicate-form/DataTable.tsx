@@ -1,10 +1,12 @@
 "use client"
 
+import TableSkeleton from "@/components/TableSkeleton"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { FormRow, InvoiceResult, SheetOptions } from "@/lib/db"
 import { usePaginatedFetch, type PageData } from "@/hooks/usePaginatedFetch"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import { copyToClipboard } from "@/lib/clipboard"
+import { fmt, displayIg } from "@/lib/format"
 import { useCopyFeedback } from "@/hooks/useCopyFeedback"
 import DataGrid, {
   type ColumnDef,
@@ -148,7 +150,7 @@ export default function DataTable() {
       accessorKey: "customer",
       header: "Customer",
       filterFn: "textContains" as unknown as undefined,
-      cell: ({ getValue }) => <CopyableText text={getValue<string>()} />,
+      cell: ({ getValue }) => <CopyableText text={displayIg(getValue<string>())} />,
     },
     {
       accessorKey: "items",
@@ -162,6 +164,7 @@ export default function DataTable() {
       enableColumnFilter: false,
       size: 80,
       meta: { align: "right" },
+      cell: ({ getValue }) => <span className="tabular-nums">{fmt(getValue<number>())}</span>,
     },
     {
       accessorKey: "note",
@@ -243,9 +246,7 @@ export default function DataTable() {
   )
 
   // -- Loading / error states --
-  if (fetchState.loading && rows.length === 0) {
-    return <div className="flex items-center justify-center py-24 text-gray-400 text-sm">Loading orders...</div>
-  }
+  if (fetchState.loading && rows.length === 0) return <TableSkeleton />
 
   if (fetchState.error) {
     return (

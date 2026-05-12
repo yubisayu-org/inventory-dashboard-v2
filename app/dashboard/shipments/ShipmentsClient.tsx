@@ -1,5 +1,7 @@
 "use client"
 
+import { displayIg } from "@/lib/format"
+import TableSkeleton from "@/components/TableSkeleton"
 import { useEffect, useMemo, useRef, useState } from "react"
 import type { ShippingRecord } from "@/lib/db"
 import { generateShippingLabel, generateMultipleShippingLabels } from "@/lib/shipping-label"
@@ -76,7 +78,7 @@ function LabelModal({
         <div className="px-5 py-4 border-b border-cream-border shrink-0">
           <div className="text-sm font-semibold text-foreground">Label Pengiriman</div>
           <div className="text-xs text-gray-500 mt-0.5">
-            {record.customer.toUpperCase()} · {record.event}
+            {displayIg(record.customer).toUpperCase()} · {record.event}
             <span className="ml-2 font-mono">#{record.shippingId}</span>
           </div>
         </div>
@@ -182,7 +184,7 @@ function EditResiModal({
         <div className="px-5 py-4 border-b border-cream-border">
           <div className="text-sm font-semibold text-foreground">Edit Nomor Resi</div>
           <div className="text-xs text-gray-500 mt-0.5">
-            {record.customer.toUpperCase()} · <span className="font-mono">#{record.shippingId}</span>
+            {displayIg(record.customer).toUpperCase()} · <span className="font-mono">#{record.shippingId}</span>
           </div>
         </div>
 
@@ -321,6 +323,7 @@ export default function ShipmentsClient() {
         header: "Customer",
         filterFn: "textContains" as unknown as undefined,
         size: 140,
+        cell: ({ getValue }) => <span>{displayIg(getValue<string>())}</span>,
       },
       {
         accessorKey: "invoicing",
@@ -341,7 +344,7 @@ export default function ShipmentsClient() {
         size: 90,
         meta: { align: "right" },
         cell: ({ getValue }) => (
-          <span className="whitespace-nowrap">{getValue<number>()} kg</span>
+          <span className="whitespace-nowrap">{fmt(getValue<number>())} kg</span>
         ),
       },
       {
@@ -499,9 +502,7 @@ export default function ShipmentsClient() {
 
   return (
     <div className="flex flex-col gap-4">
-      {loading && (
-        <div className="text-sm text-gray-400 py-12 text-center">Loading…</div>
-      )}
+      {loading && <TableSkeleton />}
       {error && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}

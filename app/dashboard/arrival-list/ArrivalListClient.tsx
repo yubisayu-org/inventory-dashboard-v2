@@ -1,10 +1,13 @@
 "use client"
 
+import { displayIg } from "@/lib/format"
+import TableSkeleton from "@/components/TableSkeleton"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { ArrivalListItem, ArrivalListOrder } from "@/lib/db"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import { allocateFifo } from "@/lib/fifo-fill"
 import { fetchJson } from "@/lib/api-fetch"
+import ArriveBulkModal from "./ArriveBulkModal"
 
 const INPUT_CLASS =
   "border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
@@ -179,7 +182,7 @@ function CustomerBadge({ orders }: { orders: { customer: string; qty: number }[]
               key={e.customer}
               className="flex items-center justify-between gap-3 px-3 py-1 text-xs hover:bg-gray-50 whitespace-nowrap"
             >
-              <span className="text-foreground truncate">{e.customer}</span>
+              <span className="text-foreground truncate">{displayIg(e.customer)}</span>
               <span className="text-gray-500 tabular-nums shrink-0">{e.qty}×</span>
             </div>
           ))}
@@ -199,11 +202,12 @@ export default function ArrivalListClient() {
   const [selectedEvent, setSelectedEvent] = useState("")
   const [search, setSearch] = useState("")
   const [arrivingItem, setArrivingItem] = useState<ArrivalListItem | null>(null)
+  const [bulkOpen, setBulkOpen] = useState(false)
   const [collapsedEvents, setCollapsedEvents] = useState<Set<string>>(new Set())
   const [collapsedStores, setCollapsedStores] = useState<Set<string>>(new Set())
 
-  const fetchItems = useCallback((event?: string) => {
-    setLoading(true)
+  const fetchItems = useCallback((event?: string, silent = false) => {
+    if (!silent) setLoading(true)
     setError("")
     const url = event
       ? `/api/sheets/arrival-list?event=${encodeURIComponent(event)}`
@@ -211,7 +215,7 @@ export default function ArrivalListClient() {
     fetchJson<{ items: ArrivalListItem[] }>(url)
       .then((data) => setItems(data.items ?? []))
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"))
-      .finally(() => setLoading(false))
+      .finally(() => { if (!silent) setLoading(false) })
   }, [])
 
   useEffect(() => {
@@ -220,8 +224,9 @@ export default function ArrivalListClient() {
 
   // Partial fills change multiple orders' pending qty in non-trivial ways.
   // Refetching is simpler and more correct than incremental local state updates.
+  // Silent so the open modal isn't unmounted by the TableSkeleton fallback.
   function handleArrivedSuccess() {
-    fetchItems(selectedEvent || undefined)
+    fetchItems(selectedEvent || undefined, true)
   }
 
   function toggleEvent(event: string) {
@@ -258,13 +263,7 @@ export default function ArrivalListClient() {
     [grouped, collapsedEvents, collapsedStores],
   )
 
-  if (loading) {
-    return (
-      <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">
-        Loading...
-      </div>
-    )
-  }
+  if (loading) return <TableSkeleton />
 
   if (error) {
     return (
@@ -287,7 +286,7 @@ export default function ArrivalListClient() {
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search arrival list…"
+          placeholder="Search receiving list…"
           className={`${INPUT_CLASS} flex-1 min-w-[180px]`}
         />
         <select
@@ -309,6 +308,15 @@ export default function ArrivalListClient() {
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 12a9 9 0 1 1-6.22-8.56" /><polyline points="21 3 21 9 15 9" />
           </svg>
+        </button>
+        <button
+          onClick={() => setBulkOpen(true)}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+          Add Bulk Arrival
         </button>
       </div>
 
@@ -435,6 +443,13 @@ export default function ArrivalListClient() {
           }}
         />
       )}
+
+      {bulkOpen && (
+        <ArriveBulkModal
+          onClose={() => setBulkOpen(false)}
+          onProcessed={handleArrivedSuccess}
+        />
+      )}
     </>
   )
 }
@@ -527,7 +542,7 @@ function ArriveModal({
                 <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto pr-0.5">
                   {preview.filled.map((f) => (
                     <div key={f.order.id} className="flex items-center justify-between px-2 py-1 rounded-md bg-blue-50">
-                      <span className="text-blue-800 truncate">{f.order.customer}</span>
+                      <span className="text-blue-800 truncate">{displayIg(f.order.customer)}</span>
                       <span className="text-blue-700 font-medium ml-2 shrink-0 tabular-nums">
                         {f.allocated}×
                         {f.allocated < f.order.pending && (
@@ -546,7 +561,7 @@ function ArriveModal({
                 <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto pr-0.5">
                   {preview.unfilled.map((o) => (
                     <div key={o.id} className="flex items-center justify-between px-2 py-1 rounded-md bg-gray-50">
-                      <span className="text-gray-500 truncate">{o.customer}</span>
+                      <span className="text-gray-500 truncate">{displayIg(o.customer)}</span>
                       <span className="text-gray-400 font-medium ml-2 shrink-0 tabular-nums">{o.pending}×</span>
                     </div>
                   ))}

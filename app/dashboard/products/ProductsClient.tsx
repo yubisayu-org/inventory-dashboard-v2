@@ -1,5 +1,6 @@
 "use client"
 
+import TableSkeleton from "@/components/TableSkeleton"
 import { useEffect, useMemo, useState } from "react"
 import type { ProductIndoRow } from "@/lib/db"
 import DataGrid, { numericFilter, textContainsFilter, type ColumnDef } from "@/components/DataGrid"
@@ -186,7 +187,7 @@ export default function ProductsClient() {
         </div>
       </form>
 
-      {loading && <div className="text-sm text-gray-400 py-12 text-center">Loading…</div>}
+      {loading && <TableSkeleton />}
       {error && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
       )}

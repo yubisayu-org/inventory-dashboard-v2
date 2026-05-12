@@ -1,5 +1,7 @@
 "use client"
 
+import { displayIg } from "@/lib/format"
+import TableSkeleton from "@/components/TableSkeleton"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import type { AdjustmentRow } from "@/lib/db"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
@@ -10,6 +12,13 @@ import DataGrid, { type ColumnDef } from "@/components/DataGrid"
 const INPUT_CLASS =
   "w-full border border-cream-border rounded-md px-2 py-1 text-sm text-foreground bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
 const LABEL = "text-xs text-gray-500 mb-1 block"
+
+const DEFAULT_DESCRIPTIONS = ["Free Shipping", "Shipping Difference"] as const
+
+function descriptionOptions(extra: string[] = []) {
+  const all = new Set<string>([...DEFAULT_DESCRIPTIONS, ...extra.filter(Boolean)])
+  return Array.from(all).map((d) => ({ value: d, label: d }))
+}
 
 type EditForm = {
   event: string
@@ -53,6 +62,7 @@ export default function AdjustmentsClient() {
       accessorKey: "customer",
       header: "Customer",
       filterFn: "textContains" as unknown as undefined,
+      cell: ({ getValue }) => <span>{displayIg(getValue<string>())}</span>,
     },
     {
       accessorKey: "description",
@@ -119,13 +129,7 @@ export default function AdjustmentsClient() {
     setEditingRow(null)
   }
 
-  if (loading) {
-    return (
-      <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">
-        Loading…
-      </div>
-    )
-  }
+  if (loading) return <TableSkeleton />
 
   if (error) {
     return (
@@ -294,12 +298,12 @@ function EditAdjustmentModal({
 
           <div>
             <label className={LABEL}>Description</label>
-            <input
-              type="text"
+            <SearchableSelect
               value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
-              placeholder="e.g. Packaging fee"
-              className={INPUT_CLASS}
+              onChange={(v) => setForm({ ...form, description: v })}
+              options={descriptionOptions([form.description])}
+              placeholder="Select or type…"
+              allowNewValue
             />
           </div>
 
@@ -427,7 +431,13 @@ function AddAdjustmentForm({
         </div>
         <div className="flex-1 min-w-[10rem]">
           <label className={LABEL}>Description</label>
-          <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. Packaging fee, Diskon" className={INPUT_CLASS} />
+          <SearchableSelect
+            value={description}
+            onChange={(v) => { setDescription(v); setFeedback(null) }}
+            options={descriptionOptions([description])}
+            placeholder="Select or type…"
+            allowNewValue
+          />
         </div>
         <div>
           <label className={LABEL}>Amount <span className="text-brand">*</span></label>

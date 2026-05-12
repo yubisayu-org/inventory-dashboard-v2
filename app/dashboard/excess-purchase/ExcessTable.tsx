@@ -1,8 +1,30 @@
 "use client"
 
+import TableSkeleton from "@/components/TableSkeleton"
 import { useEffect, useState, useMemo } from "react"
-import type { ExcessRow } from "@/lib/db"
+import type { ExcessRow, ExcessReason } from "@/lib/db"
 import DataGrid, { numericFilter, textContainsFilter, type ColumnDef } from "@/components/DataGrid"
+import { fmt, displayIg } from "@/lib/format"
+
+const REASON_LABEL: Record<ExcessReason, string> = {
+  overbuy: "Overbuy",
+  overship: "Overship",
+  wrong_product: "Wrong product",
+}
+
+const REASON_CLASS: Record<ExcessReason, string> = {
+  overbuy: "bg-gray-100 text-gray-700 border-gray-200",
+  overship: "bg-blue-50 text-blue-700 border-blue-200",
+  wrong_product: "bg-yellow-50 text-yellow-700 border-yellow-200",
+}
+
+function ReasonBadge({ reason }: { reason: ExcessReason }) {
+  return (
+    <span className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-medium border ${REASON_CLASS[reason]}`}>
+      {REASON_LABEL[reason]}
+    </span>
+  )
+}
 
 type UpdatedRow = { rowNumber: number; customer: string; oldUnitBuy: number; unitBuy: number }
 type ApplyResult = { filled: UpdatedRow[]; remainder: number }
@@ -132,7 +154,24 @@ export default function ExcessTable() {
         accessorKey: "items",
         header: "Item",
         filterFn: "textContains" as unknown as undefined,
-        size: 220,
+        size: 240,
+        cell: ({ row }) => (
+          <div className="min-w-0">
+            <div className="text-foreground truncate">{row.original.items}</div>
+            {row.original.expectedItem && (
+              <div className="text-[11px] text-yellow-700 truncate">
+                expected: {row.original.expectedItem}
+              </div>
+            )}
+          </div>
+        ),
+      },
+      {
+        accessorKey: "reason",
+        header: "Reason",
+        filterFn: "textContains" as unknown as undefined,
+        size: 110,
+        cell: ({ getValue }) => <ReasonBadge reason={getValue<ExcessReason>()} />,
       },
       {
         accessorKey: "unitBuy",
@@ -141,7 +180,7 @@ export default function ExcessTable() {
         size: 90,
         meta: { align: "right" },
         cell: ({ getValue }) => (
-          <span className="font-medium tabular-nums">{getValue<number>()}</span>
+          <span className="font-medium tabular-nums">{fmt(getValue<number>())}</span>
         ),
       },
       {
@@ -210,13 +249,7 @@ export default function ExcessTable() {
   // Find the row object for the pending modal
   const pendingExcessRow = pendingRow != null ? rows.find((r) => r.rowNumber === pendingRow) : null
 
-  if (loading) {
-    return (
-      <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">
-        Loading…
-      </div>
-    )
-  }
+  if (loading) return <TableSkeleton />
 
   if (error) {
     return (
@@ -422,7 +455,7 @@ function ApplyResultBanner({
             {filled.map((row, i) => (
               <tr key={row.rowNumber} className="border-b border-inherit last:border-0">
                 <td className="px-4 py-2 text-gray-400">{i + 1}</td>
-                <td className="px-4 py-2 text-foreground">{row.customer}</td>
+                <td className="px-4 py-2 text-foreground">{displayIg(row.customer)}</td>
                 <td className="px-4 py-2 text-foreground text-right font-semibold tabular-nums">{row.unitBuy}</td>
                 <td className="px-4 py-2 text-right text-gray-400">
                   {row.oldUnitBuy > 0 && `(was ${row.oldUnitBuy})`}
@@ -501,7 +534,7 @@ function BulkResultBanner({
                   {item.filled.map((row, i) => (
                     <tr key={row.rowNumber} className="border-t border-inherit">
                       <td className="px-4 py-2 text-gray-400 w-8">{i + 1}</td>
-                      <td className="px-4 py-2 text-foreground">{row.customer}</td>
+                      <td className="px-4 py-2 text-foreground">{displayIg(row.customer)}</td>
                       <td className="px-4 py-2 text-foreground text-right font-semibold tabular-nums">{row.unitBuy}</td>
                       <td className="px-4 py-2 text-right text-gray-400 w-20">
                         {row.oldUnitBuy > 0 && `(was ${row.oldUnitBuy})`}

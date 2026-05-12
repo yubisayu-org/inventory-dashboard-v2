@@ -47,12 +47,16 @@ export interface FormRow {
   unitHold: number | null
 }
 
+export type ExcessReason = "overbuy" | "overship" | "wrong_product"
+
 export interface ExcessRow {
   rowNumber: number
   event: string
   items: string
   unitBuy: number
   receipt: string
+  reason: ExcessReason
+  expectedItem: string
   createdAt: string
   updatedAt: string
 }
@@ -119,6 +123,31 @@ export interface ShipOrderLine {
 }
 
 export interface CustomerDetail {
+  whatsapp: string
+  dataDiri: string
+  ekspedisi: string
+  ongkosKirim: number
+  bankName: string
+  bankAccountNumber: string
+  bankAccountHolder: string
+}
+
+export interface CustomerRow {
+  id: number
+  instagramId: string
+  whatsapp: string
+  dataDiri: string
+  ekspedisi: string
+  ongkosKirim: number
+  bankName: string
+  bankAccountNumber: string
+  bankAccountHolder: string
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+export interface CustomerInput {
+  instagramId: string
   whatsapp: string
   dataDiri: string
   ekspedisi: string
@@ -540,7 +569,7 @@ export async function bulkUpdateArrive(updates: ArriveUpdate[]): Promise<void> {
 
 export async function getExcessPurchaseRows(): Promise<ExcessRow[]> {
   const rows = await sql`
-    SELECT id, event, items, unit_buy, receipt, created_at, updated_at
+    SELECT id, event, items, unit_buy, receipt, reason, expected_item, created_at, updated_at
     FROM excess_purchase ORDER BY id ASC
   `
   return rows.map((r) => ({
@@ -549,13 +578,22 @@ export async function getExcessPurchaseRows(): Promise<ExcessRow[]> {
     items: r.items,
     unitBuy: r.unit_buy,
     receipt: r.receipt ?? "",
+    reason: (r.reason ?? "overbuy") as ExcessReason,
+    expectedItem: r.expected_item ?? "",
     createdAt: tsToString(r.created_at),
     updatedAt: tsToString(r.updated_at),
   }))
 }
 
 export async function appendExcessPurchase(
-  rows: { event: string; items: string; unitBuy: number; receipt: string }[],
+  rows: {
+    event: string
+    items: string
+    unitBuy: number
+    receipt: string
+    reason?: ExcessReason
+    expectedItem?: string
+  }[],
 ): Promise<void> {
   if (rows.length === 0) return
   await sql`
@@ -565,6 +603,8 @@ export async function appendExcessPurchase(
         items: r.items,
         unit_buy: r.unitBuy,
         receipt: r.receipt,
+        reason: r.reason ?? "overbuy",
+        expected_item: r.expectedItem ?? null,
       }))
     )}
   `
@@ -618,6 +658,63 @@ export async function updateCustomerBankInfo(
         updated_at          = NOW()
     WHERE lower(replace(instagram_id, '@', '')) = ${searchId}
   `
+}
+
+export async function getCustomers(): Promise<CustomerRow[]> {
+  const rows = await sql`
+    SELECT id, instagram_id, whatsapp, data_diri, ekspedisi, ongkos_kirim,
+           bank_name, bank_account_number, bank_account_holder,
+           created_at, updated_at
+    FROM customers
+    ORDER BY instagram_id ASC
+  `
+  return rows.map((r) => ({
+    id: r.id as number,
+    instagramId: r.instagram_id ?? "",
+    whatsapp: r.whatsapp ?? "",
+    dataDiri: r.data_diri ?? "",
+    ekspedisi: r.ekspedisi ?? "",
+    ongkosKirim: r.ongkos_kirim ?? 0,
+    bankName: r.bank_name ?? "",
+    bankAccountNumber: r.bank_account_number ?? "",
+    bankAccountHolder: r.bank_account_holder ?? "",
+    createdAt: r.created_at ? new Date(r.created_at as string).toISOString() : null,
+    updatedAt: r.updated_at ? new Date(r.updated_at as string).toISOString() : null,
+  }))
+}
+
+export async function addCustomer(data: CustomerInput): Promise<{ id: number }> {
+  const rows = await sql`
+    INSERT INTO customers (
+      instagram_id, whatsapp, data_diri, ekspedisi, ongkos_kirim,
+      bank_name, bank_account_number, bank_account_holder
+    ) VALUES (
+      ${data.instagramId}, ${data.whatsapp}, ${data.dataDiri}, ${data.ekspedisi}, ${data.ongkosKirim},
+      ${data.bankName}, ${data.bankAccountNumber}, ${data.bankAccountHolder}
+    )
+    RETURNING id
+  `
+  return { id: rows[0].id as number }
+}
+
+export async function updateCustomer(id: number, data: CustomerInput): Promise<void> {
+  await sql`
+    UPDATE customers
+    SET instagram_id        = ${data.instagramId},
+        whatsapp            = ${data.whatsapp},
+        data_diri           = ${data.dataDiri},
+        ekspedisi           = ${data.ekspedisi},
+        ongkos_kirim        = ${data.ongkosKirim},
+        bank_name           = ${data.bankName},
+        bank_account_number = ${data.bankAccountNumber},
+        bank_account_holder = ${data.bankAccountHolder},
+        updated_at          = NOW()
+    WHERE id = ${id}
+  `
+}
+
+export async function deleteCustomer(id: number): Promise<void> {
+  await sql`DELETE FROM customers WHERE id = ${id}`
 }
 
 // ─── Invoice ────────────────────────────────────────────────────────────────
@@ -990,7 +1087,7 @@ export async function shipCustomerOrders(params: ShipOrdersParams): Promise<{ sh
 
     const toShipRows = orders.filter((o) => o.toShip > 0)
     const invoicingText = toShipRows.map((o) => `${o.productName} x ${o.toShip}`).join("\n")
-    const ongkirTotal = ongkirPerKg * weightKg
+    const ongkirTotal = Math.round(ongkirPerKg * weightKg)
 
     await tx`
       INSERT INTO shipments (event, customer, shipping_id, invoicing, weight_estimation, ongkir, ongkir_total, is_last_shipment)
@@ -1813,6 +1910,77 @@ export async function getOverpaymentCandidates(): Promise<OverpaymentCandidate[]
     totalPaid: r.total_paid as number,
     overpayment: (r.total_paid as number) - (r.invoice_total as number),
   }))
+}
+
+export type PaymentStatus = "unpaid" | "partial" | "paid" | "overpaid"
+
+export interface PaymentStatusRow {
+  customer: string
+  invoiceTotal: number
+  totalPaid: number
+  outstanding: number
+  status: PaymentStatus
+}
+
+/**
+ * Per-customer payment status for a given event.
+ * Uses the same invoice math as getInvoiceForCustomer (orders + shipping + adjustments)
+ * and counts only checked payments.
+ */
+export async function getPaymentStatusByEvent(event: string): Promise<PaymentStatusRow[]> {
+  const rows = await sql`
+    WITH order_aggregates AS (
+      SELECT
+        o.customer,
+        SUM(o.unit_price * o.unit) AS subtotal,
+        SUM(COALESCE(p.gram, 0) * o.unit) AS total_gram
+      FROM orders o
+      JOIN products p ON p.id = o.product_id
+      WHERE o.event = ${event}
+      GROUP BY o.customer
+    ),
+    payment_aggregates AS (
+      SELECT customer, SUM(amount) AS total_paid
+      FROM payments
+      WHERE event = ${event} AND is_checked = true
+      GROUP BY customer
+    ),
+    adjustment_aggregates AS (
+      SELECT customer, SUM(amount) AS total_adj
+      FROM adjustments
+      WHERE event = ${event}
+      GROUP BY customer
+    )
+    SELECT
+      oa.customer,
+      (oa.subtotal
+        + COALESCE(c.ongkos_kirim, 0) * CEIL(oa.total_gram::numeric / 1000)
+        + COALESCE(adj.total_adj, 0))::int AS invoice_total,
+      COALESCE(pa.total_paid, 0)::int AS total_paid
+    FROM order_aggregates oa
+    LEFT JOIN customers c ON c.instagram_id = oa.customer
+    LEFT JOIN payment_aggregates pa ON pa.customer = oa.customer
+    LEFT JOIN adjustment_aggregates adj ON adj.customer = oa.customer
+    ORDER BY oa.customer
+  `
+
+  return rows.map((r) => {
+    const invoiceTotal = Number(r.invoice_total)
+    const totalPaid = Number(r.total_paid)
+    const outstanding = invoiceTotal - totalPaid
+    let status: PaymentStatus
+    if (totalPaid === 0) status = "unpaid"
+    else if (totalPaid > invoiceTotal) status = "overpaid"
+    else if (totalPaid >= invoiceTotal) status = "paid"
+    else status = "partial"
+    return {
+      customer: r.customer as string,
+      invoiceTotal,
+      totalPaid,
+      outstanding,
+      status,
+    }
+  })
 }
 
 // ─── Arrival List ──────────────────────────────────────────────────────────

@@ -1,5 +1,7 @@
 "use client"
 
+import { displayIg } from "@/lib/format"
+import TableSkeleton from "@/components/TableSkeleton"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import type { ShipCustomer, ShipOrdersParams, ShipSegment, ShipOrdersFiltered } from "@/lib/db"
@@ -195,9 +197,7 @@ export default function ShipClient() {
       </div>
 
       {/* States */}
-      {loading && (
-        <div className="text-sm text-gray-400 py-12 text-center">Loading…</div>
-      )}
+      {loading && <TableSkeleton />}
       {error && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
@@ -298,7 +298,7 @@ function CustomerCard({
           )}
         <div className="flex flex-col gap-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-semibold text-foreground">{c.customer.toUpperCase()}</span>
+            <span className="text-sm font-semibold text-foreground">{displayIg(c.customer).toUpperCase()}</span>
             <span className="text-sm text-gray-500 font-medium">{c.event}</span>
             {isNotArrived(c) ? (
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
@@ -498,7 +498,7 @@ function ShipConfirmModal({
             {result ? "Label Pengiriman" : "Konfirmasi Pengiriman"}
           </div>
           <div className="text-xs text-gray-500 mt-0.5">
-            {c.customer.toUpperCase()} · {c.event}
+            {displayIg(c.customer).toUpperCase()} · {c.event}
             {result && <span className="ml-2 font-mono">#{result.shippingId}</span>}
           </div>
         </div>
