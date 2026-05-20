@@ -2,15 +2,34 @@
 
 import { displayIg, fmt } from "@/lib/format"
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import type { CustomerDetail, InvoiceEvent, InvoiceOrderLine, InvoiceResult, PaymentStatus, PaymentStatusRow, RefundReason } from "@/lib/db"
 import { useCopyFeedback } from "@/hooks/useCopyFeedback"
 import { useResizableColumns } from "@/hooks/useResizableColumns"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import SearchableSelect from "@/components/SearchableSelect"
+import InvoiceSummary from "@/components/InvoiceSummary"
 
 export default function InvoiceClient() {
   const options = useSheetOptions()
+  const searchParams = useSearchParams()
+  const pathname = usePathname()
+  const router = useRouter()
   const [selectedCustomer, setSelectedCustomer] = useState<string | null>(null)
+
+  // Deep-link support: ?customer=X auto-opens the drawer (used by the
+  // refunds page "Open full invoice" button).
+  const queryCustomer = searchParams.get("customer")
+  useEffect(() => {
+    if (queryCustomer) setSelectedCustomer(queryCustomer)
+  }, [queryCustomer])
+
+  function handleDrawerClose() {
+    setSelectedCustomer(null)
+    // Strip the customer query param so reopening the same row triggers a
+    // fresh fetch (and the URL stays clean).
+    if (queryCustomer) router.replace(pathname, { scroll: false })
+  }
 
   return (
     <div className="max-w-6xl">
@@ -22,7 +41,7 @@ export default function InvoiceClient() {
       {selectedCustomer && (
         <InvoiceDetailDrawer
           customer={selectedCustomer}
-          onClose={() => setSelectedCustomer(null)}
+          onClose={handleDrawerClose}
         />
       )}
     </div>
@@ -696,7 +715,7 @@ function EventCard({
       </div>
 
       {/* Invoice summary */}
-      <InvoiceSummary event={event} />
+      <InvoiceSummary event={event} actions={<InvoiceMessageActions event={event} />} />
 
       {/* Refund modal — triggered per order line */}
       {refundLine && (
@@ -811,47 +830,6 @@ function InvoiceMessageModal({
           </button>
         </div>
       </div>
-    </div>
-  )
-}
-
-function InvoiceSummary({ event }: { event: InvoiceEvent }) {
-  const { invoice, totals } = event
-  const { subtotalBarang, estimasiOngkir, biayaLainnya, total, pembayaran, sisaPelunasan } =
-    invoice
-
-  const sisaAbs = Math.abs(sisaPelunasan)
-  const isRefund = sisaPelunasan < 0
-  const sisaLabel = isRefund ? "Pengembalian Dana" : "Sisa Pelunasan"
-  const sisaColor = sisaPelunasan <= 0 ? "text-green-700" : "text-red-600"
-
-  return (
-    <div className="px-5 py-4 bg-cream/30 border-t border-cream-border">
-      <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
-        <div className="text-sm font-semibold text-foreground">Invoice</div>
-        <InvoiceMessageActions event={event} />
-      </div>
-      <dl className="text-sm">
-        <Row label="Subtotal Barang" value={`Rp ${fmt(subtotalBarang)}`} />
-        <Row label="Estimasi Berat" value={`${fmt(totals.weightKg)} kg`} />
-        <Row label="Estimasi Ongkos Kirim" value={`Rp ${fmt(estimasiOngkir)}`} />
-        {biayaLainnya > 0 && (
-          <Row label="Diskon" value={`- Rp ${fmt(biayaLainnya)}`} />
-        )}
-        {biayaLainnya < 0 && (
-          <Row label="Biaya Lainnya" value={`+ Rp ${fmt(Math.abs(biayaLainnya))}`} />
-        )}
-        {total > 0 && (
-          <Row
-            label="Total"
-            value={`Rp ${fmt(total)}`}
-            strong
-            separator
-          />
-        )}
-        <Row label="Pembayaran" value={`Rp ${fmt(pembayaran)}`} />
-        <Row label={sisaLabel} value={`Rp ${fmt(sisaAbs)}`} valueClassName={sisaColor} />
-      </dl>
     </div>
   )
 }
@@ -1038,27 +1016,3 @@ function RefundFromInvoiceModal({
   )
 }
 
-function Row({
-  label,
-  value,
-  strong,
-  separator,
-  valueClassName,
-}: {
-  label: string
-  value: string
-  strong?: boolean
-  separator?: boolean
-  valueClassName?: string
-}) {
-  return (
-    <div
-      className={`flex justify-between py-1 ${
-        separator ? "border-t border-cream-border mt-1 pt-2" : ""
-      } ${strong ? "font-semibold" : ""}`}
-    >
-      <dt className="text-gray-600">{label}</dt>
-      <dd className={valueClassName ?? "text-foreground"}>{value}</dd>
-    </div>
-  )
-}

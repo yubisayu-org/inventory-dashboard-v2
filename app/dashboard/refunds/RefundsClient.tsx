@@ -1,9 +1,11 @@
 "use client"
 
 import { displayIg } from "@/lib/format"
+import Link from "next/link"
 import TableSkeleton from "@/components/TableSkeleton"
+import InvoiceSummary from "@/components/InvoiceSummary"
 import { useCallback, useEffect, useMemo, useState } from "react"
-import type { RefundRow, RefundReason, RefundStatus } from "@/lib/db"
+import type { InvoiceEvent, InvoiceResult, RefundRow, RefundReason, RefundStatus } from "@/lib/db"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import { fetchJson } from "@/lib/api-fetch"
 
@@ -403,6 +405,28 @@ function RefundDetailModal({
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
+  const [invoiceEvent, setInvoiceEvent] = useState<InvoiceEvent | null>(null)
+  const [invoiceLoading, setInvoiceLoading] = useState(true)
+  const [invoiceError, setInvoiceError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setInvoiceLoading(true)
+    setInvoiceError(null)
+    fetchJson<InvoiceResult>(`/api/sheets/invoice?customer=${encodeURIComponent(row.customer)}`)
+      .then((data) => {
+        if (cancelled) return
+        const match = data.events.find((ev) => ev.eventId === row.event) ?? null
+        setInvoiceEvent(match)
+        if (!match) setInvoiceError("No invoice found for this event")
+      })
+      .catch((err) => {
+        if (!cancelled) setInvoiceError(err instanceof Error ? err.message : "Failed to load invoice")
+      })
+      .finally(() => { if (!cancelled) setInvoiceLoading(false) })
+    return () => { cancelled = true }
+  }, [row.customer, row.event])
+
   const isReadOnly = row.status === "refunded" || row.status === "cancelled" || row.status === "applied_to_next_order"
 
   async function patch(body: object) {
@@ -487,7 +511,7 @@ function RefundDetailModal({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-start justify-between gap-3 px-6 py-4 border-b border-cream-border">
+        <div className="shrink-0 flex items-start justify-between gap-3 px-6 py-4 border-b border-cream-border">
           <div>
             <div className="text-sm font-semibold text-foreground">{displayIg(row.customer)}</div>
             <div className="text-xs text-gray-400 mt-0.5">{row.event} · {REASON_LABELS[row.reason]}</div>
@@ -502,7 +526,31 @@ function RefundDetailModal({
           </div>
         </div>
 
-        <div className="flex flex-col gap-5 px-6 py-5 overflow-y-auto">
+        {/* Invoice that prompted this refund — pinned, always visible */}
+        <div className="shrink-0 border-b border-cream-border">
+          {invoiceLoading ? (
+            <div className="px-6 py-3 text-xs text-gray-400">Loading invoice…</div>
+          ) : invoiceError ? (
+            <div className="px-6 py-3 text-xs text-red-500">{invoiceError}</div>
+          ) : invoiceEvent ? (
+            <InvoiceSummary
+              event={invoiceEvent}
+              actions={
+                <Link
+                  href={`/dashboard/invoice?customer=${encodeURIComponent(row.customer)}`}
+                  className="text-xs px-2.5 py-1 rounded-lg border border-cream-border text-gray-600 hover:border-brand hover:text-brand transition-colors inline-flex items-center gap-1"
+                >
+                  Open full invoice
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M5 12h14M13 5l7 7-7 7" />
+                  </svg>
+                </Link>
+              }
+            />
+          ) : null}
+        </div>
+
+        <div className="flex-1 min-h-0 flex flex-col gap-5 px-6 py-5 overflow-y-auto">
           {/* Amount + Note */}
           <div className="flex flex-col gap-3">
             <label className="flex flex-col gap-1">
@@ -706,9 +754,9 @@ function RefundDetailModal({
         </div>
 
         {/* Footer */}
-        {error && <p className="text-xs text-red-500 px-6 pb-2">{error}</p>}
+        {error && <p className="shrink-0 text-xs text-red-500 px-6 pb-2">{error}</p>}
         {!isReadOnly && (
-          <div className="flex items-center justify-between gap-2 px-6 py-4 border-t border-cream-border">
+          <div className="shrink-0 flex items-center justify-between gap-2 px-6 py-4 border-t border-cream-border">
             <div className="flex gap-2">
               {row.status !== "cancelled" && row.status !== "applied_to_next_order" && (
                 <>
