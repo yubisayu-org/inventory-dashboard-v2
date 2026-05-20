@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { getRefunds, createRefund } from "@/lib/db"
+import { getRefunds, createRefund, materializeOverpaymentRefunds } from "@/lib/db"
 import type { RefundReason } from "@/lib/db"
 
 const VALID_REASONS: RefundReason[] = ["overpayment", "unavailable", "shipping_loss", "damaged", "goodwill", "other"]
@@ -17,6 +17,16 @@ export async function GET(req: NextRequest) {
   const customer = searchParams.get("customer") ?? undefined
 
   try {
+    // Auto-create pending refunds for any detected overpayments before listing.
+    // Idempotent: skips pairs that already have an active overpayment refund.
+    try {
+      await materializeOverpaymentRefunds()
+    } catch (err) {
+      console.error("Failed to auto-create overpayment refunds:", err)
+      // Continue to list whatever's already there; one bad write shouldn't
+      // hide the entire refunds page.
+    }
+
     const rows = await getRefunds({ event, status, customer })
     return NextResponse.json({ rows }, { headers: { "Cache-Control": "no-store" } })
   } catch (err) {

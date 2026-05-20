@@ -1,7 +1,7 @@
 "use client"
 
 import { displayIg } from "@/lib/format"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import SearchableSelect from "@/components/SearchableSelect"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 
@@ -53,6 +53,15 @@ export default function PurchaseModal({
   function removeLine(id: ItemLine["id"]) {
     setLines((prev) => prev.filter((l) => l.id !== id))
   }
+
+  const itemOptions = useMemo(
+    () => (options?.items ?? []).map((it) => ({
+      value: it.name,
+      label: it.name,
+      meta: it.store || undefined,
+    })),
+    [options?.items],
+  )
 
   const canSubmit =
     Boolean(event) &&
@@ -177,11 +186,7 @@ export default function PurchaseModal({
                       <SearchableSelect
                         value={line.item}
                         onChange={(v) => updateLine(line.id, "item", v)}
-                        options={(options?.items ?? []).map((it) => ({
-                          value: it.name,
-                          label: it.name,
-                          meta: it.store || undefined,
-                        }))}
+                        options={itemOptions}
                         placeholder="Search item…"
                       />
                     </div>

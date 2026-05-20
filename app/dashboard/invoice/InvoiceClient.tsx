@@ -1,21 +1,35 @@
 "use client"
 
-import { displayIg } from "@/lib/format"
+import { displayIg, fmt } from "@/lib/format"
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import type { CustomerDetail, InvoiceEvent, InvoiceOrderLine, InvoiceResult, PaymentStatus, PaymentStatusRow, RefundReason } from "@/lib/db"
 import { useCopyFeedback } from "@/hooks/useCopyFeedback"
 import { useResizableColumns } from "@/hooks/useResizableColumns"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import SearchableSelect from "@/components/SearchableSelect"
-
-function formatNumber(n: number | null | undefined): string {
-  const v = Number(n)
-  return new Intl.NumberFormat("id-ID").format(Number.isFinite(v) ? v : 0)
-}
+import InvoiceSummary from "@/components/InvoiceSummary"
 
 export default function InvoiceClient() {
   const options = useSheetOptions()
+  const searchParams = useSearchParams()
+  const pathname = usePathname()
+  const router = useRouter()
   const [selectedCustomer, setSelectedCustomer] = useState<string | null>(null)
+
+  // Deep-link support: ?customer=X auto-opens the drawer (used by the
+  // refunds page "Open full invoice" button).
+  const queryCustomer = searchParams.get("customer")
+  useEffect(() => {
+    if (queryCustomer) setSelectedCustomer(queryCustomer)
+  }, [queryCustomer])
+
+  function handleDrawerClose() {
+    setSelectedCustomer(null)
+    // Strip the customer query param so reopening the same row triggers a
+    // fresh fetch (and the URL stays clean).
+    if (queryCustomer) router.replace(pathname, { scroll: false })
+  }
 
   return (
     <div className="max-w-6xl">
@@ -27,7 +41,7 @@ export default function InvoiceClient() {
       {selectedCustomer && (
         <InvoiceDetailDrawer
           customer={selectedCustomer}
-          onClose={() => setSelectedCustomer(null)}
+          onClose={handleDrawerClose}
         />
       )}
     </div>
@@ -47,7 +61,6 @@ function InvoiceDetailDrawer({
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<InvoiceResult | null>(null)
 
-  // Lock body scroll while open + ESC to close
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose()
@@ -247,7 +260,6 @@ function PaymentStatusPanel({
       setSortDir((d) => (d === "asc" ? "desc" : "asc"))
     } else {
       setSortKey(key)
-      // Sensible default: text ascending, numbers/status descending
       setSortDir(key === "customer" ? "asc" : "desc")
     }
   }
@@ -416,16 +428,16 @@ function PaymentStatusPanel({
         <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-xs text-gray-500 px-1">
           <div>
             <span className="text-gray-400">Invoice total:</span>{" "}
-            <span className="text-foreground font-medium tabular-nums">Rp {formatNumber(totals.invoiceTotal)}</span>
+            <span className="text-foreground font-medium tabular-nums">Rp {fmt(totals.invoiceTotal)}</span>
           </div>
           <div>
             <span className="text-gray-400">Paid:</span>{" "}
-            <span className="text-foreground font-medium tabular-nums">Rp {formatNumber(totals.paidTotal)}</span>
+            <span className="text-foreground font-medium tabular-nums">Rp {fmt(totals.paidTotal)}</span>
           </div>
           <div>
             <span className="text-gray-400">Outstanding:</span>{" "}
             <span className={`font-medium tabular-nums ${totals.outstanding > 0 ? "text-red-600" : totals.outstanding < 0 ? "text-purple-600" : "text-green-600"}`}>
-              Rp {formatNumber(totals.outstanding)}
+              Rp {fmt(totals.outstanding)}
             </span>
           </div>
         </div>
@@ -473,13 +485,13 @@ function PaymentStatusPanel({
                 >
                   <td className="px-4 py-2.5 font-medium text-foreground">{displayIg(r.customer)}</td>
                   <td className="px-4 py-2.5 text-right tabular-nums text-foreground">
-                    Rp {formatNumber(r.invoiceTotal)}
+                    Rp {fmt(r.invoiceTotal)}
                   </td>
                   <td className="px-4 py-2.5 text-right tabular-nums text-foreground">
-                    Rp {formatNumber(r.totalPaid)}
+                    Rp {fmt(r.totalPaid)}
                   </td>
                   <td className={`px-4 py-2.5 text-right tabular-nums font-medium ${r.outstanding > 0 ? "text-red-600" : r.outstanding < 0 ? "text-purple-600" : "text-green-600"}`}>
-                    {r.outstanding > 0 ? "Rp " + formatNumber(r.outstanding) : r.outstanding < 0 ? "−Rp " + formatNumber(Math.abs(r.outstanding)) : "—"}
+                    {r.outstanding > 0 ? "Rp " + fmt(r.outstanding) : r.outstanding < 0 ? "−Rp " + fmt(Math.abs(r.outstanding)) : "—"}
                   </td>
                   <td className="px-4 py-2.5">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${STATUS_COLORS[r.status]}`}>
@@ -588,7 +600,7 @@ function EventCard({
 }) {
   const [infoOpen, setInfoOpen] = useState(false)
   const [refundLine, setRefundLine] = useState<InvoiceOrderLine | null>(null)
-  const { eta, status, shipments, showShipments, orders, totals, invoice } = event
+  const { eta, status, shipments, showShipments, orders, totals } = event
   const { widths, startResize } = useResizableColumns({ order: 220, unit: 60, price: 100, subtotal: 100, ready: 60, refund: 32 })
   const shipmentCount = shipments.length
 
@@ -694,7 +706,7 @@ function EventCard({
               <td className="px-4 py-2">Total</td>
               <td className="px-4 py-2 text-right">{totals.unit}</td>
               <td className="px-4 py-2"></td>
-              <td className="px-4 py-2 text-right">{formatNumber(totals.subtotal)}</td>
+              <td className="px-4 py-2 text-right">{fmt(totals.subtotal)}</td>
               <td className="px-4 py-2 text-right">{totals.arrive}</td>
               <td className="px-2 py-2" />
             </tr>
@@ -703,7 +715,7 @@ function EventCard({
       </div>
 
       {/* Invoice summary */}
-      <InvoiceSummary event={event} />
+      <InvoiceSummary event={event} actions={<InvoiceMessageActions event={event} />} />
 
       {/* Refund modal — triggered per order line */}
       {refundLine && (
@@ -818,47 +830,6 @@ function InvoiceMessageModal({
           </button>
         </div>
       </div>
-    </div>
-  )
-}
-
-function InvoiceSummary({ event }: { event: InvoiceEvent }) {
-  const { invoice, totals } = event
-  const { subtotalBarang, estimasiOngkir, biayaLainnya, total, pembayaran, sisaPelunasan } =
-    invoice
-
-  const sisaAbs = Math.abs(sisaPelunasan)
-  const isRefund = sisaPelunasan < 0
-  const sisaLabel = isRefund ? "Pengembalian Dana" : "Sisa Pelunasan"
-  const sisaColor = sisaPelunasan <= 0 ? "text-green-700" : "text-red-600"
-
-  return (
-    <div className="px-5 py-4 bg-cream/30 border-t border-cream-border">
-      <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
-        <div className="text-sm font-semibold text-foreground">Invoice</div>
-        <InvoiceMessageActions event={event} />
-      </div>
-      <dl className="text-sm">
-        <Row label="Subtotal Barang" value={`Rp ${formatNumber(subtotalBarang)}`} />
-        <Row label="Estimasi Berat" value={`${formatNumber(totals.weightKg)} kg`} />
-        <Row label="Estimasi Ongkos Kirim" value={`Rp ${formatNumber(estimasiOngkir)}`} />
-        {biayaLainnya > 0 && (
-          <Row label="Diskon" value={`- Rp ${formatNumber(biayaLainnya)}`} />
-        )}
-        {biayaLainnya < 0 && (
-          <Row label="Biaya Lainnya" value={`+ Rp ${formatNumber(Math.abs(biayaLainnya))}`} />
-        )}
-        {total > 0 && (
-          <Row
-            label="Total"
-            value={`Rp ${formatNumber(total)}`}
-            strong
-            separator
-          />
-        )}
-        <Row label="Pembayaran" value={`Rp ${formatNumber(pembayaran)}`} />
-        <Row label={sisaLabel} value={`Rp ${formatNumber(sisaAbs)}`} valueClassName={sisaColor} />
-      </dl>
     </div>
   )
 }
@@ -1012,7 +983,7 @@ function RefundFromInvoiceModal({
                   className={INPUT_CLASS}
                 />
                 <span className="text-xs text-gray-400">
-                  {Number(affectedUnits)} × Rp {new Intl.NumberFormat("id-ID").format(unitPrice)}
+                  {Number(affectedUnits)} × Rp {fmt(unitPrice)}
                 </span>
               </label>
               <label className="flex flex-col gap-1">
@@ -1045,27 +1016,3 @@ function RefundFromInvoiceModal({
   )
 }
 
-function Row({
-  label,
-  value,
-  strong,
-  separator,
-  valueClassName,
-}: {
-  label: string
-  value: string
-  strong?: boolean
-  separator?: boolean
-  valueClassName?: string
-}) {
-  return (
-    <div
-      className={`flex justify-between py-1 ${
-        separator ? "border-t border-cream-border mt-1 pt-2" : ""
-      } ${strong ? "font-semibold" : ""}`}
-    >
-      <dt className="text-gray-600">{label}</dt>
-      <dd className={valueClassName ?? "text-foreground"}>{value}</dd>
-    </div>
-  )
-}
