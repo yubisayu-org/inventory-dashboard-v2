@@ -3,7 +3,7 @@
 import { displayIg } from "@/lib/format"
 import TableSkeleton from "@/components/TableSkeleton"
 import { useCallback, useEffect, useMemo, useState } from "react"
-import type { OverpaymentCandidate, RefundRow, RefundReason, RefundStatus } from "@/lib/db"
+import type { RefundRow, RefundReason, RefundStatus } from "@/lib/db"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import { fetchJson } from "@/lib/api-fetch"
 
@@ -53,7 +53,6 @@ function formatRp(n: number) {
 export default function RefundsClient() {
   const options = useSheetOptions()
   const [rows, setRows] = useState<RefundRow[]>([])
-  const [candidates, setCandidates] = useState<OverpaymentCandidate[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [tab, setTab] = useState<RefundStatus>("pending")
@@ -61,68 +60,21 @@ export default function RefundsClient() {
   const [search, setSearch] = useState("")
   const [creating, setCreating] = useState(false)
   const [editRow, setEditRow] = useState<RefundRow | null>(null)
-  const [creatingCandidates, setCreatingCandidates] = useState<Set<string>>(new Set())
-  const [candidatesCollapsed, setCandidatesCollapsed] = useState(false)
 
   const fetchRows = useCallback(() => {
     setLoading(true)
     setError("")
     const params = new URLSearchParams()
     if (selectedEvent) params.set("event", selectedEvent)
-    Promise.all([
-      fetchJson<{ rows: RefundRow[] }>(`/api/sheets/refunds?${params}`),
-      fetchJson<{ candidates: OverpaymentCandidate[] }>("/api/sheets/refunds/overpayments"),
-    ])
-      .then(([refundsData, candidatesData]) => {
-        setRows(refundsData.rows ?? [])
-        setCandidates(candidatesData.candidates ?? [])
-      })
+    // GET /refunds auto-materializes overpayment refunds server-side, so
+    // any detected overpayments appear in `rows` without further action.
+    fetchJson<{ rows: RefundRow[] }>(`/api/sheets/refunds?${params}`)
+      .then((data) => setRows(data.rows ?? []))
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"))
       .finally(() => setLoading(false))
   }, [selectedEvent])
 
   useEffect(() => { fetchRows() }, [fetchRows])
-
-  async function createFromCandidate(c: OverpaymentCandidate) {
-    const key = `${c.event}|${c.customer}`
-    setCreatingCandidates((prev) => new Set(prev).add(key))
-    try {
-      const res = await fetch("/api/sheets/refunds", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          event: c.event,
-          customer: c.customer,
-          reason: "overpayment",
-          refundAmount: c.overpayment,
-          note: `Auto-detected: paid Rp ${c.totalPaid.toLocaleString("id-ID")} of Rp ${c.invoiceTotal.toLocaleString("id-ID")}`,
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? "Failed")
-      setRows((prev) => [data.row, ...prev])
-      setCandidates((prev) => prev.filter((x) => !(x.event === c.event && x.customer === c.customer)))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create refund")
-    } finally {
-      setCreatingCandidates((prev) => {
-        const next = new Set(prev)
-        next.delete(key)
-        return next
-      })
-    }
-  }
-
-  async function createAllCandidates() {
-    for (const c of visibleCandidates) {
-      await createFromCandidate(c)
-    }
-  }
-
-  const visibleCandidates = useMemo(() => {
-    if (!selectedEvent) return candidates
-    return candidates.filter((c) => c.event === selectedEvent)
-  }, [candidates, selectedEvent])
 
   const doneStatuses: RefundStatus[] = ["refunded", "applied_to_next_order", "cancelled"]
 
@@ -202,8 +154,7 @@ export default function RefundsClient() {
       {/* Tabs */}
       <div className="flex border-b border-cream-border gap-0">
         {ACTIVE_TABS.map(({ key, label }) => {
-          const baseCount = key === "refunded" ? counts.done : counts[key as RefundStatus]
-          const count = key === "pending" ? (baseCount ?? 0) + visibleCandidates.length : baseCount
+          const count = key === "refunded" ? counts.done : counts[key as RefundStatus]
           const active = tab === key || (key === "refunded" && doneStatuses.includes(tab))
           return (
             <button
@@ -225,81 +176,6 @@ export default function RefundsClient() {
           )
         })}
       </div>
-
-      {/* Auto-detected overpayments — only on Pending tab */}
-      {tab === "pending" && visibleCandidates.length > 0 && (
-        <div className="rounded-xl border border-yellow-200 bg-yellow-50/50 overflow-hidden">
-          <button
-            type="button"
-            onClick={() => setCandidatesCollapsed((c) => !c)}
-            className={`w-full flex items-center justify-between gap-2 px-4 py-2.5 bg-yellow-100/60 hover:bg-yellow-100 transition-colors ${candidatesCollapsed ? "" : "border-b border-yellow-200"}`}
-          >
-            <div className="flex items-center gap-2 text-sm">
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className={`text-yellow-700 transition-transform duration-200 ${candidatesCollapsed ? "-rotate-90" : ""}`}
-              >
-                <path d="M6 9l6 6 6-6" />
-              </svg>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-yellow-700">
-                <circle cx="12" cy="12" r="10" /><path d="M12 8v4" /><path d="M12 16h.01" />
-              </svg>
-              <span className="font-medium text-yellow-800">
-                {visibleCandidates.length} auto-detected overpayment{visibleCandidates.length === 1 ? "" : "s"}
-              </span>
-            </div>
-            {!candidatesCollapsed && visibleCandidates.length > 1 && (
-              <span
-                role="button"
-                tabIndex={0}
-                onClick={(e) => { e.stopPropagation(); createAllCandidates() }}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); createAllCandidates() } }}
-                aria-disabled={creatingCandidates.size > 0}
-                className={`text-xs px-3 py-1.5 rounded-lg border border-yellow-300 text-yellow-800 hover:bg-yellow-100 transition-colors ${creatingCandidates.size > 0 ? "opacity-50 pointer-events-none" : ""}`}
-              >
-                Create all ({visibleCandidates.length})
-              </span>
-            )}
-          </button>
-          {!candidatesCollapsed && (
-          <div className="divide-y divide-yellow-200/60">
-            {visibleCandidates.map((c) => {
-              const key = `${c.event}|${c.customer}`
-              const busy = creatingCandidates.has(key)
-              return (
-                <div key={key} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-medium text-foreground">{displayIg(c.customer)}</span>
-                      <span className="text-gray-500">·</span>
-                      <span className="text-gray-600">{c.event}</span>
-                    </div>
-                    <div className="text-xs text-gray-500 mt-0.5">
-                      paid {formatRp(c.totalPaid)} of {formatRp(c.invoiceTotal)} →{" "}
-                      <span className="font-semibold text-yellow-800">+{formatRp(c.overpayment)}</span>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => createFromCandidate(c)}
-                    disabled={busy}
-                    className="shrink-0 text-xs px-3 py-1.5 rounded-lg bg-yellow-600 text-white font-medium hover:bg-yellow-700 disabled:opacity-50 transition-colors"
-                  >
-                    {busy ? "Creating…" : "+ Create"}
-                  </button>
-                </div>
-              )
-            })}
-          </div>
-          )}
-        </div>
-      )}
 
       {/* Table */}
       <div className="rounded-xl border border-cream-border bg-white overflow-hidden">

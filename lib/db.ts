@@ -179,14 +179,6 @@ export interface RefundRow {
   updatedAt: string | null
 }
 
-export interface OverpaymentCandidate {
-  event: string
-  customer: string
-  invoiceTotal: number
-  totalPaid: number
-  overpayment: number
-}
-
 export interface ShipCustomer {
   customer: string
   event: string
@@ -1878,11 +1870,16 @@ export async function deleteRefund(id: number): Promise<void> {
 }
 
 /**
- * Find (event, customer) pairs where total checked payments > invoice total,
- * excluding pairs that already have an active overpayment refund.
- * Mirrors the invoice math in getInvoiceForCustomer.
+ * Auto-creates pending refund rows for every (event, customer) pair where
+ * total checked payments exceed the invoice total, skipping pairs that
+ * already have an active overpayment refund.
+ *
+ * Idempotent — safe to call on every refunds page load. Mirrors the invoice
+ * math in getInvoiceForCustomer.
+ *
+ * Returns the rows that were just inserted (empty array if nothing to do).
  */
-export async function getOverpaymentCandidates(): Promise<OverpaymentCandidate[]> {
+export async function materializeOverpaymentRefunds(): Promise<RefundRow[]> {
   const rows = await sql`
     WITH order_aggregates AS (
       SELECT
@@ -1904,39 +1901,39 @@ export async function getOverpaymentCandidates(): Promise<OverpaymentCandidate[]
       SELECT event, customer, SUM(amount) AS total_adj
       FROM adjustments
       GROUP BY event, customer
+    ),
+    candidates AS (
+      SELECT
+        oa.event,
+        oa.customer,
+        (oa.subtotal
+          + COALESCE(c.ongkos_kirim, 0) * CEIL(oa.total_gram::numeric / 1000)
+          + COALESCE(adj.total_adj, 0))::int AS invoice_total,
+        COALESCE(pa.total_paid, 0)::int AS total_paid
+      FROM order_aggregates oa
+      LEFT JOIN customers c ON c.instagram_id = oa.customer
+      LEFT JOIN payment_aggregates pa ON pa.event = oa.event AND pa.customer = oa.customer
+      LEFT JOIN adjustment_aggregates adj ON adj.event = oa.event AND adj.customer = oa.customer
+      LEFT JOIN refunds r ON r.event = oa.event AND r.customer = oa.customer
+        AND r.reason = 'overpayment' AND r.status != 'cancelled'
+      WHERE r.id IS NULL
+        AND COALESCE(pa.total_paid, 0) > (
+          oa.subtotal
+          + COALESCE(c.ongkos_kirim, 0) * CEIL(oa.total_gram::numeric / 1000)
+          + COALESCE(adj.total_adj, 0)
+        )
     )
+    INSERT INTO refunds (event, customer, reason, refund_amount, note)
     SELECT
-      oa.event,
-      oa.customer,
-      (oa.subtotal
-        + COALESCE(c.ongkos_kirim, 0) * CEIL(oa.total_gram::numeric / 1000)
-        + COALESCE(adj.total_adj, 0))::int AS invoice_total,
-      COALESCE(pa.total_paid, 0)::int AS total_paid
-    FROM order_aggregates oa
-    LEFT JOIN customers c ON c.instagram_id = oa.customer
-    LEFT JOIN payment_aggregates pa ON pa.event = oa.event AND pa.customer = oa.customer
-    LEFT JOIN adjustment_aggregates adj ON adj.event = oa.event AND adj.customer = oa.customer
-    LEFT JOIN refunds r ON r.event = oa.event AND r.customer = oa.customer
-      AND r.reason = 'overpayment' AND r.status != 'cancelled'
-    WHERE r.id IS NULL
-      AND COALESCE(pa.total_paid, 0) > (
-        oa.subtotal
-        + COALESCE(c.ongkos_kirim, 0) * CEIL(oa.total_gram::numeric / 1000)
-        + COALESCE(adj.total_adj, 0)
-      )
-    ORDER BY (COALESCE(pa.total_paid, 0) - (
-      oa.subtotal
-      + COALESCE(c.ongkos_kirim, 0) * CEIL(oa.total_gram::numeric / 1000)
-      + COALESCE(adj.total_adj, 0)
-    )) DESC
+      event,
+      customer,
+      'overpayment',
+      total_paid - invoice_total,
+      'Auto-detected: paid Rp ' || total_paid || ' of Rp ' || invoice_total
+    FROM candidates
+    RETURNING *
   `
-  return rows.map((r) => ({
-    event: r.event as string,
-    customer: r.customer as string,
-    invoiceTotal: r.invoice_total as number,
-    totalPaid: r.total_paid as number,
-    overpayment: (r.total_paid as number) - (r.invoice_total as number),
-  }))
+  return rows.map(mapRefundRow)
 }
 
 export type PaymentStatus = "unpaid" | "partial" | "paid" | "overpaid"
