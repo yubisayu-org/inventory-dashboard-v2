@@ -1,22 +1,26 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { getDuplicateFormRows, bulkUpdateArrive, appendExcessPurchase } from "@/lib/db"
+import {
+  getDuplicateFormRowsForEvent,
+  bulkUpdateArrive,
+  appendExcessPurchase,
+  type ExcessReason,
+} from "@/lib/db"
 
 type ItemLine = { item: string; qty: number; expectedItem?: string }
 type UpdatedRow = { rowNumber: number; customer: string; oldUnitArrive: number; unitArrive: number }
-type FormRows = Awaited<ReturnType<typeof getDuplicateFormRows>>
+type FormRows = Awaited<ReturnType<typeof getDuplicateFormRowsForEvent>>
 type ItemResult = {
   item: string
   expectedItem?: string
   rows: UpdatedRow[]
   unmatched: number
-  loggedAs?: "overship" | "wrong_product"
+  loggedAs?: Extract<ExcessReason, "overship" | "wrong_product">
 }
 
-function buildEligibleMap(rows: FormRows, event: string): Map<string, FormRows> {
+function buildEligibleMap(rows: FormRows): Map<string, FormRows> {
   const map = new Map<string, FormRows>()
   for (const r of rows) {
-    if (r.event !== event) continue
     const unitBuy = r.unitBuy ?? 0
     if (unitBuy <= 0) continue
     if ((r.unitArrive ?? 0) >= unitBuy) continue
@@ -85,8 +89,8 @@ export async function POST(req: NextRequest) {
       normalized.push({ item: line.item, qty: q, expectedItem })
     }
 
-    const rows = await getDuplicateFormRows()
-    const eligibleMap = buildEligibleMap(rows, event)
+    const rows = await getDuplicateFormRowsForEvent(event)
+    const eligibleMap = buildEligibleMap(rows)
 
     const allUpdates: UpdatedRow[] = []
     const results: ItemResult[] = []
@@ -95,13 +99,12 @@ export async function POST(req: NextRequest) {
       items: string
       unitBuy: number
       receipt: string
-      reason: "overship" | "wrong_product"
+      reason: ExcessReason
       expectedItem?: string
     }[] = []
 
     for (const line of normalized) {
       if (line.expectedItem) {
-        // Wrong product: skip FIFO, log entire qty to excess_purchase as wrong_product
         excessRows.push({
           event,
           items: line.item,
@@ -126,7 +129,6 @@ export async function POST(req: NextRequest) {
 
       const result: ItemResult = { item: line.item, rows: updates, unmatched }
       if (unmatched > 0) {
-        // Supplier shipped extras of the correct SKU → log as overship
         excessRows.push({
           event,
           items: line.item,

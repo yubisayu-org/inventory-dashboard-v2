@@ -1,16 +1,15 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { getDuplicateFormRows, bulkUpdatePurchase, appendExcessPurchase } from "@/lib/db"
+import { getDuplicateFormRowsForEvent, bulkUpdatePurchase, appendExcessPurchase } from "@/lib/db"
 
 type ItemLine = { item: string; qty: number }
 type UpdatedRow = { rowNumber: number; customer: string; oldUnitBuy: number; unitBuy: number }
-type FormRows = Awaited<ReturnType<typeof getDuplicateFormRows>>
+type FormRows = Awaited<ReturnType<typeof getDuplicateFormRowsForEvent>>
 
-/** Build a map of item name → eligible rows (sorted chronologically) for a given event. */
-function buildEligibleMap(rows: FormRows, event: string): Map<string, FormRows> {
+/** Build a map of item name → eligible rows (sorted chronologically). */
+function buildEligibleMap(rows: FormRows): Map<string, FormRows> {
   const map = new Map<string, FormRows>()
   for (const r of rows) {
-    if (r.event !== event) continue
     if ((r.unitBuy ?? 0) >= r.unit) continue
     const group = map.get(r.items)
     if (group) group.push(r)
@@ -87,9 +86,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const rows = await getDuplicateFormRows()
+    const rows = await getDuplicateFormRowsForEvent(event)
     const receiptStr = receipt ? String(receipt) : ""
-    const eligibleMap = buildEligibleMap(rows, event)
+    const eligibleMap = buildEligibleMap(rows)
 
     const allUpdates: (UpdatedRow & { receipt: string })[] = []
     const results: { item: string; rows: UpdatedRow[]; excess: number }[] = []

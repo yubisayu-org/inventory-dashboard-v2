@@ -357,6 +357,28 @@ export async function getDuplicateFormRows(limit?: number): Promise<FormRow[]> {
   return rows.map(mapFormRow)
 }
 
+/**
+ * Returns every order for a single event, ordered chronologically (id ASC).
+ * Used by FIFO allocators in /api/sheets/arrive and /api/sheets/purchasing —
+ * each route applies its own per-row eligibility filter on top.
+ *
+ * The win over `getDuplicateFormRows()` is scoping the read to one event so
+ * we don't transfer the entire orders table across the wire each time.
+ */
+export async function getDuplicateFormRowsForEvent(event: string): Promise<FormRow[]> {
+  const rows = await sql`
+    SELECT o.id, o.event, o.customer, o.product_id, o.unit_price,
+           p.name AS product_name, o.unit, o.note,
+           o.created_at, o.updated_at, o.unit_buy, o.receipt,
+           o.unit_arrive, o.unit_ship, o.unit_hold
+    FROM orders o
+    JOIN products p ON p.id = o.product_id
+    WHERE o.event = ${event}
+    ORDER BY o.id ASC
+  `
+  return rows.map(mapFormRow)
+}
+
 export interface PaginatedFormRows {
   rows: FormRow[]
   totalCount: number
@@ -542,27 +564,32 @@ export async function deleteFormRow(rowNumber: number): Promise<void> {
 
 export async function bulkUpdatePurchase(updates: PurchaseUpdate[]): Promise<void> {
   if (updates.length === 0) return
-  await sql.begin(async (tx) => {
-    for (const u of updates) {
-      await tx`
-        UPDATE orders
-        SET unit_buy = ${u.unitBuy}, receipt = ${u.receipt}, updated_at = NOW()
-        WHERE id = ${u.rowNumber}
-      `
-    }
-  })
+  const ids = updates.map((u) => u.rowNumber)
+  const unitBuys = updates.map((u) => u.unitBuy)
+  const receipts = updates.map((u) => u.receipt)
+  await sql`
+    UPDATE orders SET
+      unit_buy = data.unit_buy,
+      receipt = data.receipt,
+      updated_at = NOW()
+    FROM unnest(${ids}::int[], ${unitBuys}::int[], ${receipts}::text[])
+      AS data(id, unit_buy, receipt)
+    WHERE orders.id = data.id
+  `
 }
 
 export async function bulkUpdateArrive(updates: ArriveUpdate[]): Promise<void> {
   if (updates.length === 0) return
-  await sql.begin(async (tx) => {
-    for (const u of updates) {
-      await tx`
-        UPDATE orders SET unit_arrive = ${u.unitArrive}, updated_at = NOW()
-        WHERE id = ${u.rowNumber}
-      `
-    }
-  })
+  const ids = updates.map((u) => u.rowNumber)
+  const arrives = updates.map((u) => u.unitArrive)
+  await sql`
+    UPDATE orders SET
+      unit_arrive = data.unit_arrive,
+      updated_at = NOW()
+    FROM unnest(${ids}::int[], ${arrives}::int[])
+      AS data(id, unit_arrive)
+    WHERE orders.id = data.id
+  `
 }
 
 // ─── Excess Purchase ────────────────────────────────────────────────────────
@@ -1922,10 +1949,20 @@ export interface PaymentStatusRow {
   status: PaymentStatus
 }
 
+function paymentStatusFor(totalPaid: number, invoiceTotal: number): PaymentStatus {
+  if (totalPaid === 0) return "unpaid"
+  if (totalPaid > invoiceTotal) return "overpaid"
+  if (totalPaid === invoiceTotal) return "paid"
+  return "partial"
+}
+
 /**
  * Per-customer payment status for a given event.
  * Uses the same invoice math as getInvoiceForCustomer (orders + shipping + adjustments)
  * and counts only checked payments.
+ *
+ * Includes customers with payments or adjustments but no orders in this event,
+ * so anomalous flows (refund-only, mis-tagged payments) still surface in the panel.
  */
 export async function getPaymentStatusByEvent(event: string): Promise<PaymentStatusRow[]> {
   const rows = await sql`
@@ -1950,35 +1987,37 @@ export async function getPaymentStatusByEvent(event: string): Promise<PaymentSta
       FROM adjustments
       WHERE event = ${event}
       GROUP BY customer
+    ),
+    all_customers AS (
+      SELECT customer FROM order_aggregates
+      UNION
+      SELECT customer FROM payment_aggregates
+      UNION
+      SELECT customer FROM adjustment_aggregates
     )
     SELECT
-      oa.customer,
-      (oa.subtotal
-        + COALESCE(c.ongkos_kirim, 0) * CEIL(oa.total_gram::numeric / 1000)
+      ac.customer,
+      (COALESCE(oa.subtotal, 0)
+        + COALESCE(c.ongkos_kirim, 0) * CEIL(COALESCE(oa.total_gram, 0)::numeric / 1000)
         + COALESCE(adj.total_adj, 0))::int AS invoice_total,
       COALESCE(pa.total_paid, 0)::int AS total_paid
-    FROM order_aggregates oa
-    LEFT JOIN customers c ON c.instagram_id = oa.customer
-    LEFT JOIN payment_aggregates pa ON pa.customer = oa.customer
-    LEFT JOIN adjustment_aggregates adj ON adj.customer = oa.customer
-    ORDER BY oa.customer
+    FROM all_customers ac
+    LEFT JOIN order_aggregates oa ON oa.customer = ac.customer
+    LEFT JOIN customers c ON c.instagram_id = ac.customer
+    LEFT JOIN payment_aggregates pa ON pa.customer = ac.customer
+    LEFT JOIN adjustment_aggregates adj ON adj.customer = ac.customer
+    ORDER BY ac.customer
   `
 
   return rows.map((r) => {
     const invoiceTotal = Number(r.invoice_total)
     const totalPaid = Number(r.total_paid)
-    const outstanding = invoiceTotal - totalPaid
-    let status: PaymentStatus
-    if (totalPaid === 0) status = "unpaid"
-    else if (totalPaid > invoiceTotal) status = "overpaid"
-    else if (totalPaid >= invoiceTotal) status = "paid"
-    else status = "partial"
     return {
       customer: r.customer as string,
       invoiceTotal,
       totalPaid,
-      outstanding,
-      status,
+      outstanding: invoiceTotal - totalPaid,
+      status: paymentStatusFor(totalPaid, invoiceTotal),
     }
   })
 }
