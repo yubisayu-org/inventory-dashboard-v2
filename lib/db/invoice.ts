@@ -74,6 +74,56 @@ function parseShipments(
   return { shipments, showShipments }
 }
 
+// Porsager rows are string-indexed (any). These helpers read the order-row
+// fields: event, unit, unit_price, unit_arrive, gram, event_eta.
+type OrderRowLike = Record<string, any>
+
+/** Group order rows by event, preserving first-seen order. */
+function groupRowsByEvent<T extends OrderRowLike>(
+  rows: readonly T[],
+): { order: string[]; groups: Record<string, T[]> } {
+  const groups: Record<string, T[]> = {}
+  const order: string[] = []
+  for (const row of rows) {
+    const eid = String(row.event ?? "")
+    if (!groups[eid]) {
+      groups[eid] = []
+      order.push(eid)
+    }
+    groups[eid].push(row)
+  }
+  return { order, groups }
+}
+
+/** Per-event totals + invoice math shared by the internal and public invoices. */
+function computeEventCore(
+  group: readonly OrderRowLike[],
+  ongkirPerKg: number,
+  pembayaran: number,
+  biayaLainnya: number,
+) {
+  const unit = group.reduce((s, r) => s + Number(r.unit), 0)
+  const subtotal = group.reduce((s, r) => s + Number(r.unit_price) * Number(r.unit), 0)
+  const arrive = group.reduce((s, r) => s + Number(r.unit_arrive ?? 0), 0)
+  const totalGram = group.reduce((s, r) => s + Number(r.gram ?? 0) * Number(r.unit), 0)
+  const weightKg = Math.ceil(totalGram / 1000)
+  const estimasiOngkir = ongkirPerKg * weightKg
+  const total = subtotal + estimasiOngkir + biayaLainnya
+  return {
+    eta: String(group[0]?.event_eta ?? ""),
+    totals: { unit, subtotal, arrive, weightKg },
+    invoice: {
+      subtotalBarang: subtotal,
+      estimasiOngkir,
+      ongkirPerKg,
+      biayaLainnya,
+      total,
+      pembayaran,
+      sisaPelunasan: total - pembayaran,
+    },
+  }
+}
+
 /**
  * Invoice data is computed by joining orders + products + customers.
  *
@@ -132,17 +182,7 @@ export async function getInvoiceForCustomer(instagramId: string): Promise<Invoic
   const adjustmentByEvent = new Map<string, number>()
   for (const r of adjustmentRows) adjustmentByEvent.set(r.event, Number(r.total_adj))
 
-  type OrderQueryRow = (typeof orderRows)[number]
-  const groups: Record<string, OrderQueryRow[]> = {}
-  const order: string[] = []
-  for (const row of orderRows) {
-    const eid = row.event || ""
-    if (!groups[eid]) {
-      groups[eid] = []
-      order.push(eid)
-    }
-    groups[eid].push(row)
-  }
+  const { order, groups } = groupRowsByEvent(orderRows)
 
   const events: InvoiceEvent[] = order.map((eid) => {
     const group = groups[eid]
@@ -158,14 +198,12 @@ export async function getInvoiceForCustomer(instagramId: string): Promise<Invoic
       rawUnitPrice: r.unit_price as number,
     }))
 
-    const totalUnit = orders.reduce((s, o) => s + o.unit, 0)
-    const totalSubtotal = group.reduce((s, r) => s + r.unit_price * r.unit, 0)
-    const totalArrive = orders.reduce((s, o) => s + o.unitArrive, 0)
-    const totalGram = group.reduce((s, r) => s + (r.gram ?? 0) * r.unit, 0)
-    const weightKg = Math.ceil(totalGram / 1000)
-    const estimasiOngkir = ongkirPerKg * weightKg
-
-    const eta = group[0]?.event_eta ?? ""
+    const { eta, totals, invoice } = computeEventCore(
+      group,
+      ongkirPerKg,
+      paymentByEvent.get(eid) ?? 0,
+      adjustmentByEvent.get(eid) ?? 0,
+    )
 
     const base = {
       eventId: eid,
@@ -174,21 +212,8 @@ export async function getInvoiceForCustomer(instagramId: string): Promise<Invoic
       shipments: [] as InvoiceShipment[],
       showShipments: false,
       orders,
-      totals: { unit: totalUnit, subtotal: totalSubtotal, arrive: totalArrive, weightKg },
-      invoice: (() => {
-        const biayaLainnya = adjustmentByEvent.get(eid) ?? 0
-        const total = totalSubtotal + estimasiOngkir + biayaLainnya
-        const pembayaran = paymentByEvent.get(eid) ?? 0
-        return {
-          subtotalBarang: totalSubtotal,
-          estimasiOngkir,
-          ongkirPerKg,
-          biayaLainnya,
-          total,
-          pembayaran,
-          sisaPelunasan: total - pembayaran,
-        }
-      })(),
+      totals,
+      invoice,
     }
     return { ...base, message: buildInvoiceMessage(base, customer) }
   })
@@ -208,7 +233,7 @@ export async function getInvoiceForCustomer(instagramId: string): Promise<Invoic
  */
 export async function getPublicInvoiceForCustomer(
   instagramId: string,
-  db: typeof sql = sql,
+  db: typeof sql,
 ): Promise<PublicInvoiceResult> {
   const searchId = normalizeId(instagramId)
 
@@ -254,17 +279,7 @@ export async function getPublicInvoiceForCustomer(
   const adjustmentByEvent = new Map<string, number>()
   for (const r of adjustmentRows) adjustmentByEvent.set(r.event, Number(r.total_adj))
 
-  type OrderQueryRow = (typeof orderRows)[number]
-  const groups: Record<string, OrderQueryRow[]> = {}
-  const order: string[] = []
-  for (const row of orderRows) {
-    const eid = row.event || ""
-    if (!groups[eid]) {
-      groups[eid] = []
-      order.push(eid)
-    }
-    groups[eid].push(row)
-  }
+  const { order, groups } = groupRowsByEvent(orderRows)
 
   const events: PublicInvoiceEvent[] = order.map((eid) => {
     const group = groups[eid]
@@ -277,34 +292,14 @@ export async function getPublicInvoiceForCustomer(
       unitArrive: r.unit_arrive ?? 0,
     }))
 
-    const totalUnit = orders.reduce((s, o) => s + o.unit, 0)
-    const totalSubtotal = group.reduce((s, r) => s + r.unit_price * r.unit, 0)
-    const totalArrive = orders.reduce((s, o) => s + o.unitArrive, 0)
-    const totalGram = group.reduce((s, r) => s + (r.gram ?? 0) * r.unit, 0)
-    const weightKg = Math.ceil(totalGram / 1000)
-    const estimasiOngkir = ongkirPerKg * weightKg
-    const eta = group[0]?.event_eta ?? ""
+    const { eta, totals, invoice } = computeEventCore(
+      group,
+      ongkirPerKg,
+      paymentByEvent.get(eid) ?? 0,
+      adjustmentByEvent.get(eid) ?? 0,
+    )
 
-    const biayaLainnya = adjustmentByEvent.get(eid) ?? 0
-    const total = totalSubtotal + estimasiOngkir + biayaLainnya
-    const pembayaran = paymentByEvent.get(eid) ?? 0
-
-    return {
-      eventId: eid,
-      eta,
-      status: "",
-      orders,
-      totals: { unit: totalUnit, subtotal: totalSubtotal, arrive: totalArrive, weightKg },
-      invoice: {
-        subtotalBarang: totalSubtotal,
-        estimasiOngkir,
-        ongkirPerKg,
-        biayaLainnya,
-        total,
-        pembayaran,
-        sisaPelunasan: total - pembayaran,
-      },
-    }
+    return { eventId: eid, eta, status: "", orders, totals, invoice }
   })
 
   return { events }
