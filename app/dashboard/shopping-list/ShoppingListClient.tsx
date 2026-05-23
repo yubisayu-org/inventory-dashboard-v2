@@ -322,8 +322,8 @@ export default function ShoppingListClient() {
         </button>
       </div>
 
-      {/* Grouped table */}
-      <div className="rounded-xl border border-cream-border bg-white overflow-hidden">
+      {/* Grouped table (desktop) */}
+      <div className="hidden md:block rounded-xl border border-cream-border bg-white overflow-hidden">
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="border-b border-cream-border bg-gray-50/80">
@@ -433,6 +433,59 @@ export default function ShoppingListClient() {
             })}
           </tbody>
         </table>
+      </div>
+
+      {/* Grouped cards (mobile) */}
+      <div className="md:hidden flex flex-col gap-2.5">
+        {grouped.size === 0 && (
+          <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">No items</div>
+        )}
+        {[...grouped.entries()].map(([event, storeMap]) => {
+          const allItems = [...storeMap.values()].flat()
+          const left = allItems.filter((i) => i.totalUnits > 0).length
+          const eventCollapsed = collapsedEvents.has(event)
+          return (
+            <div key={event} className="rounded-xl border border-cream-border bg-white overflow-hidden">
+              <button type="button" onClick={() => toggleEvent(event)} className="w-full flex items-center gap-2.5 px-4 py-3 border-l-[3px] border-brand text-left">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`text-gray-400 transition-transform ${eventCollapsed ? "-rotate-90" : ""}`}><path d="m6 9 6 6 6-6" /></svg>
+                <span className="font-bold text-sm text-foreground">{event}</span>
+                <span className="ml-auto text-xs text-gray-400">{allItems.length} items · {left > 0 ? `${left} left` : "all bought"}</span>
+              </button>
+              {!eventCollapsed && [...storeMap.entries()].map(([store, storeItems]) => {
+                const storeKey = `${event}|${store}`
+                const storeCollapsed = collapsedStores.has(storeKey)
+                return (
+                  <div key={storeKey}>
+                    <button type="button" onClick={() => toggleStore(event, store)} className="w-full flex items-center gap-2 px-4 py-2.5 bg-gray-50/60 border-t border-cream-border text-left">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`text-gray-400 transition-transform ${storeCollapsed ? "-rotate-90" : ""}`}><path d="m6 9 6 6 6-6" /></svg>
+                      <span className="text-xs font-bold text-gray-600">{store}</span>
+                      <span className="ml-auto text-[11px] text-gray-400">{storeItems.length}</span>
+                    </button>
+                    {!storeCollapsed && storeItems.map((item) => {
+                      const done = item.totalUnits === 0
+                      return (
+                        <div key={item.productId} className="flex items-center gap-3 px-4 py-2.5 border-t border-cream-border">
+                          <div className="flex-1 min-w-0">
+                            <div className={`text-sm ${done ? "text-gray-400" : "text-foreground"}`}>{item.productName}</div>
+                            <div className="text-[11px] text-gray-400 mt-0.5">{item.customerCount} customer{item.customerCount === 1 ? "" : "s"}</div>
+                          </div>
+                          <div className="text-sm font-bold tabular-nums whitespace-nowrap text-foreground">
+                            <span className="text-gray-400 font-medium">{item.totalOriginal - item.totalUnits} / </span>{item.totalOriginal}
+                          </div>
+                          {done ? (
+                            <span className="w-9 h-9 flex items-center justify-center text-green-600 shrink-0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="m9 12 2 2 4-4" /></svg></span>
+                          ) : (
+                            <button type="button" onClick={() => setBuyingItem(item)} aria-label="Mark bought" className="w-9 h-9 rounded-lg border border-cream-border text-brand flex items-center justify-center shrink-0 active:bg-green-50 active:text-green-700 active:border-green-200"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" /><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" /></svg></button>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })}
+            </div>
+          )
+        })}
       </div>
 
       {buyingItem && (

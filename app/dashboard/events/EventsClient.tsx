@@ -20,6 +20,7 @@ export default function EventsClient() {
   const [addError, setAddError] = useState<string | null>(null)
 
   const [editRow, setEditRow] = useState<EventRow | null>(null)
+  const [mobileAddOpen, setMobileAddOpen] = useState(false)
 
   async function load() {
     setLoading(true)
@@ -54,6 +55,7 @@ export default function EventsClient() {
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? "Failed to add")
       setForm(EMPTY_FORM)
+      setMobileAddOpen(false)
       load()
     } catch (err) {
       setAddError(err instanceof Error ? err.message : "Failed to add")
@@ -169,8 +171,8 @@ export default function EventsClient() {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Add form */}
-      <form onSubmit={handleAdd} className="rounded-xl border border-cream-border bg-white p-5 flex flex-col gap-4">
+      {/* Add form (desktop only) */}
+      <form onSubmit={handleAdd} className="hidden md:flex rounded-xl border border-cream-border bg-white p-5 flex-col gap-4">
         <div className="text-sm font-semibold text-foreground">Add Event</div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <input
@@ -200,22 +202,89 @@ export default function EventsClient() {
         </div>
       </form>
 
-      {/* Data grid */}
-      {loading && <TableSkeleton />}
+      {/* Loading */}
+      {loading && (
+        <>
+          <div className="hidden md:block"><TableSkeleton /></div>
+          <div className="md:hidden rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">Loading…</div>
+        </>
+      )}
       {error && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
       )}
       {!loading && !error && data && (
-        <DataGrid
-          data={data}
-          columns={columns}
-          pageSize={25}
-          searchPlaceholder="Search events…"
-          toolbarExtra={refreshButton}
-          getRowId={(row) => String(row.id)}
-          initialVisibility={{ createdAt: false, updatedAt: false }}
-          initialSorting={[{ id: "name", desc: false }]}
-        />
+        <>
+          {/* Desktop table */}
+          <div className="hidden md:block">
+            <DataGrid
+              data={data}
+              columns={columns}
+              pageSize={25}
+              searchPlaceholder="Search events…"
+              toolbarExtra={refreshButton}
+              getRowId={(row) => String(row.id)}
+              initialVisibility={{ createdAt: false, updatedAt: false }}
+              initialSorting={[{ id: "name", desc: false }]}
+            />
+          </div>
+
+          {/* Mobile cards */}
+          <div className="md:hidden flex flex-col gap-2.5">
+            {data.length === 0 && (
+              <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">No events yet</div>
+            )}
+            {data.map((ev) => (
+              <div key={ev.id} className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-semibold text-foreground truncate">{ev.name}</div>
+                    <div className={`text-[12.5px] mt-0.5 ${ev.eta ? "text-gray-500" : "text-gray-400"}`}>
+                      {ev.eta ? `ETA ${ev.eta}` : "No ETA"}
+                    </div>
+                  </div>
+                  <div className="flex gap-0.5 shrink-0">
+                    <button type="button" onClick={() => setEditRow(ev)} aria-label="Edit" className="p-2 rounded-lg text-gray-400 active:bg-cream active:text-brand transition-colors">
+                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" /></svg>
+                    </button>
+                    <button type="button" onClick={() => handleDelete(ev)} aria-label="Delete" className="p-2 rounded-lg text-gray-400 active:bg-cream active:text-red-500 transition-colors">
+                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Mobile add FAB */}
+      <button
+        type="button"
+        onClick={() => setMobileAddOpen(true)}
+        aria-label="Add event"
+        className="md:hidden fixed right-4 bottom-20 z-30 w-14 h-14 rounded-full bg-brand text-white text-3xl leading-none shadow-lg flex items-center justify-center active:bg-brand/90"
+      >
+        +
+      </button>
+
+      {/* Mobile add sheet */}
+      {mobileAddOpen && (
+        <div className="md:hidden fixed inset-0 z-40 flex items-end bg-black/40" onClick={() => setMobileAddOpen(false)}>
+          <form onSubmit={handleAdd} onClick={(e) => e.stopPropagation()} className="w-full bg-white rounded-t-2xl p-5 pb-8 flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <span className="text-base font-semibold text-foreground">Add Event</span>
+              <button type="button" onClick={() => setMobileAddOpen(false)} aria-label="Close" className="text-gray-400 p-1">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <input {...field("name")} placeholder="Event name" required disabled={adding} className={modalInputCls} />
+            <input {...field("eta")} placeholder="ETA (e.g. 2026-06-15)" disabled={adding} className={modalInputCls} />
+            {addError && <p className="text-xs text-red-500">{addError}</p>}
+            <button type="submit" disabled={adding} className="px-4 py-3 rounded-xl bg-brand text-white text-sm font-semibold disabled:opacity-50">
+              {adding ? "Saving…" : "Save Event"}
+            </button>
+          </form>
+        </div>
       )}
 
       {/* Edit modal */}

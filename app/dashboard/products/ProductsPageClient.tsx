@@ -61,6 +61,7 @@ export default function ProductsPageClient() {
   const [countries, setCountries] = useState<CountryRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [mobileAddOpen, setMobileAddOpen] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -238,31 +239,110 @@ export default function ProductsPageClient() {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Add form */}
-      <AddProductForm countries={countries} stores={stores} onAdded={() => load()} />
+      {/* Add form (desktop) */}
+      <div className="hidden md:block">
+        <AddProductForm countries={countries} stores={stores} onAdded={() => load()} />
+      </div>
 
-      {loading && <TableSkeleton />}
+      {loading && (
+        <>
+          <div className="hidden md:block"><TableSkeleton /></div>
+          <div className="md:hidden rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">Loading…</div>
+        </>
+      )}
       {error && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
       )}
       {!loading && !error && data && (
-        <DataGrid
-          data={data}
-          columns={columns}
-          getRowId={(row) => String(row.id)}
-          searchPlaceholder="Search name, store…"
-          toolbarExtra={refreshButton}
-          initialSorting={[{ id: "id", desc: true }]}
-          initialVisibility={{
-            id: false,
-            kurs: false,
-            cargoPerKg: false,
-            operationalFee: false,
-            packingFee: false,
-            createdAt: false,
-            updatedAt: false,
-          }}
-        />
+        <>
+          {/* Desktop table */}
+          <div className="hidden md:block">
+            <DataGrid
+              data={data}
+              columns={columns}
+              getRowId={(row) => String(row.id)}
+              searchPlaceholder="Search name, store…"
+              toolbarExtra={refreshButton}
+              initialSorting={[{ id: "id", desc: true }]}
+              initialVisibility={{
+                id: false,
+                kurs: false,
+                cargoPerKg: false,
+                operationalFee: false,
+                packingFee: false,
+                createdAt: false,
+                updatedAt: false,
+              }}
+            />
+          </div>
+
+          {/* Mobile cards */}
+          <div className="md:hidden flex flex-col gap-2.5">
+            {data.length === 0 && (
+              <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">No products</div>
+            )}
+            {data.map((p) => {
+              const abroad = isAbroad(p)
+              return (
+                <div key={p.id} className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-semibold text-foreground">{p.name}</div>
+                      <div className="text-[12.5px] text-gray-400 mt-0.5">{p.store || "—"}</div>
+                    </div>
+                    <span className={`shrink-0 inline-block px-2 py-0.5 rounded-full text-[10px] font-medium ${abroad ? "bg-blue-50 text-blue-600" : "bg-green-50 text-green-600"}`}>
+                      {abroad ? "Overseas" : "Domestic"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 mt-2.5 pt-2.5 border-t border-cream-border">
+                    <span className="text-xs text-gray-400 min-w-0 truncate">
+                      {abroad ? (p.countryName || "—") : "Domestic"}{p.gram ? ` · ${fmt(p.gram)} g` : ""}
+                    </span>
+                    <div className="flex items-center gap-2.5 shrink-0">
+                      <span className="text-brand font-bold tabular-nums whitespace-nowrap">Rp {fmt(p.price)}</span>
+                      <ProductActions
+                        row={p}
+                        countries={countries}
+                        stores={stores}
+                        onUpdated={(updated) =>
+                          setData((prev) => prev?.map((r) => (r.id === p.id ? { ...r, ...updated } : r)) ?? null)
+                        }
+                        onDeleted={() => setData((prev) => prev?.filter((r) => r.id !== p.id) ?? null)}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
+
+      {/* Mobile add FAB */}
+      <button
+        type="button"
+        onClick={() => setMobileAddOpen(true)}
+        aria-label="Add product"
+        className="md:hidden fixed right-4 bottom-20 z-30 w-14 h-14 rounded-full bg-brand text-white text-3xl leading-none shadow-lg flex items-center justify-center active:bg-brand/90"
+      >
+        +
+      </button>
+
+      {/* Mobile add sheet */}
+      {mobileAddOpen && (
+        <div className="md:hidden fixed inset-0 z-40 bg-black/40 flex flex-col justify-end" onClick={() => setMobileAddOpen(false)}>
+          <div className="bg-cream rounded-t-2xl max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 sticky top-0 bg-cream/95 backdrop-blur z-10">
+              <span className="font-semibold text-foreground">New Product</span>
+              <button type="button" onClick={() => setMobileAddOpen(false)} aria-label="Close" className="text-gray-400 p-1">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="px-3 pb-8">
+              <AddProductForm countries={countries} stores={stores} onAdded={() => { setMobileAddOpen(false); load() }} />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
