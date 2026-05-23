@@ -1,0 +1,312 @@
+import sql from "../db-pool"
+import { normalizeId } from "./helpers"
+import { lookupCustomerDetail } from "./customers"
+import type { InvoiceResult, InvoiceEvent, InvoiceShipment, InvoiceOrderLine, PublicInvoiceResult, PublicInvoiceEvent, PublicInvoiceOrderLine, CustomerDetail } from "./types"
+
+// ─── Invoice ────────────────────────────────────────────────────────────────
+
+function formatIdrNumber(n: number | null | undefined): string {
+  const v = Number(n)
+  return new Intl.NumberFormat("id-ID").format(Number.isFinite(v) ? v : 0)
+}
+
+function buildInvoiceMessage(
+  event: Omit<InvoiceEvent, "message">,
+  customer: string,
+): string {
+  const { orders, totals, invoice } = event
+  const handle = customer.startsWith("@") ? customer : `@${customer}`
+  const produkLines = orders.map((o) => o.order).join("\n")
+
+  const perKgCandidate = Number(invoice.ongkirPerKg)
+  const perKg =
+    Number.isFinite(perKgCandidate) && perKgCandidate > 0
+      ? perKgCandidate
+      : totals.weightKg > 0
+        ? Math.round(invoice.estimasiOngkir / totals.weightKg)
+        : 0
+
+  const biayaLine = invoice.biayaLainnya !== 0
+    ? [`Biaya Lainnya: Rp ${formatIdrNumber(invoice.biayaLainnya)}`]
+    : []
+
+  return [
+    "INVOICE",
+    `${event.eventId} ${handle}`,
+    "",
+    "Produk:",
+    produkLines,
+    "",
+    `Subtotal Barang: Rp ${formatIdrNumber(invoice.subtotalBarang)}`,
+    `Estimasi Ongkir: ${formatIdrNumber(totals.weightKg)} kg x Rp ${formatIdrNumber(perKg)}`,
+    ...biayaLine,
+    "",
+    `Pelunasan: Rp ${formatIdrNumber(invoice.sisaPelunasan)}`,
+    "",
+    "Rekening an Shinta Michiko:",
+    "Bank Jago (Artos) 103382719370",
+    "Bank Central Asia 4419051991 ",
+    "",
+    "Apabila memesan lebih dari 1 barang, transfer boleh digabung.",
+    "",
+    "Cek rekapan mandiri https://yubisayu-invoice.netlify.app/",
+    "",
+    "Jika ada kesalahan/kekurangan rekap, mohon infokan kembali untuk direvisi.",
+  ].join("\n")
+}
+
+function cleanResi(s: string): string {
+  return s.trim().replace(/^['‘’ʹ`]+/, "")
+}
+
+function parseShipments(
+  resiRaw: string,
+  tanggalRaw: string,
+  status: string,
+): { shipments: InvoiceShipment[]; showShipments: boolean } {
+  const resiList = resiRaw ? resiRaw.split("\n").map(cleanResi).filter(Boolean) : []
+  const tanggalList = tanggalRaw
+    ? tanggalRaw.split("\n").map((s) => s.trim()).filter(Boolean)
+    : []
+  const shipments = resiList.map((resi, i) => ({ resi, tanggalKirim: tanggalList[i] || "" }))
+  const showShipments =
+    shipments.length > 0 && (status === "Completed" || status.includes("Shipped"))
+  return { shipments, showShipments }
+}
+
+/**
+ * Invoice data is computed by joining orders + products + customers.
+ *
+ * The old Google Sheets "Order_JanganDisort_DifilterAja" tab had ~31 columns
+ * with many formulas. In SQL, we derive the same data from the orders table
+ * joined with products (for price/weight) and customers (for ongkir rate).
+ *
+ * Columns that were manually entered in the invoice sheet (ETA, Status,
+ * Pembayaran, BiayaLainnya, etc.) are NOT yet migrated — those would need
+ * a dedicated `invoice_events` table. For now we return empty defaults for
+ * those fields, matching what a fresh start provides.
+ */
+export async function getInvoiceForCustomer(instagramId: string): Promise<InvoiceResult> {
+  const searchId = normalizeId(instagramId)
+
+  const [orderRows, customerDetail, paymentRows, adjustmentRows] = await Promise.all([
+    sql`
+      SELECT o.id, o.event, o.customer, o.unit, o.note,
+             o.unit_price, o.product_id,
+             o.unit_buy, o.receipt, o.unit_arrive, o.unit_ship, o.unit_hold,
+             p.name AS product_name, COALESCE(p.store, '') AS store,
+             COALESCE(p.gram, 0) AS gram,
+             COALESCE(e.eta, '') AS event_eta
+      FROM orders o
+      JOIN products p ON p.id = o.product_id
+      LEFT JOIN events e ON e.name = o.event
+      WHERE lower(replace(o.customer, '@', '')) = ${searchId}
+      ORDER BY o.event, o.id
+    `,
+    lookupCustomerDetail(instagramId),
+    sql`
+      SELECT event, COALESCE(SUM(amount), 0) AS total_paid
+      FROM payments
+      WHERE lower(replace(customer, '@', '')) = ${searchId}
+        AND is_checked = true
+      GROUP BY event
+    `,
+    sql`
+      SELECT event, COALESCE(SUM(amount), 0) AS total_adj
+      FROM adjustments
+      WHERE lower(replace(customer, '@', '')) = ${searchId}
+      GROUP BY event
+    `,
+  ])
+
+  if (orderRows.length === 0) {
+    return { customer: "", customerDetail, events: [] }
+  }
+
+  const customer = orderRows[0].customer
+  const ongkirPerKg = customerDetail?.ongkosKirim ?? 0
+
+  const paymentByEvent = new Map<string, number>()
+  for (const r of paymentRows) paymentByEvent.set(r.event, Number(r.total_paid))
+
+  const adjustmentByEvent = new Map<string, number>()
+  for (const r of adjustmentRows) adjustmentByEvent.set(r.event, Number(r.total_adj))
+
+  type OrderQueryRow = (typeof orderRows)[number]
+  const groups: Record<string, OrderQueryRow[]> = {}
+  const order: string[] = []
+  for (const row of orderRows) {
+    const eid = row.event || ""
+    if (!groups[eid]) {
+      groups[eid] = []
+      order.push(eid)
+    }
+    groups[eid].push(row)
+  }
+
+  const events: InvoiceEvent[] = order.map((eid) => {
+    const group = groups[eid]
+
+    const orders: InvoiceOrderLine[] = group.map((r) => ({
+      order: `${r.product_name} x ${r.unit}`,
+      unit: r.unit,
+      price: formatIdrNumber(r.unit_price),
+      subtotal: formatIdrNumber(r.unit_price * r.unit),
+      unitArrive: r.unit_arrive ?? 0,
+      orderId: r.id as number,
+      productName: r.product_name as string,
+      rawUnitPrice: r.unit_price as number,
+    }))
+
+    const totalUnit = orders.reduce((s, o) => s + o.unit, 0)
+    const totalSubtotal = group.reduce((s, r) => s + r.unit_price * r.unit, 0)
+    const totalArrive = orders.reduce((s, o) => s + o.unitArrive, 0)
+    const totalGram = group.reduce((s, r) => s + (r.gram ?? 0) * r.unit, 0)
+    const weightKg = Math.ceil(totalGram / 1000)
+    const estimasiOngkir = ongkirPerKg * weightKg
+
+    const eta = group[0]?.event_eta ?? ""
+
+    const base = {
+      eventId: eid,
+      eta,
+      status: "",
+      shipments: [] as InvoiceShipment[],
+      showShipments: false,
+      orders,
+      totals: { unit: totalUnit, subtotal: totalSubtotal, arrive: totalArrive, weightKg },
+      invoice: (() => {
+        const biayaLainnya = adjustmentByEvent.get(eid) ?? 0
+        const total = totalSubtotal + estimasiOngkir + biayaLainnya
+        const pembayaran = paymentByEvent.get(eid) ?? 0
+        return {
+          subtotalBarang: totalSubtotal,
+          estimasiOngkir,
+          ongkirPerKg,
+          biayaLainnya,
+          total,
+          pembayaran,
+          sisaPelunasan: total - pembayaran,
+        }
+      })(),
+    }
+    return { ...base, message: buildInvoiceMessage(base, customer) }
+  })
+
+  return { customer, customerDetail, events }
+}
+
+/**
+ * Public, no-login invoice lookup for the customer-facing recap site.
+ *
+ * Deliberately separate from getInvoiceForCustomer: it returns ONLY orders +
+ * payment status (what the public page shows) and reads ONLY ongkos_kirim from
+ * customers — never name, WhatsApp, data_diri, or bank details. Pass the
+ * read-only `invoice_reader` connection (lib/db-public.ts) as `db` so the PII
+ * columns are physically unreadable on this path. The seller's payment/bank
+ * block is a frontend constant and is intentionally not returned here.
+ */
+export async function getPublicInvoiceForCustomer(
+  instagramId: string,
+  db: typeof sql = sql,
+): Promise<PublicInvoiceResult> {
+  const searchId = normalizeId(instagramId)
+
+  const [orderRows, ongkirRows, paymentRows, adjustmentRows] = await Promise.all([
+    db`
+      SELECT o.event, o.unit, o.unit_price, o.unit_arrive,
+             p.name AS product_name, COALESCE(p.gram, 0) AS gram,
+             COALESCE(e.eta, '') AS event_eta
+      FROM orders o
+      JOIN products p ON p.id = o.product_id
+      LEFT JOIN events e ON e.name = o.event
+      WHERE lower(replace(o.customer, '@', '')) = ${searchId}
+      ORDER BY o.event, o.id
+    `,
+    db`
+      SELECT ongkos_kirim
+      FROM customers
+      WHERE lower(replace(instagram_id, '@', '')) = ${searchId}
+      LIMIT 1
+    `,
+    db`
+      SELECT event, COALESCE(SUM(amount), 0) AS total_paid
+      FROM payments
+      WHERE lower(replace(customer, '@', '')) = ${searchId}
+        AND is_checked = true
+      GROUP BY event
+    `,
+    db`
+      SELECT event, COALESCE(SUM(amount), 0) AS total_adj
+      FROM adjustments
+      WHERE lower(replace(customer, '@', '')) = ${searchId}
+      GROUP BY event
+    `,
+  ])
+
+  if (orderRows.length === 0) return { events: [] }
+
+  const ongkirPerKg = Number(ongkirRows[0]?.ongkos_kirim ?? 0)
+
+  const paymentByEvent = new Map<string, number>()
+  for (const r of paymentRows) paymentByEvent.set(r.event, Number(r.total_paid))
+
+  const adjustmentByEvent = new Map<string, number>()
+  for (const r of adjustmentRows) adjustmentByEvent.set(r.event, Number(r.total_adj))
+
+  type OrderQueryRow = (typeof orderRows)[number]
+  const groups: Record<string, OrderQueryRow[]> = {}
+  const order: string[] = []
+  for (const row of orderRows) {
+    const eid = row.event || ""
+    if (!groups[eid]) {
+      groups[eid] = []
+      order.push(eid)
+    }
+    groups[eid].push(row)
+  }
+
+  const events: PublicInvoiceEvent[] = order.map((eid) => {
+    const group = groups[eid]
+
+    const orders: PublicInvoiceOrderLine[] = group.map((r) => ({
+      order: `${r.product_name} x ${r.unit}`,
+      unit: r.unit,
+      price: formatIdrNumber(r.unit_price),
+      subtotal: formatIdrNumber(r.unit_price * r.unit),
+      unitArrive: r.unit_arrive ?? 0,
+    }))
+
+    const totalUnit = orders.reduce((s, o) => s + o.unit, 0)
+    const totalSubtotal = group.reduce((s, r) => s + r.unit_price * r.unit, 0)
+    const totalArrive = orders.reduce((s, o) => s + o.unitArrive, 0)
+    const totalGram = group.reduce((s, r) => s + (r.gram ?? 0) * r.unit, 0)
+    const weightKg = Math.ceil(totalGram / 1000)
+    const estimasiOngkir = ongkirPerKg * weightKg
+    const eta = group[0]?.event_eta ?? ""
+
+    const biayaLainnya = adjustmentByEvent.get(eid) ?? 0
+    const total = totalSubtotal + estimasiOngkir + biayaLainnya
+    const pembayaran = paymentByEvent.get(eid) ?? 0
+
+    return {
+      eventId: eid,
+      eta,
+      status: "",
+      orders,
+      totals: { unit: totalUnit, subtotal: totalSubtotal, arrive: totalArrive, weightKg },
+      invoice: {
+        subtotalBarang: totalSubtotal,
+        estimasiOngkir,
+        ongkirPerKg,
+        biayaLainnya,
+        total,
+        pembayaran,
+        sisaPelunasan: total - pembayaran,
+      },
+    }
+  })
+
+  return { events }
+}
+
