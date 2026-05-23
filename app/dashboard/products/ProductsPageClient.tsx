@@ -62,6 +62,19 @@ export default function ProductsPageClient() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [mobileAddOpen, setMobileAddOpen] = useState(false)
+  const [mobileSearch, setMobileSearch] = useState("")
+  const [mobileSortDesc, setMobileSortDesc] = useState(true)
+
+  // Mobile list: filter by search, then sort by id (creation order).
+  // Default desc = newest-created first.
+  const mobileProducts = useMemo(() => {
+    if (!data) return []
+    const q = mobileSearch.trim().toLowerCase()
+    const filtered = q
+      ? data.filter((p) => p.name.toLowerCase().includes(q) || p.store.toLowerCase().includes(q))
+      : data
+    return [...filtered].sort((a, b) => (mobileSortDesc ? b.id - a.id : a.id - b.id))
+  }, [data, mobileSearch, mobileSortDesc])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -276,12 +289,34 @@ export default function ProductsPageClient() {
             />
           </div>
 
-          {/* Mobile cards */}
+          {/* Mobile: search + sort + cards */}
           <div className="md:hidden flex flex-col gap-2.5">
-            {data.length === 0 && (
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
+                <input
+                  value={mobileSearch}
+                  onChange={(e) => setMobileSearch(e.target.value)}
+                  placeholder="Search products or store…"
+                  className="w-full border border-cream-border rounded-xl pl-9 pr-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => setMobileSortDesc((d) => !d)}
+                aria-label="Toggle sort order"
+                className="shrink-0 inline-flex items-center gap-1 px-3 rounded-xl border border-cream-border bg-white text-xs font-medium text-gray-600 active:border-brand active:text-brand"
+              >
+                {mobileSortDesc ? "Newest" : "Oldest"}
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  {mobileSortDesc ? <path d="m6 9 6 6 6-6" /> : <path d="m18 15-6-6-6 6" />}
+                </svg>
+              </button>
+            </div>
+            {mobileProducts.length === 0 && (
               <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">No products</div>
             )}
-            {data.map((p) => {
+            {mobileProducts.map((p) => {
               const abroad = isAbroad(p)
               return (
                 <div key={p.id} className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
