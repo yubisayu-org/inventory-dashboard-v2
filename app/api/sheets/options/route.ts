@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server"
-import { requireSession } from "@/lib/api"
+import { requireSession, requireRole } from "@/lib/api"
 import { getSheetOptions } from "@/lib/db"
 
 export async function GET() {
-  const { error } = await requireSession()
+  const { session, error } = await requireSession()
   if (error) return error
+
+  const roleError = requireRole(session)
+  if (roleError) return roleError
 
   try {
     const options = await getSheetOptions()
