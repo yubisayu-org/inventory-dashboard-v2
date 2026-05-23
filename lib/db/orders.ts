@@ -1,0 +1,340 @@
+import sql from "../db-pool"
+import { tsToString, normalizeCustomer } from "./helpers"
+import type { SheetOptions, ItemOption, OrderRow, FormRow, ExcessRow, ExcessReason, PurchaseUpdate, ArriveUpdate } from "./types"
+
+// ─── Options ────────────────────────────────────────────────────────────────
+
+export async function getSheetOptions(): Promise<SheetOptions> {
+  const [eventsRows, productRows, customerRows] = await Promise.all([
+    sql`SELECT name FROM events ORDER BY name`,
+    sql`SELECT id, name, store, price FROM products WHERE name != '' ORDER BY name`,
+    sql`
+      SELECT instagram_id FROM customers
+      WHERE instagram_id NOT LIKE '\\_old%' AND instagram_id != 'gantialamat'
+      ORDER BY instagram_id
+    `,
+  ])
+
+  return {
+    events: eventsRows.map((r) => r.name),
+    items: productRows.map((r) => ({ id: r.id, name: r.name, store: r.store, price: r.price })),
+    customers: customerRows.map((r) => r.instagram_id),
+  }
+}
+
+// ─── Orders (Duplicate_Form) ────────────────────────────────────────────────
+
+export async function getDuplicateFormRows(limit?: number): Promise<FormRow[]> {
+  let rows
+  if (limit && limit > 0) {
+    rows = await sql`
+      SELECT * FROM (
+        SELECT o.id, o.event, o.customer, o.product_id, o.unit_price,
+               p.name AS product_name, o.unit, o.note,
+               o.created_at, o.updated_at, o.unit_buy, o.receipt,
+               o.unit_arrive, o.unit_ship, o.unit_hold
+        FROM orders o
+        JOIN products p ON p.id = o.product_id
+        ORDER BY o.id DESC LIMIT ${limit}
+      ) sub ORDER BY id ASC
+    `
+  } else {
+    rows = await sql`
+      SELECT o.id, o.event, o.customer, o.product_id, o.unit_price,
+             p.name AS product_name, o.unit, o.note,
+             o.created_at, o.updated_at, o.unit_buy, o.receipt,
+             o.unit_arrive, o.unit_ship, o.unit_hold
+      FROM orders o
+      JOIN products p ON p.id = o.product_id
+      ORDER BY o.id ASC
+    `
+  }
+
+  return rows.map(mapFormRow)
+}
+
+/**
+ * Returns every order for a single event, ordered chronologically (id ASC).
+ * Used by FIFO allocators in /api/sheets/arrive and /api/sheets/purchasing —
+ * each route applies its own per-row eligibility filter on top.
+ *
+ * The win over `getDuplicateFormRows()` is scoping the read to one event so
+ * we don't transfer the entire orders table across the wire each time.
+ */
+export async function getDuplicateFormRowsForEvent(event: string): Promise<FormRow[]> {
+  const rows = await sql`
+    SELECT o.id, o.event, o.customer, o.product_id, o.unit_price,
+           p.name AS product_name, o.unit, o.note,
+           o.created_at, o.updated_at, o.unit_buy, o.receipt,
+           o.unit_arrive, o.unit_ship, o.unit_hold
+    FROM orders o
+    JOIN products p ON p.id = o.product_id
+    WHERE o.event = ${event}
+    ORDER BY o.id ASC
+  `
+  return rows.map(mapFormRow)
+}
+
+export interface PaginatedFormRows {
+  rows: FormRow[]
+  totalCount: number
+  page: number
+  pageSize: number
+  totalPages: number
+}
+
+export async function getDuplicateFormRowsPaginated(opts: {
+  page: number
+  pageSize: number
+  search?: string
+  event?: string
+  customer?: string
+  items?: string
+  sortKey?: string
+  sortDir?: "asc" | "desc"
+  newestFirst?: boolean
+}): Promise<PaginatedFormRows> {
+  const { page, pageSize, search, event, customer, items, newestFirst } = opts
+  const offset = (page - 1) * pageSize
+
+  const conditions: string[] = []
+  const params: (string | number)[] = []
+
+  if (event) {
+    params.push(event)
+    conditions.push(`o.event = $${params.length}`)
+  }
+  if (customer) {
+    params.push(customer)
+    conditions.push(`o.customer = $${params.length}`)
+  }
+  if (items) {
+    params.push(items)
+    conditions.push(`p.name = $${params.length}`)
+  }
+  if (search) {
+    params.push(`%${search.toLowerCase()}%`)
+    const p = `$${params.length}`
+    conditions.push(`(lower(o.event) LIKE ${p} OR lower(o.customer) LIKE ${p} OR lower(p.name) LIKE ${p} OR lower(o.note) LIKE ${p} OR CAST(o.unit AS TEXT) LIKE ${p})`)
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""
+
+  const SORT_COLUMNS: Record<string, string> = {
+    event: "o.event", customer: "o.customer", items: "p.name",
+    unit: "o.unit", note: "o.note", createdAt: "o.created_at",
+    unitBuy: "o.unit_buy", receipt: "o.receipt",
+    unitArrive: "o.unit_arrive", unitShip: "o.unit_ship", unitHold: "o.unit_hold",
+    updatedAt: "o.updated_at",
+  }
+  const sortCol = (opts.sortKey && SORT_COLUMNS[opts.sortKey]) || "o.id"
+  const sortDir = opts.sortDir === "desc" || (!opts.sortKey && newestFirst) ? "DESC" : "ASC"
+
+  const dataRows = await sql.unsafe(
+    `SELECT o.id, o.event, o.customer, o.product_id, o.unit_price,
+            p.name AS product_name, o.unit, o.note,
+            o.created_at, o.updated_at, o.unit_buy, o.receipt,
+            o.unit_arrive, o.unit_ship, o.unit_hold,
+            COUNT(*) OVER() AS _total_count
+     FROM orders o
+     JOIN products p ON p.id = o.product_id
+     ${where}
+     ORDER BY ${sortCol} ${sortDir}, o.id ${sortDir}
+     LIMIT ${pageSize} OFFSET ${offset}`,
+    params,
+  )
+
+  const totalCount = dataRows.length > 0 ? Number(dataRows[0]._total_count) : 0
+  return {
+    rows: dataRows.map(mapFormRow),
+    totalCount,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(totalCount / pageSize)),
+  }
+}
+
+function mapFormRow(r: Record<string, unknown>): FormRow {
+  return {
+    rowNumber: r.id as number,
+    event: r.event as string,
+    customer: r.customer as string,
+    productId: r.product_id as number,
+    items: r.product_name as string,
+    unitPrice: r.unit_price as number,
+    unit: r.unit as number,
+    note: r.note as string,
+    createdAt: tsToString(r.created_at as Date | null),
+    updatedAt: tsToString(r.updated_at as Date | null),
+    unitBuy: (r.unit_buy as number) ?? null,
+    receipt: (r.receipt as string) ?? "",
+    unitArrive: (r.unit_arrive as number) ?? null,
+    unitShip: (r.unit_ship as number) ?? null,
+    unitHold: (r.unit_hold as number) ?? null,
+  }
+}
+
+export async function appendOrders(orders: OrderRow[]): Promise<void> {
+  if (orders.length === 0) return
+
+  const normalized = orders.map((o) => ({
+    ...o,
+    customer: normalizeCustomer(o.customer),
+  }))
+
+  // Auto-create customer records for any new customers
+  const uniqueCustomers = [...new Set(normalized.map((o) => o.customer))]
+  await sql`
+    INSERT INTO customers (instagram_id)
+    VALUES ${sql(uniqueCustomers.map((c) => [c]))}
+    ON CONFLICT (instagram_id) DO NOTHING
+  `
+
+  await sql`
+    INSERT INTO orders ${sql(
+      normalized.map((o) => ({
+        event: o.event,
+        customer: o.customer,
+        product_id: o.productId,
+        unit_price: o.unitPrice,
+        unit: o.unit,
+        note: o.note,
+      }))
+    )}
+  `
+}
+
+export async function updateFormRow(
+  rowNumber: number,
+  data: Pick<FormRow, "event" | "customer" | "productId" | "unitPrice" | "unit" | "note">,
+): Promise<void> {
+  const customer = normalizeCustomer(data.customer)
+  // Auto-create customer record if it doesn't exist
+  await sql`
+    INSERT INTO customers (instagram_id) VALUES (${customer})
+    ON CONFLICT (instagram_id) DO NOTHING
+  `
+  await sql`
+    UPDATE orders
+    SET event = ${data.event}, customer = ${customer}, product_id = ${data.productId},
+        unit_price = ${data.unitPrice}, unit = ${data.unit}, note = ${data.note},
+        updated_at = NOW()
+    WHERE id = ${rowNumber}
+  `
+}
+
+export async function updateFormRowStage2(
+  rowNumber: number,
+  data: { unitBuy: number; receipt: string },
+): Promise<void> {
+  await sql`
+    UPDATE orders
+    SET unit_buy = ${data.unitBuy}, receipt = ${data.receipt}, updated_at = NOW()
+    WHERE id = ${rowNumber}
+  `
+}
+
+export async function updateFormRowStage3(
+  rowNumber: number,
+  data: { unitArrive: number; unitShip: number; unitHold: number },
+): Promise<void> {
+  await sql`
+    UPDATE orders
+    SET unit_arrive = ${data.unitArrive}, unit_ship = ${data.unitShip},
+        unit_hold = ${data.unitHold}, updated_at = NOW()
+    WHERE id = ${rowNumber}
+  `
+}
+
+export async function deleteFormRow(rowNumber: number): Promise<void> {
+  await sql`DELETE FROM orders WHERE id = ${rowNumber}`
+}
+
+// ─── Bulk updates ───────────────────────────────────────────────────────────
+
+export async function bulkUpdatePurchase(updates: PurchaseUpdate[]): Promise<void> {
+  if (updates.length === 0) return
+  const ids = updates.map((u) => u.rowNumber)
+  const unitBuys = updates.map((u) => u.unitBuy)
+  const receipts = updates.map((u) => u.receipt)
+  await sql`
+    UPDATE orders SET
+      unit_buy = data.unit_buy,
+      receipt = data.receipt,
+      updated_at = NOW()
+    FROM unnest(${ids}::int[], ${unitBuys}::int[], ${receipts}::text[])
+      AS data(id, unit_buy, receipt)
+    WHERE orders.id = data.id
+  `
+}
+
+export async function bulkUpdateArrive(updates: ArriveUpdate[]): Promise<void> {
+  if (updates.length === 0) return
+  const ids = updates.map((u) => u.rowNumber)
+  const arrives = updates.map((u) => u.unitArrive)
+  await sql`
+    UPDATE orders SET
+      unit_arrive = data.unit_arrive,
+      updated_at = NOW()
+    FROM unnest(${ids}::int[], ${arrives}::int[])
+      AS data(id, unit_arrive)
+    WHERE orders.id = data.id
+  `
+}
+
+// ─── Excess Purchase ────────────────────────────────────────────────────────
+
+export async function getExcessPurchaseRows(): Promise<ExcessRow[]> {
+  const rows = await sql`
+    SELECT id, event, items, unit_buy, receipt, reason, expected_item, created_at, updated_at
+    FROM excess_purchase ORDER BY id ASC
+  `
+  return rows.map((r) => ({
+    rowNumber: r.id,
+    event: r.event,
+    items: r.items,
+    unitBuy: r.unit_buy,
+    receipt: r.receipt ?? "",
+    reason: (r.reason ?? "overbuy") as ExcessReason,
+    expectedItem: r.expected_item ?? "",
+    createdAt: tsToString(r.created_at),
+    updatedAt: tsToString(r.updated_at),
+  }))
+}
+
+export async function appendExcessPurchase(
+  rows: {
+    event: string
+    items: string
+    unitBuy: number
+    receipt: string
+    reason?: ExcessReason
+    expectedItem?: string
+  }[],
+): Promise<void> {
+  if (rows.length === 0) return
+  await sql`
+    INSERT INTO excess_purchase ${sql(
+      rows.map((r) => ({
+        event: r.event,
+        items: r.items,
+        unit_buy: r.unitBuy,
+        receipt: r.receipt,
+        reason: r.reason ?? "overbuy",
+        expected_item: r.expectedItem ?? null,
+      }))
+    )}
+  `
+}
+
+export async function updateExcessRowUnitBuy(rowNumber: number, unitBuy: number): Promise<void> {
+  await sql`
+    UPDATE excess_purchase SET unit_buy = ${unitBuy}, updated_at = NOW()
+    WHERE id = ${rowNumber}
+  `
+}
+
+export async function deleteExcessRow(rowNumber: number): Promise<void> {
+  await sql`DELETE FROM excess_purchase WHERE id = ${rowNumber}`
+}
+

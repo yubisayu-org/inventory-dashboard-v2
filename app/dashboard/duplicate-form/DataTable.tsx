@@ -49,6 +49,7 @@ export default function DataTable() {
   const [editingRow, setEditingRow] = useState<FormRow | null>(null)
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
   const [bulkDeleting, setBulkDeleting] = useState(false)
+  const [mobileAddOpen, setMobileAddOpen] = useState(false)
 
   // -- Convert TanStack state → usePaginatedFetch params --
   const fetchFilters = useMemo(() => {
@@ -260,10 +261,10 @@ export default function DataTable() {
 
   return (
     <div className="flex flex-col gap-6">
-      <AddOrderForm
-        options={options}
-        onOrderAdded={() => refreshRef.current()}
-      />
+      {/* Add form (desktop) */}
+      <div className="hidden md:block">
+        <AddOrderForm options={options} onOrderAdded={() => refreshRef.current()} />
+      </div>
 
       {fetchState.refreshError && (
         <div className="flex items-center justify-between gap-3 px-4 py-2 rounded-lg border border-red-200 bg-red-50 text-xs text-red-600">
@@ -272,29 +273,102 @@ export default function DataTable() {
         </div>
       )}
 
-      <DataGrid
-        data={rows}
-        columns={columns}
-        getRowId={(row) => String(row.rowNumber)}
-        searchPlaceholder="Search orders..."
-        toolbarExtra={toolbarExtra}
-        initialVisibility={{ note: false, createdAt: false, updatedAt: false }}
-        enableRowSelection
-        rowSelection={rowSelection}
-        onRowSelectionChange={setRowSelection}
-        serverSide={{
-          rowCount: totalCount,
-          loading: fetchState.loading,
-          sorting,
-          onSortingChange: handleSortingChange,
-          columnFilters,
-          onColumnFiltersChange: handleColumnFiltersChange,
-          globalFilter,
-          onGlobalFilterChange: handleGlobalFilterChange,
-          pagination,
-          onPaginationChange: setPagination,
-        }}
-      />
+      {/* Desktop table */}
+      <div className="hidden md:block">
+        <DataGrid
+          data={rows}
+          columns={columns}
+          getRowId={(row) => String(row.rowNumber)}
+          searchPlaceholder="Search orders..."
+          toolbarExtra={toolbarExtra}
+          initialVisibility={{ note: false, createdAt: false, updatedAt: false }}
+          enableRowSelection
+          rowSelection={rowSelection}
+          onRowSelectionChange={setRowSelection}
+          serverSide={{
+            rowCount: totalCount,
+            loading: fetchState.loading,
+            sorting,
+            onSortingChange: handleSortingChange,
+            columnFilters,
+            onColumnFiltersChange: handleColumnFiltersChange,
+            globalFilter,
+            onGlobalFilterChange: handleGlobalFilterChange,
+            pagination,
+            onPaginationChange: setPagination,
+          }}
+        />
+      </div>
+
+      {/* Mobile list */}
+      <div className="md:hidden flex flex-col gap-2.5">
+        <input
+          value={globalFilter}
+          onChange={(e) => handleGlobalFilterChange(e.target.value)}
+          placeholder="Search orders…"
+          className="w-full border border-cream-border rounded-xl px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
+        />
+        {rows.length === 0 && (
+          <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">
+            {fetchState.loading ? "Loading…" : "No orders"}
+          </div>
+        )}
+        {rows.map((r) => {
+          const bought = (r.unitBuy ?? 0) > 0
+          return (
+            <div key={r.rowNumber} className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+              <div className="flex items-start justify-between gap-3">
+                <div className="font-semibold text-sm text-foreground truncate"><span className="text-gray-300">@</span>{r.customer.replace(/^@/, "")}</div>
+                <span className="shrink-0 text-[11px] text-gray-600 bg-cream border border-cream-border rounded-md px-2 py-0.5 font-semibold">{r.event}</span>
+              </div>
+              <div className="flex items-start justify-between gap-3 mt-2">
+                <div className="text-sm text-foreground">{r.items}</div>
+                <span className="shrink-0 inline-block px-2 py-0.5 rounded-full text-[11px] font-bold bg-brand/10 text-brand">×{r.unit}</span>
+              </div>
+              {r.note && <div className="text-xs text-gray-400 italic mt-1">Note: {r.note}</div>}
+              <div className="flex items-center justify-between gap-2 mt-2.5 pt-2.5 border-t border-cream-border">
+                <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-medium border ${bought ? "bg-green-50 text-green-700 border-green-200" : "bg-gray-50 text-gray-500 border-cream-border"}`}>
+                  {bought ? "Bought" : "Not bought"}
+                </span>
+                <div className="flex gap-0.5">
+                  <CopyInvoiceRowButton row={r} />
+                  <button type="button" onClick={() => setEditingRow(r)} aria-label="Edit" className="p-2 rounded-lg text-gray-400 active:bg-cream active:text-brand">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" /></svg>
+                  </button>
+                  <button type="button" onClick={() => handleDelete(r.rowNumber)} aria-label="Delete" className="p-2 rounded-lg text-gray-400 active:bg-cream active:text-red-500">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )
+        })}
+        {totalCount > PAGE_SIZE && (
+          <div className="flex items-center justify-between gap-3 pt-1">
+            <button type="button" disabled={pagination.pageIndex === 0} onClick={() => setPagination((p) => ({ ...p, pageIndex: p.pageIndex - 1 }))} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-gray-600 disabled:opacity-40">Prev</button>
+            <span className="text-xs text-gray-400">Page {pagination.pageIndex + 1} of {Math.max(1, Math.ceil(totalCount / PAGE_SIZE))}</span>
+            <button type="button" disabled={(pagination.pageIndex + 1) * PAGE_SIZE >= totalCount} onClick={() => setPagination((p) => ({ ...p, pageIndex: p.pageIndex + 1 }))} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-gray-600 disabled:opacity-40">Next</button>
+          </div>
+        )}
+      </div>
+
+      {/* Mobile add FAB */}
+      <button type="button" onClick={() => setMobileAddOpen(true)} aria-label="Add order" className="md:hidden fixed right-4 bottom-20 z-30 w-14 h-14 rounded-full bg-brand text-white text-3xl leading-none shadow-lg flex items-center justify-center active:bg-brand/90">+</button>
+
+      {/* Mobile add sheet */}
+      {mobileAddOpen && (
+        <div className="md:hidden fixed inset-0 z-40 bg-black/40 flex flex-col justify-end" onClick={() => setMobileAddOpen(false)}>
+          <div className="bg-cream rounded-t-2xl max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 sticky top-0 bg-cream/95 backdrop-blur z-10">
+              <span className="font-semibold text-foreground">New Order</span>
+              <button type="button" onClick={() => setMobileAddOpen(false)} aria-label="Close" className="text-gray-400 p-1"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button>
+            </div>
+            <div className="px-3 pb-8">
+              <AddOrderForm options={options} onOrderAdded={() => { setMobileAddOpen(false); refreshRef.current() }} />
+            </div>
+          </div>
+        </div>
+      )}
 
       {editingRow && (
         <EditOrderModal

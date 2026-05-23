@@ -15,8 +15,14 @@ export default auth((req) => {
     return NextResponse.redirect(new URL("/login?error=unauthorized", req.url))
   }
 
-  // Owner-only routes: only "owner" role allowed
-  if (pathname.startsWith("/dashboard/products") && role !== "owner") {
+  // Owner-only routes (Database section): only "owner" role allowed
+  const ownerOnlyPaths = [
+    "/dashboard/products",
+    "/dashboard/customers",
+    "/dashboard/countries",
+    "/dashboard/events",
+  ]
+  if (ownerOnlyPaths.some((p) => pathname.startsWith(p)) && role !== "owner") {
     return NextResponse.redirect(new URL("/dashboard", req.url))
   }
 })

@@ -2,8 +2,11 @@
  * One-time data migration: Google Sheets → Supabase (Postgres) — ALL STEPS
  *
  * Combines the previously-separate scripts into a single ordered run:
- *   1. Base tables (TRUNCATE + insert): events, customers, products,
- *      products_indo, orders, excess_purchase, shipments      [main spreadsheet]
+ *   1. Base tables (TRUNCATE + insert): customers, products, orders   [main spreadsheet]
+ *      NOTE: events, excess_purchase, shipments, and products_indo are intentionally
+ *      NOT migrated or truncated here. Events must already exist (orders/payments/
+ *      adjustments reference events.name via FK). Customers: "gantialamat" rows are
+ *      skipped, and duplicate usernames keep the LAST occurrence.
  *   2. Product weights — products.gram                        [Product tab]
  *   3. Product pricing — valas/gram/kurs/cargo/%/country_id   [Product_Percentage tab]
  *   4. Payments                                               [Payment tab]
@@ -30,6 +33,7 @@
 
 import { google } from "googleapis"
 import postgres from "postgres"
+import { writeFileSync } from "fs"
 
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID!
 const PRODUCT_INDO_SPREADSHEET_ID = process.env.GOOGLE_PRODUCT_INDO_SPREADSHEET_ID
@@ -92,104 +96,137 @@ function normalizeCustomer(raw: string): string {
   return lower.startsWith("@") ? lower : `@${lower}`
 }
 
+// Junk/placeholder customers to skip entirely (e.g. "gantialamat" = change-address rows).
+function isIgnoredCustomer(handle: string): boolean {
+  return handle.toLowerCase().includes("gantialamat")
+}
+
+// ─── Trace report ────────────────────────────────────────────────────────────
+// Records every row we couldn't import (skipped) or changed (renamed / auto-created),
+// with the originating sheet row so it's easy to trace back in Google Sheets.
+type ReportEntry = { step: string; sheetRow: number | string; action: string; detail: string }
+const report: ReportEntry[] = []
+function note(step: string, sheetRow: number | string, action: string, detail: string) {
+  report.push({ step, sheetRow, action, detail })
+}
+function writeReport() {
+  const esc = (s: string) => `"${String(s).replace(/"/g, '""')}"`
+  const lines = [
+    "step,sheet_row,action,detail",
+    ...report.map((r) => [r.step, String(r.sheetRow), r.action, esc(r.detail)].join(",")),
+  ]
+  const file = `migration-report-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.csv`
+  writeFileSync(file, lines.join("\n"))
+  console.log(`\n📝 Trace report: ${file} (${report.length} entries)`)
+  const counts = new Map<string, number>()
+  for (const r of report) {
+    const k = `${r.step} / ${r.action}`
+    counts.set(k, (counts.get(k) ?? 0) + 1)
+  }
+  for (const [k, n] of [...counts.entries()].sort()) console.log(`   ${k}: ${n}`)
+}
+
 // ─── Step 1: Base tables (events, customers, products, orders, …) ─────────────
 
 async function migrateBase(sheets: Sheets) {
   console.log("═══ Step 1: Base tables ═══")
   console.log("📖 Reading from Google Sheets...")
 
-  const [eventsData, productsData, customersData, ordersData, excessData, shippingData, productIndoData] =
+  const [productsData, customersData, ordersData] =
     await Promise.all([
-      readSheet(sheets, SPREADSHEET_ID, "Events!A2:A"),
       readSheet(sheets, SPREADSHEET_ID, "Product!A2:C"),
       readSheet(sheets, SPREADSHEET_ID, "Customer!A2:E"),
       readSheet(sheets, SPREADSHEET_ID, "Duplicate_Form!A2:L"),
-      readSheet(sheets, SPREADSHEET_ID, "Excess_Purchase!A2:F"),
-      readSheet(sheets, SPREADSHEET_ID, "Shipping_table!A2:K"),
-      PRODUCT_INDO_SPREADSHEET_ID
-        ? readSheet(sheets, PRODUCT_INDO_SPREADSHEET_ID, "Product_Indo!A2:C")
-        : Promise.resolve([]),
     ])
 
-  console.log(`  Events: ${eventsData.length} rows`)
   console.log(`  Products: ${productsData.length} rows`)
   console.log(`  Customers: ${customersData.length} rows`)
   console.log(`  Orders (Duplicate_Form): ${ordersData.length} rows`)
-  console.log(`  Excess Purchase: ${excessData.length} rows`)
-  console.log(`  Shipments: ${shippingData.length} rows`)
-  console.log(`  Products Indo: ${productIndoData.length} rows`)
 
-  console.log("\n🗑️  Truncating existing tables...")
-  await sql`TRUNCATE events, customers, products, products_indo, orders, excess_purchase, shipments RESTART IDENTITY CASCADE`
-
-  // ─── Events ─────────────────────────────────────────────────────────────
-  console.log("\n📥 Inserting events...")
-  const events = eventsData
-    .map((row) => row[0]?.trim())
-    .filter(Boolean)
-    .filter((v, i, a) => a.indexOf(v) === i) // dedupe
-  if (events.length > 0) {
-    await sql`INSERT INTO events ${sql(events.map((name) => ({ name })))}`
-  }
-  console.log(`  ✓ ${events.length} events`)
+  console.log("\n🗑️  Truncating existing tables (events, excess_purchase, shipments preserved)...")
+  await sql`TRUNCATE customers, products, orders RESTART IDENTITY CASCADE`
 
   // ─── Customers ──────────────────────────────────────────────────────────
+  // Skip "gantialamat" (change-address) rows. On duplicate username, keep the
+  // LAST occurrence (later rows overwrite earlier ones).
   console.log("\n📥 Inserting customers...")
-  const customers = customersData
-    .filter((row) => row[0]?.trim())
-    .map((row) => ({
-      instagram_id: String(row[0] ?? "").trim(),
-      whatsapp: String(row[1] ?? "").trim(),
-      data_diri: String(row[2] ?? "").trim(),
-      ekspedisi: String(row[3] ?? "").trim(),
-      ongkos_kirim: parseNum(row[4]),
-    }))
-  if (customers.length > 0) {
-    // Some customers may have duplicate instagram_ids — take the first
-    const seen = new Set<string>()
-    const unique = customers.filter((c) => {
-      const key = c.instagram_id.toLowerCase()
-      if (seen.has(key)) return false
-      seen.add(key)
-      return true
+  type CustomerData = { instagram_id: string; whatsapp: string; data_diri: string; ekspedisi: string; ongkos_kirim: number }
+  const customerMap = new Map<string, { row: number; data: CustomerData }>()
+  let customerIgnored = 0
+  customersData.forEach((row, i) => {
+    const sheetRow = i + 2 // sheet data starts at row 2 (A2:E)
+    const rawId = String(row[0] ?? "").trim()
+    if (!rawId) return
+    if (isIgnoredCustomer(rawId)) {
+      customerIgnored++
+      note("customers", sheetRow, "skipped", `gantialamat username: ${rawId}`)
+      return
+    }
+    const key = rawId.toLowerCase()
+    const prev = customerMap.get(key)
+    if (prev) note("customers", prev.row, "dropped-duplicate", `${rawId} superseded by later row ${sheetRow}`)
+    customerMap.set(key, {
+      row: sheetRow,
+      data: {
+        instagram_id: rawId,
+        whatsapp: String(row[1] ?? "").trim(),
+        data_diri: String(row[2] ?? "").trim(),
+        ekspedisi: String(row[3] ?? "").trim(),
+        ongkos_kirim: parseNum(row[4]),
+      },
     })
-    await sql`INSERT INTO customers ${sql(unique)}`
-    console.log(`  ✓ ${unique.length} customers (${customers.length - unique.length} duplicates skipped)`)
+  })
+  const customers = [...customerMap.values()].map((v) => v.data)
+  if (customers.length > 0) {
+    await sql`INSERT INTO customers ${sql(customers)}`
   }
+  console.log(`  ✓ ${customers.length} customers (${customerIgnored} gantialamat skipped)`)
 
   // ─── Products ───────────────────────────────────────────────────────────
+  // Append a numeric suffix to duplicate (name, store) pairs so they satisfy the
+  // UNIQUE(name, store) constraint. First occurrence keeps its name; the Nth
+  // duplicate becomes "name_00N".
   console.log("\n📥 Inserting products...")
-  const products = productsData
-    .filter((row) => row[0]?.trim())
-    .map((row) => ({
-      name: String(row[0] ?? "").trim(),
-      store: String(row[1] ?? "").trim(),
-      price: parseNum(row[2]),
-    }))
+  const productSeen = new Map<string, number>()
+  let productDupsRenamed = 0
+  const products: { name: string; store: string; price: number }[] = []
+  productsData.forEach((row, i) => {
+    const name = String(row[0] ?? "").trim()
+    if (!name) return
+    const store = String(row[1] ?? "").trim()
+    const price = parseNum(row[2])
+    const key = `${name.toLowerCase()}|${store.toLowerCase()}`
+    const seen = productSeen.get(key) ?? 0
+    productSeen.set(key, seen + 1)
+    if (seen === 0) {
+      products.push({ name, store, price })
+      return
+    }
+    const finalName = `${name}_${String(seen).padStart(3, "0")}`
+    productDupsRenamed++
+    note("products", i + 2, "renamed", `"${name}" (store="${store}") → "${finalName}" — duplicate name+store`)
+    products.push({ name: finalName, store, price })
+  })
   if (products.length > 0) {
     await sql`INSERT INTO products ${sql(products)}`
   }
-  console.log(`  ✓ ${products.length} products`)
-
-  // ─── Products Indo ──────────────────────────────────────────────────────
-  console.log("\n📥 Inserting products_indo...")
-  const productsIndo = productIndoData
-    .filter((row) => row[0]?.trim())
-    .map((row) => ({
-      product: String(row[0] ?? "").trim(),
-      store: String(row[1] ?? "").trim(),
-      price: parseNum(row[2]),
-    }))
-  if (productsIndo.length > 0) {
-    await sql`INSERT INTO products_indo ${sql(productsIndo)}`
-  }
-  console.log(`  ✓ ${productsIndo.length} products_indo`)
+  console.log(`  ✓ ${products.length} products (${productDupsRenamed} duplicates renamed)`)
 
   // ─── Orders (Duplicate_Form) ────────────────────────────────────────────
+  // The schema uses orders.product_id (FK) + unit_price, not the old `items`
+  // text column (former migration 004). So: ensure referenced events/customers
+  // exist, ensure a product exists for every order item, then map each item
+  // name → product_id (lowest id when a name spans stores) + snapshot price.
   console.log("\n📥 Inserting orders...")
-  const orders = ordersData
-    .filter((row) => row[0]?.trim() || row[1]?.trim() || row[2]?.trim())
-    .map((row) => ({
+  const rawOrders: {
+    _row: number; event: string; customer: string; items: string; unit: number; note: string
+    created_at: string; updated_at: string | null; unit_buy: number | null; receipt: string
+    unit_arrive: number | null; unit_ship: number | null; unit_hold: number | null
+  }[] = []
+  ordersData.forEach((row, i) => {
+    if (!(row[0]?.trim() || row[1]?.trim() || row[2]?.trim())) return
+    rawOrders.push({
+      _row: i + 2, // sheet data starts at row 2 (A2:L)
       event: String(row[0] ?? "").trim(),
       customer: String(row[1] ?? "").trim(),
       items: String(row[2] ?? "").trim(),
@@ -202,7 +239,67 @@ async function migrateBase(sheets: Sheets) {
       unit_arrive: optionalNum(row[9]),
       unit_ship: optionalNum(row[10]),
       unit_hold: optionalNum(row[11]),
-    }))
+    })
+  })
+
+  // Ensure referenced events exist (events sheet is skipped; this only adds
+  // names referenced by orders and never overwrites existing events).
+  const orderEvents = [...new Set(rawOrders.map((o) => o.event).filter(Boolean))]
+  if (orderEvents.length > 0) {
+    await sql`INSERT INTO events (name) VALUES ${sql(orderEvents.map((e) => [e]))} ON CONFLICT (name) DO NOTHING`
+  }
+  // Ensure referenced customers exist.
+  const orderCustomers = [...new Set(rawOrders.map((o) => o.customer).filter((c) => c && !isIgnoredCustomer(c)))]
+  if (orderCustomers.length > 0) {
+    await sql`INSERT INTO customers (instagram_id) VALUES ${sql(orderCustomers.map((c) => [c]))} ON CONFLICT (instagram_id) DO NOTHING`
+  }
+
+  // Build item-name → { id, price }; lowest id wins (matches former migration 004).
+  const productByName = new Map<string, { id: number; price: number }>()
+  const existingProducts = await sql`SELECT DISTINCT ON (name) id, name, price FROM products ORDER BY name, id`
+  for (const p of existingProducts) productByName.set(p.name as string, { id: p.id as number, price: p.price as number })
+
+  // Create a bare product for any order item that has no product by that name.
+  const missingItems = [...new Set(rawOrders.map((o) => o.items).filter(Boolean))].filter((n) => !productByName.has(n))
+  if (missingItems.length > 0) {
+    await sql`INSERT INTO products (name, store, price) VALUES ${sql(missingItems.map((n) => [n, "", 0]))} ON CONFLICT (name, store) DO NOTHING`
+    const created = await sql`SELECT id, name, price FROM products WHERE name = ANY(${missingItems}) AND store = ''`
+    for (const p of created) if (!productByName.has(p.name as string)) productByName.set(p.name as string, { id: p.id as number, price: p.price as number })
+    for (const n of missingItems) note("products", "—", "auto-created", `bare product (store="", price=0) for order item: "${n}"`)
+  }
+
+  let ordersSkipped = 0
+  const orders = rawOrders.flatMap((o) => {
+    // event, customer, and product_id are all NOT NULL FKs — skip incomplete rows.
+    if (!o.event || !o.customer || isIgnoredCustomer(o.customer)) {
+      ordersSkipped++
+      const why = !o.event ? "missing event" : !o.customer ? "missing customer" : "gantialamat customer"
+      note("orders", o._row, "skipped", `${why} (event="${o.event}" customer="${o.customer}" item="${o.items}")`)
+      return []
+    }
+    const match = o.items ? productByName.get(o.items) : undefined
+    if (!match) {
+      ordersSkipped++
+      note("orders", o._row, "skipped", `no product match for item "${o.items}" (event="${o.event}" customer="${o.customer}")`)
+      return []
+    }
+    return [{
+      event: o.event,
+      customer: o.customer,
+      product_id: match.id,
+      unit_price: match.price,
+      unit: o.unit,
+      note: o.note,
+      created_at: o.created_at,
+      updated_at: o.updated_at,
+      unit_buy: o.unit_buy,
+      receipt: o.receipt,
+      unit_arrive: o.unit_arrive,
+      unit_ship: o.unit_ship,
+      unit_hold: o.unit_hold,
+    }]
+  })
+
   if (orders.length > 0) {
     // Insert in batches of 500 to avoid query size limits
     for (let i = 0; i < orders.length; i += 500) {
@@ -213,55 +310,12 @@ async function migrateBase(sheets: Sheets) {
       }
     }
   }
-  console.log(`  ✓ ${orders.length} orders`)
-
-  // ─── Excess Purchase ────────────────────────────────────────────────────
-  console.log("\n📥 Inserting excess_purchase...")
-  const excess = excessData
-    .filter((row) => row[0]?.trim() || row[1]?.trim())
-    .map((row) => ({
-      event: String(row[0] ?? "").trim(),
-      items: String(row[1] ?? "").trim(),
-      unit_buy: parseNum(row[2]) || 0,
-      receipt: String(row[3] ?? "").trim(),
-      created_at: parseTimestamp(row[4]) ?? new Date().toISOString(),
-      updated_at: parseTimestamp(row[5]),
-    }))
-  if (excess.length > 0) {
-    await sql`INSERT INTO excess_purchase ${sql(excess)}`
-  }
-  console.log(`  ✓ ${excess.length} excess_purchase`)
-
-  // ─── Shipments ──────────────────────────────────────────────────────────
-  console.log("\n📥 Inserting shipments...")
-  const shipments = shippingData
-    .filter((row) => row[2]?.trim()) // must have a shipping_id
-    .map((row) => ({
-      event: String(row[0] ?? "").trim(),
-      customer: String(row[1] ?? "").trim(),
-      shipping_id: String(row[2] ?? "").trim().padStart(4, "0"),
-      invoicing: String(row[3] ?? "").trim(),
-      weight_estimation: parseNum(row[4]),
-      ongkir: parseNum(row[5]),
-      ongkir_total: parseNum(row[6]),
-      is_last_shipment: String(row[7] ?? "").toUpperCase() === "TRUE",
-      created_at: parseTimestamp(row[8]) ?? new Date().toISOString(),
-      updated_at: parseTimestamp(row[9]),
-      tracking_number: String(row[10] ?? "").trim(),
-    }))
-  if (shipments.length > 0) {
-    await sql`INSERT INTO shipments ${sql(shipments)}`
-  }
-  console.log(`  ✓ ${shipments.length} shipments`)
+  console.log(`  ✓ ${orders.length} orders${ordersSkipped > 0 ? ` (${ordersSkipped} skipped — missing product/event/customer)` : ""}`)
 
   console.log("\nSummary (base):")
-  console.log(`  events:          ${events.length}`)
   console.log(`  customers:       ${customers.length}`)
   console.log(`  products:        ${products.length}`)
-  console.log(`  products_indo:   ${productsIndo.length}`)
   console.log(`  orders:          ${orders.length}`)
-  console.log(`  excess_purchase: ${excess.length}`)
-  console.log(`  shipments:       ${shipments.length}`)
 }
 
 // ─── Step 2: Product weights (gram) ──────────────────────────────────────────
@@ -270,18 +324,18 @@ async function importProductGram(sheets: Sheets) {
   console.log("\n═══ Step 2: Product weights (gram) ═══")
   // Read Product tab — columns: PRODUCT, STORE, IDR, GRAM
   const rows = await readSheet(sheets, SPREADSHEET_ID, "Product!A:D")
-  const dataRows = rows.slice(1).filter((r) => r[0]?.trim())
-  console.log(`Read ${dataRows.length} products from Google Sheets`)
+  console.log(`Read ${rows.length - 1} products from Google Sheets`)
 
   let updated = 0
   let skipped = 0
-  const notFound: string[] = []
 
-  for (const row of dataRows) {
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i]
+    const sheetRow = i + 1 // header is row 1
     const name = row[0]?.trim() ?? ""
+    if (!name) continue
     const store = row[1]?.trim() ?? ""
     const gram = parseInt(row[3] ?? "0", 10) || 0
-    if (!name) continue
 
     const result = await sql`
       UPDATE products SET gram = ${gram}
@@ -291,16 +345,12 @@ async function importProductGram(sheets: Sheets) {
       updated++
     } else {
       skipped++
-      notFound.push(`${name} | ${store}`)
+      note("gram", sheetRow, "not-found", `no product "${name}" | store "${store}" to set gram=${gram}`)
     }
   }
 
   console.log(`  Updated: ${updated}`)
-  console.log(`  Not found in DB: ${skipped}`)
-  if (notFound.length > 0) {
-    console.log(`  Products not found (no match by name+store):`)
-    for (const p of notFound) console.log(`    - ${p}`)
-  }
+  console.log(`  Not found in DB: ${skipped} (see report)`)
 }
 
 // ─── Step 3: Product pricing (valas / kurs / cargo / % / country) ─────────────
@@ -366,15 +416,15 @@ async function importProductPricing(sheets: Sheets) {
 
     const productId = productLookup.get(`${name.toLowerCase()}|${store.toLowerCase()}|${price}`)
     if (productId === undefined) {
-      console.warn(`  NOT FOUND: "${name}" | "${store}" | ${price}`)
       notFound++
+      note("pricing", i + 1, "not-found", `no product "${name}" | store "${store}" | price ${price} — pricing not applied`)
       continue
     }
 
     const countryCode = cell(row, COL_CN).toUpperCase()
     const countryId = countryCode ? (countryMap.get(countryCode) ?? null) : null
     if (countryCode && countryId === null) {
-      console.warn(`  UNKNOWN COUNTRY "${countryCode}" for product "${name}" (row ${i + 1})`)
+      note("pricing", i + 1, "unknown-country", `country code "${countryCode}" not in countries table (product "${name}") — country_id left null`)
     }
 
     updates.push({
@@ -420,27 +470,28 @@ async function importPayments(sheets: Sheets) {
   console.log("\n═══ Step 4: Payments ═══")
   // Payment tab — A=Event, B=Customer, C=Payment, D=Account, E=Check, F=Date, G=Remarks
   const rows = await readSheet(sheets, SPREADSHEET_ID, "Payment!A:G")
-  const dataRows = rows.slice(1).filter((r) => r[0]?.trim() && r[1]?.trim())
-  console.log(`Read ${dataRows.length} payment rows from Google Sheets`)
+  console.log(`Read ${rows.length - 1} payment rows from Google Sheets`)
 
-  // Auto-create customers / events referenced by payments
-  const uniqueCustomers = [...new Set(dataRows.map((r) => normalizeCustomer(r[1])))]
-  if (uniqueCustomers.length > 0) {
-    await sql`INSERT INTO customers (instagram_id) VALUES ${sql(uniqueCustomers.map((c) => [c]))} ON CONFLICT (instagram_id) DO NOTHING`
-  }
-  const uniqueEvents = [...new Set(dataRows.map((r) => r[0].trim()).filter(Boolean))]
-  if (uniqueEvents.length > 0) {
-    await sql`INSERT INTO events (name) VALUES ${sql(uniqueEvents.map((e) => [e]))} ON CONFLICT (name) DO NOTHING`
-  }
-
-  let inserted = 0
+  type Pay = { event: string; customer: string; amount: number; account: string; isChecked: boolean; payDate: string | null; remarks: string }
+  const valid: Pay[] = []
   let skipped = 0
-  for (const row of dataRows) {
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i]
+    const sheetRow = i + 1 // header is row 1
     const event = row[0]?.trim() ?? ""
-    const customer = normalizeCustomer(row[1])
-    const amount = parseInt((row[2] ?? "0").replace(/,/g, ""), 10) || 0
-    const account = row[3]?.trim() ?? ""
-    const isChecked = (row[4] ?? "").toUpperCase() === "TRUE"
+    const customerRaw = row[1]?.trim() ?? ""
+    if (!event && !customerRaw) continue // blank row
+    if (!event || !customerRaw) {
+      skipped++
+      note("payments", sheetRow, "skipped", `missing ${!event ? "event" : "customer"}`)
+      continue
+    }
+    const customer = normalizeCustomer(customerRaw)
+    if (isIgnoredCustomer(customer)) {
+      skipped++
+      note("payments", sheetRow, "skipped", `gantialamat customer: ${customer}`)
+      continue
+    }
     const rawDate = row[5]?.trim() ?? ""
     // Convert "20-Jan" → "2026-01-20" for DATE column; leave empty as null
     let payDate: string | null = null
@@ -448,19 +499,38 @@ async function importPayments(sheets: Sheets) {
       const parsed = new Date(`${rawDate}-2026`)
       if (!isNaN(parsed.getTime())) payDate = parsed.toISOString().slice(0, 10)
     }
-    const remarks = row[6]?.trim() ?? ""
+    valid.push({
+      event,
+      customer,
+      amount: parseInt((row[2] ?? "0").replace(/,/g, ""), 10) || 0,
+      account: row[3]?.trim() ?? "",
+      isChecked: (row[4] ?? "").toUpperCase() === "TRUE",
+      payDate,
+      remarks: row[6]?.trim() ?? "",
+    })
+  }
 
-    if (!event || !customer) { skipped++; continue }
+  // Auto-create customers / events referenced by the valid payments
+  const uniqueCustomers = [...new Set(valid.map((p) => p.customer))]
+  if (uniqueCustomers.length > 0) {
+    await sql`INSERT INTO customers (instagram_id) VALUES ${sql(uniqueCustomers.map((c) => [c]))} ON CONFLICT (instagram_id) DO NOTHING`
+  }
+  const uniqueEvents = [...new Set(valid.map((p) => p.event))]
+  if (uniqueEvents.length > 0) {
+    await sql`INSERT INTO events (name) VALUES ${sql(uniqueEvents.map((e) => [e]))} ON CONFLICT (name) DO NOTHING`
+  }
 
+  let inserted = 0
+  for (const p of valid) {
     await sql`
       INSERT INTO payments (event, customer, amount, account, is_checked, pay_date, remarks)
-      VALUES (${event}, ${customer}, ${amount}, ${account}, ${isChecked}, ${payDate}, ${remarks})
+      VALUES (${p.event}, ${p.customer}, ${p.amount}, ${p.account}, ${p.isChecked}, ${p.payDate}, ${p.remarks})
     `
     inserted++
   }
 
   console.log(`  Inserted: ${inserted}`)
-  console.log(`  Skipped (missing event/customer): ${skipped}`)
+  console.log(`  Skipped: ${skipped} (see report)`)
 }
 
 // ─── Step 5: Adjustments (biaya lainnya) ─────────────────────────────────────
@@ -493,7 +563,7 @@ async function importAdjustments(sheets: Sheets) {
     const event = (row[eventCol] ?? "").trim()
     const customer = normalizeCustomer(row[customerCol] ?? "")
     const amount = parseInt((row[lainnyaCol] ?? "").toString().replace(/,/g, "").trim(), 10) || 0
-    if (!event || !customer || amount === 0) continue
+    if (!event || !customer || amount === 0 || isIgnoredCustomer(customer)) continue
     const key = `${event}|||${customer}`
     if (!adjustments.has(key)) adjustments.set(key, { event, customer, amount })
   }
@@ -510,8 +580,8 @@ async function importAdjustments(sheets: Sheets) {
       `
       inserted++
     } catch (err) {
-      console.warn(`  ⚠ Skipped (${event}, ${customer}): ${err instanceof Error ? err.message : err}`)
       skipped++
+      note("adjustments", "—", "error", `(${event}, ${customer}): ${err instanceof Error ? err.message : String(err)}`)
     }
   }
   console.log(`  Inserted: ${inserted}`)
@@ -524,14 +594,18 @@ async function main() {
   const sheets = getSheetsClient()
   if (dryRun) console.log("⚠ --dry-run: step 3 (pricing) will not write; steps 1/2/4/5 still run.\n")
 
-  await migrateBase(sheets)
-  await importProductGram(sheets)
-  await importProductPricing(sheets)
-  await importPayments(sheets)
-  await importAdjustments(sheets)
-
-  await sql.end()
-  console.log("\n✅ All migration steps complete!")
+  try {
+    await migrateBase(sheets)
+    await importProductGram(sheets)
+    await importProductPricing(sheets)
+    await importPayments(sheets)
+    await importAdjustments(sheets)
+    console.log("\n✅ All migration steps complete!")
+  } finally {
+    // Always write the trace report — even if a step failed partway.
+    writeReport()
+    await sql.end()
+  }
 }
 
 main().catch((err) => {

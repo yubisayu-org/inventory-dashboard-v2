@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { requireSession, requireRole } from "@/lib/api"
+import { requireSession, requireOwner } from "@/lib/api"
 import { updateCountry, deleteCountry } from "@/lib/db"
 
 type Params = { params: Promise<{ id: string }> }
@@ -8,8 +8,8 @@ export async function PUT(req: NextRequest, { params }: Params) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
 
-  const roleError = requireRole(session)
-  if (roleError) return roleError
+  const ownerError = requireOwner(session)
+  if (ownerError) return ownerError
 
   const { id: idStr } = await params
   const id = Number(idStr)
@@ -43,8 +43,8 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
 
-  const roleError = requireRole(session)
-  if (roleError) return roleError
+  const ownerError = requireOwner(session)
+  if (ownerError) return ownerError
 
   const { id: idStr } = await params
   const id = Number(idStr)
