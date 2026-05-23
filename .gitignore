@@ -43,6 +43,10 @@ yarn-error.log*
 # supabase
 supabase/.temp/
 
+# one-off migration artifacts — contain customer PII / bank data, never commit
+data.sql
+migration-report-*.csv
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
