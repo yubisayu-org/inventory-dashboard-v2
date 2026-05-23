@@ -36,7 +36,9 @@ export default function DataTable() {
   const options = useSheetOptions()
 
   // -- Server-side state (TanStack format) --
-  const [sorting, setSorting] = useState<SortingState>([])
+  // Default: newest first (sort by created_at desc). created_at is always set,
+  // unlike updated_at which is null until a row is edited.
+  const [sorting, setSorting] = useState<SortingState>([{ id: "createdAt", desc: true }])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [globalFilter, setGlobalFilter] = useState("")
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: PAGE_SIZE })
@@ -302,12 +304,25 @@ export default function DataTable() {
 
       {/* Mobile list */}
       <div className="md:hidden flex flex-col gap-2.5">
-        <input
-          value={globalFilter}
-          onChange={(e) => handleGlobalFilterChange(e.target.value)}
-          placeholder="Search orders…"
-          className="w-full border border-cream-border rounded-xl px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
-        />
+        <div className="flex gap-2">
+          <input
+            value={globalFilter}
+            onChange={(e) => handleGlobalFilterChange(e.target.value)}
+            placeholder="Search orders…"
+            className="flex-1 border border-cream-border rounded-xl px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
+          />
+          <button
+            type="button"
+            onClick={() => handleSortingChange([{ id: "createdAt", desc: !((sorting.find((s) => s.id === "createdAt")?.desc) ?? true) }])}
+            aria-label="Toggle sort order"
+            className="shrink-0 inline-flex items-center gap-1 px-3 rounded-xl border border-cream-border bg-white text-xs font-medium text-gray-600 active:border-brand active:text-brand"
+          >
+            {((sorting.find((s) => s.id === "createdAt")?.desc) ?? true) ? "Newest" : "Oldest"}
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              {((sorting.find((s) => s.id === "createdAt")?.desc) ?? true) ? <path d="m6 9 6 6 6-6" /> : <path d="m18 15-6-6-6 6" />}
+            </svg>
+          </button>
+        </div>
         {rows.length === 0 && (
           <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">
             {fetchState.loading ? "Loading…" : "No orders"}
