@@ -221,15 +221,43 @@ export async function getInvoiceForCustomer(instagramId: string): Promise<Invoic
   return { customer, customerDetail, events }
 }
 
+function formatShipDate(d: Date | string | null | undefined): string {
+  if (!d) return ""
+  const date = new Date(d)
+  if (Number.isNaN(date.getTime())) return ""
+  return date.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })
+}
+
+/**
+ * Derive the order status the recap page shows, from unit tracking + resi
+ * presence. Mirrors the labels documented in the public site's status popup:
+ *   Pending           — barang belum lengkap (not all units arrived)
+ *   Processing        — barang sudah lengkap, antri packing (all arrived, none shipped)
+ *   Partially Shipped — dikirim sebagian
+ *   Shipped           — dikirim lengkap, menunggu resi (all shipped, no resi yet)
+ *   Completed         — resi sudah dapat diakses (all shipped + resi present)
+ */
+function derivePublicStatus(group: readonly OrderRowLike[], hasResi: boolean): string {
+  const totalUnit = group.reduce((s, r) => s + Number(r.unit), 0)
+  if (totalUnit <= 0) return ""
+  const totalArrive = group.reduce((s, r) => s + Number(r.unit_arrive ?? 0), 0)
+  const totalShip = group.reduce((s, r) => s + Number(r.unit_ship ?? 0), 0)
+  if (totalShip >= totalUnit) return hasResi ? "Completed" : "Shipped"
+  if (totalShip > 0) return "Partially Shipped"
+  if (totalArrive >= totalUnit) return "Processing"
+  return "Pending"
+}
+
 /**
  * Public, no-login invoice lookup for the customer-facing recap site.
  *
- * Deliberately separate from getInvoiceForCustomer: it returns ONLY orders +
- * payment status (what the public page shows) and reads ONLY ongkos_kirim from
- * customers — never name, WhatsApp, data_diri, or bank details. Pass the
- * read-only `invoice_reader` connection (lib/db-public.ts) as `db` so the PII
- * columns are physically unreadable on this path. The seller's payment/bank
- * block is a frontend constant and is intentionally not returned here.
+ * Deliberately separate from getInvoiceForCustomer: it returns ONLY orders,
+ * payment status, derived shipping status, and tracking numbers (what the
+ * public page shows) and reads ONLY ongkos_kirim from customers — never name,
+ * WhatsApp, data_diri, or bank details. Pass the read-only `invoice_reader`
+ * connection (lib/db-public.ts) as `db` so the PII columns are physically
+ * unreadable on this path. The seller's payment/bank block is a frontend
+ * constant and is intentionally not returned here.
  */
 export async function getPublicInvoiceForCustomer(
   instagramId: string,
@@ -237,9 +265,9 @@ export async function getPublicInvoiceForCustomer(
 ): Promise<PublicInvoiceResult> {
   const searchId = normalizeId(instagramId)
 
-  const [orderRows, ongkirRows, paymentRows, adjustmentRows] = await Promise.all([
+  const [orderRows, ongkirRows, paymentRows, adjustmentRows, shipmentRows] = await Promise.all([
     db`
-      SELECT o.event, o.unit, o.unit_price, o.unit_arrive,
+      SELECT o.event, o.customer, o.unit, o.unit_price, o.unit_arrive, o.unit_ship,
              p.name AS product_name, COALESCE(p.gram, 0) AS gram,
              COALESCE(e.eta, '') AS event_eta
       FROM orders o
@@ -267,10 +295,18 @@ export async function getPublicInvoiceForCustomer(
       WHERE lower(replace(customer, '@', '')) = ${searchId}
       GROUP BY event
     `,
+    db`
+      SELECT event, tracking_number, created_at
+      FROM shipments
+      WHERE lower(replace(customer, '@', '')) = ${searchId}
+        AND tracking_number != ''
+      ORDER BY event, id
+    `,
   ])
 
-  if (orderRows.length === 0) return { events: [] }
+  if (orderRows.length === 0) return { customer: "", events: [] }
 
+  const customer = String(orderRows[0].customer ?? "")
   const ongkirPerKg = Number(ongkirRows[0]?.ongkos_kirim ?? 0)
 
   const paymentByEvent = new Map<string, number>()
@@ -278,6 +314,13 @@ export async function getPublicInvoiceForCustomer(
 
   const adjustmentByEvent = new Map<string, number>()
   for (const r of adjustmentRows) adjustmentByEvent.set(r.event, Number(r.total_adj))
+
+  const shipmentsByEvent = new Map<string, InvoiceShipment[]>()
+  for (const r of shipmentRows) {
+    const list = shipmentsByEvent.get(r.event) ?? []
+    list.push({ resi: cleanResi(String(r.tracking_number)), tanggalKirim: formatShipDate(r.created_at) })
+    shipmentsByEvent.set(r.event, list)
+  }
 
   const { order, groups } = groupRowsByEvent(orderRows)
 
@@ -299,9 +342,14 @@ export async function getPublicInvoiceForCustomer(
       adjustmentByEvent.get(eid) ?? 0,
     )
 
-    return { eventId: eid, eta, status: "", orders, totals, invoice }
+    const shipments = shipmentsByEvent.get(eid) ?? []
+    const status = derivePublicStatus(group, shipments.length > 0)
+    const showShipments =
+      shipments.length > 0 && (status === "Completed" || status.includes("Shipped"))
+
+    return { eventId: eid, eta, status, shipments, showShipments, orders, totals, invoice }
   })
 
-  return { events }
+  return { customer, events }
 }
 

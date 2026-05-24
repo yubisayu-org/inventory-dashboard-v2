@@ -204,6 +204,8 @@ export interface PublicInvoiceEvent {
   eventId: string
   eta: string
   status: string
+  shipments: InvoiceShipment[]
+  showShipments: boolean
   orders: PublicInvoiceOrderLine[]
   totals: { unit: number; subtotal: number; arrive: number; weightKg: number }
   invoice: {
@@ -218,6 +220,7 @@ export interface PublicInvoiceEvent {
 }
 
 export interface PublicInvoiceResult {
+  customer: string
   events: PublicInvoiceEvent[]
 }
 
