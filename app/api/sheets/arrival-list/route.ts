@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
-import { requireSession, requireRole } from "@/lib/api"
+import { requireSession, requireOwner } from "@/lib/api"
 import { getArrivalList, markProductArrived } from "@/lib/db"
 
 export async function GET(req: NextRequest) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
-  const roleError = requireRole(session)
+  const roleError = requireOwner(session)
   if (roleError) return roleError
 
   const event = req.nextUrl.searchParams.get("event") ?? undefined
@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
-  const roleError = requireRole(session)
+  const roleError = requireOwner(session)
   if (roleError) return roleError
 
   try {

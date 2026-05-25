@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { requireSession, requireRole } from "@/lib/api"
+import { requireSession, requireOwner } from "@/lib/api"
 import {
   getExcessPurchaseRows,
   getDuplicateFormRows,
@@ -15,7 +15,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
 
-  const roleError = requireRole(session)
+  const roleError = requireOwner(session)
   if (roleError) return roleError
 
   const { row } = await params

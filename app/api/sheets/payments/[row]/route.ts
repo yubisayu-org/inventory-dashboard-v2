@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
-import { requireSession, requireRole } from "@/lib/api"
-import { updatePayment, togglePaymentChecked, deletePayment } from "@/lib/db"
+import { requireSession, requireRole, isAdmin } from "@/lib/api"
+import { updatePayment, togglePaymentChecked, deletePayment, getPaymentChecked } from "@/lib/db"
 
 type Params = { params: Promise<{ row: string }> }
 
@@ -25,12 +25,17 @@ export async function PUT(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "event and customer are required" }, { status: 400 })
     }
 
+    // Admins cannot change the checked status — preserve the stored value.
+    const isCheckedValue = isAdmin(session)
+      ? await getPaymentChecked(rowNumber)
+      : Boolean(isChecked)
+
     await updatePayment(rowNumber, {
       event: String(event),
       customer: String(customer),
       amount: Number(amount ?? 0),
       account: String(account ?? ""),
-      isChecked: Boolean(isChecked),
+      isChecked: isCheckedValue,
       payDate: String(payDate ?? ""),
       remarks: String(remarks ?? ""),
     })
@@ -48,6 +53,11 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const roleError = requireRole(session)
   if (roleError) return roleError
+
+  // Toggling the checked status is the one payment action admins cannot perform.
+  if (isAdmin(session)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  }
 
   const { row } = await params
   const rowNumber = Number(row)

@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server"
-import { requireSession, requireRole } from "@/lib/api"
+import { requireSession, requireOwner } from "@/lib/api"
 import { getDashboardSummary } from "@/lib/db"
 
 export async function GET() {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
-  const roleError = requireRole(session)
+  const roleError = requireOwner(session)
   if (roleError) return roleError
 
   try {

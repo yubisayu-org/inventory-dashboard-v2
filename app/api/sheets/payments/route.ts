@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { requireSession, requireRole } from "@/lib/api"
+import { requireSession, requireRole, isAdmin } from "@/lib/api"
 import { getPaymentRows, addPayment } from "@/lib/db"
 
 export async function GET() {
@@ -38,7 +38,8 @@ export async function POST(req: NextRequest) {
       customer: String(customer),
       amount: Number(amount ?? 0),
       account: String(account ?? ""),
-      isChecked: Boolean(isChecked),
+      // Admins cannot confirm payments — new payments are always unchecked.
+      isChecked: isAdmin(session) ? false : Boolean(isChecked),
       payDate: String(payDate ?? ""),
       remarks: String(remarks ?? ""),
     })
