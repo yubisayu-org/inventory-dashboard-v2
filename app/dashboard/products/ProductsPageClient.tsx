@@ -437,12 +437,12 @@ function AddProductForm({
         name: name.trim(),
         store: store.trim(),
         price: pricePreview.price,
+        gram: Number(gram) || 0,
       }
 
       if (type === "overseas") {
         body.countryId = countryId
         body.valas = Number(valas) || 0
-        body.gram = Number(gram) || 0
         body.kurs = selectedCountry?.kurs ?? 0
         body.cargoPerKg = selectedCountry?.cargoPerKg ?? 0
         body.profitPct = Number(profitPct) || 0
@@ -578,6 +578,9 @@ function AddProductForm({
               onChange={(e) => { setProfitFixed(e.target.value); setProfitManual(true) }}
               type="number" min="0" placeholder="0" disabled={adding} className={formInputCls}
             />
+          </Field>
+          <Field label="Gram">
+            <input value={gram} onChange={(e) => setGram(e.target.value)} type="number" min="0" placeholder="0" disabled={adding} className={formInputCls} />
           </Field>
         </div>
       )}
@@ -847,6 +850,9 @@ function EditProductModal({
             </Field>
             <Field label="Fixed Profit">
               <input value={draft.profitFixed} onChange={(e) => setDraft((d) => ({ ...d, profitFixed: e.target.value }))} type="number" min="0" disabled={saving} className={formInputCls} />
+            </Field>
+            <Field label="Gram">
+              <input value={draft.gram} onChange={(e) => setDraft((d) => ({ ...d, gram: e.target.value }))} type="number" min="0" disabled={saving} className={formInputCls} />
             </Field>
           </div>
         )}
