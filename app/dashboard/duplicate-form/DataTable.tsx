@@ -16,6 +16,7 @@ import DataGrid, {
   type RowSelectionState,
 } from "@/components/DataGrid"
 import SearchableSelect from "@/components/SearchableSelect"
+import EventSelect from "@/components/EventSelect"
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -569,10 +570,7 @@ function EditOrderModal({ row, options, onClose, onSaved, onDelete }: {
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
             <label className="text-xs text-gray-500 mb-1 block">Event</label>
-            <select value={form.event} onChange={(e) => setForm((f) => ({ ...f, event: e.target.value }))} className={INPUT_CLS}>
-              <option value="">Select...</option>
-              {(options?.events ?? []).map((ev) => <option key={ev} value={ev}>{ev}</option>)}
-            </select>
+            <EventSelect value={form.event} onChange={(v) => setForm((f) => ({ ...f, event: v }))} events={options?.events ?? []} />
           </div>
           <div>
             <label className="text-xs text-gray-500 mb-1 block">Customer</label>
@@ -700,10 +698,7 @@ function AddOrderForm({ options, onOrderAdded }: {
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
           <label className={LABEL}>Event <span className="text-brand">*</span></label>
-          <select value={event} onChange={(e) => { setEvent(e.target.value); setFeedback(null) }} required className={INPUT_CLS}>
-            <option value="">Select event...</option>
-            {(options?.events ?? []).map((ev) => <option key={ev} value={ev}>{ev}</option>)}
-          </select>
+          <EventSelect value={event} onChange={(v) => { setEvent(v); setFeedback(null) }} events={options?.events ?? []} placeholder="Select event…" />
         </div>
         <div>
           <label className={LABEL}>Customer <span className="text-brand">*</span></label>

@@ -108,17 +108,19 @@ export async function getDuplicateFormRowsPaginated(opts: {
   const conditions: string[] = []
   const params: (string | number)[] = []
 
+  // Column filters are "contains" in the UI (and on every client-side page),
+  // so match them case-insensitively as substrings — not exact equality.
   if (event) {
-    params.push(event)
-    conditions.push(`o.event = $${params.length}`)
+    params.push(`%${event.toLowerCase()}%`)
+    conditions.push(`lower(o.event) LIKE $${params.length}`)
   }
   if (customer) {
-    params.push(customer)
-    conditions.push(`o.customer = $${params.length}`)
+    params.push(`%${customer.toLowerCase()}%`)
+    conditions.push(`lower(o.customer) LIKE $${params.length}`)
   }
   if (items) {
-    params.push(items)
-    conditions.push(`p.name = $${params.length}`)
+    params.push(`%${items.toLowerCase()}%`)
+    conditions.push(`lower(p.name) LIKE $${params.length}`)
   }
   if (search) {
     params.push(`%${search.toLowerCase()}%`)

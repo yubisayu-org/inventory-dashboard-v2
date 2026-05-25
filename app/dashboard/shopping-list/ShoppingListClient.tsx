@@ -8,6 +8,7 @@ import { useSheetOptions } from "@/hooks/useSheetOptions"
 import { allocateFifo } from "@/lib/fifo-fill"
 import { fetchJson } from "@/lib/api-fetch"
 import PurchaseModal from "./PurchaseModal"
+import EventSelect from "@/components/EventSelect"
 
 const INPUT_CLASS =
   "border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
@@ -291,17 +292,15 @@ export default function ShoppingListClient() {
           placeholder="Search shopping list…"
           className={`${INPUT_CLASS} flex-1 min-w-[180px]`}
         />
-        <select
-          value={selectedEvent}
-          onChange={(e) => setSelectedEvent(e.target.value)}
-          className={INPUT_CLASS}
-          style={{ width: "12rem" }}
-        >
-          <option value="">All Events</option>
-          {(options?.events ?? []).map((ev) => (
-            <option key={ev} value={ev}>{ev}</option>
-          ))}
-        </select>
+        <div style={{ width: "12rem" }}>
+          <EventSelect
+            value={selectedEvent}
+            onChange={setSelectedEvent}
+            events={options?.events ?? []}
+            placeholder="All Events"
+            clearable
+          />
+        </div>
         <button
           onClick={() => fetchItems(selectedEvent || undefined)}
           title="Refresh"

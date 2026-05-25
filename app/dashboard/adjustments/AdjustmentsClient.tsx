@@ -7,6 +7,7 @@ import type { AdjustmentRow } from "@/lib/db"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import { useModalDismiss } from "@/hooks/useModalDismiss"
 import SearchableSelect from "@/components/SearchableSelect"
+import EventSelect from "@/components/EventSelect"
 import DataGrid, { type ColumnDef } from "@/components/DataGrid"
 
 const INPUT_CLASS =
@@ -279,10 +280,7 @@ function EditAdjustmentModal({
         <div className="space-y-3">
           <div>
             <label className={LABEL}>Event</label>
-            <select value={form.event} onChange={(e) => setForm({ ...form, event: e.target.value })} className={INPUT_CLASS}>
-              <option value="">Select...</option>
-              {(options?.events ?? []).map((ev) => <option key={ev} value={ev}>{ev}</option>)}
-            </select>
+            <EventSelect value={form.event} onChange={(v) => setForm({ ...form, event: v })} events={options?.events ?? []} />
           </div>
 
           <div>
@@ -412,10 +410,9 @@ function AddAdjustmentForm({
       <form onSubmit={handleSubmit} className="flex items-end gap-3 flex-wrap">
         <div>
           <label className={LABEL}>Event <span className="text-brand">*</span></label>
-          <select value={event} onChange={(e) => { setEvent(e.target.value); setFeedback(null) }} required className={INPUT_CLASS} style={{ width: "10rem" }}>
-            <option value="">Select…</option>
-            {(options?.events ?? []).map((ev) => <option key={ev} value={ev}>{ev}</option>)}
-          </select>
+          <div style={{ width: "10rem" }}>
+            <EventSelect value={event} onChange={(v) => { setEvent(v); setFeedback(null) }} events={options?.events ?? []} />
+          </div>
         </div>
         <div>
           <label className={LABEL}>Customer <span className="text-brand">*</span></label>

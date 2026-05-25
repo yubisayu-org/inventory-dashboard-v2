@@ -88,6 +88,13 @@ export async function togglePaymentChecked(
   `
 }
 
+export async function updatePaymentRemarks(rowNumber: number, remarks: string): Promise<void> {
+  await sql`
+    UPDATE payments SET remarks = ${remarks}, updated_at = NOW()
+    WHERE id = ${rowNumber}
+  `
+}
+
 export async function deletePayment(rowNumber: number): Promise<void> {
   await sql`DELETE FROM payments WHERE id = ${rowNumber}`
 }

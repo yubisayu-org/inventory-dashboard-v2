@@ -9,6 +9,7 @@ import { generateShippingLabel } from "@/lib/shipping-label"
 import { useModalDismiss } from "@/hooks/useModalDismiss"
 import { useResizableColumns } from "@/hooks/useResizableColumns"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
+import EventSelect from "@/components/EventSelect"
 
 type Segment = ShipSegment
 
@@ -176,16 +177,15 @@ export default function ShipClient() {
           placeholder="Cari customer…"
           className="flex-1 min-w-0 border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
         />
-        <select
-          value={eventFilter}
-          onChange={(e) => setEventFilter(e.target.value)}
-          className="border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors text-gray-600"
-        >
-          <option value="">Semua Event</option>
-          {(sheetOptions?.events ?? []).map((ev) => (
-            <option key={ev} value={ev}>{ev}</option>
-          ))}
-        </select>
+        <div className="w-48">
+          <EventSelect
+            value={eventFilter}
+            onChange={setEventFilter}
+            events={sheetOptions?.events ?? []}
+            placeholder="Semua Event"
+            clearable
+          />
+        </div>
         <button
           type="button"
           onClick={refresh}
