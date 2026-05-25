@@ -174,6 +174,15 @@ export interface RefundRow {
   updatedAt: string | null
 }
 
+/**
+ * Arrival/ship state of a whole (customer, event) invoice, arrival-first:
+ *   not_arrived — nothing has arrived yet
+ *   partial     — some lines arrived but not every line is fully arrived
+ *   ready       — every line fully arrived AND something is still to ship
+ *   shipped     — every line fully arrived AND nothing left to ship
+ */
+export type ShipStatus = "not_arrived" | "partial" | "ready" | "shipped"
+
 export interface ShipCustomer {
   customer: string
   event: string
@@ -182,6 +191,7 @@ export interface ShipCustomer {
   totalToShip: number
   weightKg: number
   ongkirPerKg: number
+  status: ShipStatus
 }
 
 export interface InvoiceResult {

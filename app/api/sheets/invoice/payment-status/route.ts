@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { getPaymentStatusByEvent } from "@/lib/db"
+import { getPaymentStatusByEvent, getPaymentStatusAllEvents } from "@/lib/db"
 
 export async function GET(req: NextRequest) {
   const { session, error: authError } = await requireSession()
@@ -9,13 +9,11 @@ export async function GET(req: NextRequest) {
   const roleError = requireRole(session)
   if (roleError) return roleError
 
+  // No `event` param → payment status across all events.
   const event = req.nextUrl.searchParams.get("event")?.trim()
-  if (!event) {
-    return NextResponse.json({ error: "event is required" }, { status: 400 })
-  }
 
   try {
-    const rows = await getPaymentStatusByEvent(event)
+    const rows = event ? await getPaymentStatusByEvent(event) : await getPaymentStatusAllEvents()
     return NextResponse.json({ rows }, { headers: { "Cache-Control": "no-store" } })
   } catch (err) {
     console.error("Failed to load payment status:", err)

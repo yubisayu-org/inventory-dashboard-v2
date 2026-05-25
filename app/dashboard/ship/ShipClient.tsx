@@ -4,7 +4,7 @@ import { displayIg } from "@/lib/format"
 import TableSkeleton from "@/components/TableSkeleton"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import type { ShipCustomer, ShipOrdersParams, ShipSegment, ShipOrdersFiltered } from "@/lib/db"
+import type { ShipCustomer, ShipOrdersParams, ShipSegment, ShipStatus, ShipOrdersFiltered } from "@/lib/db"
 import { generateShippingLabel } from "@/lib/shipping-label"
 import { useModalDismiss } from "@/hooks/useModalDismiss"
 import { useResizableColumns } from "@/hooks/useResizableColumns"
@@ -16,15 +16,24 @@ type Segment = ShipSegment
 const SEGMENTS: { id: Segment; label: string }[] = [
   { id: "all", label: "Semua" },
   { id: "not_arrived", label: "Belum Tiba" },
+  { id: "partial", label: "Tiba Sebagian" },
   { id: "ready", label: "Siap Dikirim" },
   { id: "shipped", label: "Sudah Dikirim" },
 ]
+
+// Card badge styling per arrival/ship status (mirrors SEGMENTS labels).
+const STATUS_BADGE: Record<ShipStatus, { label: string; cls: string }> = {
+  not_arrived: { label: "Belum Tiba", cls: "bg-gray-100 text-gray-500" },
+  partial: { label: "Tiba Sebagian", cls: "bg-amber-100 text-amber-700" },
+  ready: { label: "Siap Dikirim", cls: "bg-brand/10 text-brand" },
+  shipped: { label: "Sudah Dikirim", cls: "bg-green-100 text-green-700" },
+}
 
 export default function ShipClient() {
   const router = useRouter()
   const sheetOptions = useSheetOptions()
   const [groups, setGroups] = useState<ShipCustomer[]>([])
-  const [counts, setCounts] = useState<Record<Segment, number>>({ all: 0, not_arrived: 0, ready: 0, shipped: 0 })
+  const [counts, setCounts] = useState<Record<Segment, number>>({ all: 0, not_arrived: 0, partial: 0, ready: 0, shipped: 0 })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [segment, setSegment] = useState<Segment>("ready")
@@ -148,7 +157,7 @@ export default function ShipClient() {
             key={s.id}
             type="button"
             onClick={() => { setSegment(s.id); setSelected(new Set()) }}
-            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+            className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
               segment === s.id
                 ? "bg-brand text-white"
                 : "text-gray-500 hover:text-foreground"
@@ -264,10 +273,6 @@ export default function ShipClient() {
   )
 }
 
-function isNotArrived(c: ShipCustomer) {
-  return c.orders.every((o) => o.unitArrive === 0 && o.unitShip === 0)
-}
-
 function CustomerCard({
   customer: c,
   isSelected,
@@ -282,7 +287,7 @@ function CustomerCard({
   const [expanded, setExpanded] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const { customerDetail } = c
-  const { widths, startResize } = useResizableColumns({ items: 200, unitArrive: 80, unitShip: 80, toShip: 80 })
+  const { widths, startResize } = useResizableColumns({ items: 200, unit: 80, unitArrive: 80, unitShip: 80, toShip: 80 })
 
   return (
     <div className={`rounded-xl border bg-white overflow-hidden transition-colors ${isSelected ? "border-brand" : "border-cream-border"}`}>
@@ -300,19 +305,9 @@ function CustomerCard({
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm font-semibold text-foreground">{displayIg(c.customer).toUpperCase()}</span>
             <span className="text-sm text-gray-500 font-medium">{c.event}</span>
-            {isNotArrived(c) ? (
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
-                Belum Tiba
-              </span>
-            ) : c.totalToShip > 0 ? (
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-brand/10 text-brand">
-                Siap Dikirim
-              </span>
-            ) : (
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
-                Sudah Dikirim
-              </span>
-            )}
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[c.status].cls}`}>
+              {STATUS_BADGE[c.status].label}
+            </span>
             {customerDetail?.ekspedisi && (
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
                 {customerDetail.ekspedisi}
@@ -355,6 +350,10 @@ function CustomerCard({
                 Item
                 <div onMouseDown={(e) => startResize("items", e)} className="absolute inset-y-0 right-0 w-1 cursor-col-resize hover:bg-brand/30 active:bg-brand/60" />
               </th>
+              <th className="px-4 py-2 font-medium text-right relative select-none" style={{ width: widths.unit }}>
+                Ordered
+                <div onMouseDown={(e) => startResize("unit", e)} className="absolute inset-y-0 right-0 w-1 cursor-col-resize hover:bg-brand/30 active:bg-brand/60" />
+              </th>
               <th className="px-4 py-2 font-medium text-right relative select-none" style={{ width: widths.unitArrive }}>
                 Arrive
                 <div onMouseDown={(e) => startResize("unitArrive", e)} className="absolute inset-y-0 right-0 w-1 cursor-col-resize hover:bg-brand/30 active:bg-brand/60" />
@@ -372,7 +371,8 @@ function CustomerCard({
           <tbody>
             {c.orders.map((o) => (
               <tr key={o.rowNumber} className="border-b border-cream-border/60">
-                <td className="px-4 py-2">{o.items}</td>
+                <td className="px-4 py-2">{o.productName}</td>
+                <td className="px-4 py-2 text-right">{o.unit}</td>
                 <td className="px-4 py-2 text-right">{o.unitArrive}</td>
                 <td className="px-4 py-2 text-right">{o.unitShip}</td>
                 <td className={`px-4 py-2 text-right font-semibold ${o.toShip > 0 ? "text-brand" : "text-gray-400"}`}>
