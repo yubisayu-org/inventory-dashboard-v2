@@ -14,6 +14,7 @@ export const ADMIN_ROUTES = [
   "/dashboard/ship", // Packing List
   "/dashboard/shipments",
   "/dashboard/custom-label",
+  "/dashboard/customers",
 ] as const
 
 /** Where an admin lands after login and when redirected off a blocked route. */

@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
-import { requireSession, requireOwner } from "@/lib/api"
+import { requireSession, requireRole } from "@/lib/api"
 import { getCustomers, addCustomer } from "@/lib/db"
 
 export async function GET() {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
 
-  const ownerError = requireOwner(session)
+  const ownerError = requireRole(session)
   if (ownerError) return ownerError
 
   try {
@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
 
-  const ownerError = requireOwner(session)
+  const ownerError = requireRole(session)
   if (ownerError) return ownerError
 
   try {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { requireSession, requireOwner } from "@/lib/api"
+import { requireSession, requireRole } from "@/lib/api"
 import { updateCustomer, deleteCustomer } from "@/lib/db"
 
 type Params = { params: Promise<{ id: string }> }
@@ -8,7 +8,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
 
-  const ownerError = requireOwner(session)
+  const ownerError = requireRole(session)
   if (ownerError) return ownerError
 
   const { id: idStr } = await params
@@ -50,7 +50,7 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
 
-  const ownerError = requireOwner(session)
+  const ownerError = requireRole(session)
   if (ownerError) return ownerError
 
   const { id: idStr } = await params
