@@ -85,28 +85,22 @@ export default function CustomersClient() {
       accessorKey: "instagramId",
       header: "Instagram ID",
       filterFn: "textContains" as unknown as undefined,
-      cell: ({ getValue }) => (
-        <span className="font-medium tabular-nums">{displayIg(getValue<string>())}</span>
-      ),
-    },
-    {
-      id: "addressStatus",
-      header: "Address",
-      accessorFn: (row) => Boolean(row.dataDiri && row.dataDiri.trim()),
-      filterFn: "boolean" as unknown as undefined,
-      size: 120,
-      cell: ({ getValue }) =>
-        getValue<boolean>() ? (
-          <span className="inline-flex items-center gap-1 text-xs text-green-600">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
-            Filled
+      cell: ({ row }) => {
+        const hasAddress = Boolean(row.original.dataDiri && row.original.dataDiri.trim())
+        return (
+          <span className="inline-flex items-center gap-1.5">
+            <span className="font-medium tabular-nums">{displayIg(row.original.instagramId)}</span>
+            {!hasAddress && (
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-500 shrink-0" aria-label="No address filled">
+                <title>No address filled</title>
+                <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+            )}
           </span>
-        ) : (
-          <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
-            No address
-          </span>
-        ),
+        )
+      },
     },
     {
       accessorKey: "whatsapp",
