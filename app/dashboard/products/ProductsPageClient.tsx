@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { ProductRow, CountryRow } from "@/lib/db"
 import DataGrid, { numericFilter, textContainsFilter, type ColumnDef } from "@/components/DataGrid"
 import SearchableSelect from "@/components/SearchableSelect"
+import { calcAbroadPrice, calcDomesticPrice, abroadProfit } from "@/lib/pricing"
 
 type PricingType = "overseas" | "domestic"
 
@@ -22,20 +23,6 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       {children}
     </label>
   )
-}
-
-function calcAbroadPrice(p: {
-  valas: number; kurs: number; gram: number; cargoPerKg: number
-  profitPct: number; operationalFee: number; packingFee: number
-}) {
-  const cogs = p.valas * p.kurs + (p.gram / 1000) * p.cargoPerKg
-  if (p.profitPct >= 100) return { cogs, price: 0 }
-  const raw = (cogs * 100) / (100 - p.profitPct) + p.operationalFee + p.packingFee
-  return { cogs, price: Math.ceil(raw / 5000) * 5000 }
-}
-
-function calcDomesticPrice(cost: number, profitFixed: number) {
-  return cost + profitFixed
 }
 
 function defaultDomesticProfit(cost: number): number {
@@ -109,18 +96,18 @@ export default function ProductsPageClient() {
     {
       accessorKey: "name",
       header: "Name",
-      filterFn: "textContains" as unknown as undefined,
+      filterFn: "textContains",
       cell: ({ row }) => <span className="font-medium whitespace-nowrap">{row.original.name}</span>,
     },
     {
       accessorKey: "store",
       header: "Store",
-      filterFn: "textContains" as unknown as undefined,
+      filterFn: "textContains",
     },
     {
       accessorKey: "price",
       header: "Price",
-      filterFn: "numeric" as unknown as undefined,
+      filterFn: "numeric",
       cell: ({ row }) => <span className="tabular-nums font-medium">{fmt(row.original.price)}</span>,
       meta: { align: "right" },
     },
@@ -128,7 +115,7 @@ export default function ProductsPageClient() {
       id: "type",
       header: "Type",
       accessorFn: (row) => isAbroad(row) ? "Overseas" : "Domestic",
-      filterFn: "textContains" as unknown as undefined,
+      filterFn: "textContains",
       cell: ({ row }) => {
         const abroad = isAbroad(row.original)
         return (
@@ -141,81 +128,81 @@ export default function ProductsPageClient() {
     {
       accessorKey: "countryName",
       header: "Country",
-      filterFn: "textContains" as unknown as undefined,
+      filterFn: "textContains",
       cell: ({ row }) => <span className="text-gray-600">{row.original.countryName || "—"}</span>,
     },
     {
       accessorKey: "valas",
       header: "Valas",
-      filterFn: "numeric" as unknown as undefined,
+      filterFn: "numeric",
       cell: ({ row }) => <span className="tabular-nums">{isAbroad(row.original) ? fmt(row.original.valas) : "—"}</span>,
       meta: { align: "right" },
     },
     {
       accessorKey: "gram",
       header: "Gram",
-      filterFn: "numeric" as unknown as undefined,
+      filterFn: "numeric",
       cell: ({ row }) => <span className="tabular-nums">{row.original.gram ? fmt(row.original.gram) : "—"}</span>,
       meta: { align: "right" },
     },
     {
       accessorKey: "kurs",
       header: "Kurs",
-      filterFn: "numeric" as unknown as undefined,
+      filterFn: "numeric",
       cell: ({ row }) => <span className="tabular-nums">{isAbroad(row.original) ? fmt(row.original.kurs) : "—"}</span>,
       meta: { align: "right" },
     },
     {
       accessorKey: "cargoPerKg",
       header: "Cargo/kg",
-      filterFn: "numeric" as unknown as undefined,
+      filterFn: "numeric",
       cell: ({ row }) => <span className="tabular-nums">{isAbroad(row.original) ? fmt(row.original.cargoPerKg) : "—"}</span>,
       meta: { align: "right" },
     },
     {
       accessorKey: "profitPct",
       header: "%",
-      filterFn: "numeric" as unknown as undefined,
+      filterFn: "numeric",
       cell: ({ row }) => <span className="tabular-nums">{isAbroad(row.original) ? `${row.original.profitPct}%` : "—"}</span>,
       meta: { align: "right" },
     },
     {
       accessorKey: "operationalFee",
       header: "Op Fee",
-      filterFn: "numeric" as unknown as undefined,
+      filterFn: "numeric",
       cell: ({ row }) => <span className="tabular-nums">{isAbroad(row.original) ? fmt(row.original.operationalFee) : "—"}</span>,
       meta: { align: "right" },
     },
     {
       accessorKey: "packingFee",
       header: "Pack Fee",
-      filterFn: "numeric" as unknown as undefined,
+      filterFn: "numeric",
       cell: ({ row }) => <span className="tabular-nums">{isAbroad(row.original) ? fmt(row.original.packingFee) : "—"}</span>,
       meta: { align: "right" },
     },
     {
       accessorKey: "cost",
       header: "Base Cost",
-      filterFn: "numeric" as unknown as undefined,
+      filterFn: "numeric",
       cell: ({ row }) => <span className="tabular-nums">{!isAbroad(row.original) ? fmt(row.original.cost) : "—"}</span>,
       meta: { align: "right" },
     },
     {
       accessorKey: "profitFixed",
       header: "Fixed Profit",
-      filterFn: "numeric" as unknown as undefined,
+      filterFn: "numeric",
       cell: ({ row }) => <span className="tabular-nums">{!isAbroad(row.original) ? fmt(row.original.profitFixed) : "—"}</span>,
       meta: { align: "right" },
     },
     {
       accessorKey: "createdAt",
       header: "Created",
-      filterFn: "textContains" as unknown as undefined,
+      filterFn: "textContains",
     },
     {
       accessorKey: "updatedAt",
       header: "Updated",
-      filterFn: "textContains" as unknown as undefined,
+      filterFn: "textContains",
     },
     {
       id: "actions",
@@ -551,7 +538,9 @@ function AddProductForm({
               <span>Kurs: {fmt(selectedCountry.kurs)}</span>
               <span>Cargo/kg: {fmt(selectedCountry.cargoPerKg)}</span>
               <span>COGS: {fmt(Math.round(pricePreview.cogs))}</span>
-              <span>Profit: {fmt(Math.round(pricePreview.price - pricePreview.cogs - (Number(opFee) || 0) - (Number(packFee) || 0)))}</span>
+              <span className="text-green-700 font-semibold">
+                Profit: Rp {fmt(abroadProfit({ price: pricePreview.price, cogs: pricePreview.cogs, operationalFee: Number(opFee) || 0, packingFee: Number(packFee) || 0 }))}
+              </span>
             </div>
           )}
         </div>
@@ -702,9 +691,11 @@ function EditProductModal({
   const draftCountry = countries.find((c) => c.id === draft.countryId)
   const draftAbroad = draft.countryId != null
 
-  const editPrice = useMemo(() => {
+  // Live price + per-unit COGS + profit. Profit (overseas) = price − COGS − fees,
+  // matching the Add form's preview.
+  const editCalc = useMemo<{ price: number; cogs: number | null; profit: number | null }>(() => {
     if (draftAbroad) {
-      const { price } = calcAbroadPrice({
+      const { cogs, price } = calcAbroadPrice({
         valas: Number(draft.valas) || 0,
         kurs: draftCountry?.kurs ?? row.kurs,
         gram: Number(draft.gram) || 0,
@@ -713,9 +704,10 @@ function EditProductModal({
         operationalFee: Number(draft.opFee) || 0,
         packingFee: Number(draft.packFee) || 0,
       })
-      return price
+      const profit = abroadProfit({ price, cogs, operationalFee: Number(draft.opFee) || 0, packingFee: Number(draft.packFee) || 0 })
+      return { price, cogs: Math.round(cogs), profit }
     }
-    return calcDomesticPrice(Number(draft.cost) || 0, Number(draft.profitFixed) || 0)
+    return { price: calcDomesticPrice(Number(draft.cost) || 0, Number(draft.profitFixed) || 0), cogs: null, profit: null }
   }, [draft, draftAbroad, draftCountry, row.kurs, row.cargoPerKg])
 
   async function handleSave() {
@@ -725,7 +717,7 @@ function EditProductModal({
       const body: Record<string, unknown> = {
         name: draft.name.trim(),
         store: draft.store.trim(),
-        price: editPrice,
+        price: editCalc.price,
         gram: Number(draft.gram) || 0,
         countryId: draft.countryId,
         valas: draftAbroad ? Number(draft.valas) || 0 : 0,
@@ -749,7 +741,7 @@ function EditProductModal({
       onSave({
         name: draft.name.trim(),
         store: draft.store.trim(),
-        price: editPrice,
+        price: editCalc.price,
         gram: Number(draft.gram) || 0,
         countryId: draft.countryId,
         countryName: draftCountry?.name ?? "",
@@ -858,9 +850,23 @@ function EditProductModal({
         )}
 
         <div className="flex items-center justify-between pt-2 border-t border-cream-border">
-          <div className="text-sm">
-            <span className="text-gray-500">Price: </span>
-            <span className="font-semibold text-foreground">Rp {fmt(editPrice)}</span>
+          <div className="text-sm flex flex-col gap-0.5">
+            <div>
+              <span className="text-gray-500">Price: </span>
+              <span className="font-semibold text-foreground">Rp {fmt(editCalc.price)}</span>
+            </div>
+            {editCalc.cogs != null && (
+              <div>
+                <span className="text-gray-500">COGS: </span>
+                <span className="font-semibold text-foreground">Rp {fmt(editCalc.cogs)}</span>
+              </div>
+            )}
+            {editCalc.profit != null && (
+              <div>
+                <span className="text-gray-500">Profit: </span>
+                <span className="font-semibold text-green-700">Rp {fmt(editCalc.profit)}</span>
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2">
             {saveError && <p className="text-xs text-red-500">{saveError}</p>}
