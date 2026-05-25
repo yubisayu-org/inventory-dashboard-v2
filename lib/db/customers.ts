@@ -98,3 +98,52 @@ export async function deleteCustomer(id: number): Promise<void> {
   await sql`DELETE FROM customers WHERE id = ${id}`
 }
 
+// ─── Public registration ──────────────────────────────────────────────────────
+
+/** JNE rate for a destination, matched on the (city, district) pair. 0 = no rate. */
+export async function lookupOngkir(kabKota: string, kecamatan: string): Promise<number> {
+  if (!kabKota?.trim() || !kecamatan?.trim()) return 0
+  const rows = await sql`
+    SELECT final_price
+    FROM jne_rates
+    WHERE upper(trim(kab_kota_nama))  = upper(trim(${kabKota}))
+      AND upper(trim(kecamatan_nama)) = upper(trim(${kecamatan}))
+    LIMIT 1
+  `
+  return rows.length ? (rows[0].final_price as number) : 0
+}
+
+/**
+ * Upsert a self-registered customer, keyed on the normalized handle (so "@User"
+ * and "user" don't create duplicate rows). On re-registration, contact/address/
+ * ekspedisi are refreshed; bank info is preserved (admin-managed), and ongkir is
+ * only overwritten when the fresh lookup actually found a rate.
+ */
+export async function registerCustomer(data: {
+  instagramId: string
+  whatsapp: string
+  dataDiri: string
+  ekspedisi: string
+  ongkosKirim: number
+}): Promise<{ id: number; updated: boolean }> {
+  const norm = normalizeId(data.instagramId)
+  const updated = await sql`
+    UPDATE customers SET
+      whatsapp     = ${data.whatsapp},
+      data_diri    = ${data.dataDiri},
+      ekspedisi    = ${data.ekspedisi},
+      ongkos_kirim = CASE WHEN ${data.ongkosKirim} > 0 THEN ${data.ongkosKirim} ELSE ongkos_kirim END,
+      updated_at   = NOW()
+    WHERE lower(replace(instagram_id, '@', '')) = ${norm}
+    RETURNING id
+  `
+  if (updated.length) return { id: updated[0].id as number, updated: true }
+
+  const inserted = await sql`
+    INSERT INTO customers (instagram_id, whatsapp, data_diri, ekspedisi, ongkos_kirim)
+    VALUES (${norm}, ${data.whatsapp}, ${data.dataDiri}, ${data.ekspedisi}, ${data.ongkosKirim})
+    RETURNING id
+  `
+  return { id: inserted[0].id as number, updated: false }
+}
+
