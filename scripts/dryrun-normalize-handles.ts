@@ -28,36 +28,41 @@ const sql = postgres(process.env.DATABASE_URL, {
 const body = readFileSync("supabase/migrations/021_normalize_customer_handles.sql", "utf8")
   .replace(/^\s*(BEGIN|COMMIT)\s*;\s*$/gim, "")
 
-const dupGroups = (tx: typeof sql) => tx`
-  SELECT count(*)::int AS n FROM (
-    SELECT lower(replace(instagram_id,'@','')) k FROM customers
-    WHERE instagram_id NOT LIKE '\_old%' AND instagram_id <> 'gantialamat'
-    GROUP BY 1 HAVING count(*) > 1
-  ) x`
-const nonBare = (tx: typeof sql) => tx`
-  SELECT count(*)::int AS n FROM customers
-  WHERE instagram_id NOT LIKE '\_old%' AND instagram_id <> 'gantialamat'
-    AND instagram_id <> lower(replace(instagram_id,'@',''))`
-const totalCust = (tx: typeof sql) => tx`SELECT count(*)::int AS n FROM customers`
-
 class Rollback extends Error {}
 
 async function main() {
   try {
     await sql.begin(async (tx) => {
-      const [{ n: dupBefore }] = await dupGroups(tx)
-      const [{ n: nonBareBefore }] = await nonBare(tx)
-      const [{ n: totalBefore }] = await totalCust(tx)
+      const dupGroups = async () =>
+        (await tx<{ n: number }[]>`
+          SELECT count(*)::int AS n FROM (
+            SELECT lower(replace(instagram_id,'@','')) k FROM customers
+            WHERE instagram_id NOT LIKE '\_old%' AND instagram_id <> 'gantialamat'
+            GROUP BY 1 HAVING count(*) > 1
+          ) x`)[0].n
+      const nonBare = async () =>
+        (await tx<{ n: number }[]>`
+          SELECT count(*)::int AS n FROM customers
+          WHERE instagram_id NOT LIKE '\_old%' AND instagram_id <> 'gantialamat'
+            AND instagram_id <> lower(replace(instagram_id,'@',''))`)[0].n
+      const totalCust = async () =>
+        (await tx<{ n: number }[]>`SELECT count(*)::int AS n FROM customers`)[0].n
 
+      const dupBefore = await dupGroups()
+      const nonBareBefore = await nonBare()
+      const totalBefore = await totalCust()
       console.log("BEFORE:  customers=%d  dupGroups=%d  nonBare=%d", totalBefore, dupBefore, nonBareBefore)
+
       console.log("Running migration body…")
       await tx.unsafe(body).simple()
 
-      const [{ n: dupAfter }] = await dupGroups(tx)
-      const [{ n: nonBareAfter }] = await nonBare(tx)
-      const [{ n: totalAfter }] = await totalCust(tx)
+      const dupAfter = await dupGroups()
+      const nonBareAfter = await nonBare()
+      const totalAfter = await totalCust()
 
-      const [orph] = await tx`
+      const [orph] = await tx<{
+        orders: number; payments: number; shipments: number; adjustments: number; refunds: number
+      }[]>`
         SELECT
           (SELECT count(*)::int FROM orders o      LEFT JOIN customers c ON c.instagram_id=o.customer WHERE c.id IS NULL) AS orders,
           (SELECT count(*)::int FROM payments p    LEFT JOIN customers c ON c.instagram_id=p.customer WHERE c.id IS NULL) AS payments,
