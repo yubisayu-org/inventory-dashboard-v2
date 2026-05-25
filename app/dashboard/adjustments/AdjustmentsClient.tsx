@@ -221,7 +221,7 @@ function EditAdjustmentModal({
   const [error, setError] = useState("")
 
   const customerOptions = useMemo(
-    () => (options?.customers ?? []).map((c) => ({ value: c, label: c })),
+    () => (options?.customers ?? []).map((c) => ({ value: c, label: displayIg(c) })),
     [options],
   )
 
@@ -370,7 +370,7 @@ function AddAdjustmentForm({
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null)
 
   const customerOptions = useMemo(
-    () => (options?.customers ?? []).map((c) => ({ value: c, label: c })),
+    () => (options?.customers ?? []).map((c) => ({ value: c, label: displayIg(c) })),
     [options],
   )
 

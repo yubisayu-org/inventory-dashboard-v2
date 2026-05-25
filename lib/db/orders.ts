@@ -15,10 +15,18 @@ export async function getSheetOptions(): Promise<SheetOptions> {
     `,
   ])
 
+  // Collapse handles that differ only by a leading "@" or case (legacy Sheets
+  // imports stored e.g. "shinta.michiko" while app writes store "@shinta.michiko")
+  // into a single canonical entry, so the picker shows each customer once.
+  // The customers table is left untouched — this only de-dupes the options list.
+  const customers = [
+    ...new Set(customerRows.map((r) => normalizeCustomer(r.instagram_id))),
+  ].sort()
+
   return {
     events: eventsRows.map((r) => r.name),
     items: productRows.map((r) => ({ id: r.id, name: r.name, store: r.store, price: r.price })),
-    customers: customerRows.map((r) => r.instagram_id),
+    customers,
   }
 }
 

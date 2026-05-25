@@ -518,7 +518,7 @@ function EditOrderModal({ row, options, onClose, onSaved, onDelete }: {
   const [error, setError] = useState("")
 
   const customerOptions = useMemo(
-    () => (options?.customers ?? []).map((c) => ({ value: c, label: c })),
+    () => (options?.customers ?? []).map((c) => ({ value: c, label: displayIg(c) })),
     [options],
   )
   const itemOptions = useMemo(
@@ -643,7 +643,7 @@ function AddOrderForm({ options, onOrderAdded }: {
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null)
 
   const customerOptions = useMemo(
-    () => (options?.customers ?? []).map((c) => ({ value: c, label: c })),
+    () => (options?.customers ?? []).map((c) => ({ value: c, label: displayIg(c) })),
     [options],
   )
   const itemOptions = useMemo(

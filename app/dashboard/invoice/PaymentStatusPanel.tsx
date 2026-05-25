@@ -193,7 +193,7 @@ export function PaymentStatusPanel({
   ]
 
   const customerLookupOptions = useMemo(
-    () => customers.map((c) => ({ value: c, label: c })),
+    () => customers.map((c) => ({ value: c, label: displayIg(c) })),
     [customers],
   )
 
