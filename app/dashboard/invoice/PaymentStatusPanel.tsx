@@ -5,6 +5,7 @@ import { displayIg, fmt } from "@/lib/format"
 import type { PaymentStatus, PaymentStatusRow } from "@/lib/db"
 import SearchableSelect from "@/components/SearchableSelect"
 import EventSelect from "@/components/EventSelect"
+import DataGrid, { type ColumnDef } from "@/components/DataGrid"
 
 // ─── Payment Status Panel ────────────────────────────────────────────────────
 
@@ -23,64 +24,6 @@ const STATUS_COLORS: Record<PaymentStatus, string> = {
 }
 
 type StatusFilter = "all" | PaymentStatus
-type SortKey = "event" | "customer" | "invoiceTotal" | "totalPaid" | "outstanding" | "status"
-type SortDir = "asc" | "desc"
-const PAGE_SIZE = 50
-
-const STATUS_RANK: Record<PaymentStatus, number> = {
-  unpaid: 0,
-  overpaid: 1,
-  partial: 2,
-  paid: 3,
-}
-
-function SortableHeader({
-  sortKey,
-  currentKey,
-  dir,
-  onClick,
-  align,
-  widthClass,
-  children,
-}: {
-  sortKey: SortKey
-  currentKey: SortKey
-  dir: SortDir
-  onClick: (key: SortKey) => void
-  align: "left" | "right"
-  widthClass?: string
-  children: React.ReactNode
-}) {
-  const active = currentKey === sortKey
-  return (
-    <th className={`px-4 py-2.5 font-medium text-gray-500 ${align === "right" ? "text-right" : "text-left"} ${widthClass ?? ""}`}>
-      <button
-        type="button"
-        onClick={() => onClick(sortKey)}
-        className={`group inline-flex items-center gap-1 ${align === "right" ? "ml-auto" : ""} transition-colors ${active ? "text-brand" : "hover:text-foreground"}`}
-      >
-        {children}
-        <svg
-          width="10"
-          height="10"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className={`transition-opacity ${active ? "opacity-100" : "opacity-0 group-hover:opacity-60"}`}
-        >
-          {active && dir === "asc" ? (
-            <path d="m18 15-6-6-6 6" />
-          ) : (
-            <path d="m6 9 6 6 6-6" />
-          )}
-        </svg>
-      </button>
-    </th>
-  )
-}
 
 export function PaymentStatusPanel({
   events,
@@ -95,20 +38,7 @@ export function PaymentStatusPanel({
   const [rows, setRows] = useState<PaymentStatusRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [search, setSearch] = useState("")
   const [filter, setFilter] = useState<StatusFilter>("all")
-  const [sortKey, setSortKey] = useState<SortKey>("outstanding")
-  const [sortDir, setSortDir] = useState<SortDir>("desc")
-  const [page, setPage] = useState(0)
-
-  function toggleSort(key: SortKey) {
-    if (sortKey === key) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"))
-    } else {
-      setSortKey(key)
-      setSortDir(key === "customer" || key === "event" ? "asc" : "desc")
-    }
-  }
 
   // Fetch every event's payment status once; the event picker filters client-side.
   const fetchRows = useCallback(async () => {
@@ -129,9 +59,6 @@ export function PaymentStatusPanel({
 
   useEffect(() => { fetchRows() }, [fetchRows])
 
-  // Reset to the first page whenever a filter/sort changes.
-  useEffect(() => { setPage(0) }, [event, search, filter, sortKey, sortDir])
-
   // Rows scoped to the selected event (or all events when none is picked).
   const eventRows = useMemo(
     () => (event ? rows.filter((r) => r.event === event) : rows),
@@ -150,52 +77,76 @@ export function PaymentStatusPanel({
     return { invoiceTotal, paidTotal, outstanding: invoiceTotal - paidTotal }
   }, [eventRows])
 
-  const filteredRows = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    return eventRows.filter((r) => {
-      if (filter !== "all" && r.status !== filter) return false
-      if (q && !r.customer.toLowerCase().includes(q)) return false
-      return true
-    })
-  }, [eventRows, search, filter])
-
-  const sortedRows = useMemo(() => {
-    const arr = [...filteredRows]
-    arr.sort((a, b) => {
-      let cmp = 0
-      switch (sortKey) {
-        case "event":
-          cmp = a.event.localeCompare(b.event)
-          if (cmp === 0) cmp = a.customer.localeCompare(b.customer)
-          break
-        case "customer":
-          cmp = a.customer.localeCompare(b.customer)
-          break
-        case "invoiceTotal":
-          cmp = a.invoiceTotal - b.invoiceTotal
-          break
-        case "totalPaid":
-          cmp = a.totalPaid - b.totalPaid
-          break
-        case "outstanding":
-          cmp = a.outstanding - b.outstanding
-          break
-        case "status":
-          cmp = STATUS_RANK[a.status] - STATUS_RANK[b.status]
-          if (cmp === 0) cmp = b.outstanding - a.outstanding
-          break
-      }
-      return sortDir === "asc" ? cmp : -cmp
-    })
-    return arr
-  }, [filteredRows, sortKey, sortDir])
-
-  const pageCount = Math.max(1, Math.ceil(sortedRows.length / PAGE_SIZE))
-  const safePage = Math.min(page, pageCount - 1)
-  const pagedRows = useMemo(
-    () => sortedRows.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE),
-    [sortedRows, safePage],
+  // The status chips pre-filter the rows fed to the grid; the grid then handles
+  // search, per-column filters, sorting and pagination — same as other tables.
+  const gridRows = useMemo(
+    () => (filter === "all" ? eventRows : eventRows.filter((r) => r.status === filter)),
+    [eventRows, filter],
   )
+
+  const columns = useMemo<ColumnDef<PaymentStatusRow, unknown>[]>(() => [
+    {
+      accessorKey: "event",
+      header: "Event",
+      filterFn: "textContains" as unknown as undefined,
+      cell: ({ getValue }) => <span className="text-gray-500 whitespace-nowrap">{getValue<string>()}</span>,
+    },
+    {
+      accessorKey: "customer",
+      header: "Customer",
+      filterFn: "textContains" as unknown as undefined,
+      cell: ({ row }) => (
+        <button
+          type="button"
+          onClick={() => onOpenCustomer(row.original.customer)}
+          className="font-medium text-foreground hover:text-brand transition-colors text-left"
+        >
+          {displayIg(row.original.customer)}
+        </button>
+      ),
+    },
+    {
+      accessorKey: "invoiceTotal",
+      header: "Invoice Total",
+      filterFn: "numeric" as unknown as undefined,
+      meta: { align: "right" },
+      cell: ({ getValue }) => <span className="tabular-nums">Rp {fmt(getValue<number>())}</span>,
+    },
+    {
+      accessorKey: "totalPaid",
+      header: "Paid",
+      filterFn: "numeric" as unknown as undefined,
+      meta: { align: "right" },
+      cell: ({ getValue }) => <span className="tabular-nums">Rp {fmt(getValue<number>())}</span>,
+    },
+    {
+      accessorKey: "outstanding",
+      header: "Outstanding",
+      filterFn: "numeric" as unknown as undefined,
+      meta: { align: "right" },
+      cell: ({ getValue }) => {
+        const v = getValue<number>()
+        return (
+          <span className={`tabular-nums font-medium ${v > 0 ? "text-red-600" : v < 0 ? "text-purple-600" : "text-green-600"}`}>
+            {v > 0 ? "Rp " + fmt(v) : v < 0 ? "−Rp " + fmt(Math.abs(v)) : "—"}
+          </span>
+        )
+      },
+    },
+    {
+      accessorKey: "status",
+      header: "Status",
+      enableColumnFilter: false,
+      cell: ({ getValue }) => {
+        const s = getValue<PaymentStatus>()
+        return (
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${STATUS_COLORS[s]}`}>
+            {STATUS_LABELS[s]}
+          </span>
+        )
+      },
+    },
+  ], [onOpenCustomer])
 
   const filters: { key: StatusFilter; label: string; count: number }[] = [
     { key: "all", label: "All", count: eventRows.length },
@@ -212,18 +163,11 @@ export function PaymentStatusPanel({
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Toolbar: event + search + lookup + refresh */}
+      {/* Toolbar: event filter + customer lookup + refresh */}
       <div className="flex items-center gap-2 flex-wrap">
         <div style={{ width: "12rem" }}>
           <EventSelect value={event} onChange={setEvent} events={events} placeholder="All events" clearable />
         </div>
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Filter customers…"
-          className="flex-1 min-w-[180px] border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
-        />
         <div className="w-56">
           <SearchableSelect
             value=""
@@ -272,7 +216,7 @@ export function PaymentStatusPanel({
       </div>
 
       {/* Summary */}
-      {rows.length > 0 && (
+      {eventRows.length > 0 && (
         <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-xs text-gray-500 px-1">
           <div>
             <span className="text-gray-400">Invoice total:</span>{" "}
@@ -292,97 +236,20 @@ export function PaymentStatusPanel({
       )}
 
       {/* Table */}
-      <div className="rounded-xl border border-cream-border bg-white overflow-hidden">
-        {loading ? (
-          <div className="py-12 text-center text-sm text-gray-400">Loading…</div>
-        ) : error ? (
-          <div className="py-8 px-4 text-sm text-red-500">{error}</div>
-        ) : (
-          <table className="w-full text-sm border-collapse">
-            <thead>
-              <tr className="border-b border-cream-border bg-gray-50/80">
-                <SortableHeader sortKey="event" currentKey={sortKey} dir={sortDir} onClick={toggleSort} align="left" widthClass="w-36">
-                  Event
-                </SortableHeader>
-                <SortableHeader sortKey="customer" currentKey={sortKey} dir={sortDir} onClick={toggleSort} align="left">
-                  Customer
-                </SortableHeader>
-                <SortableHeader sortKey="invoiceTotal" currentKey={sortKey} dir={sortDir} onClick={toggleSort} align="right" widthClass="w-36">
-                  Invoice Total
-                </SortableHeader>
-                <SortableHeader sortKey="totalPaid" currentKey={sortKey} dir={sortDir} onClick={toggleSort} align="right" widthClass="w-32">
-                  Paid
-                </SortableHeader>
-                <SortableHeader sortKey="outstanding" currentKey={sortKey} dir={sortDir} onClick={toggleSort} align="right" widthClass="w-32">
-                  Outstanding
-                </SortableHeader>
-                <SortableHeader sortKey="status" currentKey={sortKey} dir={sortDir} onClick={toggleSort} align="left" widthClass="w-28">
-                  Status
-                </SortableHeader>
-              </tr>
-            </thead>
-            <tbody>
-              {pagedRows.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="py-12 text-center text-sm text-gray-400">
-                    {rows.length === 0 ? "No data" : "No matches"}
-                  </td>
-                </tr>
-              ) : pagedRows.map((r) => (
-                <tr
-                  key={`${r.event}-${r.customer}`}
-                  className="border-b border-cream-border hover:bg-gray-50/50 transition-colors cursor-pointer"
-                  onClick={() => onOpenCustomer(r.customer)}
-                >
-                  <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap">{r.event}</td>
-                  <td className="px-4 py-2.5 font-medium text-foreground">{displayIg(r.customer)}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums text-foreground">
-                    Rp {fmt(r.invoiceTotal)}
-                  </td>
-                  <td className="px-4 py-2.5 text-right tabular-nums text-foreground">
-                    Rp {fmt(r.totalPaid)}
-                  </td>
-                  <td className={`px-4 py-2.5 text-right tabular-nums font-medium ${r.outstanding > 0 ? "text-red-600" : r.outstanding < 0 ? "text-purple-600" : "text-green-600"}`}>
-                    {r.outstanding > 0 ? "Rp " + fmt(r.outstanding) : r.outstanding < 0 ? "−Rp " + fmt(Math.abs(r.outstanding)) : "—"}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${STATUS_COLORS[r.status]}`}>
-                      {STATUS_LABELS[r.status]}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      {/* Pagination */}
-      {!loading && !error && sortedRows.length > PAGE_SIZE && (
-        <div className="flex items-center justify-between gap-3 px-1 text-xs text-gray-500">
-          <span>
-            {safePage * PAGE_SIZE + 1}–{Math.min((safePage + 1) * PAGE_SIZE, sortedRows.length)} of {sortedRows.length}
-          </span>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
-              disabled={safePage === 0}
-              className="px-2.5 py-1 rounded-md border border-cream-border hover:border-brand hover:text-brand disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
-              Prev
-            </button>
-            <span className="px-1">Page {safePage + 1} / {pageCount}</span>
-            <button
-              type="button"
-              onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
-              disabled={safePage >= pageCount - 1}
-              className="px-2.5 py-1 rounded-md border border-cream-border hover:border-brand hover:text-brand disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
-              Next
-            </button>
-          </div>
-        </div>
+      {loading ? (
+        <div className="rounded-xl border border-cream-border bg-white py-12 text-center text-sm text-gray-400">Loading…</div>
+      ) : error ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 py-8 px-4 text-sm text-red-500">{error}</div>
+      ) : (
+        <DataGrid
+          key={`${event}-${filter}`}
+          data={gridRows}
+          columns={columns}
+          getRowId={(r) => `${r.event}-${r.customer}`}
+          searchPlaceholder="Search customers, events…"
+          pageSize={50}
+          initialSorting={[{ id: "outstanding", desc: true }]}
+        />
       )}
     </div>
   )
