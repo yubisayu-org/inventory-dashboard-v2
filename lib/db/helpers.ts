@@ -20,10 +20,9 @@ export function tsToString(v: Date | null | undefined): string {
   return formatTimestamp(v)
 }
 
-/** Normalize customer handle to lowercase with @ prefix */
+/** Normalize customer handle to the canonical form: bare lowercase, no "@". */
 export function normalizeCustomer(raw: string): string {
-  const lower = raw.trim().toLowerCase()
-  return lower.startsWith("@") ? lower : `@${lower}`
+  return raw.trim().toLowerCase().replace(/^@+/, "")
 }
 
 /** Round up to the nearest multiple of 5000 */
