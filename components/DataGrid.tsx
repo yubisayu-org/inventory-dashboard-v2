@@ -164,6 +164,9 @@ export default function DataGrid<T>({
       getFilteredRowModel: getFilteredRowModel(),
       getSortedRowModel: getSortedRowModel(),
       getPaginationRowModel: getPaginationRowModel(),
+      // Don't snap back to page 1 on every data change (e.g. an in-place edit).
+      // Filter/search resets are handled explicitly below.
+      autoResetPageIndex: false,
     } : {}),
     ...(enableRowSelection ? { enableRowSelection: true, onRowSelectionChange: setRowSelection } : {}),
     getRowId: getRowId as ((row: T) => string) | undefined,
@@ -174,6 +177,23 @@ export default function DataGrid<T>({
   const totalRows = ss ? ss.rowCount : table.getFilteredRowModel().rows.length
   const pageCount = table.getPageCount()
   const currentPage = table.getState().pagination.pageIndex + 1
+
+  // Client-side mode: with autoResetPageIndex off (so edits keep the current
+  // page), still jump to page 1 when the filter/search/sort changes...
+  useEffect(() => {
+    if (ss) return
+    table.setPageIndex(0)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [columnFilters, globalFilter, sorting])
+
+  // ...and clamp if a delete shrinks the data past the current page.
+  useEffect(() => {
+    if (ss) return
+    const pc = table.getPageCount()
+    const idx = table.getState().pagination.pageIndex
+    if (pc > 0 && idx > pc - 1) table.setPageIndex(pc - 1)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data])
 
   return (
     <div className="flex flex-col gap-4">
