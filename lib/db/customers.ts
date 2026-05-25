@@ -98,3 +98,57 @@ export async function deleteCustomer(id: number): Promise<void> {
   await sql`DELETE FROM customers WHERE id = ${id}`
 }
 
+// ─── Public registration ──────────────────────────────────────────────────────
+
+/** JNE rate for a destination, matched on the (city, district) pair. 0 = no rate. */
+export async function lookupOngkir(kabKota: string, kecamatan: string): Promise<number> {
+  if (!kabKota?.trim() || !kecamatan?.trim()) return 0
+  const rows = await sql`
+    SELECT final_price
+    FROM jne_rates
+    WHERE upper(trim(kab_kota_nama))  = upper(trim(${kabKota}))
+      AND upper(trim(kecamatan_nama)) = upper(trim(${kecamatan}))
+    LIMIT 1
+  `
+  return rows.length ? (rows[0].final_price as number) : 0
+}
+
+/**
+ * Register a self-registered customer, keyed on the normalized handle (so "@User"
+ * and "user" don't create duplicate rows).
+ *
+ * Security: this is a PUBLIC, unauthenticated path, so it must not let anyone
+ * overwrite an existing customer's contact data by knowing their handle. On an
+ * existing row it only **backfills empty fields** — populated whatsapp/data_diri/
+ * ekspedisi/ongkir (and bank info, always) are left untouched. Established
+ * customers change their details via the authenticated dashboard, not here.
+ * A brand-new handle is inserted normally.
+ */
+export async function registerCustomer(data: {
+  instagramId: string
+  whatsapp: string
+  dataDiri: string
+  ekspedisi: string
+  ongkosKirim: number
+}): Promise<{ id: number; created: boolean }> {
+  const norm = normalizeId(data.instagramId)
+  const updated = await sql`
+    UPDATE customers SET
+      whatsapp     = CASE WHEN whatsapp  = '' THEN ${data.whatsapp}  ELSE whatsapp  END,
+      data_diri    = CASE WHEN data_diri = '' THEN ${data.dataDiri}  ELSE data_diri END,
+      ekspedisi    = CASE WHEN ekspedisi = '' THEN ${data.ekspedisi} ELSE ekspedisi END,
+      ongkos_kirim = CASE WHEN ongkos_kirim = 0 AND ${data.ongkosKirim} > 0 THEN ${data.ongkosKirim} ELSE ongkos_kirim END,
+      updated_at   = NOW()
+    WHERE lower(replace(instagram_id, '@', '')) = ${norm}
+    RETURNING id
+  `
+  if (updated.length) return { id: updated[0].id as number, created: false }
+
+  const inserted = await sql`
+    INSERT INTO customers (instagram_id, whatsapp, data_diri, ekspedisi, ongkos_kirim)
+    VALUES (${norm}, ${data.whatsapp}, ${data.dataDiri}, ${data.ekspedisi}, ${data.ongkosKirim})
+    RETURNING id
+  `
+  return { id: inserted[0].id as number, created: true }
+}
+
