@@ -56,7 +56,9 @@ function buildShipGroups(
       customerDetail: detailMap.get(customerKey) ?? null,
       orders,
       totalToShip: orders.reduce((s, o) => s + o.toShip, 0),
-      weightKg: totalToShipGram / 1000,
+      // Billed weight is rounded up to the next whole kg (courier-style),
+      // matching how invoices compute ongkir.
+      weightKg: Math.ceil(totalToShipGram / 1000),
       ongkirPerKg,
     }
   })
@@ -180,11 +182,13 @@ export async function shipCustomerOrders(params: ShipOrdersParams): Promise<{ sh
 
     const toShipRows = orders.filter((o) => o.toShip > 0)
     const invoicingText = toShipRows.map((o) => `${o.productName} x ${o.toShip}`).join("\n")
-    const ongkirTotal = Math.round(ongkirPerKg * weightKg)
+    // Bill ongkir per kg, rounded up to the next whole kg (courier-style).
+    const billedKg = Math.ceil(weightKg)
+    const ongkirTotal = ongkirPerKg * billedKg
 
     await tx`
       INSERT INTO shipments (event, customer, shipping_id, invoicing, weight_estimation, ongkir, ongkir_total, is_last_shipment)
-      VALUES (${event}, ${customer}, ${shippingId}, ${invoicingText}, ${weightKg}, ${ongkirPerKg}, ${ongkirTotal}, true)
+      VALUES (${event}, ${customer}, ${shippingId}, ${invoicingText}, ${billedKg}, ${ongkirPerKg}, ${ongkirTotal}, true)
     `
 
     for (const order of toShipRows) {

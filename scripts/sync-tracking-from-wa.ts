@@ -153,8 +153,9 @@ async function main() {
     if (existing.n > 0) { skippedExisting++; continue }
 
     const totalGram = g.orders.reduce((s, o) => s + o.gram * o.toShip, 0)
-    const weightKg = totalGram / 1000
-    const ongkirTotal = Math.round(g.ongkirPerKg * weightKg)
+    // Bill ongkir per kg, rounded up to the next whole kg (matches invoices).
+    const weightKg = Math.ceil(totalGram / 1000)
+    const ongkirTotal = g.ongkirPerKg * weightKg
     const invoicing = g.orders.map((o) => `${o.productName} x ${o.toShip}`).join("\n")
 
     console.log(`${dryRun ? "[would ship] " : "[shipping]   "}${g.event} ${g.customer} → resi ${tracking} (${g.orders.length} items, ${weightKg.toFixed(2)}kg)`)
