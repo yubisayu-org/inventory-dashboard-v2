@@ -23,8 +23,9 @@ const STATUS_COLORS: Record<PaymentStatus, string> = {
 }
 
 type StatusFilter = "all" | PaymentStatus
-type SortKey = "customer" | "invoiceTotal" | "totalPaid" | "outstanding" | "status"
+type SortKey = "event" | "customer" | "invoiceTotal" | "totalPaid" | "outstanding" | "status"
 type SortDir = "asc" | "desc"
+const PAGE_SIZE = 50
 
 const STATUS_RANK: Record<PaymentStatus, number> = {
   unpaid: 0,
@@ -92,36 +93,29 @@ export function PaymentStatusPanel({
 }) {
   const [event, setEvent] = useState<string>("")
   const [rows, setRows] = useState<PaymentStatusRow[]>([])
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [filter, setFilter] = useState<StatusFilter>("all")
   const [sortKey, setSortKey] = useState<SortKey>("outstanding")
   const [sortDir, setSortDir] = useState<SortDir>("desc")
+  const [page, setPage] = useState(0)
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
       setSortDir((d) => (d === "asc" ? "desc" : "asc"))
     } else {
       setSortKey(key)
-      setSortDir(key === "customer" ? "asc" : "desc")
+      setSortDir(key === "customer" || key === "event" ? "asc" : "desc")
     }
   }
 
-  // Default the event to the most recent (lexicographically last; events like "LSCN202601" sort chronologically)
-  useEffect(() => {
-    if (!event && events.length > 0) {
-      const sorted = [...events].sort()
-      setEvent(sorted[sorted.length - 1])
-    }
-  }, [events, event])
-
-  const fetchRows = useCallback(async (ev: string) => {
-    if (!ev) return
+  // Fetch every event's payment status once; the event picker filters client-side.
+  const fetchRows = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch(`/api/sheets/invoice/payment-status?event=${encodeURIComponent(ev)}`, { cache: "no-store" })
+      const res = await fetch(`/api/sheets/invoice/payment-status`, { cache: "no-store" })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "Failed to load")
       setRows(data.rows ?? [])
@@ -133,36 +127,47 @@ export function PaymentStatusPanel({
     }
   }, [])
 
-  useEffect(() => {
-    if (event) fetchRows(event)
-  }, [event, fetchRows])
+  useEffect(() => { fetchRows() }, [fetchRows])
+
+  // Reset to the first page whenever a filter/sort changes.
+  useEffect(() => { setPage(0) }, [event, search, filter, sortKey, sortDir])
+
+  // Rows scoped to the selected event (or all events when none is picked).
+  const eventRows = useMemo(
+    () => (event ? rows.filter((r) => r.event === event) : rows),
+    [rows, event],
+  )
 
   const counts = useMemo(() => {
     const c: Record<PaymentStatus, number> = { unpaid: 0, partial: 0, paid: 0, overpaid: 0 }
-    for (const r of rows) c[r.status]++
+    for (const r of eventRows) c[r.status]++
     return c
-  }, [rows])
+  }, [eventRows])
 
   const totals = useMemo(() => {
-    const invoiceTotal = rows.reduce((s, r) => s + r.invoiceTotal, 0)
-    const paidTotal = rows.reduce((s, r) => s + r.totalPaid, 0)
+    const invoiceTotal = eventRows.reduce((s, r) => s + r.invoiceTotal, 0)
+    const paidTotal = eventRows.reduce((s, r) => s + r.totalPaid, 0)
     return { invoiceTotal, paidTotal, outstanding: invoiceTotal - paidTotal }
-  }, [rows])
+  }, [eventRows])
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase()
-    return rows.filter((r) => {
+    return eventRows.filter((r) => {
       if (filter !== "all" && r.status !== filter) return false
       if (q && !r.customer.toLowerCase().includes(q)) return false
       return true
     })
-  }, [rows, search, filter])
+  }, [eventRows, search, filter])
 
   const sortedRows = useMemo(() => {
     const arr = [...filteredRows]
     arr.sort((a, b) => {
       let cmp = 0
       switch (sortKey) {
+        case "event":
+          cmp = a.event.localeCompare(b.event)
+          if (cmp === 0) cmp = a.customer.localeCompare(b.customer)
+          break
         case "customer":
           cmp = a.customer.localeCompare(b.customer)
           break
@@ -185,8 +190,15 @@ export function PaymentStatusPanel({
     return arr
   }, [filteredRows, sortKey, sortDir])
 
+  const pageCount = Math.max(1, Math.ceil(sortedRows.length / PAGE_SIZE))
+  const safePage = Math.min(page, pageCount - 1)
+  const pagedRows = useMemo(
+    () => sortedRows.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE),
+    [sortedRows, safePage],
+  )
+
   const filters: { key: StatusFilter; label: string; count: number }[] = [
-    { key: "all", label: "All", count: rows.length },
+    { key: "all", label: "All", count: eventRows.length },
     { key: "unpaid", label: "Unpaid", count: counts.unpaid },
     { key: "partial", label: "Partial", count: counts.partial },
     { key: "paid", label: "Paid", count: counts.paid },
@@ -203,13 +215,13 @@ export function PaymentStatusPanel({
       {/* Toolbar: event + search + lookup + refresh */}
       <div className="flex items-center gap-2 flex-wrap">
         <div style={{ width: "12rem" }}>
-          <EventSelect value={event} onChange={setEvent} events={events} placeholder="Select event…" />
+          <EventSelect value={event} onChange={setEvent} events={events} placeholder="All events" clearable />
         </div>
         <input
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Filter customers in this event…"
+          placeholder="Filter customers…"
           className="flex-1 min-w-[180px] border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
         />
         <div className="w-56">
@@ -223,7 +235,7 @@ export function PaymentStatusPanel({
         </div>
         <button
           type="button"
-          onClick={() => fetchRows(event)}
+          onClick={fetchRows}
           title="Refresh"
           className="p-1.5 text-gray-400 hover:text-brand transition-colors rounded"
         >
@@ -289,6 +301,9 @@ export function PaymentStatusPanel({
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="border-b border-cream-border bg-gray-50/80">
+                <SortableHeader sortKey="event" currentKey={sortKey} dir={sortDir} onClick={toggleSort} align="left" widthClass="w-36">
+                  Event
+                </SortableHeader>
                 <SortableHeader sortKey="customer" currentKey={sortKey} dir={sortDir} onClick={toggleSort} align="left">
                   Customer
                 </SortableHeader>
@@ -307,18 +322,19 @@ export function PaymentStatusPanel({
               </tr>
             </thead>
             <tbody>
-              {sortedRows.length === 0 ? (
+              {pagedRows.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="py-12 text-center text-sm text-gray-400">
-                    {rows.length === 0 ? "No customers for this event" : "No matches"}
+                  <td colSpan={6} className="py-12 text-center text-sm text-gray-400">
+                    {rows.length === 0 ? "No data" : "No matches"}
                   </td>
                 </tr>
-              ) : sortedRows.map((r) => (
+              ) : pagedRows.map((r) => (
                 <tr
-                  key={r.customer}
+                  key={`${r.event}-${r.customer}`}
                   className="border-b border-cream-border hover:bg-gray-50/50 transition-colors cursor-pointer"
                   onClick={() => onOpenCustomer(r.customer)}
                 >
+                  <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap">{r.event}</td>
                   <td className="px-4 py-2.5 font-medium text-foreground">{displayIg(r.customer)}</td>
                   <td className="px-4 py-2.5 text-right tabular-nums text-foreground">
                     Rp {fmt(r.invoiceTotal)}
@@ -340,6 +356,34 @@ export function PaymentStatusPanel({
           </table>
         )}
       </div>
+
+      {/* Pagination */}
+      {!loading && !error && sortedRows.length > PAGE_SIZE && (
+        <div className="flex items-center justify-between gap-3 px-1 text-xs text-gray-500">
+          <span>
+            {safePage * PAGE_SIZE + 1}–{Math.min((safePage + 1) * PAGE_SIZE, sortedRows.length)} of {sortedRows.length}
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={safePage === 0}
+              className="px-2.5 py-1 rounded-md border border-cream-border hover:border-brand hover:text-brand disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              Prev
+            </button>
+            <span className="px-1">Page {safePage + 1} / {pageCount}</span>
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
+              disabled={safePage >= pageCount - 1}
+              className="px-2.5 py-1 rounded-md border border-cream-border hover:border-brand hover:text-brand disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
