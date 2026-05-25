@@ -455,8 +455,10 @@ function CopyInvoiceRowButton({ row }: { row: FormRow }) {
       const res = await fetch(`/api/sheets/invoice?customer=${encodeURIComponent(row.customer)}`, { cache: "no-store" })
       const data: InvoiceResult = await res.json()
       if (!res.ok) throw new Error((data as { error?: string }).error ?? "Failed")
-      const event = data.events[data.events.length - 1]
-      if (!event) throw new Error(`No invoice found for ${row.customer}`)
+      // Pick the event this row belongs to — not just the latest. A customer can
+      // have several events, so blindly taking the last one copied the wrong invoice.
+      const event = data.events.find((e) => e.eventId === row.event)
+      if (!event) throw new Error(`No invoice found for ${row.customer} · ${row.event}`)
       await copyToClipboard(event.message)
       setState({ status: "copied" })
     } catch (err) {
@@ -518,7 +520,7 @@ function EditOrderModal({ row, options, onClose, onSaved, onDelete }: {
   const [error, setError] = useState("")
 
   const customerOptions = useMemo(
-    () => (options?.customers ?? []).map((c) => ({ value: c, label: c })),
+    () => (options?.customers ?? []).map((c) => ({ value: c, label: displayIg(c) })),
     [options],
   )
   const itemOptions = useMemo(
@@ -643,7 +645,7 @@ function AddOrderForm({ options, onOrderAdded }: {
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null)
 
   const customerOptions = useMemo(
-    () => (options?.customers ?? []).map((c) => ({ value: c, label: c })),
+    () => (options?.customers ?? []).map((c) => ({ value: c, label: displayIg(c) })),
     [options],
   )
   const itemOptions = useMemo(

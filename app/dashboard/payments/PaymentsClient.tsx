@@ -285,7 +285,7 @@ function EditPaymentModal({
   useModalDismiss(onClose)
 
   const customerOptions = useMemo(
-    () => (options?.customers ?? []).map((c) => ({ value: c, label: c })),
+    () => (options?.customers ?? []).map((c) => ({ value: c, label: displayIg(c) })),
     [options],
   )
 
@@ -452,7 +452,7 @@ function AddPaymentForm({
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null)
 
   const customerOptions = useMemo(
-    () => (options?.customers ?? []).map((c) => ({ value: c, label: c })),
+    () => (options?.customers ?? []).map((c) => ({ value: c, label: displayIg(c) })),
     [options],
   )
 
