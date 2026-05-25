@@ -1,7 +1,7 @@
 import sql from "../db-pool"
 import { normalizeId, tsToString } from "./helpers"
 import { allocateFifo } from "../fifo-fill"
-import type { ShipOrderLine, ShipCustomer, ShipOrdersParams, ShippingRecord, CustomerDetail } from "./types"
+import type { ShipOrderLine, ShipCustomer, ShipStatus, ShipOrdersParams, ShippingRecord, CustomerDetail } from "./types"
 
 // ─── Ship Orders ────────────────────────────────────────────────────────────
 
@@ -49,17 +49,31 @@ function buildShipGroups(
       }
     })
     const totalToShipGram = orders.reduce((s, o) => s + o.gram * o.toShip, 0)
+    const totalToShip = orders.reduce((s, o) => s + o.toShip, 0)
     const ongkirPerKg = detailMap.get(customerKey)?.ongkosKirim ?? 0
+
+    // Arrival-first status: compare arrived vs ordered units per line.
+    const anyArrived = orders.some((o) => o.unitArrive > 0)
+    const allArrived = orders.every((o) => o.unitArrive >= o.unit)
+    const status: ShipStatus = !anyArrived
+      ? "not_arrived"
+      : !allArrived
+        ? "partial"
+        : totalToShip > 0
+          ? "ready"
+          : "shipped"
+
     return {
       customer,
       event,
       customerDetail: detailMap.get(customerKey) ?? null,
       orders,
-      totalToShip: orders.reduce((s, o) => s + o.toShip, 0),
+      totalToShip,
       // Billed weight is rounded up to the next whole kg (courier-style),
       // matching how invoices compute ongkir.
       weightKg: Math.ceil(totalToShipGram / 1000),
       ongkirPerKg,
+      status,
     }
   })
 }
@@ -89,7 +103,7 @@ async function fetchCustomerDetails(customerIds: Set<string>): Promise<Map<strin
   return detailMap
 }
 
-export type ShipSegment = "all" | "not_arrived" | "ready" | "shipped"
+export type ShipSegment = "all" | ShipStatus
 
 export interface ShipOrdersFiltered {
   groups: ShipCustomer[]
@@ -104,39 +118,22 @@ export async function getShipOrdersFiltered(opts: {
 }): Promise<ShipOrdersFiltered> {
   const { segment = "all", search, event } = opts
 
+  // Fetch every order line in scope (no arrival pre-filter) so each invoice
+  // group carries its full set of lines — required to tell a fully-arrived
+  // invoice from a partially-arrived one, and to show the not-yet-arrived
+  // lines on a "Tiba Sebagian" card.
   const { conditions, params } = buildSearchFilters({ event, search })
-
-  if (segment === "not_arrived") {
-    conditions.push("(o.unit_arrive IS NULL OR o.unit_arrive = 0)")
-  } else if (segment !== "all") {
-    conditions.push("o.unit_arrive IS NOT NULL AND o.unit_arrive > 0")
-  }
-
   const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""
 
-  const { conditions: countConds, params: countParams } = buildSearchFilters({ event, search })
-  const countWhere = countConds.length > 0 ? `WHERE ${countConds.join(" AND ")}` : ""
-
-  const [orderRows, countRows] = await Promise.all([
-    sql.unsafe(
-      `SELECT o.id, o.event, o.customer, o.product_id, p.name AS product_name,
-              COALESCE(p.gram, 0) AS gram, o.unit, o.unit_arrive, o.unit_ship
-       FROM orders o
-       JOIN products p ON p.id = o.product_id
-       ${where}
-       ORDER BY o.event, o.customer, o.id`,
-      params,
-    ),
-    sql.unsafe(
-      `SELECT
-         o.customer, o.event,
-         bool_and(COALESCE(o.unit_arrive, 0) = 0) AS all_not_arrived,
-         COALESCE(SUM(GREATEST(0, COALESCE(o.unit_arrive, 0) - COALESCE(o.unit_ship, 0))), 0) AS total_to_ship
-       FROM orders o ${countWhere}
-       GROUP BY o.customer, o.event`,
-      countParams,
-    ),
-  ])
+  const orderRows = await sql.unsafe(
+    `SELECT o.id, o.event, o.customer, o.product_id, p.name AS product_name,
+            COALESCE(p.gram, 0) AS gram, o.unit, o.unit_arrive, o.unit_ship
+     FROM orders o
+     JOIN products p ON p.id = o.product_id
+     ${where}
+     ORDER BY o.event, o.customer, o.id`,
+    params,
+  )
 
   const customerIds = new Set<string>()
   for (const r of orderRows) customerIds.add(normalizeId(r.customer))
@@ -144,30 +141,22 @@ export async function getShipOrdersFiltered(opts: {
   const detailMap = await fetchCustomerDetails(customerIds)
   const allGroups = buildShipGroups(orderRows, detailMap)
 
-  const filteredGroups = segment === "ready"
-    ? allGroups.filter((g) => g.totalToShip > 0)
-    : segment === "shipped"
-      ? allGroups.filter((g) => g.totalToShip === 0)
-      : allGroups
-
-  let notArrivedCount = 0
-  let readyCount = 0
-  let shippedCount = 0
-  for (const r of countRows) {
-    if (r.all_not_arrived) notArrivedCount++
-    else if (Number(r.total_to_ship) > 0) readyCount++
-    else shippedCount++
+  // Counts and the filtered list both derive from the same in-memory status,
+  // so the tab badges can never drift from the rows actually shown.
+  const counts: Record<ShipSegment, number> = {
+    all: 0, not_arrived: 0, partial: 0, ready: 0, shipped: 0,
+  }
+  const filteredGroups: ShipCustomer[] = []
+  for (const g of allGroups) {
+    counts.all++
+    counts[g.status]++
+    if (segment === "all" || g.status === segment) filteredGroups.push(g)
   }
 
   return {
     groups: filteredGroups,
     totalCount: filteredGroups.length,
-    counts: {
-      all: notArrivedCount + readyCount + shippedCount,
-      not_arrived: notArrivedCount,
-      ready: readyCount,
-      shipped: shippedCount,
-    },
+    counts,
   }
 }
 
