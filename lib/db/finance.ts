@@ -369,7 +369,7 @@ export async function materializeOverpaymentRefunds(): Promise<RefundRow[]> {
   return rows.map(mapRefundRow)
 }
 
-export type PaymentStatus = "unpaid" | "partial" | "paid" | "overpaid"
+export type PaymentStatus = "void" | "unpaid" | "partial" | "paid" | "overpaid"
 
 export interface PaymentStatusRow {
   event: string
@@ -381,6 +381,10 @@ export interface PaymentStatusRow {
 }
 
 function paymentStatusFor(totalPaid: number, invoiceTotal: number): PaymentStatus {
+  // Nothing owed and nothing paid → a void invoice (e.g. no orders, or orders
+  // cancelled via adjustments). Paid-against-zero stays "overpaid" so the
+  // refund-due signal isn't hidden.
+  if (invoiceTotal === 0 && totalPaid === 0) return "void"
   if (totalPaid === 0) return "unpaid"
   if (totalPaid > invoiceTotal) return "overpaid"
   if (totalPaid === invoiceTotal) return "paid"
