@@ -4,6 +4,7 @@ import { displayIg } from "@/lib/format"
 import TableSkeleton from "@/components/TableSkeleton"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import type { PaymentRow } from "@/lib/db"
+import type { Role } from "@/lib/roles"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import { useModalDismiss } from "@/hooks/useModalDismiss"
 import SearchableSelect from "@/components/SearchableSelect"
@@ -39,7 +40,8 @@ function formatDate(iso: string): string {
   return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
 }
 
-export default function PaymentsClient() {
+export default function PaymentsClient({ role }: { role: Role | null }) {
+  const isAdmin = role === "admin"
   const options = useSheetOptions()
   const [rows, setRows] = useState<PaymentRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -61,6 +63,7 @@ export default function PaymentsClient() {
   useEffect(() => { fetchRows() }, [fetchRows])
 
   async function handleToggleCheck(row: PaymentRow) {
+    if (isAdmin) return
     const newChecked = !row.isChecked
     setRows((prev) =>
       prev.map((r) => (r.rowNumber === row.rowNumber ? { ...r, isChecked: newChecked } : r)),
@@ -119,7 +122,8 @@ export default function PaymentsClient() {
           type="checkbox"
           checked={row.original.isChecked}
           onChange={() => handleToggleCheck(row.original)}
-          className="accent-brand cursor-pointer"
+          disabled={isAdmin}
+          className={`accent-brand ${isAdmin ? "cursor-default" : "cursor-pointer"}`}
         />
       ),
     },
@@ -172,7 +176,7 @@ export default function PaymentsClient() {
       ),
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [])
+  ], [isAdmin])
 
   const refreshButton = useMemo(() => (
     <>
@@ -210,6 +214,7 @@ export default function PaymentsClient() {
       {addOpen && (
         <AddPaymentForm
           options={options}
+          isAdmin={isAdmin}
           onClose={() => setAddOpen(false)}
           onAdded={() => { fetchRows(); setAddOpen(false) }}
         />
@@ -228,6 +233,7 @@ export default function PaymentsClient() {
         <EditPaymentModal
           row={editingRow}
           options={options}
+          isAdmin={isAdmin}
           onClose={() => setEditingRow(null)}
           onSaved={(updated) => {
             setRows((prev) =>
@@ -252,12 +258,14 @@ export default function PaymentsClient() {
 function EditPaymentModal({
   row,
   options,
+  isAdmin,
   onClose,
   onSaved,
   onDeleted,
 }: {
   row: PaymentRow
   options: ReturnType<typeof useSheetOptions>
+  isAdmin: boolean
   onClose: () => void
   onSaved: (updated: Partial<PaymentRow> & { rowNumber: number }) => void
   onDeleted: (rowNumber: number) => void
@@ -381,7 +389,7 @@ function EditPaymentModal({
             </select>
           </div>
           <div className="flex items-center gap-2">
-            <input type="checkbox" checked={form.isChecked} onChange={(e) => setForm({ ...form, isChecked: e.target.checked })} id="edit-checked" className="accent-brand" />
+            <input type="checkbox" checked={form.isChecked} onChange={(e) => setForm({ ...form, isChecked: e.target.checked })} disabled={isAdmin} id="edit-checked" className="accent-brand disabled:cursor-default" />
             <label htmlFor="edit-checked" className="text-xs text-gray-500">Checked</label>
           </div>
           <div>
@@ -424,10 +432,12 @@ function EditPaymentModal({
 
 function AddPaymentForm({
   options,
+  isAdmin,
   onClose,
   onAdded,
 }: {
   options: ReturnType<typeof useSheetOptions>
+  isAdmin: boolean
   onClose: () => void
   onAdded: () => void
 }) {
@@ -514,10 +524,12 @@ function AddPaymentForm({
           <label className={LABEL}>Date</label>
           <input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} className={INPUT_CLASS} style={{ width: "9rem" }} />
         </div>
-        <div className="flex items-center gap-1.5 pb-2">
-          <input type="checkbox" checked={isChecked} onChange={(e) => setIsChecked(e.target.checked)} id="add-checked" className="accent-brand" />
-          <label htmlFor="add-checked" className="text-xs text-gray-500">Checked</label>
-        </div>
+        {!isAdmin && (
+          <div className="flex items-center gap-1.5 pb-2">
+            <input type="checkbox" checked={isChecked} onChange={(e) => setIsChecked(e.target.checked)} id="add-checked" className="accent-brand" />
+            <label htmlFor="add-checked" className="text-xs text-gray-500">Checked</label>
+          </div>
+        )}
         <div className="flex-1 min-w-[8rem]">
           <label className={LABEL}>Remarks</label>
           <input type="text" value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Optional" className={INPUT_CLASS} />

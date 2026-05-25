@@ -73,6 +73,11 @@ export async function updatePayment(
   `
 }
 
+export async function getPaymentChecked(rowNumber: number): Promise<boolean> {
+  const [row] = await sql`SELECT is_checked FROM payments WHERE id = ${rowNumber}`
+  return row?.is_checked ?? false
+}
+
 export async function togglePaymentChecked(
   rowNumber: number,
   isChecked: boolean,
