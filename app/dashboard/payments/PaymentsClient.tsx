@@ -2,7 +2,7 @@
 
 import { displayIg } from "@/lib/format"
 import TableSkeleton from "@/components/TableSkeleton"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { PaymentRow } from "@/lib/db"
 import type { Role } from "@/lib/roles"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
@@ -82,6 +82,26 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
     }
   }
 
+  async function handleSaveRemarks(row: PaymentRow, remarks: string) {
+    if (remarks === row.remarks) return
+    const previous = row.remarks
+    setRows((prev) =>
+      prev.map((r) => (r.rowNumber === row.rowNumber ? { ...r, remarks } : r)),
+    )
+    try {
+      const res = await fetch(`/api/sheets/payments/${row.rowNumber}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ remarks }),
+      })
+      if (!res.ok) throw new Error("Failed")
+    } catch {
+      setRows((prev) =>
+        prev.map((r) => (r.rowNumber === row.rowNumber ? { ...r, remarks: previous } : r)),
+      )
+    }
+  }
+
   const columns = useMemo<ColumnDef<PaymentRow, unknown>[]>(() => [
     {
       accessorKey: "event",
@@ -141,11 +161,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
       accessorKey: "remarks",
       header: "Remarks",
       filterFn: "textContains" as unknown as undefined,
-      cell: ({ row }) => (
-        <span className="text-gray-500 truncate block max-w-[200px]" title={row.original.remarks}>
-          {row.original.remarks || "—"}
-        </span>
-      ),
+      cell: ({ row }) => <InlineRemarks row={row.original} onSave={handleSaveRemarks} />,
     },
     {
       accessorKey: "createdAt",
@@ -248,6 +264,60 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
         />
       )}
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Inline-editable Remarks cell
+// ---------------------------------------------------------------------------
+
+function InlineRemarks({
+  row,
+  onSave,
+}: {
+  row: PaymentRow
+  onSave: (row: PaymentRow, remarks: string) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState(row.remarks)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => { if (editing) inputRef.current?.focus() }, [editing])
+  // Re-sync when the row changes externally (e.g. refresh) and we're not editing.
+  useEffect(() => { if (!editing) setValue(row.remarks) }, [row.remarks, editing])
+
+  function commit() {
+    setEditing(false)
+    const next = value.trim()
+    if (next !== row.remarks) onSave(row, next)
+  }
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") { e.preventDefault(); commit() }
+          if (e.key === "Escape") { setValue(row.remarks); setEditing(false) }
+        }}
+        placeholder="Add remark…"
+        className="w-full max-w-[220px] border border-cream-border rounded px-1.5 py-0.5 text-sm text-foreground bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
+      />
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setEditing(true)}
+      title="Click to edit remarks"
+      className="text-left text-sm text-gray-500 truncate block max-w-[220px] w-full hover:text-brand transition-colors"
+    >
+      {row.remarks || <span className="text-gray-300">Add remark…</span>}
+    </button>
   )
 }
 
