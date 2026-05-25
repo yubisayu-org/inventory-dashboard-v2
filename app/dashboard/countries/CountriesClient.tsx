@@ -90,7 +90,7 @@ export default function CountriesClient() {
     {
       accessorKey: "name",
       header: "Country",
-      filterFn: "textContains" as unknown as undefined,
+      filterFn: "textContains",
       cell: ({ getValue }) => (
         <span className="font-medium">{getValue<string>()}</span>
       ),
@@ -98,7 +98,7 @@ export default function CountriesClient() {
     {
       accessorKey: "currency",
       header: "Currency",
-      filterFn: "textContains" as unknown as undefined,
+      filterFn: "textContains",
       cell: ({ getValue }) => (
         <span className="text-gray-600">{getValue<string>()}</span>
       ),
@@ -106,7 +106,7 @@ export default function CountriesClient() {
     {
       accessorKey: "kurs",
       header: "Kurs (IDR)",
-      filterFn: "numeric" as unknown as undefined,
+      filterFn: "numeric",
       meta: { align: "right" },
       cell: ({ getValue }) => (
         <span className="tabular-nums font-medium">{fmt(getValue<number>())}</span>
@@ -115,7 +115,7 @@ export default function CountriesClient() {
     {
       accessorKey: "cargoPerKg",
       header: "Cargo / kg",
-      filterFn: "numeric" as unknown as undefined,
+      filterFn: "numeric",
       meta: { align: "right" },
       cell: ({ getValue }) => (
         <span className="tabular-nums font-medium">{fmt(getValue<number>())}</span>

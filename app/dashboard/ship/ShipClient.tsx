@@ -5,6 +5,7 @@ import TableSkeleton from "@/components/TableSkeleton"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import type { ShipCustomer, ShipOrdersParams, ShipSegment, ShipStatus, ShipOrdersFiltered } from "@/lib/db"
+import { normalizeId } from "@/lib/db/helpers"
 import { generateShippingLabel } from "@/lib/shipping-label"
 import { useModalDismiss } from "@/hooks/useModalDismiss"
 import { useResizableColumns } from "@/hooks/useResizableColumns"
@@ -44,6 +45,7 @@ export default function ShipClient() {
   const [bulkShipping, setBulkShipping] = useState(false)
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null)
   const [bulkError, setBulkError] = useState<string | null>(null)
+  const [merging, setMerging] = useState(false)
 
   // Debounce search
   useEffect(() => {
@@ -90,6 +92,12 @@ export default function ShipClient() {
 
   const readyFiltered = groups.filter((c) => c.totalToShip > 0)
   const allSelected = readyFiltered.length > 0 && readyFiltered.every((c) => selected.has(`${c.customer}|${c.event}`))
+
+  // "Ship together" is offered whenever the selected cards are all one customer;
+  // the modal then fetches that customer's other shippable events to combine.
+  const selectedGroups = readyFiltered.filter((c) => selected.has(`${c.customer}|${c.event}`))
+  const mergeCustomers = new Set(selectedGroups.map((c) => normalizeId(c.customer)))
+  const mergeEligible = selectedGroups.length >= 1 && mergeCustomers.size === 1
 
   function toggleSelect(key: string) {
     setSelected((prev) => {
@@ -235,6 +243,16 @@ export default function ShipClient() {
                 >
                   {allSelected ? "Deselect All" : "Select All"}
                 </button>
+                {mergeEligible && (
+                  <button
+                    type="button"
+                    onClick={() => setMerging(true)}
+                    disabled={bulkShipping}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-brand text-brand text-xs font-medium hover:bg-brand/5 disabled:opacity-50 transition-colors"
+                  >
+                    Gabung Pengiriman
+                  </button>
+                )}
                 {selected.size > 0 && (
                   <button
                     type="button"
@@ -268,6 +286,15 @@ export default function ShipClient() {
             )
           })}
         </>
+      )}
+
+      {merging && mergeEligible && (
+        <MergeShipConfirmModal
+          customer={selectedGroups[0].customer}
+          preselectedEvents={selectedGroups.map((g) => g.event)}
+          onClose={() => setMerging(false)}
+          onSuccess={() => { setMerging(false); setSelected(new Set()); setSegment("all"); refresh() }}
+        />
       )}
     </div>
   )
@@ -587,6 +614,274 @@ function ShipConfirmModal({
                 className="px-4 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 transition-colors disabled:opacity-50"
               >
                 {shipping ? "Mengirim…" : "Konfirmasi Kirim"}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// "Ship together": merge one customer's ready orders across several events into
+// a single package — combined weight, ongkir billed once, one label. The modal
+// fetches every shippable event for the customer (across all tabs) so you can
+// pick which ones to combine without hunting for cards.
+function MergeShipConfirmModal({
+  customer,
+  preselectedEvents,
+  onClose,
+  onSuccess,
+}: {
+  customer: string
+  preselectedEvents: string[]
+  onClose: () => void
+  onSuccess: () => void
+}) {
+  const [allGroups, setAllGroups] = useState<ShipCustomer[] | null>(null)
+  const [loadErr, setLoadErr] = useState<string | null>(null)
+  const [checked, setChecked] = useState<Set<string>>(new Set(preselectedEvents))
+  const [shipping, setShipping] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [result, setResult] = useState<{ pdfUrl: string; shippingId: string; discount: number } | null>(null)
+
+  // Pull every shippable event for this customer, regardless of which tab the
+  // cards live on, so partial + ready events can be combined freely.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/sheets/ship?segment=all&search=${encodeURIComponent(customer)}`)
+        const json: ShipOrdersFiltered = await res.json()
+        if (!res.ok) throw new Error((json as unknown as { error: string }).error ?? "Failed to load")
+        if (cancelled) return
+        const mine = json.groups
+          .filter((g) => normalizeId(g.customer) === normalizeId(customer) && g.totalToShip > 0)
+          .sort((a, b) => a.event.localeCompare(b.event))
+        setAllGroups(mine)
+        setChecked((prev) => {
+          const valid = new Set([...prev].filter((e) => mine.some((g) => g.event === e)))
+          return valid.size > 0 ? valid : new Set(mine.map((g) => g.event))
+        })
+      } catch (err) {
+        if (!cancelled) setLoadErr(err instanceof Error ? err.message : "Failed to load")
+      }
+    })()
+    return () => { cancelled = true }
+  }, [customer])
+
+  const checkedGroups = (allGroups ?? []).filter((g) => checked.has(g.event))
+  const customerDetail = allGroups?.[0]?.customerDetail ?? null
+  const ongkirPerKg = allGroups?.[0]?.ongkirPerKg ?? 0
+  const totalGram = checkedGroups.reduce((s, g) => s + g.orders.reduce((a, o) => a + o.gram * o.toShip, 0), 0)
+  const combinedKg = Math.ceil(totalGram / 1000)
+  const combinedOngkir = ongkirPerKg * combinedKg
+  const canConfirm = checkedGroups.length >= 2
+
+  function toggle(ev: string) {
+    setChecked((prev) => {
+      const next = new Set(prev)
+      if (next.has(ev)) next.delete(ev)
+      else next.add(ev)
+      return next
+    })
+  }
+
+  const dismissRef = useRef<() => void>(onClose)
+  dismissRef.current = result ? onSuccess : onClose
+  useModalDismiss(() => dismissRef.current())
+
+  const urlRef = useRef<string | null>(null)
+  useEffect(() => () => { if (urlRef.current) URL.revokeObjectURL(urlRef.current) }, [])
+
+  async function handleConfirm() {
+    if (!canConfirm) return
+    setShipping(true)
+    setError(null)
+    try {
+      const res = await fetch("/api/sheets/ship", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customer,
+          ongkirPerKg,
+          groups: checkedGroups.map((g) => ({
+            event: g.event,
+            orders: g.orders
+              .filter((o) => o.toShip > 0)
+              .map((o) => ({ rowNumber: o.rowNumber, productName: o.productName, toShip: o.toShip, gram: o.gram })),
+          })),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "Failed")
+
+      const packingLines: string[] = []
+      for (const g of checkedGroups) {
+        for (const o of g.orders.filter((o) => o.toShip > 0)) {
+          packingLines.push(`[${g.event}] ${o.productName} x ${o.toShip}`)
+        }
+      }
+      const blob = await generateShippingLabel({
+        event: checkedGroups.map((g) => g.event).join(" + "),
+        customer,
+        shippingId: data.shippingId,
+        dataDiri: customerDetail?.dataDiri ?? "",
+        packingLines,
+      })
+      const url = URL.createObjectURL(blob)
+      urlRef.current = url
+      setResult({ pdfUrl: url, shippingId: data.shippingId, discount: data.discount ?? 0 })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to ship")
+      setShipping(false)
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+      onClick={() => dismissRef.current()}
+    >
+      <div
+        className="bg-white rounded-xl shadow-xl border border-cream-border w-full max-w-lg flex flex-col max-h-[90vh]"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
+        <div className="px-5 py-4 border-b border-cream-border shrink-0">
+          <div className="text-sm font-semibold text-foreground">
+            {result ? "Label Pengiriman" : "Gabung Pengiriman"}
+          </div>
+          <div className="text-xs text-gray-500 mt-0.5">
+            {displayIg(customer).toUpperCase()}
+            {result
+              ? <> · {checkedGroups.map((g) => g.event).join(" + ")}<span className="ml-2 font-mono">#{result.shippingId}</span></>
+              : <> · pilih event yang digabung</>}
+          </div>
+        </div>
+
+        {result ? (
+          <iframe src={result.pdfUrl} title="Label Pengiriman" className="flex-1 w-full border-0 min-h-0" />
+        ) : (
+          <div className="px-5 py-4 flex flex-col gap-4 overflow-y-auto">
+            {loadErr ? (
+              <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{loadErr}</div>
+            ) : !allGroups ? (
+              <div className="py-8 text-center text-sm text-gray-400">Memuat event…</div>
+            ) : allGroups.length < 2 ? (
+              <div className="rounded-lg bg-cream/50 px-4 py-3 text-sm text-gray-500">
+                Customer ini hanya punya satu event siap kirim — tidak ada yang bisa digabung.
+              </div>
+            ) : (
+              <>
+                <div className="flex flex-col gap-2">
+                  {allGroups.map((g) => {
+                    const isOn = checked.has(g.event)
+                    return (
+                      <label
+                        key={g.event}
+                        className={`flex gap-3 rounded-lg border px-3 py-2 cursor-pointer transition-colors ${isOn ? "border-brand bg-brand/5" : "border-cream-border"}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isOn}
+                          onChange={() => toggle(g.event)}
+                          className="mt-0.5 rounded border-gray-300 text-brand focus:ring-brand/30 cursor-pointer shrink-0"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-medium text-gray-500 mb-1">{g.event}</div>
+                          <div className="flex flex-col gap-0.5">
+                            {g.orders.filter((o) => o.toShip > 0).map((o) => (
+                              <div key={o.rowNumber} className="text-sm text-foreground">{o.productName} x {o.toShip}</div>
+                            ))}
+                          </div>
+                        </div>
+                      </label>
+                    )
+                  })}
+                </div>
+
+                {customerDetail?.dataDiri && (
+                  <div>
+                    <div className="text-xs font-medium text-gray-500 mb-1">Alamat pengiriman</div>
+                    <pre className="whitespace-pre-wrap font-sans text-sm text-foreground leading-relaxed">
+                      {customerDetail.dataDiri}
+                    </pre>
+                  </div>
+                )}
+
+                <div className="rounded-lg bg-cream/50 px-4 py-3 flex flex-col gap-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Estimasi berat (gabungan)</span>
+                    <span className="font-medium">{combinedKg} kg</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Ongkir/kg</span>
+                    <span className="font-medium">Rp {ongkirPerKg.toLocaleString("id-ID")}</span>
+                  </div>
+                  <div className="flex justify-between border-t border-cream-border mt-1 pt-1">
+                    <span className="text-gray-500">Total ongkir (sekali)</span>
+                    <span className="font-semibold">Rp {combinedOngkir.toLocaleString("id-ID")}</span>
+                  </div>
+                  <div className="text-xs text-gray-400 mt-1">
+                    Ongkir ditagih sekali untuk paket gabungan. Diskon ongkir gabungan otomatis diterapkan ke invoice.
+                  </div>
+                </div>
+
+                {!canConfirm && (
+                  <div className="text-xs text-amber-600">Pilih minimal 2 event untuk digabung.</div>
+                )}
+                {error && (
+                  <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                    {error}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        <div className="px-5 py-3 border-t border-cream-border flex justify-end gap-2 shrink-0">
+          {result ? (
+            <>
+              {result.discount > 0 && (
+                <span className="mr-auto text-xs text-green-700 self-center">
+                  Diskon ongkir gabungan: Rp {result.discount.toLocaleString("id-ID")}
+                </span>
+              )}
+              <a
+                href={result.pdfUrl}
+                download={`label-${result.shippingId}.pdf`}
+                className="px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-xs font-medium hover:border-brand hover:text-brand transition-colors"
+              >
+                Download PDF
+              </a>
+              <button
+                type="button"
+                onClick={onSuccess}
+                className="px-4 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 transition-colors"
+              >
+                Tutup
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={shipping}
+                className="px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-xs font-medium hover:border-brand hover:text-brand transition-colors disabled:opacity-50"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirm}
+                disabled={shipping || !canConfirm}
+                className="px-4 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 transition-colors disabled:opacity-50"
+              >
+                {shipping ? "Mengirim…" : "Konfirmasi Gabung & Kirim"}
               </button>
             </>
           )}

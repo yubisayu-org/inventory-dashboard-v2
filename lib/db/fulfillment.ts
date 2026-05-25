@@ -1,7 +1,8 @@
+import { randomUUID } from "node:crypto"
 import sql from "../db-pool"
-import { normalizeId, tsToString } from "./helpers"
+import { normalizeId, normalizeCustomer, tsToString } from "./helpers"
 import { allocateFifo } from "../fifo-fill"
-import type { ShipOrderLine, ShipCustomer, ShipStatus, ShipOrdersParams, ShippingRecord, CustomerDetail } from "./types"
+import type { ShipOrderLine, ShipCustomer, ShipStatus, ShipOrdersParams, ShipMergedParams, ShipMergedResult, ShippingRecord, CustomerDetail } from "./types"
 
 // ─── Ship Orders ────────────────────────────────────────────────────────────
 
@@ -192,13 +193,108 @@ export async function shipCustomerOrders(params: ShipOrdersParams): Promise<{ sh
   })
 }
 
+/**
+ * "Ship together": ship one customer's ready orders across several events as a
+ * single physical package, in one transaction.
+ *
+ *  - Writes one shipment row per event, all sharing a generated merge_group, so
+ *    the Shipments page can collapse them into one entry and one resi covers all.
+ *  - The combined physical weight + ongkir land on the primary (first) row; the
+ *    others get 0 weight/ongkir_total so summing the group isn't double-counted.
+ *  - Marks the shipped order units like the single-event flow.
+ *  - Bills ongkir ONCE: invoices recompute ongkir per event from the customer's
+ *    FULL event order weight, so we add a single negative "Gabung ongkir"
+ *    adjustment equal to the round-up overlap removed by combining the events
+ *    (computed from those same full event weights, to stay consistent with the
+ *    invoice math). Skipped when combining saves nothing.
+ */
+export async function shipMergedCustomerOrders(params: ShipMergedParams): Promise<ShipMergedResult> {
+  const { customer, ongkirPerKg, groups } = params
+  const custKey = normalizeId(customer)
+  const events = groups.map((g) => g.event)
+
+  return await sql.begin(async (tx) => {
+    // Physical weight of what's actually in the box (rounded up once overall).
+    let totalShippedGram = 0
+    for (const g of groups) for (const o of g.orders) totalShippedGram += (o.gram || 0) * o.toShip
+    const combinedKg = Math.ceil(totalShippedGram / 1000)
+    const combinedOngkir = ongkirPerKg * combinedKg
+
+    // Billing discount: compare ongkir billed per event (full event weight,
+    // each rounded up) against ongkir on the combined full weight (rounded once).
+    const fullRows = await tx<{ event: string; full_gram: string }[]>`
+      SELECT o.event AS event, SUM(COALESCE(p.gram, 0) * o.unit) AS full_gram
+      FROM orders o
+      JOIN products p ON p.id = o.product_id
+      WHERE lower(replace(o.customer, '@', '')) = ${custKey} AND o.event = ANY(${events})
+      GROUP BY o.event
+    `
+    let sumFullGram = 0
+    let perEventOngkirTotal = 0
+    for (const r of fullRows) {
+      const fg = Number(r.full_gram) || 0
+      sumFullGram += fg
+      perEventOngkirTotal += ongkirPerKg * Math.ceil(fg / 1000)
+    }
+    const combinedBillingOngkir = ongkirPerKg * Math.ceil(sumFullGram / 1000)
+    const discount = Math.max(0, perEventOngkirTotal - combinedBillingOngkir)
+
+    // One shipping_id for the whole package — shared across the per-event rows.
+    const [maxRow] = await tx`SELECT COALESCE(MAX(shipping_id::integer), 0) AS max_id FROM shipments`
+    const shippingId = String(((maxRow.max_id ?? 0) as number) + 1).padStart(4, "0")
+    const mergeGroup = randomUUID()
+
+    let isPrimary = true
+    for (const g of groups) {
+      const toShipRows = g.orders.filter((o) => o.toShip > 0)
+      const invoicingText = toShipRows.map((o) => `${o.productName} x ${o.toShip}`).join("\n")
+      // Combined weight + ongkir live on the primary row only, so summing the
+      // group's rows isn't double-counted.
+      const weight = isPrimary ? combinedKg : 0
+      const ongkirTotal = isPrimary ? combinedOngkir : 0
+
+      await tx`
+        INSERT INTO shipments (event, customer, shipping_id, invoicing, weight_estimation, ongkir, ongkir_total, is_last_shipment, merge_group)
+        VALUES (${g.event}, ${customer}, ${shippingId}, ${invoicingText}, ${weight}, ${ongkirPerKg}, ${ongkirTotal}, true, ${mergeGroup})
+      `
+      for (const o of toShipRows) {
+        await tx`
+          UPDATE orders
+          SET unit_ship = COALESCE(unit_ship, 0) + ${o.toShip}, updated_at = NOW()
+          WHERE id = ${o.rowNumber}
+        `
+      }
+      isPrimary = false
+    }
+
+    if (discount > 0) {
+      const normCust = normalizeCustomer(customer)
+      const others = groups.slice(1).map((g) => g.event).join(", ")
+      await tx`INSERT INTO customers (instagram_id) VALUES (${normCust}) ON CONFLICT (instagram_id) DO NOTHING`
+      await tx`
+        INSERT INTO adjustments (event, customer, description, amount)
+        VALUES (${groups[0].event}, ${normCust}, ${`Gabung ongkir dengan ${others}`}, ${-discount})
+      `
+    }
+
+    return {
+      mergeGroup,
+      shippingId,
+      shippingIds: [shippingId],
+      discount,
+      combinedKg,
+      combinedOngkir,
+    }
+  })
+}
+
 // ─── Shipments ──────────────────────────────────────────────────────────────
 
 export async function getShippingRecords(): Promise<ShippingRecord[]> {
   const rows = await sql`
     SELECT id, event, customer, shipping_id, invoicing,
            weight_estimation, ongkir, ongkir_total, is_last_shipment,
-           created_at, updated_at, tracking_number
+           created_at, updated_at, tracking_number, merge_group
     FROM shipments
     WHERE shipping_id != ''
     ORDER BY id ASC
@@ -216,6 +312,7 @@ export async function getShippingRecords(): Promise<ShippingRecord[]> {
     createdAt: tsToString(r.created_at),
     updatedAt: tsToString(r.updated_at),
     trackingNumber: r.tracking_number ?? "",
+    mergeGroup: r.merge_group ?? null,
   }))
 }
 
@@ -223,10 +320,13 @@ export async function updateTrackingNumber(
   rowNumber: number,
   trackingNumber: string,
 ): Promise<void> {
+  // For a merged ("Ship together") shipment the resi is shared, so setting it on
+  // any row applies to every row in the same merge_group; otherwise just the row.
   await sql`
     UPDATE shipments
     SET tracking_number = ${trackingNumber}, updated_at = NOW()
     WHERE id = ${rowNumber}
+       OR merge_group = (SELECT merge_group FROM shipments WHERE id = ${rowNumber} AND merge_group IS NOT NULL)
   `
 }
 

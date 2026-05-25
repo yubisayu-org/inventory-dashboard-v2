@@ -21,6 +21,16 @@ import {
 } from "@tanstack/react-table"
 import { useState, useRef, useEffect, useCallback, useMemo } from "react"
 
+// Register our custom filter keys with the table types so a column can say
+// `filterFn: "numeric"` (etc.) directly — no `as unknown as undefined` cast.
+declare module "@tanstack/react-table" {
+  interface FilterFns {
+    numeric: FilterFn<unknown>
+    textContains: FilterFn<unknown>
+    boolean: FilterFn<unknown>
+  }
+}
+
 // ─── Filter functions ──────────────────────────────────────────────────────
 
 const numericFilter: FilterFn<unknown> = (row, columnId, filterValue) => {

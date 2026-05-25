@@ -91,18 +91,18 @@ export default function FormRecordsTable() {
     {
       accessorKey: "event",
       header: "Event",
-      filterFn: "textContains" as unknown as undefined,
+      filterFn: "textContains",
     },
     {
       accessorKey: "customer",
       header: "Customer",
-      filterFn: "textContains" as unknown as undefined,
+      filterFn: "textContains",
       cell: ({ getValue }) => <span>{displayIg(getValue<string>())}</span>,
     },
     {
       accessorKey: "items",
       header: "Item",
-      filterFn: "textContains" as unknown as undefined,
+      filterFn: "textContains",
       enableHiding: false,
     },
     {

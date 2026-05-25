@@ -17,6 +17,49 @@ import DataGrid, {
 
 const fmt = (n: number) => n.toLocaleString("id-ID")
 
+// A grid row may represent several DB shipment rows that were shipped together
+// (same merge_group). It carries the underlying rowNumbers so actions (resi
+// edit, label) apply to the whole group.
+interface DisplayShipment extends ShippingRecord {
+  rowNumbers: number[]
+  mergedCount: number
+}
+
+/** Collapse rows sharing a merge_group into one combined entry. */
+function collapseMerged(rows: ShippingRecord[]): DisplayShipment[] {
+  const groups = new Map<string, ShippingRecord[]>()
+  const result: DisplayShipment[] = []
+  for (const r of rows) {
+    if (!r.mergeGroup) {
+      result.push({ ...r, rowNumbers: [r.rowNumber], mergedCount: 1 })
+    } else {
+      const arr = groups.get(r.mergeGroup)
+      if (arr) arr.push(r)
+      else groups.set(r.mergeGroup, [r])
+    }
+  }
+  for (const arr of groups.values()) {
+    const sorted = [...arr].sort((a, b) => Number(a.shippingId) - Number(b.shippingId))
+    const primary = sorted[0]
+    const lines = sorted.flatMap((s) =>
+      s.invoicing.split("\n").filter(Boolean).map((l) => `[${s.event}] ${l}`),
+    )
+    result.push({
+      ...primary,
+      event: sorted.map((s) => s.event).join(" + "),
+      // All rows of a merge share one shipping_id, so show it once.
+      shippingId: primary.shippingId,
+      invoicing: lines.join("\n"),
+      weightEstimation: sorted.reduce((s, x) => s + x.weightEstimation, 0),
+      ongkirTotal: sorted.reduce((s, x) => s + x.ongkirTotal, 0),
+      trackingNumber: sorted.find((s) => s.trackingNumber)?.trackingNumber ?? "",
+      rowNumbers: sorted.map((s) => s.rowNumber),
+      mergedCount: sorted.length,
+    })
+  }
+  return result
+}
+
 // ─── LabelModal ───────────────────────────────────────────────────────────
 
 function LabelModal({
@@ -233,8 +276,8 @@ export default function ShipmentsClient() {
   const [error, setError] = useState<string | null>(null)
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
   const [printingPdf, setPrintingPdf] = useState(false)
-  const [labelRecord, setLabelRecord] = useState<ShippingRecord | null>(null)
-  const [editResiRecord, setEditResiRecord] = useState<ShippingRecord | null>(null)
+  const [labelRecord, setLabelRecord] = useState<DisplayShipment | null>(null)
+  const [editResiRecord, setEditResiRecord] = useState<DisplayShipment | null>(null)
 
   async function load() {
     setLoading(true)
@@ -254,12 +297,15 @@ export default function ShipmentsClient() {
 
   useEffect(() => { load() }, [])
 
+  // Merged ("Ship together") rows are collapsed into one combined grid entry.
+  const displayData = useMemo(() => (data ? collapseMerged(data) : []), [data])
+
   const selectedCount = Object.keys(rowSelection).filter((k) => rowSelection[k]).length
 
   async function handlePrintPdf() {
-    if (!data || selectedCount === 0) return
-    const selectedRowNumbers = Object.keys(rowSelection).filter((k) => rowSelection[k]).map(Number)
-    const selected = data.filter((r) => selectedRowNumbers.includes(r.rowNumber))
+    if (selectedCount === 0) return
+    const selectedIds = Object.keys(rowSelection).filter((k) => rowSelection[k])
+    const selected = displayData.filter((r) => selectedIds.includes(String(r.rowNumber)))
     if (selected.length === 0) return
     setPrintingPdf(true)
     try {
@@ -301,12 +347,12 @@ export default function ShipmentsClient() {
     }
   }
 
-  const columns = useMemo<ColumnDef<ShippingRecord, unknown>[]>(
+  const columns = useMemo<ColumnDef<DisplayShipment, unknown>[]>(
     () => [
       {
         accessorKey: "shippingId",
         header: "ID",
-        filterFn: "textContains" as unknown as undefined,
+        filterFn: "textContains",
         size: 80,
         cell: ({ getValue }) => (
           <span className="font-mono text-xs text-gray-500">{getValue<string>()}</span>
@@ -315,20 +361,30 @@ export default function ShipmentsClient() {
       {
         accessorKey: "event",
         header: "Event",
-        filterFn: "textContains" as unknown as undefined,
+        filterFn: "textContains",
         size: 120,
+        cell: ({ row, getValue }) => (
+          <span className="flex items-center gap-1.5 flex-wrap">
+            <span>{getValue<string>()}</span>
+            {row.original.mergedCount > 1 && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700">
+                Gabung
+              </span>
+            )}
+          </span>
+        ),
       },
       {
         accessorKey: "customer",
         header: "Customer",
-        filterFn: "textContains" as unknown as undefined,
+        filterFn: "textContains",
         size: 140,
         cell: ({ getValue }) => <span>{displayIg(getValue<string>())}</span>,
       },
       {
         accessorKey: "invoicing",
         header: "Items",
-        filterFn: "textContains" as unknown as undefined,
+        filterFn: "textContains",
         size: 220,
         enableSorting: false,
         cell: ({ getValue }) => (
@@ -340,7 +396,7 @@ export default function ShipmentsClient() {
       {
         accessorKey: "weightEstimation",
         header: "Berat",
-        filterFn: "numeric" as unknown as undefined,
+        filterFn: "numeric",
         size: 90,
         meta: { align: "right" },
         cell: ({ getValue }) => (
@@ -350,7 +406,7 @@ export default function ShipmentsClient() {
       {
         accessorKey: "ongkirTotal",
         header: "Ongkir",
-        filterFn: "numeric" as unknown as undefined,
+        filterFn: "numeric",
         size: 120,
         meta: { align: "right" },
         cell: ({ getValue }) => (
@@ -360,7 +416,7 @@ export default function ShipmentsClient() {
       {
         accessorKey: "isLastShipment",
         header: "Terakhir",
-        filterFn: "boolean" as unknown as undefined,
+        filterFn: "boolean",
         size: 90,
         cell: ({ getValue }) =>
           getValue<boolean>() ? (
@@ -376,7 +432,7 @@ export default function ShipmentsClient() {
       {
         accessorKey: "trackingNumber",
         header: "Resi",
-        filterFn: "textContains" as unknown as undefined,
+        filterFn: "textContains",
         size: 200,
         cell: ({ row }) => {
           const record = row.original
@@ -412,7 +468,7 @@ export default function ShipmentsClient() {
       {
         accessorKey: "createdAt",
         header: "Tanggal",
-        filterFn: "textContains" as unknown as undefined,
+        filterFn: "textContains",
         size: 160,
         cell: ({ getValue }) => (
           <span className="text-xs text-gray-400 whitespace-nowrap">{getValue<string>()}</span>
@@ -514,8 +570,8 @@ export default function ShipmentsClient() {
         </div>
       )}
       {!loading && !error && data && data.length > 0 && (
-        <DataGrid<ShippingRecord>
-          data={data}
+        <DataGrid<DisplayShipment>
+          data={displayData}
           columns={columns}
           getRowId={(row) => String(row.rowNumber)}
           searchPlaceholder="Cari shipment…"
@@ -538,7 +594,7 @@ export default function ShipmentsClient() {
           onSaved={(trackingNumber) =>
             setData((prev) =>
               prev?.map((r) =>
-                r.rowNumber === editResiRecord.rowNumber ? { ...r, trackingNumber } : r
+                editResiRecord.rowNumbers.includes(r.rowNumber) ? { ...r, trackingNumber } : r
               ) ?? null
             )
           }

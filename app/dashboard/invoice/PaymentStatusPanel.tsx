@@ -10,6 +10,7 @@ import DataGrid, { type ColumnDef } from "@/components/DataGrid"
 // ─── Payment Status Panel ────────────────────────────────────────────────────
 
 const STATUS_LABELS: Record<PaymentStatus, string> = {
+  void: "Void",
   unpaid: "Unpaid",
   partial: "Partial",
   paid: "Paid",
@@ -17,6 +18,7 @@ const STATUS_LABELS: Record<PaymentStatus, string> = {
 }
 
 const STATUS_COLORS: Record<PaymentStatus, string> = {
+  void: "bg-gray-100 text-gray-500 border-gray-200",
   unpaid: "bg-red-50 text-red-700 border-red-200",
   partial: "bg-yellow-50 text-yellow-700 border-yellow-200",
   paid: "bg-green-50 text-green-700 border-green-200",
@@ -66,7 +68,7 @@ export function PaymentStatusPanel({
   )
 
   const counts = useMemo(() => {
-    const c: Record<PaymentStatus, number> = { unpaid: 0, partial: 0, paid: 0, overpaid: 0 }
+    const c: Record<PaymentStatus, number> = { void: 0, unpaid: 0, partial: 0, paid: 0, overpaid: 0 }
     for (const r of eventRows) c[r.status]++
     return c
   }, [eventRows])
@@ -88,13 +90,13 @@ export function PaymentStatusPanel({
     {
       accessorKey: "event",
       header: "Event",
-      filterFn: "textContains" as unknown as undefined,
+      filterFn: "textContains",
       cell: ({ getValue }) => <span className="text-gray-500 whitespace-nowrap">{getValue<string>()}</span>,
     },
     {
       accessorKey: "customer",
       header: "Customer",
-      filterFn: "textContains" as unknown as undefined,
+      filterFn: "textContains",
       cell: ({ row }) => (
         <button
           type="button"
@@ -108,21 +110,21 @@ export function PaymentStatusPanel({
     {
       accessorKey: "invoiceTotal",
       header: "Invoice Total",
-      filterFn: "numeric" as unknown as undefined,
+      filterFn: "numeric",
       meta: { align: "right" },
       cell: ({ getValue }) => <span className="tabular-nums">Rp {fmt(getValue<number>())}</span>,
     },
     {
       accessorKey: "totalPaid",
       header: "Paid",
-      filterFn: "numeric" as unknown as undefined,
+      filterFn: "numeric",
       meta: { align: "right" },
       cell: ({ getValue }) => <span className="tabular-nums">Rp {fmt(getValue<number>())}</span>,
     },
     {
       accessorKey: "outstanding",
       header: "Outstanding",
-      filterFn: "numeric" as unknown as undefined,
+      filterFn: "numeric",
       meta: { align: "right" },
       cell: ({ getValue }) => {
         const v = getValue<number>()
@@ -154,6 +156,7 @@ export function PaymentStatusPanel({
     { key: "partial", label: "Partial", count: counts.partial },
     { key: "paid", label: "Paid", count: counts.paid },
     { key: "overpaid", label: "Overpaid", count: counts.overpaid },
+    { key: "void", label: "Void", count: counts.void },
   ]
 
   const customerLookupOptions = useMemo(

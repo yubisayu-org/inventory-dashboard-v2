@@ -82,30 +82,30 @@ export default function ProductsClient() {
     {
       accessorKey: "product",
       header: "Product",
-      filterFn: "textContains" as unknown as undefined,
+      filterFn: "textContains",
       cell: ({ row }) => <span className="font-medium whitespace-nowrap">{row.original.product}</span>,
     },
     {
       accessorKey: "store",
       header: "Store",
-      filterFn: "textContains" as unknown as undefined,
+      filterFn: "textContains",
     },
     {
       accessorKey: "price",
       header: "Price",
-      filterFn: "numeric" as unknown as undefined,
+      filterFn: "numeric",
       cell: ({ row }) => <span className="tabular-nums font-medium">{fmt(row.original.price)}</span>,
       meta: { align: "right" },
     },
     {
       accessorKey: "createdAt",
       header: "Created",
-      filterFn: "textContains" as unknown as undefined,
+      filterFn: "textContains",
     },
     {
       accessorKey: "updatedAt",
       header: "Updated",
-      filterFn: "textContains" as unknown as undefined,
+      filterFn: "textContains",
     },
     {
       id: "actions",

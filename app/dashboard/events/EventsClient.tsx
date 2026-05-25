@@ -88,7 +88,7 @@ export default function EventsClient() {
     {
       accessorKey: "name",
       header: "Event Name",
-      filterFn: "textContains" as unknown as undefined,
+      filterFn: "textContains",
       enableHiding: false,
       cell: ({ getValue }) => (
         <span className="font-medium">{getValue<string>()}</span>
@@ -97,7 +97,7 @@ export default function EventsClient() {
     {
       accessorKey: "eta",
       header: "ETA",
-      filterFn: "textContains" as unknown as undefined,
+      filterFn: "textContains",
       cell: ({ getValue }) => {
         const v = getValue<string>()
         return <span className={v ? "text-foreground" : "text-gray-400"}>{v || "—"}</span>

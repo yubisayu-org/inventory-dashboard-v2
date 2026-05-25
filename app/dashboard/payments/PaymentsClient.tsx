@@ -107,18 +107,18 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
     {
       accessorKey: "event",
       header: "Event",
-      filterFn: "textContains" as unknown as undefined,
+      filterFn: "textContains",
     },
     {
       accessorKey: "customer",
       header: "Customer",
-      filterFn: "textContains" as unknown as undefined,
+      filterFn: "textContains",
       cell: ({ getValue }) => <span>{displayIg(getValue<string>())}</span>,
     },
     {
       accessorKey: "amount",
       header: "Amount",
-      filterFn: "numeric" as unknown as undefined,
+      filterFn: "numeric",
       meta: { align: "right" },
       cell: ({ row }) => (
         <span className="tabular-nums font-medium">{formatAmount(row.original.amount)}</span>
@@ -127,7 +127,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
     {
       accessorKey: "account",
       header: "Account",
-      filterFn: "textContains" as unknown as undefined,
+      filterFn: "textContains",
       cell: ({ row }) => (
         <span className="text-gray-500">{row.original.account || "—"}</span>
       ),
@@ -135,7 +135,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
     {
       accessorKey: "isChecked",
       header: "✓",
-      filterFn: "boolean" as unknown as undefined,
+      filterFn: "boolean",
       enableSorting: false,
       size: 60,
       cell: ({ row }) => (
@@ -151,7 +151,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
     {
       accessorKey: "payDate",
       header: "Date",
-      filterFn: "textContains" as unknown as undefined,
+      filterFn: "textContains",
       cell: ({ row }) => (
         <span className="text-gray-500 text-xs whitespace-nowrap">
           {formatDate(row.original.payDate)}
@@ -161,13 +161,13 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
     {
       accessorKey: "remarks",
       header: "Remarks",
-      filterFn: "textContains" as unknown as undefined,
+      filterFn: "textContains",
       cell: ({ row }) => <InlineRemarks row={row.original} onSave={handleSaveRemarks} />,
     },
     {
       accessorKey: "createdAt",
       header: "Created",
-      filterFn: "textContains" as unknown as undefined,
+      filterFn: "textContains",
       cell: ({ row }) => (
         <span className="text-gray-400 text-xs whitespace-nowrap">{row.original.createdAt}</span>
       ),

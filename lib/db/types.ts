@@ -242,6 +242,30 @@ export interface ShipOrdersParams {
   ongkirPerKg: number
 }
 
+/**
+ * "Ship together": one customer's ready orders across several events shipped as
+ * a single physical package. One shipment row is written per event (linked by a
+ * merge_group), the combined weight/ongkir lands on the primary row, and a
+ * single negative "Gabung ongkir" adjustment bills shipping once.
+ */
+export interface ShipMergedParams {
+  customer: string
+  ongkirPerKg: number
+  groups: Array<{
+    event: string
+    orders: Array<{ rowNumber: number; productName: string; toShip: number; gram: number }>
+  }>
+}
+
+export interface ShipMergedResult {
+  mergeGroup: string
+  shippingId: string        // the primary row's id (used for the combined label)
+  shippingIds: string[]
+  discount: number          // the merged-shipping ongkir discount applied (Rp)
+  combinedKg: number        // physical weight of the combined package
+  combinedOngkir: number    // physical ongkir of the combined package (Rp)
+}
+
 export interface ShippingRecord {
   rowNumber: number
   event: string
@@ -255,6 +279,9 @@ export interface ShippingRecord {
   createdAt: string
   updatedAt: string
   trackingNumber: string
+  // Non-null when this row is part of a "Ship together" merged package; all
+  // rows sharing the id were one physical shipment (one box, one resi).
+  mergeGroup: string | null
 }
 
 export interface CountryRow {
