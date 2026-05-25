@@ -388,48 +388,58 @@ function paymentStatusFor(totalPaid: number, invoiceTotal: number): PaymentStatu
  * so anomalous flows (refund-only, mis-tagged payments) still surface in the panel.
  */
 export async function getPaymentStatusByEvent(event: string): Promise<PaymentStatusRow[]> {
+  // Group/join on the NORMALIZED handle (lowercase, no "@") so legacy un-normalized
+  // orders (e.g. "8_davinas") merge with normalized payments ("@8_davinas") for the
+  // same person — otherwise they split into a bogus Unpaid + Overpaid pair.
   const rows = await sql`
     WITH order_aggregates AS (
       SELECT
-        o.customer,
+        lower(replace(o.customer, '@', '')) AS cust_key,
         SUM(o.unit_price * o.unit) AS subtotal,
         SUM(COALESCE(p.gram, 0) * o.unit) AS total_gram
       FROM orders o
       JOIN products p ON p.id = o.product_id
       WHERE o.event = ${event}
-      GROUP BY o.customer
+      GROUP BY lower(replace(o.customer, '@', ''))
     ),
     payment_aggregates AS (
-      SELECT customer, SUM(amount) AS total_paid
+      SELECT lower(replace(customer, '@', '')) AS cust_key, SUM(amount) AS total_paid
       FROM payments
       WHERE event = ${event} AND is_checked = true
-      GROUP BY customer
+      GROUP BY lower(replace(customer, '@', ''))
     ),
     adjustment_aggregates AS (
-      SELECT customer, SUM(amount) AS total_adj
+      SELECT lower(replace(customer, '@', '')) AS cust_key, SUM(amount) AS total_adj
       FROM adjustments
       WHERE event = ${event}
-      GROUP BY customer
+      GROUP BY lower(replace(customer, '@', ''))
+    ),
+    customer_ongkir AS (
+      -- One ongkir per normalized handle (the customers table may hold dup rows).
+      SELECT lower(replace(instagram_id, '@', '')) AS cust_key,
+             MAX(COALESCE(ongkos_kirim, 0)) AS ongkos_kirim
+      FROM customers
+      GROUP BY lower(replace(instagram_id, '@', ''))
     ),
     all_customers AS (
-      SELECT customer FROM order_aggregates
+      SELECT cust_key FROM order_aggregates
       UNION
-      SELECT customer FROM payment_aggregates
+      SELECT cust_key FROM payment_aggregates
       UNION
-      SELECT customer FROM adjustment_aggregates
+      SELECT cust_key FROM adjustment_aggregates
     )
     SELECT
-      ac.customer,
+      ac.cust_key AS customer,
       (COALESCE(oa.subtotal, 0)
         + COALESCE(c.ongkos_kirim, 0) * CEIL(COALESCE(oa.total_gram, 0)::numeric / 1000)
         + COALESCE(adj.total_adj, 0))::int AS invoice_total,
       COALESCE(pa.total_paid, 0)::int AS total_paid
     FROM all_customers ac
-    LEFT JOIN order_aggregates oa ON oa.customer = ac.customer
-    LEFT JOIN customers c ON c.instagram_id = ac.customer
-    LEFT JOIN payment_aggregates pa ON pa.customer = ac.customer
-    LEFT JOIN adjustment_aggregates adj ON adj.customer = ac.customer
-    ORDER BY ac.customer
+    LEFT JOIN order_aggregates oa ON oa.cust_key = ac.cust_key
+    LEFT JOIN customer_ongkir c ON c.cust_key = ac.cust_key
+    LEFT JOIN payment_aggregates pa ON pa.cust_key = ac.cust_key
+    LEFT JOIN adjustment_aggregates adj ON adj.cust_key = ac.cust_key
+    ORDER BY ac.cust_key
   `
 
   return rows.map((r) => {
