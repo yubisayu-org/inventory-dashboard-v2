@@ -352,7 +352,7 @@ export default function ShipmentsClient() {
       {
         accessorKey: "shippingId",
         header: "ID",
-        filterFn: "textContains" as unknown as undefined,
+        filterFn: "textContains",
         size: 80,
         cell: ({ getValue }) => (
           <span className="font-mono text-xs text-gray-500">{getValue<string>()}</span>
@@ -361,7 +361,7 @@ export default function ShipmentsClient() {
       {
         accessorKey: "event",
         header: "Event",
-        filterFn: "textContains" as unknown as undefined,
+        filterFn: "textContains",
         size: 120,
         cell: ({ row, getValue }) => (
           <span className="flex items-center gap-1.5 flex-wrap">
@@ -377,14 +377,14 @@ export default function ShipmentsClient() {
       {
         accessorKey: "customer",
         header: "Customer",
-        filterFn: "textContains" as unknown as undefined,
+        filterFn: "textContains",
         size: 140,
         cell: ({ getValue }) => <span>{displayIg(getValue<string>())}</span>,
       },
       {
         accessorKey: "invoicing",
         header: "Items",
-        filterFn: "textContains" as unknown as undefined,
+        filterFn: "textContains",
         size: 220,
         enableSorting: false,
         cell: ({ getValue }) => (
@@ -396,7 +396,7 @@ export default function ShipmentsClient() {
       {
         accessorKey: "weightEstimation",
         header: "Berat",
-        filterFn: "numeric" as unknown as undefined,
+        filterFn: "numeric",
         size: 90,
         meta: { align: "right" },
         cell: ({ getValue }) => (
@@ -406,7 +406,7 @@ export default function ShipmentsClient() {
       {
         accessorKey: "ongkirTotal",
         header: "Ongkir",
-        filterFn: "numeric" as unknown as undefined,
+        filterFn: "numeric",
         size: 120,
         meta: { align: "right" },
         cell: ({ getValue }) => (
@@ -416,7 +416,7 @@ export default function ShipmentsClient() {
       {
         accessorKey: "isLastShipment",
         header: "Terakhir",
-        filterFn: "boolean" as unknown as undefined,
+        filterFn: "boolean",
         size: 90,
         cell: ({ getValue }) =>
           getValue<boolean>() ? (
@@ -432,7 +432,7 @@ export default function ShipmentsClient() {
       {
         accessorKey: "trackingNumber",
         header: "Resi",
-        filterFn: "textContains" as unknown as undefined,
+        filterFn: "textContains",
         size: 200,
         cell: ({ row }) => {
           const record = row.original
@@ -468,7 +468,7 @@ export default function ShipmentsClient() {
       {
         accessorKey: "createdAt",
         header: "Tanggal",
-        filterFn: "textContains" as unknown as undefined,
+        filterFn: "textContains",
         size: 160,
         cell: ({ getValue }) => (
           <span className="text-xs text-gray-400 whitespace-nowrap">{getValue<string>()}</span>

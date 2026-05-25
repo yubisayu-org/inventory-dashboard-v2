@@ -147,13 +147,13 @@ export default function ExcessTable() {
       {
         accessorKey: "event",
         header: "Event",
-        filterFn: "textContains" as unknown as undefined,
+        filterFn: "textContains",
         size: 140,
       },
       {
         accessorKey: "items",
         header: "Item",
-        filterFn: "textContains" as unknown as undefined,
+        filterFn: "textContains",
         size: 240,
         cell: ({ row }) => (
           <div className="min-w-0">
@@ -169,14 +169,14 @@ export default function ExcessTable() {
       {
         accessorKey: "reason",
         header: "Reason",
-        filterFn: "textContains" as unknown as undefined,
+        filterFn: "textContains",
         size: 110,
         cell: ({ getValue }) => <ReasonBadge reason={getValue<ExcessReason>()} />,
       },
       {
         accessorKey: "unitBuy",
         header: "Unit Buy",
-        filterFn: "numeric" as unknown as undefined,
+        filterFn: "numeric",
         size: 90,
         meta: { align: "right" },
         cell: ({ getValue }) => (
@@ -186,7 +186,7 @@ export default function ExcessTable() {
       {
         accessorKey: "receipt",
         header: "Receipt",
-        filterFn: "textContains" as unknown as undefined,
+        filterFn: "textContains",
         size: 150,
         cell: ({ getValue }) => (
           <span className="text-gray-500">{getValue<string>() || "—"}</span>

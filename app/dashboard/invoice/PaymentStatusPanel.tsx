@@ -90,13 +90,13 @@ export function PaymentStatusPanel({
     {
       accessorKey: "event",
       header: "Event",
-      filterFn: "textContains" as unknown as undefined,
+      filterFn: "textContains",
       cell: ({ getValue }) => <span className="text-gray-500 whitespace-nowrap">{getValue<string>()}</span>,
     },
     {
       accessorKey: "customer",
       header: "Customer",
-      filterFn: "textContains" as unknown as undefined,
+      filterFn: "textContains",
       cell: ({ row }) => (
         <button
           type="button"
@@ -110,21 +110,21 @@ export function PaymentStatusPanel({
     {
       accessorKey: "invoiceTotal",
       header: "Invoice Total",
-      filterFn: "numeric" as unknown as undefined,
+      filterFn: "numeric",
       meta: { align: "right" },
       cell: ({ getValue }) => <span className="tabular-nums">Rp {fmt(getValue<number>())}</span>,
     },
     {
       accessorKey: "totalPaid",
       header: "Paid",
-      filterFn: "numeric" as unknown as undefined,
+      filterFn: "numeric",
       meta: { align: "right" },
       cell: ({ getValue }) => <span className="tabular-nums">Rp {fmt(getValue<number>())}</span>,
     },
     {
       accessorKey: "outstanding",
       header: "Outstanding",
-      filterFn: "numeric" as unknown as undefined,
+      filterFn: "numeric",
       meta: { align: "right" },
       cell: ({ getValue }) => {
         const v = getValue<number>()

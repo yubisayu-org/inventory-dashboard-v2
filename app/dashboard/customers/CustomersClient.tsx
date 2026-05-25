@@ -84,7 +84,7 @@ export default function CustomersClient() {
     {
       accessorKey: "instagramId",
       header: "Instagram ID",
-      filterFn: "textContains" as unknown as undefined,
+      filterFn: "textContains",
       cell: ({ row }) => {
         const hasAddress = Boolean(row.original.dataDiri && row.original.dataDiri.trim())
         return (
@@ -105,7 +105,7 @@ export default function CustomersClient() {
     {
       accessorKey: "whatsapp",
       header: "WhatsApp",
-      filterFn: "textContains" as unknown as undefined,
+      filterFn: "textContains",
       cell: ({ getValue }) => {
         const v = getValue<string>()
         return <span className={v ? "text-gray-600 tabular-nums" : "text-gray-400"}>{v || "—"}</span>
@@ -114,7 +114,7 @@ export default function CustomersClient() {
     {
       accessorKey: "ekspedisi",
       header: "Ekspedisi",
-      filterFn: "textContains" as unknown as undefined,
+      filterFn: "textContains",
       cell: ({ getValue }) => {
         const v = getValue<string>()
         return <span className={v ? "text-gray-600" : "text-gray-400"}>{v || "—"}</span>
@@ -123,7 +123,7 @@ export default function CustomersClient() {
     {
       accessorKey: "ongkosKirim",
       header: "Ongkir",
-      filterFn: "numeric" as unknown as undefined,
+      filterFn: "numeric",
       meta: { align: "right" },
       cell: ({ getValue }) => {
         const v = getValue<number>()
@@ -135,7 +135,7 @@ export default function CustomersClient() {
     {
       accessorKey: "dataDiri",
       header: "Alamat",
-      filterFn: "textContains" as unknown as undefined,
+      filterFn: "textContains",
       cell: ({ getValue }) => {
         const v = getValue<string>()
         if (!v) return <span className="text-gray-400">—</span>
@@ -149,7 +149,7 @@ export default function CustomersClient() {
     {
       accessorKey: "bankName",
       header: "Bank",
-      filterFn: "textContains" as unknown as undefined,
+      filterFn: "textContains",
       cell: ({ row }) => {
         const { bankName, bankAccountNumber, bankAccountHolder } = row.original
         if (!bankName && !bankAccountNumber && !bankAccountHolder) {

@@ -148,18 +148,18 @@ export default function DataTable() {
     {
       accessorKey: "event",
       header: "Event",
-      filterFn: "textContains" as unknown as undefined,
+      filterFn: "textContains",
     },
     {
       accessorKey: "customer",
       header: "Customer",
-      filterFn: "textContains" as unknown as undefined,
+      filterFn: "textContains",
       cell: ({ getValue }) => <CopyableText text={displayIg(getValue<string>())} />,
     },
     {
       accessorKey: "items",
       header: "Item",
-      filterFn: "textContains" as unknown as undefined,
+      filterFn: "textContains",
       enableHiding: false,
     },
     {

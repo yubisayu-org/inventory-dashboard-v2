@@ -5,6 +5,7 @@ import TableSkeleton from "@/components/TableSkeleton"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import type { ShipCustomer, ShipOrdersParams, ShipSegment, ShipStatus, ShipOrdersFiltered } from "@/lib/db"
+import { normalizeId } from "@/lib/db/helpers"
 import { generateShippingLabel } from "@/lib/shipping-label"
 import { useModalDismiss } from "@/hooks/useModalDismiss"
 import { useResizableColumns } from "@/hooks/useResizableColumns"
@@ -95,7 +96,7 @@ export default function ShipClient() {
   // "Ship together" is offered whenever the selected cards are all one customer;
   // the modal then fetches that customer's other shippable events to combine.
   const selectedGroups = readyFiltered.filter((c) => selected.has(`${c.customer}|${c.event}`))
-  const mergeCustomers = new Set(selectedGroups.map((c) => c.customer.trim().toLowerCase().replace(/@/g, "")))
+  const mergeCustomers = new Set(selectedGroups.map((c) => normalizeId(c.customer)))
   const mergeEligible = selectedGroups.length >= 1 && mergeCustomers.size === 1
 
   function toggleSelect(key: string) {
@@ -648,7 +649,6 @@ function MergeShipConfirmModal({
   // cards live on, so partial + ready events can be combined freely.
   useEffect(() => {
     let cancelled = false
-    const norm = (s: string) => s.trim().toLowerCase().replace(/@/g, "")
     ;(async () => {
       try {
         const res = await fetch(`/api/sheets/ship?segment=all&search=${encodeURIComponent(customer)}`)
@@ -656,7 +656,7 @@ function MergeShipConfirmModal({
         if (!res.ok) throw new Error((json as unknown as { error: string }).error ?? "Failed to load")
         if (cancelled) return
         const mine = json.groups
-          .filter((g) => norm(g.customer) === norm(customer) && g.totalToShip > 0)
+          .filter((g) => normalizeId(g.customer) === normalizeId(customer) && g.totalToShip > 0)
           .sort((a, b) => a.event.localeCompare(b.event))
         setAllGroups(mine)
         setChecked((prev) => {

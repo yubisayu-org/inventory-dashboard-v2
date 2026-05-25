@@ -57,18 +57,18 @@ export default function AdjustmentsClient() {
     {
       accessorKey: "event",
       header: "Event",
-      filterFn: "textContains" as unknown as undefined,
+      filterFn: "textContains",
     },
     {
       accessorKey: "customer",
       header: "Customer",
-      filterFn: "textContains" as unknown as undefined,
+      filterFn: "textContains",
       cell: ({ getValue }) => <span>{displayIg(getValue<string>())}</span>,
     },
     {
       accessorKey: "description",
       header: "Description",
-      filterFn: "textContains" as unknown as undefined,
+      filterFn: "textContains",
       cell: ({ getValue }) => {
         const v = getValue<string>()
         return v || "—"
@@ -77,7 +77,7 @@ export default function AdjustmentsClient() {
     {
       accessorKey: "amount",
       header: "Amount",
-      filterFn: "numeric" as unknown as undefined,
+      filterFn: "numeric",
       meta: { align: "right" },
       cell: ({ getValue }) => {
         const n = getValue<number>()
@@ -91,7 +91,7 @@ export default function AdjustmentsClient() {
     {
       accessorKey: "createdAt",
       header: "Created",
-      filterFn: "textContains" as unknown as undefined,
+      filterFn: "textContains",
       cell: ({ getValue }) => (
         <span className="text-gray-400 text-xs">{getValue<string>()}</span>
       ),
