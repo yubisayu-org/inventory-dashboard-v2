@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { displayIg, fmt } from "@/lib/format"
 import type { PaymentStatus, PaymentStatusRow } from "@/lib/db"
 import SearchableSelect from "@/components/SearchableSelect"
+import EventSelect from "@/components/EventSelect"
 
 // ─── Payment Status Panel ────────────────────────────────────────────────────
 
@@ -201,17 +202,9 @@ export function PaymentStatusPanel({
     <div className="flex flex-col gap-3">
       {/* Toolbar: event + search + lookup + refresh */}
       <div className="flex items-center gap-2 flex-wrap">
-        <select
-          value={event}
-          onChange={(e) => setEvent(e.target.value)}
-          className="border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
-          style={{ width: "12rem" }}
-        >
-          {events.length === 0 && <option value="">No events</option>}
-          {events.map((ev) => (
-            <option key={ev} value={ev}>{ev}</option>
-          ))}
-        </select>
+        <div style={{ width: "12rem" }}>
+          <EventSelect value={event} onChange={setEvent} events={events} placeholder="Select event…" />
+        </div>
         <input
           type="text"
           value={search}

@@ -4,6 +4,7 @@ import { displayIg } from "@/lib/format"
 import { useEffect, useMemo, useState } from "react"
 import SearchableSelect from "@/components/SearchableSelect"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
+import EventSelect from "@/components/EventSelect"
 
 type ItemLine = { id: number; item: string; qty: string }
 type UpdatedRow = { rowNumber: number; customer: string; oldUnitBuy: number; unitBuy: number }
@@ -151,17 +152,12 @@ export default function PurchaseModal({
               <label className={LABEL}>
                 Event <span className="text-brand">*</span>
               </label>
-              <select
+              <EventSelect
                 value={event}
-                onChange={(e) => { setEvent(e.target.value); setResult(null) }}
-                required
-                className={FIELD}
-              >
-                <option value="">Select event…</option>
-                {(options?.events ?? []).map((ev) => (
-                  <option key={ev} value={ev}>{ev}</option>
-                ))}
-              </select>
+                onChange={(v) => { setEvent(v); setResult(null) }}
+                events={options?.events ?? []}
+                placeholder="Select event…"
+              />
             </div>
 
             {/* Item lines */}

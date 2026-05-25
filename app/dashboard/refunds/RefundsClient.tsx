@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import type { InvoiceEvent, InvoiceResult, RefundRow, RefundReason, RefundStatus } from "@/lib/db"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import { fetchJson } from "@/lib/api-fetch"
+import EventSelect from "@/components/EventSelect"
 
 const INPUT_CLASS =
   "border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
@@ -125,17 +126,15 @@ export default function RefundsClient() {
           placeholder="Search customer or event…"
           className={`${INPUT_CLASS} flex-1 min-w-[180px]`}
         />
-        <select
-          value={selectedEvent}
-          onChange={(e) => setSelectedEvent(e.target.value)}
-          className={INPUT_CLASS}
-          style={{ width: "12rem" }}
-        >
-          <option value="">All Events</option>
-          {(options?.events ?? []).map((ev) => (
-            <option key={ev} value={ev}>{ev}</option>
-          ))}
-        </select>
+        <div style={{ width: "12rem" }}>
+          <EventSelect
+            value={selectedEvent}
+            onChange={setSelectedEvent}
+            events={options?.events ?? []}
+            placeholder="All Events"
+            clearable
+          />
+        </div>
         <button
           onClick={fetchRows}
           title="Refresh"
@@ -332,10 +331,7 @@ function CreateRefundModal({
         <div className="flex flex-col gap-3">
           <label className="flex flex-col gap-1">
             <span className="text-xs font-medium text-gray-500">Event</span>
-            <select {...field("event")} required disabled={saving} className={`${INPUT_CLASS} w-full`}>
-              <option value="">Select event…</option>
-              {events.map((ev) => <option key={ev} value={ev}>{ev}</option>)}
-            </select>
+            <EventSelect value={form.event} onChange={(v) => setForm((f) => ({ ...f, event: v }))} events={events} disabled={saving} />
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-xs font-medium text-gray-500">Customer (Instagram ID)</span>

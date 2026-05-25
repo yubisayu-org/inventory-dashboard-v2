@@ -19,6 +19,8 @@ interface Props {
   clearable?: boolean
   /** Allow typing a value that doesn't exist in options and committing it */
   allowNewValue?: boolean
+  /** Show the full list when there's no query, even for large lists (no "type to search" gate) */
+  alwaysShowAll?: boolean
 }
 
 export default function SearchableSelect({
@@ -29,6 +31,7 @@ export default function SearchableSelect({
   disabled = false,
   clearable = false,
   allowNewValue = false,
+  alwaysShowAll = false,
 }: Props) {
   const selectedLabel = useMemo(
     () => options.find((o) => o.value === value)?.label ?? (allowNewValue ? value : ""),
@@ -75,9 +78,9 @@ export default function SearchableSelect({
   const hasQuery = inputValue.trim().length > 0
   const filtered = useMemo(() => {
     if (debouncedQuery) return options.filter((o) => o.label.toLowerCase().includes(debouncedQuery))
-    if (LARGE_LIST) return []
+    if (LARGE_LIST && !alwaysShowAll) return []
     return options
-  }, [debouncedQuery, options, LARGE_LIST])
+  }, [debouncedQuery, options, LARGE_LIST, alwaysShowAll])
 
   useEffect(() => { setHighlightIdx((i) => (i === -1 ? i : -1)) }, [filtered])
 
@@ -266,7 +269,7 @@ export default function SearchableSelect({
                 className="text-gray-400"
               />
             )}
-            {LARGE_LIST && !debouncedQuery ? (
+            {LARGE_LIST && !alwaysShowAll && !debouncedQuery ? (
               <li className="px-3 py-3 text-sm text-gray-400 text-center">
                 {hasQuery ? "Searching…" : "Type to search..."}
               </li>
