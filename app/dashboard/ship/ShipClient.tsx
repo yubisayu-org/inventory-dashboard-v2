@@ -18,8 +18,8 @@ const SEGMENTS: { id: Segment; label: string }[] = [
   { id: "all", label: "Semua" },
   { id: "not_arrived", label: "Belum Tiba" },
   { id: "partial", label: "Tiba Sebagian" },
-  { id: "ready", label: "Siap Dikirim" },
   { id: "ready_unpaid", label: "Belum Bayar" },
+  { id: "ready", label: "Siap Dikirim" },
   { id: "shipped", label: "Sudah Dikirim" },
 ]
 
