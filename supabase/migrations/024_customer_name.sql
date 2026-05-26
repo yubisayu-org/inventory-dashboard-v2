@@ -9,8 +9,11 @@
 -- Rows with empty data_diri stay with an empty name (admin can edit later).
 
 ALTER TABLE customers
-  ADD COLUMN name TEXT NOT NULL DEFAULT '';
+  ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT '';
 
+-- WHERE name = '' makes the backfill itself idempotent: rows that already have
+-- a name (because this migration was partially applied before, or because the
+-- registration endpoint already wrote one) are skipped.
 UPDATE customers
 SET name = TRIM(COALESCE(
   -- Prefer the legacy labeled form "Nama: X"
