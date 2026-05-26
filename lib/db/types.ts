@@ -1,5 +1,7 @@
 // Shared types for the db/* modules.
 
+import type { PaymentStatus } from "./finance"
+
 // ─── Types (same interfaces as the old sheets.ts) ───────────────────────────
 
 export interface ItemOption {
@@ -118,6 +120,7 @@ export interface ShipOrderLine {
 }
 
 export interface CustomerDetail {
+  name: string
   whatsapp: string
   dataDiri: string
   ekspedisi: string
@@ -130,6 +133,7 @@ export interface CustomerDetail {
 export interface CustomerRow {
   id: number
   instagramId: string
+  name: string
   whatsapp: string
   dataDiri: string
   ekspedisi: string
@@ -143,6 +147,7 @@ export interface CustomerRow {
 
 export interface CustomerInput {
   instagramId: string
+  name: string
   whatsapp: string
   dataDiri: string
   ekspedisi: string
@@ -177,11 +182,13 @@ export interface RefundRow {
 /**
  * Arrival/ship state of a whole (customer, event) invoice, arrival-first:
  *   not_arrived — nothing has arrived yet
- *   partial     — some lines arrived but not every line is fully arrived
- *   ready       — every line fully arrived AND something is still to ship
- *   shipped     — every line fully arrived AND nothing left to ship
+ *   partial       — some lines arrived but not every line is fully arrived
+ *   ready         — fully arrived, units to ship, AND invoice is paid/overpaid
+ *   ready_unpaid  — fully arrived with units to ship, but payment is not in yet
+ *                   (split out from "ready" so ops can see what's payment-blocked)
+ *   shipped       — every line fully arrived AND nothing left to ship
  */
-export type ShipStatus = "not_arrived" | "partial" | "ready" | "shipped"
+export type ShipStatus = "not_arrived" | "partial" | "ready" | "ready_unpaid" | "shipped"
 
 export interface ShipCustomer {
   customer: string
@@ -192,6 +199,7 @@ export interface ShipCustomer {
   weightKg: number
   ongkirPerKg: number
   status: ShipStatus
+  paymentStatus: PaymentStatus
 }
 
 export interface InvoiceResult {
@@ -270,6 +278,7 @@ export interface ShippingRecord {
   rowNumber: number
   event: string
   customer: string
+  customerName: string  // joined from customers.name; "" when unknown/backfill missed
   shippingId: string
   invoicing: string
   weightEstimation: number

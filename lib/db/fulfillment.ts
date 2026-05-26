@@ -3,6 +3,7 @@ import sql from "../db-pool"
 import { normalizeId, normalizeCustomer, tsToString } from "./helpers"
 import { allocateFifo } from "../fifo-fill"
 import type { ShipOrderLine, ShipCustomer, ShipStatus, ShipOrdersParams, ShipMergedParams, ShipMergedResult, ShippingRecord, CustomerDetail } from "./types"
+import { getPaymentStatus, type PaymentStatus } from "./finance"
 
 // ─── Ship Orders ────────────────────────────────────────────────────────────
 
@@ -23,6 +24,7 @@ function buildSearchFilters(opts: { event?: string; search?: string }) {
 function buildShipGroups(
   orderRows: Record<string, unknown>[],
   detailMap: Map<string, CustomerDetail>,
+  paymentMap: Map<string, PaymentStatus>,
 ): ShipCustomer[] {
   const groupMap = new Map<string, { customer: string; event: string; rows: Record<string, unknown>[] }>()
   for (const row of orderRows) {
@@ -56,12 +58,17 @@ function buildShipGroups(
     // Arrival-first status: compare arrived vs ordered units per line.
     const anyArrived = orders.some((o) => o.unitArrive > 0)
     const allArrived = orders.every((o) => o.unitArrive >= o.unit)
+    // Default "unpaid" when no payment row exists (e.g. a customer who never had
+    // orders/payments tied to this event yet) — keeps physically-ready cards
+    // out of "Siap Dikirim" by default rather than slipping through.
+    const paymentStatus: PaymentStatus = paymentMap.get(`${customerKey}|${event}`) ?? "unpaid"
+    const paymentClear = paymentStatus === "paid" || paymentStatus === "overpaid"
     const status: ShipStatus = !anyArrived
       ? "not_arrived"
       : !allArrived
         ? "partial"
         : totalToShip > 0
-          ? "ready"
+          ? (paymentClear ? "ready" : "ready_unpaid")
           : "shipped"
 
     return {
@@ -75,6 +82,7 @@ function buildShipGroups(
       weightKg: Math.ceil(totalToShipGram / 1000),
       ongkirPerKg,
       status,
+      paymentStatus,
     }
   })
 }
@@ -83,7 +91,8 @@ async function fetchCustomerDetails(customerIds: Set<string>): Promise<Map<strin
   const detailMap = new Map<string, CustomerDetail>()
   if (customerIds.size === 0) return detailMap
   const rows = await sql`
-    SELECT instagram_id, whatsapp, data_diri, ekspedisi, ongkos_kirim
+    SELECT instagram_id, name, whatsapp, data_diri, ekspedisi, ongkos_kirim,
+           bank_name, bank_account_number, bank_account_holder
     FROM customers
     WHERE lower(replace(instagram_id, '@', '')) = ANY(${[...customerIds]})
   `
@@ -91,6 +100,7 @@ async function fetchCustomerDetails(customerIds: Set<string>): Promise<Map<strin
     const id = normalizeId(r.instagram_id)
     if (id) {
       detailMap.set(id, {
+        name: r.name ?? "",
         whatsapp: r.whatsapp ?? "",
         dataDiri: r.data_diri ?? "",
         ekspedisi: r.ekspedisi ?? "",
@@ -139,13 +149,21 @@ export async function getShipOrdersFiltered(opts: {
   const customerIds = new Set<string>()
   for (const r of orderRows) customerIds.add(normalizeId(r.customer))
 
-  const detailMap = await fetchCustomerDetails(customerIds)
-  const allGroups = buildShipGroups(orderRows, detailMap)
+  // Fetch customer details and payment status concurrently — both keyed by
+  // normalized customer handle (payment status additionally by event).
+  const [detailMap, paymentRows] = await Promise.all([
+    fetchCustomerDetails(customerIds),
+    getPaymentStatus(event),
+  ])
+  const paymentMap = new Map<string, PaymentStatus>()
+  for (const row of paymentRows) paymentMap.set(`${row.customer}|${row.event}`, row.status)
+
+  const allGroups = buildShipGroups(orderRows, detailMap, paymentMap)
 
   // Counts and the filtered list both derive from the same in-memory status,
   // so the tab badges can never drift from the rows actually shown.
   const counts: Record<ShipSegment, number> = {
-    all: 0, not_arrived: 0, partial: 0, ready: 0, shipped: 0,
+    all: 0, not_arrived: 0, partial: 0, ready: 0, ready_unpaid: 0, shipped: 0,
   }
   const filteredGroups: ShipCustomer[] = []
   for (const g of allGroups) {
@@ -291,18 +309,23 @@ export async function shipMergedCustomerOrders(params: ShipMergedParams): Promis
 // ─── Shipments ──────────────────────────────────────────────────────────────
 
 export async function getShippingRecords(): Promise<ShippingRecord[]> {
+  // Join customers via the existing FK (shipments.customer → customers.instagram_id)
+  // so the page can show the human-readable name alongside the IG handle.
   const rows = await sql`
-    SELECT id, event, customer, shipping_id, invoicing,
-           weight_estimation, ongkir, ongkir_total, is_last_shipment,
-           created_at, updated_at, tracking_number, merge_group
-    FROM shipments
-    WHERE shipping_id != ''
-    ORDER BY id ASC
+    SELECT s.id, s.event, s.customer, c.name AS customer_name,
+           s.shipping_id, s.invoicing,
+           s.weight_estimation, s.ongkir, s.ongkir_total, s.is_last_shipment,
+           s.created_at, s.updated_at, s.tracking_number, s.merge_group
+    FROM shipments s
+    LEFT JOIN customers c ON c.instagram_id = s.customer
+    WHERE s.shipping_id != ''
+    ORDER BY s.id ASC
   `
   return rows.map((r) => ({
     rowNumber: r.id,
     event: r.event,
     customer: r.customer,
+    customerName: r.customer_name ?? "",
     shippingId: String(r.shipping_id).padStart(4, "0"),
     invoicing: r.invoicing ?? "",
     weightEstimation: Number(r.weight_estimation) || 0,

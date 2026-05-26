@@ -34,6 +34,7 @@ export async function POST(req: NextRequest) {
 
     const result = await addCustomer({
       instagramId,
+      name: String(body.name ?? "").trim(),
       whatsapp: String(body.whatsapp ?? "").trim(),
       dataDiri: String(body.dataDiri ?? "").trim(),
       ekspedisi: String(body.ekspedisi ?? "").trim(),

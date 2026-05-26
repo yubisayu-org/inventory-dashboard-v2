@@ -9,7 +9,7 @@
 -- Reference data is re-importable from CSV via scripts/import-jne-rates.ts
 -- (TRUNCATE + reload), so this table is not backed up / version-controlled.
 
-CREATE TABLE jne_rates (
+CREATE TABLE IF NOT EXISTS jne_rates (
   id                   SERIAL PRIMARY KEY,
   provinsi_nama        TEXT NOT NULL,
   kab_kota_nama        TEXT NOT NULL,
@@ -22,10 +22,11 @@ CREATE TABLE jne_rates (
 -- Case-insensitive composite lookup (city + district). Plain index, NOT unique:
 -- the source has a couple of benign duplicate pairs (identical price), so reads
 -- use LIMIT 1.
-CREATE INDEX idx_jne_rates_lookup
+CREATE INDEX IF NOT EXISTS idx_jne_rates_lookup
   ON jne_rates (upper(kab_kota_nama), upper(kecamatan_nama));
 
 -- Read-only access for the runtime role (matches 019_app_runtime_role.sql).
 -- ALTER DEFAULT PRIVILEGES already covers owner-created tables, but grant
 -- explicitly so this is self-documenting and safe regardless of run order.
+-- (Re-granting an already-granted privilege is a no-op.)
 GRANT SELECT ON jne_rates TO app_runtime;

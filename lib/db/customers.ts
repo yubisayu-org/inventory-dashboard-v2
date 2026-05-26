@@ -7,7 +7,7 @@ import type { CustomerDetail, CustomerRow, CustomerInput } from "./types"
 export async function lookupCustomerDetail(instagramId: string): Promise<CustomerDetail | null> {
   const searchId = normalizeId(instagramId)
   const rows = await sql`
-    SELECT whatsapp, data_diri, ekspedisi, ongkos_kirim,
+    SELECT name, whatsapp, data_diri, ekspedisi, ongkos_kirim,
            bank_name, bank_account_number, bank_account_holder
     FROM customers
     WHERE lower(replace(instagram_id, '@', '')) = ${searchId}
@@ -16,6 +16,7 @@ export async function lookupCustomerDetail(instagramId: string): Promise<Custome
   if (rows.length === 0) return null
   const r = rows[0]
   return {
+    name: r.name ?? "",
     whatsapp: r.whatsapp ?? "",
     dataDiri: r.data_diri ?? "",
     ekspedisi: r.ekspedisi ?? "",
@@ -43,7 +44,7 @@ export async function updateCustomerBankInfo(
 
 export async function getCustomers(): Promise<CustomerRow[]> {
   const rows = await sql`
-    SELECT id, instagram_id, whatsapp, data_diri, ekspedisi, ongkos_kirim,
+    SELECT id, instagram_id, name, whatsapp, data_diri, ekspedisi, ongkos_kirim,
            bank_name, bank_account_number, bank_account_holder,
            created_at, updated_at
     FROM customers
@@ -52,6 +53,7 @@ export async function getCustomers(): Promise<CustomerRow[]> {
   return rows.map((r) => ({
     id: r.id as number,
     instagramId: r.instagram_id ?? "",
+    name: r.name ?? "",
     whatsapp: r.whatsapp ?? "",
     dataDiri: r.data_diri ?? "",
     ekspedisi: r.ekspedisi ?? "",
@@ -67,10 +69,10 @@ export async function getCustomers(): Promise<CustomerRow[]> {
 export async function addCustomer(data: CustomerInput): Promise<{ id: number }> {
   const rows = await sql`
     INSERT INTO customers (
-      instagram_id, whatsapp, data_diri, ekspedisi, ongkos_kirim,
+      instagram_id, name, whatsapp, data_diri, ekspedisi, ongkos_kirim,
       bank_name, bank_account_number, bank_account_holder
     ) VALUES (
-      ${data.instagramId}, ${data.whatsapp}, ${data.dataDiri}, ${data.ekspedisi}, ${data.ongkosKirim},
+      ${data.instagramId}, ${data.name}, ${data.whatsapp}, ${data.dataDiri}, ${data.ekspedisi}, ${data.ongkosKirim},
       ${data.bankName}, ${data.bankAccountNumber}, ${data.bankAccountHolder}
     )
     RETURNING id
@@ -82,6 +84,7 @@ export async function updateCustomer(id: number, data: CustomerInput): Promise<v
   await sql`
     UPDATE customers
     SET instagram_id        = ${data.instagramId},
+        name                = ${data.name},
         whatsapp            = ${data.whatsapp},
         data_diri           = ${data.dataDiri},
         ekspedisi           = ${data.ekspedisi},
@@ -126,6 +129,7 @@ export async function lookupOngkir(kabKota: string, kecamatan: string): Promise<
  */
 export async function registerCustomer(data: {
   instagramId: string
+  name: string
   whatsapp: string
   dataDiri: string
   ekspedisi: string
@@ -134,6 +138,7 @@ export async function registerCustomer(data: {
   const norm = normalizeId(data.instagramId)
   const updated = await sql`
     UPDATE customers SET
+      name         = CASE WHEN name      = '' THEN ${data.name}      ELSE name      END,
       whatsapp     = CASE WHEN whatsapp  = '' THEN ${data.whatsapp}  ELSE whatsapp  END,
       data_diri    = CASE WHEN data_diri = '' THEN ${data.dataDiri}  ELSE data_diri END,
       ekspedisi    = CASE WHEN ekspedisi = '' THEN ${data.ekspedisi} ELSE ekspedisi END,
@@ -145,8 +150,8 @@ export async function registerCustomer(data: {
   if (updated.length) return { id: updated[0].id as number, created: false }
 
   const inserted = await sql`
-    INSERT INTO customers (instagram_id, whatsapp, data_diri, ekspedisi, ongkos_kirim)
-    VALUES (${norm}, ${data.whatsapp}, ${data.dataDiri}, ${data.ekspedisi}, ${data.ongkosKirim})
+    INSERT INTO customers (instagram_id, name, whatsapp, data_diri, ekspedisi, ongkos_kirim)
+    VALUES (${norm}, ${data.name}, ${data.whatsapp}, ${data.dataDiri}, ${data.ekspedisi}, ${data.ongkosKirim})
     RETURNING id
   `
   return { id: inserted[0].id as number, created: true }

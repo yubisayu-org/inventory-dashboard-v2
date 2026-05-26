@@ -382,6 +382,16 @@ export default function ShipmentsClient() {
         cell: ({ getValue }) => <span>{displayIg(getValue<string>())}</span>,
       },
       {
+        accessorKey: "customerName",
+        header: "Name",
+        filterFn: "textContains",
+        size: 160,
+        cell: ({ getValue }) => {
+          const v = getValue<string>()
+          return <span className={v ? "" : "text-gray-400"}>{v || "—"}</span>
+        },
+      },
+      {
         accessorKey: "invoicing",
         header: "Items",
         filterFn: "textContains",
@@ -579,7 +589,7 @@ export default function ShipmentsClient() {
           enableRowSelection
           rowSelection={rowSelection}
           onRowSelectionChange={setRowSelection}
-          initialVisibility={{ updatedAt: false }}
+          initialVisibility={{ updatedAt: false, isLastShipment: false }}
           initialSorting={[{ id: "createdAt", desc: true }]}
         />
       )}

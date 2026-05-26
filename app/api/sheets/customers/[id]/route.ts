@@ -26,6 +26,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
 
     await updateCustomer(id, {
       instagramId,
+      name: String(body.name ?? "").trim(),
       whatsapp: String(body.whatsapp ?? "").trim(),
       dataDiri: String(body.dataDiri ?? "").trim(),
       ekspedisi: String(body.ekspedisi ?? "").trim(),

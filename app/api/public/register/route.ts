@@ -72,16 +72,25 @@ async function verifyTurnstile(token: string, ip: string | null): Promise<boolea
   }
 }
 
-// Fold the form's structured fields into the single `data_diri` free-text column
-// (phone is stored separately in `whatsapp`). Multi-line; the dashboard renders
-// it with `whitespace-pre-line`.
+// Fold the form's structured fields into the single `data_diri` free-text column,
+// matching the legacy labeled format (Nama:/Telepon:/Alamat:) so the blob is
+// directly usable on printed shipping labels. Phone is duplicated here (also
+// stored in the `whatsapp` column) on purpose. Empty fields are skipped.
+// Dashboard renders this with `whitespace-pre-line`.
 function composeDataDiri(b: Record<string, string>): string {
   const name = [b.nama_depan, b.nama_belakang].filter(Boolean).join(" ").trim()
   const region = [b.kecamatan, b.kota, b.provinsi].filter(Boolean).join(", ")
   const regionLine = [region, b.kode_pos].filter(Boolean).join(" ").trim()
-  const lines = [name, b.jalan, regionLine]
+  const lines: string[] = []
+  if (name) lines.push(`Nama: ${name}`)
+  if (b.ponsel) lines.push(`Telepon: ${b.ponsel}`)
+  if (b.jalan || regionLine) {
+    lines.push("Alamat Lengkap:")
+    if (b.jalan) lines.push(`Alamat: ${b.jalan}`)
+    if (regionLine) lines.push(regionLine)
+  }
   if (b.email) lines.push(`Email: ${b.email}`)
-  return lines.filter(Boolean).join("\n")
+  return lines.join("\n")
 }
 
 export async function POST(req: NextRequest) {
@@ -135,8 +144,10 @@ export async function POST(req: NextRequest) {
 
   try {
     const ongkosKirim = await lookupOngkir(b.kota, b.kecamatan)
+    const name = [b.nama_depan, b.nama_belakang].filter(Boolean).join(" ").trim()
     const result = await registerCustomer({
       instagramId: b.instagram,
+      name,
       whatsapp: b.ponsel,
       dataDiri: composeDataDiri(b),
       ekspedisi: b.ekspedisi,

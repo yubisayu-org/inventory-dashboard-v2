@@ -4,13 +4,14 @@ import { displayIg } from "@/lib/format"
 import TableSkeleton from "@/components/TableSkeleton"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import type { ShipCustomer, ShipOrdersParams, ShipSegment, ShipStatus, ShipOrdersFiltered } from "@/lib/db"
+import type { ShipCustomer, ShipOrdersParams, ShipSegment, ShipStatus, ShipOrdersFiltered, PaymentStatus } from "@/lib/db"
 import { normalizeId } from "@/lib/db/helpers"
 import { generateShippingLabel } from "@/lib/shipping-label"
 import { useModalDismiss } from "@/hooks/useModalDismiss"
 import { useResizableColumns } from "@/hooks/useResizableColumns"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import EventSelect from "@/components/EventSelect"
+import { InvoiceDetailDrawer } from "@/app/dashboard/invoice/InvoiceDetailDrawer"
 
 type Segment = ShipSegment
 
@@ -18,6 +19,7 @@ const SEGMENTS: { id: Segment; label: string }[] = [
   { id: "all", label: "Semua" },
   { id: "not_arrived", label: "Belum Tiba" },
   { id: "partial", label: "Tiba Sebagian" },
+  { id: "ready_unpaid", label: "Belum Bayar" },
   { id: "ready", label: "Siap Dikirim" },
   { id: "shipped", label: "Sudah Dikirim" },
 ]
@@ -27,14 +29,25 @@ const STATUS_BADGE: Record<ShipStatus, { label: string; cls: string }> = {
   not_arrived: { label: "Belum Tiba", cls: "bg-gray-100 text-gray-500" },
   partial: { label: "Tiba Sebagian", cls: "bg-amber-100 text-amber-700" },
   ready: { label: "Siap Dikirim", cls: "bg-brand/10 text-brand" },
+  ready_unpaid: { label: "Belum Bayar", cls: "bg-orange-100 text-orange-700" },
   shipped: { label: "Sudah Dikirim", cls: "bg-green-100 text-green-700" },
+}
+
+// Payment-status chip rendered on every ship card so the new "paid/overpaid"
+// criterion is visible at a glance.
+const PAYMENT_BADGE: Record<PaymentStatus, { label: string; cls: string }> = {
+  paid:     { label: "Lunas",    cls: "bg-green-100 text-green-700" },
+  overpaid: { label: "Lebih",    cls: "bg-blue-100 text-blue-700" },
+  partial:  { label: "Sebagian", cls: "bg-amber-100 text-amber-700" },
+  unpaid:   { label: "Belum",    cls: "bg-rose-100 text-rose-700" },
+  void:     { label: "Void",     cls: "bg-gray-100 text-gray-500" },
 }
 
 export default function ShipClient() {
   const router = useRouter()
   const sheetOptions = useSheetOptions()
   const [groups, setGroups] = useState<ShipCustomer[]>([])
-  const [counts, setCounts] = useState<Record<Segment, number>>({ all: 0, not_arrived: 0, partial: 0, ready: 0, shipped: 0 })
+  const [counts, setCounts] = useState<Record<Segment, number>>({ all: 0, not_arrived: 0, partial: 0, ready: 0, ready_unpaid: 0, shipped: 0 })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [segment, setSegment] = useState<Segment>("ready")
@@ -46,6 +59,7 @@ export default function ShipClient() {
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null)
   const [bulkError, setBulkError] = useState<string | null>(null)
   const [merging, setMerging] = useState(false)
+  const [invoiceCustomer, setInvoiceCustomer] = useState<string | null>(null)
 
   // Debounce search
   useEffect(() => {
@@ -157,7 +171,7 @@ export default function ShipClient() {
   }
 
   return (
-    <div className="flex flex-col gap-4 max-w-3xl">
+    <div className="flex flex-col gap-4">
       {/* Segment control */}
       <div className="flex items-center gap-1 rounded-xl border border-cream-border bg-white p-1">
         {SEGMENTS.map((s) => (
@@ -282,6 +296,7 @@ export default function ShipClient() {
                 isSelected={selected.has(key)}
                 onToggleSelect={c.totalToShip > 0 ? () => toggleSelect(key) : undefined}
                 onShipped={() => { setSegment("all"); refresh() }}
+                onOpenInvoice={() => setInvoiceCustomer(c.customer)}
               />
             )
           })}
@@ -296,6 +311,12 @@ export default function ShipClient() {
           onSuccess={() => { setMerging(false); setSelected(new Set()); setSegment("all"); refresh() }}
         />
       )}
+      {invoiceCustomer && (
+        <InvoiceDetailDrawer
+          customer={invoiceCustomer}
+          onClose={() => setInvoiceCustomer(null)}
+        />
+      )}
     </div>
   )
 }
@@ -305,11 +326,13 @@ function CustomerCard({
   isSelected,
   onToggleSelect,
   onShipped,
+  onOpenInvoice,
 }: {
   customer: ShipCustomer
   isSelected?: boolean
   onToggleSelect?: () => void
   onShipped: () => void
+  onOpenInvoice: () => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const [confirming, setConfirming] = useState(false)
@@ -330,10 +353,20 @@ function CustomerCard({
           )}
         <div className="flex flex-col gap-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-semibold text-foreground">{displayIg(c.customer).toUpperCase()}</span>
+            <button
+              type="button"
+              onClick={onOpenInvoice}
+              className="text-sm font-semibold text-foreground hover:text-brand hover:underline cursor-pointer text-left"
+              title="Lihat invoice"
+            >
+              {displayIg(c.customer).toUpperCase()}
+            </button>
             <span className="text-sm text-gray-500 font-medium">{c.event}</span>
             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[c.status].cls}`}>
               {STATUS_BADGE[c.status].label}
+            </span>
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${PAYMENT_BADGE[c.paymentStatus].cls}`}>
+              {PAYMENT_BADGE[c.paymentStatus].label}
             </span>
             {customerDetail?.ekspedisi && (
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
