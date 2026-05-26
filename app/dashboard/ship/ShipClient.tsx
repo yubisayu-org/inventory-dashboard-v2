@@ -19,7 +19,7 @@ const SEGMENTS: { id: Segment; label: string }[] = [
   { id: "not_arrived", label: "Belum Tiba" },
   { id: "partial", label: "Tiba Sebagian" },
   { id: "ready", label: "Siap Dikirim" },
-  { id: "ready_unpaid", label: "Menunggu Pembayaran" },
+  { id: "ready_unpaid", label: "Belum Bayar" },
   { id: "shipped", label: "Sudah Dikirim" },
 ]
 
@@ -28,7 +28,7 @@ const STATUS_BADGE: Record<ShipStatus, { label: string; cls: string }> = {
   not_arrived: { label: "Belum Tiba", cls: "bg-gray-100 text-gray-500" },
   partial: { label: "Tiba Sebagian", cls: "bg-amber-100 text-amber-700" },
   ready: { label: "Siap Dikirim", cls: "bg-brand/10 text-brand" },
-  ready_unpaid: { label: "Menunggu Pembayaran", cls: "bg-orange-100 text-orange-700" },
+  ready_unpaid: { label: "Belum Bayar", cls: "bg-orange-100 text-orange-700" },
   shipped: { label: "Sudah Dikirim", cls: "bg-green-100 text-green-700" },
 }
 
