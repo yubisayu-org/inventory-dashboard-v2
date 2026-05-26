@@ -1,6 +1,6 @@
 "use client"
 
-import { displayIg } from "@/lib/format"
+import { displayIg, fmt } from "@/lib/format"
 import TableSkeleton from "@/components/TableSkeleton"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
@@ -324,6 +324,7 @@ function CustomerCard({
   onShipped: () => void
 }) {
   const [expanded, setExpanded] = useState(false)
+  const [expandedInvoice, setExpandedInvoice] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const { customerDetail } = c
   const { widths, startResize } = useResizableColumns({ items: 200, unit: 80, unitArrive: 80, unitShip: 80, toShip: 80 })
@@ -342,15 +343,7 @@ function CustomerCard({
           )}
         <div className="flex flex-col gap-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <a
-              href={`/dashboard/invoice?customer=${encodeURIComponent(c.customer)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-sm font-semibold text-foreground hover:text-brand hover:underline"
-              title="Lihat invoice (tab baru)"
-            >
-              {displayIg(c.customer).toUpperCase()}
-            </a>
+            <span className="text-sm font-semibold text-foreground">{displayIg(c.customer).toUpperCase()}</span>
             <span className="text-sm text-gray-500 font-medium">{c.event}</span>
             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[c.status].cls}`}>
               {STATUS_BADGE[c.status].label}
@@ -466,6 +459,63 @@ function CustomerCard({
           )}
         </div>
       )}
+
+      <div className="border-t border-cream-border">
+        <button
+          type="button"
+          onClick={() => setExpandedInvoice((v) => !v)}
+          className="w-full flex items-center justify-between px-5 py-3 text-xs text-gray-500 hover:text-brand transition-colors"
+        >
+          <span className="font-medium">Invoice</span>
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={`transition-transform ${expandedInvoice ? "rotate-180" : ""}`}
+          >
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </button>
+        {expandedInvoice && (
+          <div className="px-5 pb-4 text-sm">
+            <InvoiceRow label="Subtotal Barang"      value={`Rp ${fmt(c.invoice.subtotal)}`} />
+            <InvoiceRow label="Estimasi Berat"       value={`${c.invoice.weightKg} kg`} />
+            <InvoiceRow label="Estimasi Ongkos Kirim" value={`Rp ${fmt(c.invoice.ongkir)}`} />
+            {c.invoice.adjustments !== 0 && (
+              <InvoiceRow label="Biaya Lainnya" value={`Rp ${fmt(c.invoice.adjustments)}`} />
+            )}
+            <div className="flex justify-between py-1 mt-2 pt-2 border-t border-cream-border font-semibold text-foreground">
+              <span>Total</span>
+              <span className="tabular-nums">Rp {fmt(c.invoice.total)}</span>
+            </div>
+            <InvoiceRow label="Pembayaran" value={`Rp ${fmt(c.invoice.paid)}`} />
+            <div className="flex justify-between py-1 text-gray-500">
+              <span>Sisa Pelunasan</span>
+              <span className={`tabular-nums font-medium ${
+                c.invoice.outstanding > 0 ? "text-red-600"
+                : c.invoice.outstanding < 0 ? "text-purple-600"
+                : "text-green-600"
+              }`}>
+                Rp {fmt(c.invoice.outstanding)}
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function InvoiceRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between py-1 text-gray-500">
+      <span>{label}</span>
+      <span className="text-foreground tabular-nums">{value}</span>
     </div>
   )
 }

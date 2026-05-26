@@ -187,6 +187,24 @@ export interface RefundRow {
  */
 export type ShipStatus = "not_arrived" | "partial" | "ready" | "ready_unpaid" | "shipped"
 
+/**
+ * Invoice totals for a (customer, event) pair — same math as getInvoiceForCustomer,
+ * surfaced on each ship card so ops can verify amounts inline.
+ *
+ *   weightKg / ongkir are the BILLED invoice values (ceil of total gram → kg, and
+ *   ongkos_kirim × billed kg) — distinct from ShipCustomer.weightKg / ongkirPerKg
+ *   which apply only to the units actually being shipped.
+ */
+export interface InvoiceSummary {
+  subtotal: number
+  weightKg: number
+  ongkir: number
+  adjustments: number
+  total: number
+  paid: number
+  outstanding: number
+}
+
 export interface ShipCustomer {
   customer: string
   event: string
@@ -197,6 +215,7 @@ export interface ShipCustomer {
   ongkirPerKg: number
   status: ShipStatus
   paymentStatus: PaymentStatus
+  invoice: InvoiceSummary
 }
 
 export interface InvoiceResult {

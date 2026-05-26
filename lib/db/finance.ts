@@ -374,7 +374,11 @@ export type PaymentStatus = "void" | "unpaid" | "partial" | "paid" | "overpaid"
 export interface PaymentStatusRow {
   event: string
   customer: string
-  invoiceTotal: number
+  subtotal: number       // orders subtotal (unit_price × unit)
+  weightKg: number       // billed weight = ceil(total_gram / 1000)
+  ongkir: number         // billed ongkir = ongkos_kirim × weightKg
+  adjustments: number    // sum of adjustments
+  invoiceTotal: number   // subtotal + ongkir + adjustments
   totalPaid: number
   outstanding: number
   status: PaymentStatus
@@ -436,6 +440,10 @@ export async function getPaymentStatus(event?: string): Promise<PaymentStatusRow
     SELECT
       k.event AS event,
       k.cust_key AS customer,
+      COALESCE(oa.subtotal, 0)::int AS subtotal,
+      CEIL(COALESCE(oa.total_gram, 0)::numeric / 1000)::int AS weight_kg,
+      (COALESCE(c.ongkos_kirim, 0) * CEIL(COALESCE(oa.total_gram, 0)::numeric / 1000))::int AS ongkir,
+      COALESCE(adj.total_adj, 0)::int AS adjustments,
       (COALESCE(oa.subtotal, 0)
         + COALESCE(c.ongkos_kirim, 0) * CEIL(COALESCE(oa.total_gram, 0)::numeric / 1000)
         + COALESCE(adj.total_adj, 0))::int AS invoice_total,
@@ -454,6 +462,10 @@ export async function getPaymentStatus(event?: string): Promise<PaymentStatusRow
     return {
       event: r.event as string,
       customer: r.customer as string,
+      subtotal: Number(r.subtotal),
+      weightKg: Number(r.weight_kg),
+      ongkir: Number(r.ongkir),
+      adjustments: Number(r.adjustments),
       invoiceTotal,
       totalPaid,
       outstanding: invoiceTotal - totalPaid,

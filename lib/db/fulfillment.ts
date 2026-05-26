@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto"
 import sql from "../db-pool"
 import { normalizeId, normalizeCustomer, tsToString } from "./helpers"
 import { allocateFifo } from "../fifo-fill"
-import type { ShipOrderLine, ShipCustomer, ShipStatus, ShipOrdersParams, ShipMergedParams, ShipMergedResult, ShippingRecord, CustomerDetail } from "./types"
-import { getPaymentStatus, type PaymentStatus } from "./finance"
+import type { ShipOrderLine, ShipCustomer, ShipStatus, ShipOrdersParams, ShipMergedParams, ShipMergedResult, ShippingRecord, CustomerDetail, InvoiceSummary } from "./types"
+import { getPaymentStatus, type PaymentStatus, type PaymentStatusRow } from "./finance"
 
 // ─── Ship Orders ────────────────────────────────────────────────────────────
 
@@ -21,10 +21,17 @@ function buildSearchFilters(opts: { event?: string; search?: string }) {
   return { conditions, params }
 }
 
+// Empty invoice + unpaid status for the defensive case where a (customer, event)
+// is missing from the payment query (shouldn't happen in practice — all_keys
+// covers every event/customer with orders, payments, or adjustments).
+const EMPTY_INVOICE: InvoiceSummary = {
+  subtotal: 0, weightKg: 0, ongkir: 0, adjustments: 0, total: 0, paid: 0, outstanding: 0,
+}
+
 function buildShipGroups(
   orderRows: Record<string, unknown>[],
   detailMap: Map<string, CustomerDetail>,
-  paymentMap: Map<string, PaymentStatus>,
+  paymentMap: Map<string, PaymentStatusRow>,
 ): ShipCustomer[] {
   const groupMap = new Map<string, { customer: string; event: string; rows: Record<string, unknown>[] }>()
   for (const row of orderRows) {
@@ -61,7 +68,19 @@ function buildShipGroups(
     // Default "unpaid" when no payment row exists (e.g. a customer who never had
     // orders/payments tied to this event yet) — keeps physically-ready cards
     // out of "Siap Dikirim" by default rather than slipping through.
-    const paymentStatus: PaymentStatus = paymentMap.get(`${customerKey}|${event}`) ?? "unpaid"
+    const paymentRow = paymentMap.get(`${customerKey}|${event}`)
+    const paymentStatus: PaymentStatus = paymentRow?.status ?? "unpaid"
+    const invoice: InvoiceSummary = paymentRow
+      ? {
+          subtotal: paymentRow.subtotal,
+          weightKg: paymentRow.weightKg,
+          ongkir: paymentRow.ongkir,
+          adjustments: paymentRow.adjustments,
+          total: paymentRow.invoiceTotal,
+          paid: paymentRow.totalPaid,
+          outstanding: paymentRow.outstanding,
+        }
+      : EMPTY_INVOICE
     const paymentClear = paymentStatus === "paid" || paymentStatus === "overpaid"
     const status: ShipStatus = !anyArrived
       ? "not_arrived"
@@ -83,6 +102,7 @@ function buildShipGroups(
       ongkirPerKg,
       status,
       paymentStatus,
+      invoice,
     }
   })
 }
@@ -153,8 +173,8 @@ export async function getShipOrdersFiltered(opts: {
     fetchCustomerDetails(customerIds),
     getPaymentStatus(event),
   ])
-  const paymentMap = new Map<string, PaymentStatus>()
-  for (const row of paymentRows) paymentMap.set(`${row.customer}|${row.event}`, row.status)
+  const paymentMap = new Map<string, PaymentStatusRow>()
+  for (const row of paymentRows) paymentMap.set(`${row.customer}|${row.event}`, row)
 
   const allGroups = buildShipGroups(orderRows, detailMap, paymentMap)
 
