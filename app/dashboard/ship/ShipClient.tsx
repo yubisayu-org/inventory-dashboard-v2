@@ -171,7 +171,7 @@ export default function ShipClient() {
   return (
     <div className="flex flex-col gap-4 max-w-3xl">
       {/* Segment control */}
-      <div className="flex items-center gap-1 rounded-xl border border-cream-border bg-white p-1">
+      <div className="flex flex-wrap items-center gap-1 rounded-xl border border-cream-border bg-white p-1">
         {SEGMENTS.map((s) => (
           <button
             key={s.id}
