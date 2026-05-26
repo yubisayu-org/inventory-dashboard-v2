@@ -342,7 +342,13 @@ function CustomerCard({
           )}
         <div className="flex flex-col gap-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-semibold text-foreground">{displayIg(c.customer).toUpperCase()}</span>
+            <a
+              href={`/dashboard/invoice?customer=${encodeURIComponent(c.customer)}`}
+              className="text-sm font-semibold text-foreground hover:text-brand hover:underline"
+              title="Lihat invoice"
+            >
+              {displayIg(c.customer).toUpperCase()}
+            </a>
             <span className="text-sm text-gray-500 font-medium">{c.event}</span>
             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[c.status].cls}`}>
               {STATUS_BADGE[c.status].label}
