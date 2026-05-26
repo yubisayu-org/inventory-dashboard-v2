@@ -344,8 +344,10 @@ function CustomerCard({
           <div className="flex items-center gap-2 flex-wrap">
             <a
               href={`/dashboard/invoice?customer=${encodeURIComponent(c.customer)}`}
+              target="_blank"
+              rel="noopener noreferrer"
               className="text-sm font-semibold text-foreground hover:text-brand hover:underline"
-              title="Lihat invoice"
+              title="Lihat invoice (tab baru)"
             >
               {displayIg(c.customer).toUpperCase()}
             </a>
