@@ -91,7 +91,8 @@ async function fetchCustomerDetails(customerIds: Set<string>): Promise<Map<strin
   const detailMap = new Map<string, CustomerDetail>()
   if (customerIds.size === 0) return detailMap
   const rows = await sql`
-    SELECT instagram_id, whatsapp, data_diri, ekspedisi, ongkos_kirim
+    SELECT instagram_id, name, whatsapp, data_diri, ekspedisi, ongkos_kirim,
+           bank_name, bank_account_number, bank_account_holder
     FROM customers
     WHERE lower(replace(instagram_id, '@', '')) = ANY(${[...customerIds]})
   `
@@ -99,6 +100,7 @@ async function fetchCustomerDetails(customerIds: Set<string>): Promise<Map<strin
     const id = normalizeId(r.instagram_id)
     if (id) {
       detailMap.set(id, {
+        name: r.name ?? "",
         whatsapp: r.whatsapp ?? "",
         dataDiri: r.data_diri ?? "",
         ekspedisi: r.ekspedisi ?? "",
@@ -307,18 +309,23 @@ export async function shipMergedCustomerOrders(params: ShipMergedParams): Promis
 // ─── Shipments ──────────────────────────────────────────────────────────────
 
 export async function getShippingRecords(): Promise<ShippingRecord[]> {
+  // Join customers via the existing FK (shipments.customer → customers.instagram_id)
+  // so the page can show the human-readable name alongside the IG handle.
   const rows = await sql`
-    SELECT id, event, customer, shipping_id, invoicing,
-           weight_estimation, ongkir, ongkir_total, is_last_shipment,
-           created_at, updated_at, tracking_number, merge_group
-    FROM shipments
-    WHERE shipping_id != ''
-    ORDER BY id ASC
+    SELECT s.id, s.event, s.customer, c.name AS customer_name,
+           s.shipping_id, s.invoicing,
+           s.weight_estimation, s.ongkir, s.ongkir_total, s.is_last_shipment,
+           s.created_at, s.updated_at, s.tracking_number, s.merge_group
+    FROM shipments s
+    LEFT JOIN customers c ON c.instagram_id = s.customer
+    WHERE s.shipping_id != ''
+    ORDER BY s.id ASC
   `
   return rows.map((r) => ({
     rowNumber: r.id,
     event: r.event,
     customer: r.customer,
+    customerName: r.customer_name ?? "",
     shippingId: String(r.shipping_id).padStart(4, "0"),
     invoicing: r.invoicing ?? "",
     weightEstimation: Number(r.weight_estimation) || 0,

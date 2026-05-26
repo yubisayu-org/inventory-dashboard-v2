@@ -120,6 +120,7 @@ export interface ShipOrderLine {
 }
 
 export interface CustomerDetail {
+  name: string
   whatsapp: string
   dataDiri: string
   ekspedisi: string
@@ -132,6 +133,7 @@ export interface CustomerDetail {
 export interface CustomerRow {
   id: number
   instagramId: string
+  name: string
   whatsapp: string
   dataDiri: string
   ekspedisi: string
@@ -145,6 +147,7 @@ export interface CustomerRow {
 
 export interface CustomerInput {
   instagramId: string
+  name: string
   whatsapp: string
   dataDiri: string
   ekspedisi: string
@@ -275,6 +278,7 @@ export interface ShippingRecord {
   rowNumber: number
   event: string
   customer: string
+  customerName: string  // joined from customers.name; "" when unknown/backfill missed
   shippingId: string
   invoicing: string
   weightEstimation: number

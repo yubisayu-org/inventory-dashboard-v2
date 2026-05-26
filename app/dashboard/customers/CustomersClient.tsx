@@ -10,6 +10,7 @@ const modalInputCls = "w-full border border-cream-border rounded-lg px-3 py-2 te
 
 type DraftCustomer = {
   instagramId: string
+  name: string
   whatsapp: string
   dataDiri: string
   ekspedisi: string
@@ -21,6 +22,7 @@ type DraftCustomer = {
 
 const EMPTY_DRAFT: DraftCustomer = {
   instagramId: "",
+  name: "",
   whatsapp: "",
   dataDiri: "",
   ekspedisi: "",
@@ -33,6 +35,7 @@ const EMPTY_DRAFT: DraftCustomer = {
 function rowToDraft(row: CustomerRow): DraftCustomer {
   return {
     instagramId: row.instagramId,
+    name: row.name,
     whatsapp: row.whatsapp,
     dataDiri: row.dataDiri,
     ekspedisi: row.ekspedisi,
@@ -100,6 +103,15 @@ export default function CustomersClient() {
             )}
           </span>
         )
+      },
+    },
+    {
+      accessorKey: "name",
+      header: "Name",
+      filterFn: "textContains",
+      cell: ({ getValue }) => {
+        const v = getValue<string>()
+        return <span className={v ? "text-foreground" : "text-gray-400"}>{v || "—"}</span>
       },
     },
     {
@@ -320,6 +332,7 @@ function CustomerModal({
 
     const payload = {
       instagramId: draft.instagramId.trim(),
+      name: draft.name.trim(),
       whatsapp: draft.whatsapp.trim(),
       dataDiri: draft.dataDiri.trim(),
       ekspedisi: draft.ekspedisi.trim(),
@@ -383,6 +396,15 @@ function CustomerModal({
               ref={firstInputRef}
               {...field("instagramId")}
               placeholder="@username"
+              className={modalInputCls}
+            />
+          </label>
+
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-gray-500">Name</span>
+            <input
+              {...field("name")}
+              placeholder="Full name"
               className={modalInputCls}
             />
           </label>

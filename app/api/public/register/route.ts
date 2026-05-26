@@ -144,8 +144,10 @@ export async function POST(req: NextRequest) {
 
   try {
     const ongkosKirim = await lookupOngkir(b.kota, b.kecamatan)
+    const name = [b.nama_depan, b.nama_belakang].filter(Boolean).join(" ").trim()
     const result = await registerCustomer({
       instagramId: b.instagram,
+      name,
       whatsapp: b.ponsel,
       dataDiri: composeDataDiri(b),
       ekspedisi: b.ekspedisi,
