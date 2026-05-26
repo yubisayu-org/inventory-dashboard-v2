@@ -11,6 +11,7 @@ import { useModalDismiss } from "@/hooks/useModalDismiss"
 import { useResizableColumns } from "@/hooks/useResizableColumns"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import EventSelect from "@/components/EventSelect"
+import { InvoiceDetailDrawer } from "@/app/dashboard/invoice/InvoiceDetailDrawer"
 
 type Segment = ShipSegment
 
@@ -58,6 +59,7 @@ export default function ShipClient() {
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null)
   const [bulkError, setBulkError] = useState<string | null>(null)
   const [merging, setMerging] = useState(false)
+  const [invoiceCustomer, setInvoiceCustomer] = useState<string | null>(null)
 
   // Debounce search
   useEffect(() => {
@@ -294,6 +296,7 @@ export default function ShipClient() {
                 isSelected={selected.has(key)}
                 onToggleSelect={c.totalToShip > 0 ? () => toggleSelect(key) : undefined}
                 onShipped={() => { setSegment("all"); refresh() }}
+                onOpenInvoice={() => setInvoiceCustomer(c.customer)}
               />
             )
           })}
@@ -308,6 +311,12 @@ export default function ShipClient() {
           onSuccess={() => { setMerging(false); setSelected(new Set()); setSegment("all"); refresh() }}
         />
       )}
+      {invoiceCustomer && (
+        <InvoiceDetailDrawer
+          customer={invoiceCustomer}
+          onClose={() => setInvoiceCustomer(null)}
+        />
+      )}
     </div>
   )
 }
@@ -317,11 +326,13 @@ function CustomerCard({
   isSelected,
   onToggleSelect,
   onShipped,
+  onOpenInvoice,
 }: {
   customer: ShipCustomer
   isSelected?: boolean
   onToggleSelect?: () => void
   onShipped: () => void
+  onOpenInvoice: () => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const [expandedInvoice, setExpandedInvoice] = useState(false)
@@ -343,7 +354,14 @@ function CustomerCard({
           )}
         <div className="flex flex-col gap-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-semibold text-foreground">{displayIg(c.customer).toUpperCase()}</span>
+            <button
+              type="button"
+              onClick={onOpenInvoice}
+              className="text-sm font-semibold text-foreground hover:text-brand hover:underline cursor-pointer text-left"
+              title="Lihat invoice"
+            >
+              {displayIg(c.customer).toUpperCase()}
+            </button>
             <span className="text-sm text-gray-500 font-medium">{c.event}</span>
             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[c.status].cls}`}>
               {STATUS_BADGE[c.status].label}
