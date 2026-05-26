@@ -589,7 +589,7 @@ export default function ShipmentsClient() {
           enableRowSelection
           rowSelection={rowSelection}
           onRowSelectionChange={setRowSelection}
-          initialVisibility={{ updatedAt: false }}
+          initialVisibility={{ updatedAt: false, isLastShipment: false }}
           initialSorting={[{ id: "createdAt", desc: true }]}
         />
       )}
