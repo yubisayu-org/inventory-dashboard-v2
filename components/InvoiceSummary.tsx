@@ -31,10 +31,10 @@ export default function InvoiceSummary({
         <Row label="Estimasi Berat" value={`${fmt(totals.weightKg)} kg`} />
         <Row label="Estimasi Ongkos Kirim" value={`Rp ${fmt(estimasiOngkir)}`} />
         {biayaLainnya > 0 && (
-          <Row label="Diskon" value={`- Rp ${fmt(biayaLainnya)}`} />
+          <Row label="Biaya Lainnya" value={`+ Rp ${fmt(biayaLainnya)}`} />
         )}
         {biayaLainnya < 0 && (
-          <Row label="Biaya Lainnya" value={`+ Rp ${fmt(Math.abs(biayaLainnya))}`} />
+          <Row label="Diskon" value={`- Rp ${fmt(Math.abs(biayaLainnya))}`} />
         )}
         {total > 0 && (
           <Row label="Total" value={`Rp ${fmt(total)}`} strong separator />

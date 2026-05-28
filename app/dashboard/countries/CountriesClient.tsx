@@ -210,6 +210,7 @@ export default function CountriesClient() {
             {...field("kurs")}
             type="number"
             min="0"
+            step="any"
             placeholder="Kurs (IDR)"
             disabled={adding}
             className={formInputCls}
@@ -372,6 +373,7 @@ function EditCountryModal({
               onKeyDown={handleKeyDown}
               type="number"
               min="0"
+              step="any"
               placeholder="Kurs"
               className={modalInputCls}
             />
