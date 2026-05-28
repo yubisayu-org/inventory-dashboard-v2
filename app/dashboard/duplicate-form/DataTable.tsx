@@ -27,6 +27,30 @@ const PAGE_SIZE = 25
 const INPUT_CLS =
   "w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
 
+// Mirrors the icon used on /dashboard/customers next to customers whose
+// data_diri is empty, so a row with no address gets the same amber warning.
+function NoAddressIcon() {
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="text-amber-500 shrink-0"
+      aria-label="No address filled"
+    >
+      <title>No address filled</title>
+      <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+      <line x1="12" y1="9" x2="12" y2="13" />
+      <line x1="12" y1="17" x2="12.01" y2="17" />
+    </svg>
+  )
+}
+
 type EditForm = { event: string; customer: string; productId: string; unit: string; note: string }
 
 // ---------------------------------------------------------------------------
@@ -154,7 +178,12 @@ export default function DataTable() {
       accessorKey: "customer",
       header: "Customer",
       filterFn: "textContains",
-      cell: ({ getValue }) => <CopyableText text={displayIg(getValue<string>())} />,
+      cell: ({ row }) => (
+        <span className="inline-flex items-center gap-1.5">
+          <CopyableText text={displayIg(row.original.customer)} />
+          {!row.original.hasAddress && <NoAddressIcon />}
+        </span>
+      ),
     },
     {
       accessorKey: "items",
@@ -334,7 +363,10 @@ export default function DataTable() {
           return (
             <div key={r.rowNumber} className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
               <div className="flex items-start justify-between gap-3">
-                <div className="font-semibold text-sm text-foreground truncate"><span className="text-gray-300">@</span>{r.customer.replace(/^@/, "")}</div>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <div className="font-semibold text-sm text-foreground truncate"><span className="text-gray-300">@</span>{r.customer.replace(/^@/, "")}</div>
+                  {!r.hasAddress && <NoAddressIcon />}
+                </div>
                 <span className="shrink-0 text-[11px] text-gray-600 bg-cream border border-cream-border rounded-md px-2 py-0.5 font-semibold">{r.event}</span>
               </div>
               <div className="flex items-start justify-between gap-3 mt-2">

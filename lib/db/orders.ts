@@ -40,9 +40,12 @@ export async function getDuplicateFormRows(limit?: number): Promise<FormRow[]> {
         SELECT o.id, o.event, o.customer, o.product_id, o.unit_price,
                p.name AS product_name, o.unit, o.note,
                o.created_at, o.updated_at, o.unit_buy, o.receipt,
-               o.unit_arrive, o.unit_ship, o.unit_hold
+               o.unit_arrive, o.unit_ship, o.unit_hold,
+               c.data_diri AS customer_data_diri
         FROM orders o
         JOIN products p ON p.id = o.product_id
+        LEFT JOIN customers c
+          ON lower(replace(c.instagram_id, '@', '')) = lower(replace(o.customer, '@', ''))
         ORDER BY o.id DESC LIMIT ${limit}
       ) sub ORDER BY id ASC
     `
@@ -51,9 +54,12 @@ export async function getDuplicateFormRows(limit?: number): Promise<FormRow[]> {
       SELECT o.id, o.event, o.customer, o.product_id, o.unit_price,
              p.name AS product_name, o.unit, o.note,
              o.created_at, o.updated_at, o.unit_buy, o.receipt,
-             o.unit_arrive, o.unit_ship, o.unit_hold
+             o.unit_arrive, o.unit_ship, o.unit_hold,
+             c.data_diri AS customer_data_diri
       FROM orders o
       JOIN products p ON p.id = o.product_id
+      LEFT JOIN customers c
+        ON lower(replace(c.instagram_id, '@', '')) = lower(replace(o.customer, '@', ''))
       ORDER BY o.id ASC
     `
   }
@@ -74,9 +80,12 @@ export async function getDuplicateFormRowsForEvent(event: string): Promise<FormR
     SELECT o.id, o.event, o.customer, o.product_id, o.unit_price,
            p.name AS product_name, o.unit, o.note,
            o.created_at, o.updated_at, o.unit_buy, o.receipt,
-           o.unit_arrive, o.unit_ship, o.unit_hold
+           o.unit_arrive, o.unit_ship, o.unit_hold,
+           c.data_diri AS customer_data_diri
     FROM orders o
     JOIN products p ON p.id = o.product_id
+    LEFT JOIN customers c
+      ON lower(replace(c.instagram_id, '@', '')) = lower(replace(o.customer, '@', ''))
     WHERE o.event = ${event}
     ORDER BY o.id ASC
   `
@@ -145,9 +154,12 @@ export async function getDuplicateFormRowsPaginated(opts: {
             p.name AS product_name, o.unit, o.note,
             o.created_at, o.updated_at, o.unit_buy, o.receipt,
             o.unit_arrive, o.unit_ship, o.unit_hold,
+            c.data_diri AS customer_data_diri,
             COUNT(*) OVER() AS _total_count
      FROM orders o
      JOIN products p ON p.id = o.product_id
+     LEFT JOIN customers c
+       ON lower(replace(c.instagram_id, '@', '')) = lower(replace(o.customer, '@', ''))
      ${where}
      ORDER BY ${sortCol} ${sortDir}, o.id ${sortDir}
      LIMIT ${pageSize} OFFSET ${offset}`,
@@ -165,6 +177,8 @@ export async function getDuplicateFormRowsPaginated(opts: {
 }
 
 function mapFormRow(r: Record<string, unknown>): FormRow {
+  // NULL means the customer row doesn't exist (yet); treat as no address.
+  const dataDiri = (r.customer_data_diri as string | null) ?? ""
   return {
     rowNumber: r.id as number,
     event: r.event as string,
@@ -181,6 +195,7 @@ function mapFormRow(r: Record<string, unknown>): FormRow {
     unitArrive: (r.unit_arrive as number) ?? null,
     unitShip: (r.unit_ship as number) ?? null,
     unitHold: (r.unit_hold as number) ?? null,
+    hasAddress: dataDiri.trim().length > 0,
   }
 }
 
