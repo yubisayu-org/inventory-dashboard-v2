@@ -67,12 +67,17 @@ export async function getCustomers(): Promise<CustomerRow[]> {
 }
 
 export async function addCustomer(data: CustomerInput): Promise<{ id: number }> {
+  // Canonical form is bare lowercase, no '@'. Without this, "@User" and "user"
+  // would each create their own row and the order flow (which normalizes the
+  // handle on insert) would attach orders to a different row than the one the
+  // admin filled out.
+  const instagramId = normalizeId(data.instagramId)
   const rows = await sql`
     INSERT INTO customers (
       instagram_id, name, whatsapp, data_diri, ekspedisi, ongkos_kirim,
       bank_name, bank_account_number, bank_account_holder
     ) VALUES (
-      ${data.instagramId}, ${data.name}, ${data.whatsapp}, ${data.dataDiri}, ${data.ekspedisi}, ${data.ongkosKirim},
+      ${instagramId}, ${data.name}, ${data.whatsapp}, ${data.dataDiri}, ${data.ekspedisi}, ${data.ongkosKirim},
       ${data.bankName}, ${data.bankAccountNumber}, ${data.bankAccountHolder}
     )
     RETURNING id
@@ -81,9 +86,10 @@ export async function addCustomer(data: CustomerInput): Promise<{ id: number }> 
 }
 
 export async function updateCustomer(id: number, data: CustomerInput): Promise<void> {
+  const instagramId = normalizeId(data.instagramId)
   await sql`
     UPDATE customers
-    SET instagram_id        = ${data.instagramId},
+    SET instagram_id        = ${instagramId},
         name                = ${data.name},
         whatsapp            = ${data.whatsapp},
         data_diri           = ${data.dataDiri},

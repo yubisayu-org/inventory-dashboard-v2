@@ -34,7 +34,7 @@ CREATE TABLE customers (
   updated_at   TIMESTAMPTZ
 );
 
-CREATE INDEX idx_customers_instagram_normalized ON customers (lower(replace(instagram_id, '@', '')));
+CREATE UNIQUE INDEX customers_instagram_normalized_uniq ON customers (lower(replace(instagram_id, '@', '')));
 
 CREATE TABLE products (
   id              SERIAL PRIMARY KEY,

@@ -42,6 +42,10 @@ export interface FormRow {
   unitArrive: number | null
   unitShip: number | null
   unitHold: number | null
+  // True when the customer's data_diri (free-text address blob) is filled.
+  // Joined from the customers table by normalized handle; the List Order page
+  // shows an amber warning icon when this is false.
+  hasAddress: boolean
 }
 
 export type ExcessReason = "overbuy" | "overship" | "wrong_product"

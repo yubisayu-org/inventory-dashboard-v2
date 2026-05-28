@@ -32,6 +32,26 @@ function formatAmount(n: number): string {
   return new Intl.NumberFormat("id-ID").format(n)
 }
 
+function AmountSignHint({ value }: { value: string }) {
+  const n = Number(value)
+  const filled = value !== "" && Number.isFinite(n) && n !== 0
+  const tone = !filled
+    ? "text-amber-700 bg-amber-50 border-amber-200"
+    : n > 0
+      ? "text-red-700 bg-red-50 border-red-200"
+      : "text-green-700 bg-green-50 border-green-200"
+  const message = !filled
+    ? <><strong>Positive</strong> = Biaya Lainnya (adds to total). <strong>Negative</strong> = Diskon (reduces total).</>
+    : n > 0
+      ? <>Will display as <strong>Biaya Lainnya</strong> and <strong>add</strong> to the customer&apos;s total.</>
+      : <>Will display as <strong>Diskon</strong> and <strong>reduce</strong> the customer&apos;s total.</>
+  return (
+    <p className={`text-[11px] mt-1 px-2 py-1.5 leading-snug rounded-md border ${tone}`}>
+      {message}
+    </p>
+  )
+}
+
 export default function AdjustmentsClient() {
   const options = useSheetOptions()
   const [rows, setRows] = useState<AdjustmentRow[]>([])
@@ -313,6 +333,7 @@ function EditAdjustmentModal({
               onChange={(e) => setForm({ ...form, amount: e.target.value })}
               className={INPUT_CLASS}
             />
+            <AmountSignHint value={form.amount} />
           </div>
         </div>
 
@@ -406,7 +427,9 @@ function AddAdjustmentForm({
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
         </button>
       </div>
-      <p className="text-xs text-gray-400 mb-3">Positive amount = extra charge, negative amount = discount</p>
+      <div className="mb-3">
+        <AmountSignHint value={amount} />
+      </div>
       <form onSubmit={handleSubmit} className="flex items-end gap-3 flex-wrap">
         <div>
           <label className={LABEL}>Event <span className="text-brand">*</span></label>

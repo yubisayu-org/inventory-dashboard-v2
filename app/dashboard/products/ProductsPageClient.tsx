@@ -51,6 +51,16 @@ export default function ProductsPageClient() {
   const [mobileAddOpen, setMobileAddOpen] = useState(false)
   const [mobileSearch, setMobileSearch] = useState("")
   const [mobileSortDesc, setMobileSortDesc] = useState(true)
+  // When set, the Add form pre-fills itself from this product (Duplicate flow).
+  // The Add form clears this via onConsumeSeed once it has copied the values.
+  const [seedProduct, setSeedProduct] = useState<ProductRow | null>(null)
+  const consumeSeed = useCallback(() => setSeedProduct(null), [])
+  const handleDuplicate = useCallback((row: ProductRow) => {
+    setSeedProduct(row)
+    // Open the mobile add sheet too — no-op on desktop (it's hidden anyway),
+    // but on mobile the Add form is otherwise unreachable from a row card.
+    setMobileAddOpen(true)
+  }, [])
 
   // Mobile list: filter by search, then sort by id (creation order).
   // Default desc = newest-created first.
@@ -221,10 +231,11 @@ export default function ProductsPageClient() {
             )
           }
           onDeleted={() => setData((prev) => prev?.filter((r) => r.id !== row.original.id) ?? null)}
+          onDuplicate={handleDuplicate}
         />
       ),
     },
-  ], [countries, stores])
+  ], [countries, stores, handleDuplicate])
 
   const refreshButton = (
     <button
@@ -241,7 +252,13 @@ export default function ProductsPageClient() {
     <div className="flex flex-col gap-6">
       {/* Add form (desktop) */}
       <div className="hidden md:block">
-        <AddProductForm countries={countries} stores={stores} onAdded={() => load()} />
+        <AddProductForm
+          countries={countries}
+          stores={stores}
+          onAdded={() => load()}
+          seed={seedProduct}
+          onConsumeSeed={consumeSeed}
+        />
       </div>
 
       {loading && (
@@ -330,6 +347,7 @@ export default function ProductsPageClient() {
                           setData((prev) => prev?.map((r) => (r.id === p.id ? { ...r, ...updated } : r)) ?? null)
                         }
                         onDeleted={() => setData((prev) => prev?.filter((r) => r.id !== p.id) ?? null)}
+                        onDuplicate={handleDuplicate}
                       />
                     </div>
                   </div>
@@ -361,7 +379,13 @@ export default function ProductsPageClient() {
               </button>
             </div>
             <div className="px-3 pb-8">
-              <AddProductForm countries={countries} stores={stores} onAdded={() => { setMobileAddOpen(false); load() }} />
+              <AddProductForm
+                countries={countries}
+                stores={stores}
+                onAdded={() => { setMobileAddOpen(false); load() }}
+                seed={seedProduct}
+                onConsumeSeed={consumeSeed}
+              />
             </div>
           </div>
         </div>
@@ -376,10 +400,14 @@ function AddProductForm({
   countries,
   stores,
   onAdded,
+  seed,
+  onConsumeSeed,
 }: {
   countries: CountryRow[]
   stores: string[]
   onAdded: () => void
+  seed?: ProductRow | null
+  onConsumeSeed?: () => void
 }) {
   const [type, setType] = useState<PricingType>("overseas")
   const [name, setName] = useState("")
@@ -395,6 +423,42 @@ function AddProductForm({
   const [profitManual, setProfitManual] = useState(false)
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
+  const formRef = useRef<HTMLFormElement>(null)
+  const nameRef = useRef<HTMLInputElement>(null)
+
+  // Duplicate flow: when a seed product arrives, copy its fields into local
+  // state, scroll the form into view, and focus the name. We pre-fill the
+  // name as-is — the user must edit it before saving (UNIQUE(name, store)),
+  // which is intentional so they don't accidentally create a near-duplicate.
+  // onConsumeSeed clears the parent state so re-clicking the same row's
+  // Duplicate button still re-fires this effect.
+  useEffect(() => {
+    if (!seed) return
+    const abroad = seed.countryId != null
+    setType(abroad ? "overseas" : "domestic")
+    setName(seed.name)
+    setStore(seed.store ?? "")
+    setGram(String(seed.gram ?? 0))
+    if (abroad) {
+      setCountryId(seed.countryId)
+      setValas(String(seed.valas ?? 0))
+      setProfitPct(String(seed.profitPct ?? 0))
+      setOpFee(String(seed.operationalFee ?? 5000))
+      setPackFee(String(seed.packingFee ?? 5000))
+    } else {
+      setCost(String(seed.cost ?? 0))
+      setProfitFixed(String(seed.profitFixed ?? 0))
+      setProfitManual(true)
+    }
+    setAddError(null)
+    onConsumeSeed?.()
+    // Defer scroll/focus to after layout so the form is visible first.
+    requestAnimationFrame(() => {
+      formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+      nameRef.current?.focus()
+      nameRef.current?.select()
+    })
+  }, [seed, onConsumeSeed])
 
   const selectedCountry = countries.find((c) => c.id === countryId)
 
@@ -465,7 +529,7 @@ function AddProductForm({
   }
 
   return (
-    <form onSubmit={handleAdd} className="rounded-xl border border-cream-border bg-white p-5 flex flex-col gap-4">
+    <form ref={formRef} onSubmit={handleAdd} className="rounded-xl border border-cream-border bg-white p-5 flex flex-col gap-4 scroll-mt-14">
       <div className="flex items-center gap-4">
         <span className="text-sm font-semibold text-foreground">Add Product</span>
         <div className="flex rounded-lg border border-cream-border overflow-hidden text-xs">
@@ -488,7 +552,7 @@ function AddProductForm({
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Field label="Product Name">
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Product name" required disabled={adding} className={formInputCls} />
+          <input ref={nameRef} value={name} onChange={(e) => setName(e.target.value)} placeholder="Product name" required disabled={adding} className={formInputCls} />
         </Field>
         <Field label="Store">
           <SearchableSelect
@@ -602,12 +666,14 @@ function ProductActions({
   stores,
   onUpdated,
   onDeleted,
+  onDuplicate,
 }: {
   row: ProductRow
   countries: CountryRow[]
   stores: string[]
   onUpdated: (data: Partial<ProductRow>) => void
   onDeleted: () => void
+  onDuplicate: (row: ProductRow) => void
 }) {
   const [editing, setEditing] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -646,6 +712,12 @@ function ProductActions({
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
           <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
+        </svg>
+      </button>
+      <button type="button" onClick={() => onDuplicate(row)} title="Duplicate" className="text-gray-400 hover:text-brand transition-colors">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
         </svg>
       </button>
       <button type="button" onClick={handleDelete} disabled={deleting} title="Delete" className="text-gray-400 hover:text-red-500 disabled:opacity-50 transition-colors">

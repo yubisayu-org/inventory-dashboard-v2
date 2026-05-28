@@ -12,6 +12,8 @@ import { useResizableColumns } from "@/hooks/useResizableColumns"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import EventSelect from "@/components/EventSelect"
 import { InvoiceDetailDrawer } from "@/app/dashboard/invoice/InvoiceDetailDrawer"
+import { copyToClipboard } from "@/lib/clipboard"
+import { buildShipmentConfirmMessage } from "@/lib/shipment-message"
 
 type Segment = ShipSegment
 
@@ -321,6 +323,74 @@ export default function ShipClient() {
   )
 }
 
+type CopyState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "copied" }
+  | { status: "error"; message: string }
+
+function CopyConfirmMessageButton({ customer: c }: { customer: ShipCustomer }) {
+  const [state, setState] = useState<CopyState>({ status: "idle" })
+
+  useEffect(() => {
+    if (state.status === "idle") return
+    const delay = state.status === "error" ? 3000 : 1500
+    const timer = setTimeout(() => setState({ status: "idle" }), delay)
+    return () => clearTimeout(timer)
+  }, [state.status])
+
+  async function handleClick() {
+    setState({ status: "loading" })
+    try {
+      // Only the rows being shipped this round (toShip > 0). Format mirrors
+      // shipments.invoicing: one "Product x N" line per row, not consolidated,
+      // so a repeated product reads as two lines (matches downstream messaging).
+      const items = c.orders
+        .filter((o) => o.toShip > 0)
+        .map((o) => `${o.productName} x ${o.toShip}`)
+      const message = buildShipmentConfirmMessage({
+        event: c.event,
+        customer: c.customer,
+        dataDiri: c.customerDetail?.dataDiri ?? "",
+        items,
+      })
+      await copyToClipboard(message)
+      setState({ status: "copied" })
+    } catch (err) {
+      setState({ status: "error", message: err instanceof Error ? err.message : "Failed" })
+    }
+  }
+
+  const { status } = state
+  const label =
+    status === "loading" ? "…"
+    : status === "copied" ? "✓"
+    : status === "error" ? "!"
+    : undefined
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={status === "loading"}
+      title={status === "error" ? state.message : "Copy pesan konfirmasi pengiriman"}
+      className={`p-1 transition-colors rounded disabled:opacity-50 ${
+        status === "copied" ? "text-green-600"
+        : status === "error" ? "text-red-500"
+        : "text-gray-400 hover:text-brand"
+      }`}
+    >
+      {label ? (
+        <span className="text-xs font-medium w-3.5 inline-block text-center">{label}</span>
+      ) : (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+        </svg>
+      )}
+    </button>
+  )
+}
+
 function CustomerCard({
   customer: c,
   isSelected,
@@ -373,6 +443,7 @@ function CustomerCard({
                 {customerDetail.ekspedisi}
               </span>
             )}
+            {c.totalToShip > 0 && <CopyConfirmMessageButton customer={c} />}
           </div>
           {customerDetail?.whatsapp && (
             <div className="text-xs text-gray-500">{customerDetail.whatsapp}</div>
