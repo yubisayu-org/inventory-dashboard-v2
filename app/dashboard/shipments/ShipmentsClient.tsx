@@ -7,6 +7,8 @@ import type { ShippingRecord } from "@/lib/db"
 import { generateShippingLabel, generateMultipleShippingLabels } from "@/lib/shipping-label"
 import type { ShippingLabelParams } from "@/lib/shipping-label"
 import { useModalDismiss } from "@/hooks/useModalDismiss"
+import { copyToClipboard } from "@/lib/clipboard"
+import { buildShipmentConfirmMessage } from "@/lib/shipment-message"
 import DataGrid, {
   numericFilter,
   textContainsFilter,
@@ -58,6 +60,74 @@ function collapseMerged(rows: ShippingRecord[]): DisplayShipment[] {
     })
   }
   return result
+}
+
+// ─── Shipment confirmation message ────────────────────────────────────────
+
+type CopyState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "copied" }
+  | { status: "error"; message: string }
+
+function CopyShipmentMessageButton({ record }: { record: DisplayShipment }) {
+  const [state, setState] = useState<CopyState>({ status: "idle" })
+
+  useEffect(() => {
+    if (state.status === "idle") return
+    const delay = state.status === "error" ? 3000 : 1500
+    const timer = setTimeout(() => setState({ status: "idle" }), delay)
+    return () => clearTimeout(timer)
+  }, [state.status])
+
+  async function handleClick() {
+    setState({ status: "loading" })
+    try {
+      const res = await fetch(`/api/sheets/customer?id=${encodeURIComponent(record.customer)}`)
+      const detail = res.ok ? await res.json() : null
+      const message = buildShipmentConfirmMessage({
+        event: record.event,
+        customer: record.customer,
+        dataDiri: detail?.dataDiri ?? "",
+        // The `invoicing` field already prefixes merged-event lines with
+        // "[event]" so the customer can tell which event each item came from.
+        items: record.invoicing.split("\n").filter(Boolean),
+      })
+      await copyToClipboard(message)
+      setState({ status: "copied" })
+    } catch (err) {
+      setState({ status: "error", message: err instanceof Error ? err.message : "Failed" })
+    }
+  }
+
+  const { status } = state
+  const label =
+    status === "loading" ? "…"
+    : status === "copied" ? "✓"
+    : status === "error" ? "!"
+    : undefined
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={status === "loading"}
+      title={status === "error" ? state.message : "Copy pesan konfirmasi pengiriman"}
+      className={`p-1 transition-colors rounded disabled:opacity-50 ${
+        status === "copied" ? "text-green-600"
+        : status === "error" ? "text-red-500"
+        : "text-gray-400 hover:text-brand"
+      }`}
+    >
+      {label ? (
+        <span className="text-xs font-medium w-3.5 inline-block text-center">{label}</span>
+      ) : (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+        </svg>
+      )}
+    </button>
+  )
 }
 
 // ─── LabelModal ───────────────────────────────────────────────────────────
@@ -498,29 +568,32 @@ export default function ShipmentsClient() {
         header: "",
         enableSorting: false,
         enableHiding: false,
-        size: 44,
+        size: 72,
         cell: ({ row }) => (
-          <button
-            type="button"
-            onClick={() => setLabelRecord(row.original)}
-            title="Lihat label pengiriman"
-            className="text-gray-400 hover:text-brand transition-colors"
-          >
-            <svg
-              width="15"
-              height="15"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+          <div className="flex items-center gap-1">
+            <CopyShipmentMessageButton record={row.original} />
+            <button
+              type="button"
+              onClick={() => setLabelRecord(row.original)}
+              title="Lihat label pengiriman"
+              className="p-1 text-gray-400 hover:text-brand transition-colors rounded"
             >
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
-            </svg>
-          </button>
+              <svg
+                width="15"
+                height="15"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+            </button>
+          </div>
         ),
       },
     ],
