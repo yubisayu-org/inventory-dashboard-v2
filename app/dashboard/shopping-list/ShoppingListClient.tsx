@@ -3,7 +3,7 @@
 import { displayIg } from "@/lib/format"
 import TableSkeleton from "@/components/TableSkeleton"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import type { ShoppingListItem, ShoppingListOrder } from "@/lib/db"
+import type { PaidStatus, ShoppingListItem, ShoppingListOrder } from "@/lib/db"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import { allocateFifo } from "@/lib/fifo-fill"
 import { fetchJson } from "@/lib/api-fetch"
@@ -109,19 +109,44 @@ function CollapseBtn({ collapsed, onClick }: { collapsed: boolean; onClick: () =
   )
 }
 
-function CustomerBadge({ orders }: { orders: { customer: string; qty: number }[] }) {
+type CustomerBadgeOrder = { customer: string; qty: number; paidStatus: PaidStatus }
+
+const PAID_DOT: Record<PaidStatus, string> = {
+  paid:    "bg-green-500",
+  partial: "bg-yellow-400",
+  unpaid:  "bg-gray-300",
+}
+const PAID_LABEL: Record<PaidStatus, string> = {
+  paid:    "Paid",
+  partial: "Partial",
+  unpaid:  "Unpaid",
+}
+
+function CustomerBadge({ orders }: { orders: CustomerBadgeOrder[] }) {
   const [open, setOpen] = useState(false)
   const [popupStyle, setPopupStyle] = useState<React.CSSProperties>({})
   const triggerRef = useRef<HTMLButtonElement>(null)
   const popupRef = useRef<HTMLDivElement>(null)
 
   const entries = useMemo(() => {
-    const map = new Map<string, number>()
-    for (const o of orders) map.set(o.customer, (map.get(o.customer) ?? 0) + o.qty)
+    // Orders sharing a customer also share an (event, customer) pair, so they
+    // all carry the same paidStatus — keep the first one we see.
+    const map = new Map<string, { qty: number; paidStatus: PaidStatus }>()
+    for (const o of orders) {
+      const prev = map.get(o.customer)
+      map.set(o.customer, {
+        qty: (prev?.qty ?? 0) + o.qty,
+        paidStatus: prev?.paidStatus ?? o.paidStatus,
+      })
+    }
     return [...map.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([customer, qty]) => ({ customer, qty }))
+      .map(([customer, v]) => ({ customer, qty: v.qty, paidStatus: v.paidStatus }))
   }, [orders])
+
+  const paidCount = entries.filter((e) => e.paidStatus === "paid").length
+  const totalCount = entries.length
+  const allPaid = totalCount > 0 && paidCount === totalCount
 
   useEffect(() => {
     if (!open) return
@@ -166,12 +191,22 @@ function CustomerBadge({ orders }: { orders: { customer: string; qty: number }[]
         ref={triggerRef}
         type="button"
         onClick={handleToggle}
-        className="inline-flex items-center gap-1 text-gray-400 hover:text-brand transition-colors cursor-pointer"
+        title={allPaid ? "All customers paid" : `${paidCount} of ${totalCount} paid`}
+        className="inline-flex items-baseline gap-1 text-gray-400 hover:text-brand transition-colors cursor-pointer"
       >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="self-center">
           <circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
         </svg>
-        <span className="text-xs">{entries.length}</span>
+        <span className="text-xs tabular-nums">{totalCount}</span>
+        {allPaid ? (
+          <span className="text-xs text-green-600"> · all paid</span>
+        ) : paidCount > 0 ? (
+          <span className="text-xs">
+            {" · "}
+            <span className="text-green-600 font-medium">{paidCount}</span>
+            {" paid"}
+          </span>
+        ) : null}
       </button>
       {open && (
         <div
@@ -184,7 +219,14 @@ function CustomerBadge({ orders }: { orders: { customer: string; qty: number }[]
               key={e.customer}
               className="flex items-center justify-between gap-3 px-3 py-1 text-xs hover:bg-gray-50 whitespace-nowrap"
             >
-              <span className="text-foreground truncate">{displayIg(e.customer)}</span>
+              <span className="flex items-center gap-2 min-w-0">
+                <span
+                  className={`inline-block w-2 h-2 rounded-full shrink-0 ${PAID_DOT[e.paidStatus]}`}
+                  title={PAID_LABEL[e.paidStatus]}
+                  aria-label={PAID_LABEL[e.paidStatus]}
+                />
+                <span className="text-foreground truncate">{displayIg(e.customer)}</span>
+              </span>
               <span className="text-gray-500 tabular-nums shrink-0">{e.qty}×</span>
             </div>
           ))}
@@ -403,7 +445,11 @@ export default function ShoppingListClient() {
                     <div className="flex items-baseline gap-1.5">
                       <span className="text-foreground">{row.item.productName}</span>
                       <CustomerBadge
-                        orders={row.item.orders.map((o) => ({ customer: o.customer, qty: o.pending }))}
+                        orders={row.item.orders.map((o) => ({
+                          customer: o.customer,
+                          qty: o.pending,
+                          paidStatus: o.paidStatus,
+                        }))}
                       />
                     </div>
                   </td>
@@ -462,11 +508,26 @@ export default function ShoppingListClient() {
                     </button>
                     {!storeCollapsed && storeItems.map((item) => {
                       const done = item.totalUnits === 0
+                      const paidCustomers = new Set(
+                        item.orders.filter((o) => o.paidStatus === "paid").map((o) => o.customer),
+                      ).size
+                      const allPaid = item.customerCount > 0 && paidCustomers === item.customerCount
                       return (
                         <div key={item.productId} className="flex items-center gap-3 px-4 py-2.5 border-t border-cream-border">
                           <div className="flex-1 min-w-0">
                             <div className={`text-sm ${done ? "text-gray-400" : "text-foreground"}`}>{item.productName}</div>
-                            <div className="text-[11px] text-gray-400 mt-0.5">{item.customerCount} customer{item.customerCount === 1 ? "" : "s"}</div>
+                            <div className="text-[11px] text-gray-400 mt-0.5">
+                              {item.customerCount} customer{item.customerCount === 1 ? "" : "s"}
+                              {allPaid ? (
+                                <span className="text-green-600"> · all paid</span>
+                              ) : paidCustomers > 0 ? (
+                                <>
+                                  {" · "}
+                                  <span className="text-green-600 font-medium">{paidCustomers}</span>
+                                  {" paid"}
+                                </>
+                              ) : null}
+                            </div>
                           </div>
                           <div className="text-sm font-bold tabular-nums whitespace-nowrap text-foreground">
                             <span className="text-gray-400 font-medium">{item.totalOriginal - item.totalUnits} / </span>{item.totalOriginal}

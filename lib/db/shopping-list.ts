@@ -3,12 +3,17 @@ import { allocateFifo } from "../fifo-fill"
 
 // ─── Shopping List ────────────────────────────────────────────────────────
 
+export type PaidStatus = "paid" | "partial" | "unpaid"
+
 export interface ShoppingListOrder {
   id: number
   customer: string
   unit: number       // original ordered qty
   unitBuy: number    // already bought (0 if none)
   pending: number    // unit - unitBuy
+  // Whether the customer has settled this event's invoice. Mirrors the same
+  // math as computeEventCore: paid >= subtotal + ongkir*weight + adjustments.
+  paidStatus: PaidStatus
 }
 
 export interface ShoppingListItem {
@@ -80,7 +85,7 @@ export async function getShoppingList(event?: string): Promise<ShoppingListItem[
         ORDER BY o.event, p.name, p.store
       `
 
-  return rows.map((r) => ({
+  const items: ShoppingListItem[] = rows.map((r) => ({
     event: r.event as string,
     productId: r.product_id as number,
     productName: r.product_name as string,
@@ -90,8 +95,103 @@ export async function getShoppingList(event?: string): Promise<ShoppingListItem[
     customerCount: r.customer_count as number,
     customers: r.customers as string[],
     orderIds: r.order_ids as number[],
-    orders: r.orders as ShoppingListOrder[],
+    // SQL emits raw JSON without paidStatus — filled in below from a second
+    // query that runs the invoice math for each (event, customer) pair.
+    orders: (r.orders as Omit<ShoppingListOrder, "paidStatus">[]).map((o) => ({
+      ...o,
+      paidStatus: "unpaid" as PaidStatus,
+    })),
   }))
+
+  if (items.length === 0) return items
+
+  const events = [...new Set(items.map((i) => i.event))]
+  const statusMap = await fetchPaidStatusMap(events)
+  for (const item of items) {
+    for (const o of item.orders) {
+      o.paidStatus = statusMap.get(`${item.event}|${o.customer}`) ?? "unpaid"
+    }
+  }
+  return items
+}
+
+/**
+ * Compute paid status per (event, customer) for the given events. Mirrors
+ * `computeEventCore` from invoice.ts:
+ *   total = subtotal + ongkir_per_kg * ceil(total_gram / 1000) + adjustments
+ *   paid  = sum of checked payments
+ *   status = paid <= 0 ? unpaid : paid >= total ? paid : partial
+ *
+ * The customer column is stored with inconsistent casing/@-prefix across
+ * tables, so payments/adjustments/customers are joined on the normalized
+ * handle (lower + strip @), matching how invoice.ts does it.
+ */
+async function fetchPaidStatusMap(events: string[]): Promise<Map<string, PaidStatus>> {
+  const map = new Map<string, PaidStatus>()
+  if (events.length === 0) return map
+
+  const rows = await sql`
+    WITH order_totals AS (
+      SELECT
+        o.event,
+        o.customer,
+        lower(replace(o.customer, '@', '')) AS norm_cust,
+        SUM(o.unit * o.unit_price)::numeric        AS subtotal,
+        SUM(o.unit * COALESCE(p.gram, 0))::numeric AS total_gram
+      FROM orders o
+      JOIN products p ON p.id = o.product_id
+      WHERE o.event = ANY(${events})
+      GROUP BY o.event, o.customer
+    ),
+    payment_totals AS (
+      SELECT
+        event,
+        lower(replace(customer, '@', '')) AS norm_cust,
+        COALESCE(SUM(amount), 0)::numeric AS paid
+      FROM payments
+      WHERE is_checked = true AND event = ANY(${events})
+      GROUP BY event, norm_cust
+    ),
+    adjustment_totals AS (
+      SELECT
+        event,
+        lower(replace(customer, '@', '')) AS norm_cust,
+        COALESCE(SUM(amount), 0)::numeric AS adj
+      FROM adjustments
+      WHERE event = ANY(${events})
+      GROUP BY event, norm_cust
+    ),
+    customer_ongkir AS (
+      SELECT
+        lower(replace(instagram_id, '@', '')) AS norm_id,
+        COALESCE(ongkos_kirim, 0)::numeric AS ongkir
+      FROM customers
+    )
+    SELECT
+      ot.event,
+      ot.customer,
+      ot.subtotal,
+      CEIL(ot.total_gram / 1000.0)::numeric AS weight_kg,
+      COALESCE(co.ongkir, 0)::numeric AS ongkir,
+      COALESCE(at.adj, 0)::numeric    AS adj,
+      COALESCE(pt.paid, 0)::numeric   AS paid
+    FROM order_totals ot
+    LEFT JOIN customer_ongkir co  ON co.norm_id = ot.norm_cust
+    LEFT JOIN payment_totals pt   ON pt.event = ot.event AND pt.norm_cust = ot.norm_cust
+    LEFT JOIN adjustment_totals at ON at.event = ot.event AND at.norm_cust = ot.norm_cust
+  `
+
+  for (const r of rows) {
+    const subtotal = Number(r.subtotal) || 0
+    const weightKg = Number(r.weight_kg) || 0
+    const ongkir   = Number(r.ongkir) || 0
+    const adj      = Number(r.adj) || 0
+    const paid     = Number(r.paid) || 0
+    const total    = subtotal + weightKg * ongkir + adj
+    const status: PaidStatus = paid <= 0 ? "unpaid" : paid >= total ? "paid" : "partial"
+    map.set(`${r.event}|${r.customer}`, status)
+  }
+  return map
 }
 
 export async function markOrdersAsBought(orderIds: number[]): Promise<void> {
