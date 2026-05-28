@@ -5,7 +5,7 @@ CREATE TABLE countries (
   id            SERIAL PRIMARY KEY,
   name          TEXT NOT NULL UNIQUE,
   currency      TEXT NOT NULL DEFAULT '',
-  kurs          INTEGER NOT NULL DEFAULT 0,
+  kurs          NUMERIC(12,4) NOT NULL DEFAULT 0,
   cargo_per_kg  INTEGER NOT NULL DEFAULT 0,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at    TIMESTAMPTZ
@@ -44,7 +44,7 @@ CREATE TABLE products (
   gram            INTEGER NOT NULL DEFAULT 0,
   country_id      INTEGER REFERENCES countries(id) ON DELETE RESTRICT,
   valas           NUMERIC(12,2) NOT NULL DEFAULT 0,
-  kurs            INTEGER NOT NULL DEFAULT 0,
+  kurs            NUMERIC(12,4) NOT NULL DEFAULT 0,
   cargo_per_kg    INTEGER NOT NULL DEFAULT 0,
   profit_pct      INTEGER NOT NULL DEFAULT 0,
   operational_fee INTEGER NOT NULL DEFAULT 5000,

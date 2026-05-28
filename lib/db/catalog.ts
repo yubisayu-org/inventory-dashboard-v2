@@ -67,7 +67,8 @@ export async function getProducts(): Promise<ProductRow[]> {
     countryId: r.country_id,
     countryName: r.country_name ?? "",
     valas: Number(r.valas) || 0,
-    kurs: r.kurs ?? 0,
+    // kurs is NUMERIC(12,4) — postgres-js returns it as a string, so coerce.
+    kurs: Number(r.kurs) || 0,
     cargoPerKg: r.cargo_per_kg ?? 0,
     profitPct: r.profit_pct ?? 0,
     operationalFee: r.operational_fee ?? 5000,
@@ -151,7 +152,8 @@ export async function getCountries(): Promise<CountryRow[]> {
     id: r.id,
     name: r.name,
     currency: r.currency ?? "",
-    kurs: r.kurs ?? 0,
+    // kurs is NUMERIC(12,4) — postgres-js returns it as a string, so coerce.
+    kurs: Number(r.kurs) || 0,
     cargoPerKg: r.cargo_per_kg ?? 0,
     createdAt: tsToString(r.created_at),
     updatedAt: tsToString(r.updated_at),
