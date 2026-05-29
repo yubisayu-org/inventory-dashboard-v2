@@ -38,6 +38,7 @@ function buildShipGroups(
     const orders: ShipOrderLine[] = rows.map((r) => {
       const unitArrive = (r.unit_arrive as number) ?? 0
       const unitShip = (r.unit_ship as number) ?? 0
+      const unitHold = (r.unit_hold as number) ?? 0
       return {
         rowNumber: r.id as number,
         event,
@@ -48,11 +49,13 @@ function buildShipGroups(
         unit: r.unit as number,
         unitArrive,
         unitShip,
-        toShip: Math.max(0, unitArrive - unitShip),
+        unitHold,
+        toShip: Math.max(0, unitArrive - unitShip - unitHold),
       }
     })
     const totalToShipGram = orders.reduce((s, o) => s + o.gram * o.toShip, 0)
     const totalToShip = orders.reduce((s, o) => s + o.toShip, 0)
+    const totalHold = orders.reduce((s, o) => s + o.unitHold, 0)
     const ongkirPerKg = detailMap.get(customerKey)?.ongkosKirim ?? 0
 
     // Arrival-first status: compare arrived vs ordered units per line.
@@ -63,13 +66,17 @@ function buildShipGroups(
     // out of "Siap Dikirim" by default rather than slipping through.
     const paymentStatus: PaymentStatus = paymentMap.get(`${customerKey}|${event}`) ?? "unpaid"
     const paymentClear = paymentStatus === "paid" || paymentStatus === "overpaid"
+    // "hold" wins over ready/shipped when any unit is parked — the customer
+    // asked to wait, so we surface that even if some other units already went out.
     const status: ShipStatus = !anyArrived
       ? "not_arrived"
       : !allArrived
         ? "partial"
-        : totalToShip > 0
-          ? (paymentClear ? "ready" : "ready_unpaid")
-          : "shipped"
+        : totalHold > 0
+          ? "hold"
+          : totalToShip > 0
+            ? (paymentClear ? "ready" : "ready_unpaid")
+            : "shipped"
 
     return {
       customer,
@@ -138,7 +145,7 @@ export async function getShipOrdersFiltered(opts: {
 
   const orderRows = await sql.unsafe(
     `SELECT o.id, o.event, o.customer, o.product_id, p.name AS product_name,
-            COALESCE(p.gram, 0) AS gram, o.unit, o.unit_arrive, o.unit_ship
+            COALESCE(p.gram, 0) AS gram, o.unit, o.unit_arrive, o.unit_ship, o.unit_hold
      FROM orders o
      JOIN products p ON p.id = o.product_id
      ${where}
@@ -163,7 +170,7 @@ export async function getShipOrdersFiltered(opts: {
   // Counts and the filtered list both derive from the same in-memory status,
   // so the tab badges can never drift from the rows actually shown.
   const counts: Record<ShipSegment, number> = {
-    all: 0, not_arrived: 0, partial: 0, ready: 0, ready_unpaid: 0, shipped: 0,
+    all: 0, not_arrived: 0, partial: 0, ready: 0, ready_unpaid: 0, hold: 0, shipped: 0,
   }
   const filteredGroups: ShipCustomer[] = []
   for (const g of allGroups) {
@@ -304,6 +311,50 @@ export async function shipMergedCustomerOrders(params: ShipMergedParams): Promis
       combinedOngkir,
     }
   })
+}
+
+// ─── Hold / Release ─────────────────────────────────────────────────────────
+
+/**
+ * Park every ready-to-ship unit on a customer's event into hold. Used when the
+ * customer asks to delay shipment (typically to combine with a later event).
+ * Sets unit_hold = unit_arrive - unit_ship for each line, which zeroes out toShip
+ * and moves the card into the "Hold" segment until released.
+ */
+export async function holdPackingList(params: {
+  customer: string
+  event: string
+}): Promise<void> {
+  const { customer, event } = params
+  const custKey = normalizeId(customer)
+  await sql`
+    UPDATE orders
+    SET unit_hold = GREATEST(COALESCE(unit_arrive, 0) - COALESCE(unit_ship, 0), 0),
+        updated_at = NOW()
+    WHERE event = ${event}
+      AND lower(replace(customer, '@', '')) = ${custKey}
+      AND COALESCE(unit_arrive, 0) - COALESCE(unit_ship, 0) > 0
+  `
+}
+
+/**
+ * Release a held packing list back to the ready pool by zeroing unit_hold across
+ * the customer's event lines. After release the card returns to ready/ready_unpaid
+ * (depending on payment) and can be shipped normally or via "Ship together".
+ */
+export async function releasePackingList(params: {
+  customer: string
+  event: string
+}): Promise<void> {
+  const { customer, event } = params
+  const custKey = normalizeId(customer)
+  await sql`
+    UPDATE orders
+    SET unit_hold = 0, updated_at = NOW()
+    WHERE event = ${event}
+      AND lower(replace(customer, '@', '')) = ${custKey}
+      AND COALESCE(unit_hold, 0) > 0
+  `
 }
 
 // ─── Shipments ──────────────────────────────────────────────────────────────

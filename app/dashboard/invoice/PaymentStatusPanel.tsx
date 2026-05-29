@@ -6,6 +6,7 @@ import type { PaymentStatus, PaymentStatusRow } from "@/lib/db"
 import SearchableSelect from "@/components/SearchableSelect"
 import EventSelect from "@/components/EventSelect"
 import DataGrid, { type ColumnDef } from "@/components/DataGrid"
+import { AddAdjustmentFromInvoiceModal } from "./AddAdjustmentFromInvoiceModal"
 
 // ─── Payment Status Panel ────────────────────────────────────────────────────
 
@@ -41,6 +42,7 @@ export function PaymentStatusPanel({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<StatusFilter>("all")
+  const [adjustingRow, setAdjustingRow] = useState<{ event: string; customer: string } | null>(null)
 
   // Fetch every event's payment status once; the event picker filters client-side.
   const fetchRows = useCallback(async () => {
@@ -148,6 +150,26 @@ export function PaymentStatusPanel({
         )
       },
     },
+    {
+      id: "addAdjustment",
+      header: "",
+      enableSorting: false,
+      enableColumnFilter: false,
+      size: 36,
+      cell: ({ row }) => (
+        <button
+          type="button"
+          onClick={() => setAdjustingRow({ event: row.original.event, customer: row.original.customer })}
+          title="Add adjustment for this invoice"
+          className="text-gray-400 hover:text-brand transition-colors p-1 rounded"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+        </button>
+      ),
+    },
   ], [onOpenCustomer])
 
   const filters: { key: StatusFilter; label: string; count: number }[] = [
@@ -252,6 +274,15 @@ export function PaymentStatusPanel({
           searchPlaceholder="Search customers, events…"
           pageSize={50}
           initialSorting={[{ id: "outstanding", desc: true }]}
+        />
+      )}
+
+      {adjustingRow && (
+        <AddAdjustmentFromInvoiceModal
+          event={adjustingRow.event}
+          customer={adjustingRow.customer}
+          onClose={() => setAdjustingRow(null)}
+          onSaved={fetchRows}
         />
       )}
     </div>

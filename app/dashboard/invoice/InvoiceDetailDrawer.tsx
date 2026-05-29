@@ -17,6 +17,9 @@ export function InvoiceDetailDrawer({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<InvoiceResult | null>(null)
+  // Bumped to re-run the fetch effect when a child component (e.g. Add
+  // Adjustment modal) reports a server-side mutation we need to reflect.
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -46,7 +49,7 @@ export function InvoiceDetailDrawer({
       .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load") })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [customer])
+  }, [customer, reloadKey])
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end" onClick={onClose}>
@@ -109,6 +112,7 @@ export function InvoiceDetailDrawer({
                   event={ev}
                   customer={result.customer}
                   customerDetail={result.customerDetail}
+                  onMutated={() => setReloadKey((k) => k + 1)}
                 />
               ))}
             </div>

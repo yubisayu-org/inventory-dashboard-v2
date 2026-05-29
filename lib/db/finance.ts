@@ -399,56 +399,112 @@ function paymentStatusFor(totalPaid: number, invoiceTotal: number): PaymentStatu
  * splitting into a bogus Unpaid + Overpaid pair.
  */
 export async function getPaymentStatus(event?: string): Promise<PaymentStatusRow[]> {
-  const rows = await sql`
-    WITH order_aggregates AS (
-      SELECT o.event AS event,
-             lower(replace(o.customer, '@', '')) AS cust_key,
-             SUM(o.unit_price * o.unit) AS subtotal,
-             SUM(COALESCE(p.gram, 0) * o.unit) AS total_gram
-      FROM orders o
-      JOIN products p ON p.id = o.product_id
-      GROUP BY o.event, lower(replace(o.customer, '@', ''))
-    ),
-    payment_aggregates AS (
-      SELECT event, lower(replace(customer, '@', '')) AS cust_key, SUM(amount) AS total_paid
-      FROM payments
-      WHERE is_checked = true
-      GROUP BY event, lower(replace(customer, '@', ''))
-    ),
-    adjustment_aggregates AS (
-      SELECT event, lower(replace(customer, '@', '')) AS cust_key, SUM(amount) AS total_adj
-      FROM adjustments
-      GROUP BY event, lower(replace(customer, '@', ''))
-    ),
-    customer_ongkir AS (
-      SELECT lower(replace(instagram_id, '@', '')) AS cust_key,
-             MAX(COALESCE(ongkos_kirim, 0)) AS ongkos_kirim
-      FROM customers
-      GROUP BY lower(replace(instagram_id, '@', ''))
-    ),
-    all_keys AS (
-      SELECT event, cust_key FROM order_aggregates
-      UNION
-      SELECT event, cust_key FROM payment_aggregates
-      UNION
-      SELECT event, cust_key FROM adjustment_aggregates
-    )
-    SELECT
-      k.event AS event,
-      k.cust_key AS customer,
-      (COALESCE(oa.subtotal, 0)
-        + COALESCE(c.ongkos_kirim, 0) * CEIL(COALESCE(oa.total_gram, 0)::numeric / 1000)
-        + COALESCE(adj.total_adj, 0))::int AS invoice_total,
-      COALESCE(pa.total_paid, 0)::int AS total_paid
-    FROM all_keys k
-    LEFT JOIN order_aggregates oa ON oa.event = k.event AND oa.cust_key = k.cust_key
-    LEFT JOIN customer_ongkir c ON c.cust_key = k.cust_key
-    LEFT JOIN payment_aggregates pa ON pa.event = k.event AND pa.cust_key = k.cust_key
-    LEFT JOIN adjustment_aggregates adj ON adj.event = k.event AND adj.cust_key = k.cust_key
-    ORDER BY k.event, k.cust_key
-  `
+  // When an event is given, push the filter into every event-keyed CTE so the
+  // planner can use the (event, ...) indexes on orders/payments/adjustments
+  // instead of aggregating the world and filtering in JS. customer_ongkir has
+  // no event column so it stays unscoped — the join still picks only the
+  // customers that show up in the event's all_keys union.
+  const rows = event
+    ? await sql`
+        WITH order_aggregates AS (
+          SELECT o.event AS event,
+                 lower(replace(o.customer, '@', '')) AS cust_key,
+                 SUM(o.unit_price * o.unit) AS subtotal,
+                 SUM(COALESCE(p.gram, 0) * o.unit) AS total_gram
+          FROM orders o
+          JOIN products p ON p.id = o.product_id
+          WHERE o.event = ${event}
+          GROUP BY o.event, lower(replace(o.customer, '@', ''))
+        ),
+        payment_aggregates AS (
+          SELECT event, lower(replace(customer, '@', '')) AS cust_key, SUM(amount) AS total_paid
+          FROM payments
+          WHERE is_checked = true AND event = ${event}
+          GROUP BY event, lower(replace(customer, '@', ''))
+        ),
+        adjustment_aggregates AS (
+          SELECT event, lower(replace(customer, '@', '')) AS cust_key, SUM(amount) AS total_adj
+          FROM adjustments
+          WHERE event = ${event}
+          GROUP BY event, lower(replace(customer, '@', ''))
+        ),
+        customer_ongkir AS (
+          SELECT lower(replace(instagram_id, '@', '')) AS cust_key,
+                 MAX(COALESCE(ongkos_kirim, 0)) AS ongkos_kirim
+          FROM customers
+          GROUP BY lower(replace(instagram_id, '@', ''))
+        ),
+        all_keys AS (
+          SELECT event, cust_key FROM order_aggregates
+          UNION
+          SELECT event, cust_key FROM payment_aggregates
+          UNION
+          SELECT event, cust_key FROM adjustment_aggregates
+        )
+        SELECT
+          k.event AS event,
+          k.cust_key AS customer,
+          (COALESCE(oa.subtotal, 0)
+            + COALESCE(c.ongkos_kirim, 0) * CEIL(COALESCE(oa.total_gram, 0)::numeric / 1000)
+            + COALESCE(adj.total_adj, 0))::int AS invoice_total,
+          COALESCE(pa.total_paid, 0)::int AS total_paid
+        FROM all_keys k
+        LEFT JOIN order_aggregates oa ON oa.event = k.event AND oa.cust_key = k.cust_key
+        LEFT JOIN customer_ongkir c ON c.cust_key = k.cust_key
+        LEFT JOIN payment_aggregates pa ON pa.event = k.event AND pa.cust_key = k.cust_key
+        LEFT JOIN adjustment_aggregates adj ON adj.event = k.event AND adj.cust_key = k.cust_key
+        ORDER BY k.event, k.cust_key
+      `
+    : await sql`
+        WITH order_aggregates AS (
+          SELECT o.event AS event,
+                 lower(replace(o.customer, '@', '')) AS cust_key,
+                 SUM(o.unit_price * o.unit) AS subtotal,
+                 SUM(COALESCE(p.gram, 0) * o.unit) AS total_gram
+          FROM orders o
+          JOIN products p ON p.id = o.product_id
+          GROUP BY o.event, lower(replace(o.customer, '@', ''))
+        ),
+        payment_aggregates AS (
+          SELECT event, lower(replace(customer, '@', '')) AS cust_key, SUM(amount) AS total_paid
+          FROM payments
+          WHERE is_checked = true
+          GROUP BY event, lower(replace(customer, '@', ''))
+        ),
+        adjustment_aggregates AS (
+          SELECT event, lower(replace(customer, '@', '')) AS cust_key, SUM(amount) AS total_adj
+          FROM adjustments
+          GROUP BY event, lower(replace(customer, '@', ''))
+        ),
+        customer_ongkir AS (
+          SELECT lower(replace(instagram_id, '@', '')) AS cust_key,
+                 MAX(COALESCE(ongkos_kirim, 0)) AS ongkos_kirim
+          FROM customers
+          GROUP BY lower(replace(instagram_id, '@', ''))
+        ),
+        all_keys AS (
+          SELECT event, cust_key FROM order_aggregates
+          UNION
+          SELECT event, cust_key FROM payment_aggregates
+          UNION
+          SELECT event, cust_key FROM adjustment_aggregates
+        )
+        SELECT
+          k.event AS event,
+          k.cust_key AS customer,
+          (COALESCE(oa.subtotal, 0)
+            + COALESCE(c.ongkos_kirim, 0) * CEIL(COALESCE(oa.total_gram, 0)::numeric / 1000)
+            + COALESCE(adj.total_adj, 0))::int AS invoice_total,
+          COALESCE(pa.total_paid, 0)::int AS total_paid
+        FROM all_keys k
+        LEFT JOIN order_aggregates oa ON oa.event = k.event AND oa.cust_key = k.cust_key
+        LEFT JOIN customer_ongkir c ON c.cust_key = k.cust_key
+        LEFT JOIN payment_aggregates pa ON pa.event = k.event AND pa.cust_key = k.cust_key
+        LEFT JOIN adjustment_aggregates adj ON adj.event = k.event AND adj.cust_key = k.cust_key
+        ORDER BY k.event, k.cust_key
+      `
 
-  const mapped = rows.map((r) => {
+  return rows.map((r) => {
     const invoiceTotal = Number(r.invoice_total)
     const totalPaid = Number(r.total_paid)
     return {
@@ -460,8 +516,5 @@ export async function getPaymentStatus(event?: string): Promise<PaymentStatusRow
       status: paymentStatusFor(totalPaid, invoiceTotal),
     }
   })
-  // A specific event is the all-events result filtered down — identical rows to
-  // the old per-event query.
-  return event ? mapped.filter((r) => r.event === event) : mapped
 }
 

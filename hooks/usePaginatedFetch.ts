@@ -34,6 +34,14 @@ export function usePaginatedFetch(opts: {
   const onDataRef = useRef(onData)
   onDataRef.current = onData
 
+  // Shape = the part of the request that determines totalCount (search +
+  // filters + sort + pageSize). Server returns totalCount = -1 when we passed
+  // skipCount=true; we splice the cached count back in before invoking onData,
+  // so the consumer never sees the sentinel.
+  const lastFetchedShapeRef = useRef<string | null>(null)
+  const lastTotalCountRef = useRef<number>(0)
+  const lastTotalPagesRef = useRef<number>(1)
+
   const fetchPage = useCallback(async (
     p: number,
     s: string,
@@ -56,13 +64,32 @@ export function usePaginatedFetch(opts: {
       params.set("newestFirst", "true")
     }
 
+    // The shape excludes the page number — only page is allowed to change
+    // while still skipping the count. Refresh always recounts (data may have
+    // changed under us) so it bypasses the cache via the isRefresh check.
+    const shape = JSON.stringify({ pageSize, s, f, so })
+    const canSkipCount = !isRefresh && lastFetchedShapeRef.current === shape
+    if (canSkipCount) params.set("skipCount", "true")
+
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 30_000)
     try {
       const res = await fetch(`${endpoint}?${params}`, { signal: controller.signal, cache: "no-store" })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "Failed to load rows")
-      onDataRef.current(data)
+      // Server sends -1 when it skipped the count; substitute the cached value
+      // so the DataGrid keeps showing the correct total.
+      let totalCount = Number(data.totalCount)
+      let totalPages = Number(data.totalPages)
+      if (totalCount < 0) {
+        totalCount = lastTotalCountRef.current
+        totalPages = lastTotalPagesRef.current
+      } else {
+        lastTotalCountRef.current = totalCount
+        lastTotalPagesRef.current = totalPages
+      }
+      lastFetchedShapeRef.current = shape
+      onDataRef.current({ ...data, totalCount, totalPages })
       setFetchState({ loading: false, error: "", refreshError: "" })
     } catch (err) {
       const msg =

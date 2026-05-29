@@ -33,57 +33,69 @@ export async function getShoppingList(event?: string): Promise<ShoppingListItem[
   // Includes partially-bought orders (unit_buy < unit), not just untouched ones.
   // Aggregations expose both the remaining-to-buy quantity and the full ordered
   // quantity so the UI can show "5 / 10" when an order is partially fulfilled.
-  const rows = event
-    ? await sql`
-        SELECT
-          o.event,
-          o.product_id,
-          p.name AS product_name,
-          p.store,
-          SUM(o.unit - COALESCE(o.unit_buy, 0))::int AS total_pending,
-          SUM(o.unit)::int AS total_original,
-          COUNT(DISTINCT o.customer)::int AS customer_count,
-          ARRAY_AGG(DISTINCT o.customer ORDER BY o.customer) AS customers,
-          ARRAY_AGG(o.id ORDER BY o.id) AS order_ids,
-          JSON_AGG(JSON_BUILD_OBJECT(
-            'id', o.id,
-            'customer', o.customer,
-            'unit', o.unit,
-            'unitBuy', COALESCE(o.unit_buy, 0),
-            'pending', o.unit - COALESCE(o.unit_buy, 0)
-          ) ORDER BY o.customer, o.id) AS orders
-        FROM orders o
-        JOIN products p ON p.id = o.product_id
-        WHERE (o.unit_buy IS NULL OR o.unit_buy < o.unit) AND o.event = ${event}
-        GROUP BY o.event, o.product_id, p.name, p.store
-        HAVING SUM(o.unit - COALESCE(o.unit_buy, 0)) > 0
-        ORDER BY p.name, p.store
-      `
-    : await sql`
-        SELECT
-          o.event,
-          o.product_id,
-          p.name AS product_name,
-          p.store,
-          SUM(o.unit - COALESCE(o.unit_buy, 0))::int AS total_pending,
-          SUM(o.unit)::int AS total_original,
-          COUNT(DISTINCT o.customer)::int AS customer_count,
-          ARRAY_AGG(DISTINCT o.customer ORDER BY o.customer) AS customers,
-          ARRAY_AGG(o.id ORDER BY o.id) AS order_ids,
-          JSON_AGG(JSON_BUILD_OBJECT(
-            'id', o.id,
-            'customer', o.customer,
-            'unit', o.unit,
-            'unitBuy', COALESCE(o.unit_buy, 0),
-            'pending', o.unit - COALESCE(o.unit_buy, 0)
-          ) ORDER BY o.customer, o.id) AS orders
-        FROM orders o
-        JOIN products p ON p.id = o.product_id
-        WHERE o.unit_buy IS NULL OR o.unit_buy < o.unit
-        GROUP BY o.event, o.product_id, p.name, p.store
-        HAVING SUM(o.unit - COALESCE(o.unit_buy, 0)) > 0
-        ORDER BY o.event, p.name, p.store
-      `
+  //
+  // The paid-status fetch runs in parallel with the items query — they touch
+  // overlapping tables but don't depend on each other's results, so paying for
+  // both RTTs at once is wasted latency. When an event is selected we already
+  // know the event list upfront ([event]); when not, we pass null and let the
+  // status query span all events (a touch more work than scoping it to the
+  // events the items query returns, but worth it for the parallelism).
+  const eventsForStatus = event ? [event] : null
+
+  const [rows, statusMap] = await Promise.all([
+    event
+      ? sql`
+          SELECT
+            o.event,
+            o.product_id,
+            p.name AS product_name,
+            p.store,
+            SUM(o.unit - COALESCE(o.unit_buy, 0))::int AS total_pending,
+            SUM(o.unit)::int AS total_original,
+            COUNT(DISTINCT o.customer)::int AS customer_count,
+            ARRAY_AGG(DISTINCT o.customer ORDER BY o.customer) AS customers,
+            ARRAY_AGG(o.id ORDER BY o.id) AS order_ids,
+            JSON_AGG(JSON_BUILD_OBJECT(
+              'id', o.id,
+              'customer', o.customer,
+              'unit', o.unit,
+              'unitBuy', COALESCE(o.unit_buy, 0),
+              'pending', o.unit - COALESCE(o.unit_buy, 0)
+            ) ORDER BY o.customer, o.id) AS orders
+          FROM orders o
+          JOIN products p ON p.id = o.product_id
+          WHERE (o.unit_buy IS NULL OR o.unit_buy < o.unit) AND o.event = ${event}
+          GROUP BY o.event, o.product_id, p.name, p.store
+          HAVING SUM(o.unit - COALESCE(o.unit_buy, 0)) > 0
+          ORDER BY p.name, p.store
+        `
+      : sql`
+          SELECT
+            o.event,
+            o.product_id,
+            p.name AS product_name,
+            p.store,
+            SUM(o.unit - COALESCE(o.unit_buy, 0))::int AS total_pending,
+            SUM(o.unit)::int AS total_original,
+            COUNT(DISTINCT o.customer)::int AS customer_count,
+            ARRAY_AGG(DISTINCT o.customer ORDER BY o.customer) AS customers,
+            ARRAY_AGG(o.id ORDER BY o.id) AS order_ids,
+            JSON_AGG(JSON_BUILD_OBJECT(
+              'id', o.id,
+              'customer', o.customer,
+              'unit', o.unit,
+              'unitBuy', COALESCE(o.unit_buy, 0),
+              'pending', o.unit - COALESCE(o.unit_buy, 0)
+            ) ORDER BY o.customer, o.id) AS orders
+          FROM orders o
+          JOIN products p ON p.id = o.product_id
+          WHERE o.unit_buy IS NULL OR o.unit_buy < o.unit
+          GROUP BY o.event, o.product_id, p.name, p.store
+          HAVING SUM(o.unit - COALESCE(o.unit_buy, 0)) > 0
+          ORDER BY o.event, p.name, p.store
+        `,
+    fetchPaidStatusMap(eventsForStatus),
+  ])
 
   const items: ShoppingListItem[] = rows.map((r) => ({
     event: r.event as string,
@@ -95,23 +107,12 @@ export async function getShoppingList(event?: string): Promise<ShoppingListItem[
     customerCount: r.customer_count as number,
     customers: r.customers as string[],
     orderIds: r.order_ids as number[],
-    // SQL emits raw JSON without paidStatus — filled in below from a second
-    // query that runs the invoice math for each (event, customer) pair.
     orders: (r.orders as Omit<ShoppingListOrder, "paidStatus">[]).map((o) => ({
       ...o,
-      paidStatus: "unpaid" as PaidStatus,
+      paidStatus: statusMap.get(`${r.event}|${o.customer}`) ?? "unpaid",
     })),
   }))
 
-  if (items.length === 0) return items
-
-  const events = [...new Set(items.map((i) => i.event))]
-  const statusMap = await fetchPaidStatusMap(events)
-  for (const item of items) {
-    for (const o of item.orders) {
-      o.paidStatus = statusMap.get(`${item.event}|${o.customer}`) ?? "unpaid"
-    }
-  }
   return items
 }
 
@@ -122,64 +123,118 @@ export async function getShoppingList(event?: string): Promise<ShoppingListItem[
  *   paid  = sum of checked payments
  *   status = paid <= 0 ? unpaid : paid >= total ? paid : partial
  *
+ * Pass `events: null` to compute status across every event (used when the
+ * shopping list isn't event-filtered — lets this query run in parallel with
+ * the items query, since we no longer have to wait for the items query to
+ * tell us which events to scope to).
+ *
  * The customer column is stored with inconsistent casing/@-prefix across
  * tables, so payments/adjustments/customers are joined on the normalized
  * handle (lower + strip @), matching how invoice.ts does it.
  */
-async function fetchPaidStatusMap(events: string[]): Promise<Map<string, PaidStatus>> {
+async function fetchPaidStatusMap(events: string[] | null): Promise<Map<string, PaidStatus>> {
   const map = new Map<string, PaidStatus>()
-  if (events.length === 0) return map
+  if (events !== null && events.length === 0) return map
 
-  const rows = await sql`
-    WITH order_totals AS (
-      SELECT
-        o.event,
-        o.customer,
-        lower(replace(o.customer, '@', '')) AS norm_cust,
-        SUM(o.unit * o.unit_price)::numeric        AS subtotal,
-        SUM(o.unit * COALESCE(p.gram, 0))::numeric AS total_gram
-      FROM orders o
-      JOIN products p ON p.id = o.product_id
-      WHERE o.event = ANY(${events})
-      GROUP BY o.event, o.customer
-    ),
-    payment_totals AS (
-      SELECT
-        event,
-        lower(replace(customer, '@', '')) AS norm_cust,
-        COALESCE(SUM(amount), 0)::numeric AS paid
-      FROM payments
-      WHERE is_checked = true AND event = ANY(${events})
-      GROUP BY event, norm_cust
-    ),
-    adjustment_totals AS (
-      SELECT
-        event,
-        lower(replace(customer, '@', '')) AS norm_cust,
-        COALESCE(SUM(amount), 0)::numeric AS adj
-      FROM adjustments
-      WHERE event = ANY(${events})
-      GROUP BY event, norm_cust
-    ),
-    customer_ongkir AS (
-      SELECT
-        lower(replace(instagram_id, '@', '')) AS norm_id,
-        COALESCE(ongkos_kirim, 0)::numeric AS ongkir
-      FROM customers
-    )
-    SELECT
-      ot.event,
-      ot.customer,
-      ot.subtotal,
-      CEIL(ot.total_gram / 1000.0)::numeric AS weight_kg,
-      COALESCE(co.ongkir, 0)::numeric AS ongkir,
-      COALESCE(at.adj, 0)::numeric    AS adj,
-      COALESCE(pt.paid, 0)::numeric   AS paid
-    FROM order_totals ot
-    LEFT JOIN customer_ongkir co  ON co.norm_id = ot.norm_cust
-    LEFT JOIN payment_totals pt   ON pt.event = ot.event AND pt.norm_cust = ot.norm_cust
-    LEFT JOIN adjustment_totals at ON at.event = ot.event AND at.norm_cust = ot.norm_cust
-  `
+  const rows = events === null
+    ? await sql`
+        WITH order_totals AS (
+          SELECT
+            o.event,
+            o.customer,
+            lower(replace(o.customer, '@', '')) AS norm_cust,
+            SUM(o.unit * o.unit_price)::numeric        AS subtotal,
+            SUM(o.unit * COALESCE(p.gram, 0))::numeric AS total_gram
+          FROM orders o
+          JOIN products p ON p.id = o.product_id
+          GROUP BY o.event, o.customer
+        ),
+        payment_totals AS (
+          SELECT
+            event,
+            lower(replace(customer, '@', '')) AS norm_cust,
+            COALESCE(SUM(amount), 0)::numeric AS paid
+          FROM payments
+          WHERE is_checked = true
+          GROUP BY event, norm_cust
+        ),
+        adjustment_totals AS (
+          SELECT
+            event,
+            lower(replace(customer, '@', '')) AS norm_cust,
+            COALESCE(SUM(amount), 0)::numeric AS adj
+          FROM adjustments
+          GROUP BY event, norm_cust
+        ),
+        customer_ongkir AS (
+          SELECT
+            lower(replace(instagram_id, '@', '')) AS norm_id,
+            COALESCE(ongkos_kirim, 0)::numeric AS ongkir
+          FROM customers
+        )
+        SELECT
+          ot.event,
+          ot.customer,
+          ot.subtotal,
+          CEIL(ot.total_gram / 1000.0)::numeric AS weight_kg,
+          COALESCE(co.ongkir, 0)::numeric AS ongkir,
+          COALESCE(at.adj, 0)::numeric    AS adj,
+          COALESCE(pt.paid, 0)::numeric   AS paid
+        FROM order_totals ot
+        LEFT JOIN customer_ongkir co  ON co.norm_id = ot.norm_cust
+        LEFT JOIN payment_totals pt   ON pt.event = ot.event AND pt.norm_cust = ot.norm_cust
+        LEFT JOIN adjustment_totals at ON at.event = ot.event AND at.norm_cust = ot.norm_cust
+      `
+    : await sql`
+        WITH order_totals AS (
+          SELECT
+            o.event,
+            o.customer,
+            lower(replace(o.customer, '@', '')) AS norm_cust,
+            SUM(o.unit * o.unit_price)::numeric        AS subtotal,
+            SUM(o.unit * COALESCE(p.gram, 0))::numeric AS total_gram
+          FROM orders o
+          JOIN products p ON p.id = o.product_id
+          WHERE o.event = ANY(${events})
+          GROUP BY o.event, o.customer
+        ),
+        payment_totals AS (
+          SELECT
+            event,
+            lower(replace(customer, '@', '')) AS norm_cust,
+            COALESCE(SUM(amount), 0)::numeric AS paid
+          FROM payments
+          WHERE is_checked = true AND event = ANY(${events})
+          GROUP BY event, norm_cust
+        ),
+        adjustment_totals AS (
+          SELECT
+            event,
+            lower(replace(customer, '@', '')) AS norm_cust,
+            COALESCE(SUM(amount), 0)::numeric AS adj
+          FROM adjustments
+          WHERE event = ANY(${events})
+          GROUP BY event, norm_cust
+        ),
+        customer_ongkir AS (
+          SELECT
+            lower(replace(instagram_id, '@', '')) AS norm_id,
+            COALESCE(ongkos_kirim, 0)::numeric AS ongkir
+          FROM customers
+        )
+        SELECT
+          ot.event,
+          ot.customer,
+          ot.subtotal,
+          CEIL(ot.total_gram / 1000.0)::numeric AS weight_kg,
+          COALESCE(co.ongkir, 0)::numeric AS ongkir,
+          COALESCE(at.adj, 0)::numeric    AS adj,
+          COALESCE(pt.paid, 0)::numeric   AS paid
+        FROM order_totals ot
+        LEFT JOIN customer_ongkir co  ON co.norm_id = ot.norm_cust
+        LEFT JOIN payment_totals pt   ON pt.event = ot.event AND pt.norm_cust = ot.norm_cust
+        LEFT JOIN adjustment_totals at ON at.event = ot.event AND at.norm_cust = ot.norm_cust
+      `
 
   for (const r of rows) {
     const subtotal = Number(r.subtotal) || 0

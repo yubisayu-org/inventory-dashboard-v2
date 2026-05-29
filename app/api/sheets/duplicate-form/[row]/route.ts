@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { updateFormRow, updateFormRowStage2, updateFormRowStage3, deleteFormRow } from "@/lib/db"
+import { updateFormRow, updateFormRowStage2, updateFormRowStage3, updateFormRowOwnerQty, deleteFormRow } from "@/lib/db"
 
 type Params = { params: Promise<{ row: string }> }
 
@@ -44,6 +44,19 @@ export async function PUT(req: NextRequest, { params }: Params) {
         unitArrive: Number(unitArrive),
         unitShip: Number(unitShip),
         unitHold: Number(unitHold),
+      })
+
+    } else if (stage === "owner_qty") {
+      // Owner-only manual correction of unit_arrive and unit_hold from the
+      // List Order edit modal. unit_ship intentionally not editable here —
+      // shipped units are owned by the Ship/Shipments flow.
+      if (session.user.role !== "owner") {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+      }
+      const { unitArrive, unitHold } = body
+      await updateFormRowOwnerQty(rowNumber, {
+        unitArrive: unitArrive == null || unitArrive === "" ? null : Number(unitArrive),
+        unitHold: unitHold == null || unitHold === "" ? null : Number(unitHold),
       })
 
     } else {
