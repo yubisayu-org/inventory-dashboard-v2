@@ -120,6 +120,7 @@ export interface ShipOrderLine {
   unit: number
   unitArrive: number
   unitShip: number
+  unitHold: number
   toShip: number
 }
 
@@ -190,9 +191,12 @@ export interface RefundRow {
  *   ready         — fully arrived, units to ship, AND invoice is paid/overpaid
  *   ready_unpaid  — fully arrived with units to ship, but payment is not in yet
  *                   (split out from "ready" so ops can see what's payment-blocked)
+ *   hold          — customer asked to delay shipment (usually to combine with a
+ *                   later event); unit_hold absorbs the toShip qty so the card
+ *                   drops out of "ready" until released.
  *   shipped       — every line fully arrived AND nothing left to ship
  */
-export type ShipStatus = "not_arrived" | "partial" | "ready" | "ready_unpaid" | "shipped"
+export type ShipStatus = "not_arrived" | "partial" | "ready" | "ready_unpaid" | "hold" | "shipped"
 
 export interface ShipCustomer {
   customer: string

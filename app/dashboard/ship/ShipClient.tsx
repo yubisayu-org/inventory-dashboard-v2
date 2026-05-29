@@ -23,6 +23,7 @@ const SEGMENTS: { id: Segment; label: string }[] = [
   { id: "partial", label: "Tiba Sebagian" },
   { id: "ready_unpaid", label: "Belum Bayar" },
   { id: "ready", label: "Siap Dikirim" },
+  { id: "hold", label: "Hold" },
   { id: "shipped", label: "Sudah Dikirim" },
 ]
 
@@ -32,6 +33,7 @@ const STATUS_BADGE: Record<ShipStatus, { label: string; cls: string }> = {
   partial: { label: "Tiba Sebagian", cls: "bg-amber-100 text-amber-700" },
   ready: { label: "Siap Dikirim", cls: "bg-brand/10 text-brand" },
   ready_unpaid: { label: "Belum Bayar", cls: "bg-orange-100 text-orange-700" },
+  hold: { label: "Hold", cls: "bg-purple-100 text-purple-700" },
   shipped: { label: "Sudah Dikirim", cls: "bg-green-100 text-green-700" },
 }
 
@@ -49,7 +51,7 @@ export default function ShipClient() {
   const router = useRouter()
   const sheetOptions = useSheetOptions()
   const [groups, setGroups] = useState<ShipCustomer[]>([])
-  const [counts, setCounts] = useState<Record<Segment, number>>({ all: 0, not_arrived: 0, partial: 0, ready: 0, ready_unpaid: 0, shipped: 0 })
+  const [counts, setCounts] = useState<Record<Segment, number>>({ all: 0, not_arrived: 0, partial: 0, ready: 0, ready_unpaid: 0, hold: 0, shipped: 0 })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [segment, setSegment] = useState<Segment>("ready")
@@ -406,8 +408,32 @@ function CustomerCard({
 }) {
   const [expanded, setExpanded] = useState(false)
   const [confirming, setConfirming] = useState(false)
+  const [holdBusy, setHoldBusy] = useState(false)
+  const [holdError, setHoldError] = useState<string | null>(null)
   const { customerDetail } = c
   const { widths, startResize } = useResizableColumns({ items: 200, unit: 80, unitArrive: 80, unitShip: 80, toShip: 80 })
+  const totalHold = c.orders.reduce((s, o) => s + o.unitHold, 0)
+
+  async function postHoldAction(path: "hold" | "release", confirmMessage: string) {
+    if (!confirm(confirmMessage)) return
+    setHoldBusy(true)
+    setHoldError(null)
+    try {
+      const res = await fetch(`/api/sheets/ship/${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customer: c.customer, event: c.event }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error ?? "Failed")
+      }
+      onShipped()
+    } catch (err) {
+      setHoldError(err instanceof Error ? err.message : "Failed")
+      setHoldBusy(false)
+    }
+  }
 
   return (
     <div className={`rounded-xl border bg-white overflow-hidden transition-colors ${isSelected ? "border-brand" : "border-cream-border"}`}>
@@ -454,12 +480,37 @@ function CustomerCard({
           <div className="shrink-0 flex flex-col items-end gap-1">
             <div className="text-lg font-bold text-foreground leading-none">{c.totalToShip}</div>
             <div className="text-xs text-gray-500">to ship</div>
+            <div className="mt-1 flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => postHoldAction("hold", `Hold this packing list for ${displayIg(c.customer).toUpperCase()} · ${c.event}?`)}
+                disabled={holdBusy}
+                className="px-3 py-1.5 rounded-lg border border-purple-300 text-purple-700 text-xs font-medium hover:bg-purple-50 disabled:opacity-50 transition-colors"
+              >
+                {holdBusy ? "…" : "Hold"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirming(true)}
+                disabled={holdBusy}
+                className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
+              >
+                Ship
+              </button>
+            </div>
+          </div>
+        )}
+        {c.status === "hold" && totalHold > 0 && (
+          <div className="shrink-0 flex flex-col items-end gap-1">
+            <div className="text-lg font-bold text-foreground leading-none">{totalHold}</div>
+            <div className="text-xs text-gray-500">on hold</div>
             <button
               type="button"
-              onClick={() => setConfirming(true)}
-              className="mt-1 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 transition-colors"
+              onClick={() => postHoldAction("release", `Release this packing list for ${displayIg(c.customer).toUpperCase()} · ${c.event} back to ready?`)}
+              disabled={holdBusy}
+              className="mt-1 px-3 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-medium hover:bg-purple-700 disabled:opacity-50 transition-colors"
             >
-              Ship
+              {holdBusy ? "…" : "Release"}
             </button>
           </div>
         )}
@@ -471,6 +522,9 @@ function CustomerCard({
           />
         )}
       </div>
+      {holdError && (
+        <div className="px-5 py-2 text-xs text-red-700 bg-red-50 border-b border-cream-border">{holdError}</div>
+      )}
 
       {/* Orders table */}
       <div className="overflow-x-auto">
