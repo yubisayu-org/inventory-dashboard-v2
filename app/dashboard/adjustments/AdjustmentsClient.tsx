@@ -9,17 +9,11 @@ import { useModalDismiss } from "@/hooks/useModalDismiss"
 import SearchableSelect from "@/components/SearchableSelect"
 import EventSelect from "@/components/EventSelect"
 import DataGrid, { type ColumnDef } from "@/components/DataGrid"
+import { descriptionOptions, AmountSignHint } from "./shared"
 
 const INPUT_CLASS =
   "w-full border border-cream-border rounded-md px-2 py-1 text-sm text-foreground bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
 const LABEL = "text-xs text-gray-500 mb-1 block"
-
-const DEFAULT_DESCRIPTIONS = ["Free Shipping", "Shipping Difference"] as const
-
-function descriptionOptions(extra: string[] = []) {
-  const all = new Set<string>([...DEFAULT_DESCRIPTIONS, ...extra.filter(Boolean)])
-  return Array.from(all).map((d) => ({ value: d, label: d }))
-}
 
 type EditForm = {
   event: string
@@ -30,26 +24,6 @@ type EditForm = {
 
 function formatAmount(n: number): string {
   return new Intl.NumberFormat("id-ID").format(n)
-}
-
-function AmountSignHint({ value }: { value: string }) {
-  const n = Number(value)
-  const filled = value !== "" && Number.isFinite(n) && n !== 0
-  const tone = !filled
-    ? "text-amber-700 bg-amber-50 border-amber-200"
-    : n > 0
-      ? "text-red-700 bg-red-50 border-red-200"
-      : "text-green-700 bg-green-50 border-green-200"
-  const message = !filled
-    ? <><strong>Positive</strong> = Biaya Lainnya (adds to total). <strong>Negative</strong> = Diskon (reduces total).</>
-    : n > 0
-      ? <>Will display as <strong>Biaya Lainnya</strong> and <strong>add</strong> to the customer&apos;s total.</>
-      : <>Will display as <strong>Diskon</strong> and <strong>reduce</strong> the customer&apos;s total.</>
-  return (
-    <p className={`text-[11px] mt-1 px-2 py-1.5 leading-snug rounded-md border ${tone}`}>
-      {message}
-    </p>
-  )
 }
 
 export default function AdjustmentsClient() {
