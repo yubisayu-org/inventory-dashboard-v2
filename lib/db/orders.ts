@@ -6,7 +6,7 @@ import type { SheetOptions, ItemOption, OrderRow, FormRow, ExcessRow, ExcessReas
 
 export async function getSheetOptions(): Promise<SheetOptions> {
   const [eventsRows, productRows, customerRows] = await Promise.all([
-    sql`SELECT name FROM events ORDER BY name`,
+    sql`SELECT name FROM events ORDER BY created_at ASC, id ASC`,
     sql`SELECT id, name, store, price FROM products WHERE name != '' ORDER BY name`,
     sql`
       SELECT instagram_id FROM customers
