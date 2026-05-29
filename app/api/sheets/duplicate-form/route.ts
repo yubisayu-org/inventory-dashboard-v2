@@ -26,6 +26,7 @@ export async function GET(req: NextRequest) {
         sortKey: params.get("sortKey") ?? undefined,
         sortDir: (params.get("sortDir") as "asc" | "desc") ?? undefined,
         newestFirst: params.get("newestFirst") === "true",
+        skipCount: params.get("skipCount") === "true",
       })
       return NextResponse.json(result, { headers: { "Cache-Control": "no-store" } })
     }

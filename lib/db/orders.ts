@@ -100,6 +100,15 @@ export interface PaginatedFormRows {
   totalPages: number
 }
 
+/**
+ * Sentinel value for {@link PaginatedFormRows.totalCount} when the caller
+ * passed `skipCount: true`. Means "I already have the total from a prior
+ * request with the same filters/search/sort — don't trust this field, reuse
+ * your cached value." Avoids the O(N) `COUNT(*)` work when the user is just
+ * paging through results without changing what's being counted.
+ */
+export const TOTAL_COUNT_UNCHANGED = -1
+
 export async function getDuplicateFormRowsPaginated(opts: {
   page: number
   pageSize: number
@@ -110,8 +119,15 @@ export async function getDuplicateFormRowsPaginated(opts: {
   sortKey?: string
   sortDir?: "asc" | "desc"
   newestFirst?: boolean
+  /**
+   * When true, skip the COUNT(*) query and return TOTAL_COUNT_UNCHANGED for
+   * totalCount / totalPages. The caller is responsible for reusing the
+   * previously cached count. Set this when only the page changed within an
+   * otherwise identical query — the count cannot have changed.
+   */
+  skipCount?: boolean
 }): Promise<PaginatedFormRows> {
-  const { page, pageSize, search, event, customer, items, newestFirst } = opts
+  const { page, pageSize, search, event, customer, items, newestFirst, skipCount } = opts
   const offset = (page - 1) * pageSize
 
   const conditions: string[] = []
@@ -149,13 +165,15 @@ export async function getDuplicateFormRowsPaginated(opts: {
   const sortCol = (opts.sortKey && SORT_COLUMNS[opts.sortKey]) || "o.id"
   const sortDir = opts.sortDir === "desc" || (!opts.sortKey && newestFirst) ? "DESC" : "ASC"
 
-  const dataRows = await sql.unsafe(
+  // Rows query: LIMIT/OFFSET means this is bounded work even on a big table.
+  // The customers LEFT JOIN is here (not in the count) because hasAddress is
+  // read off it for each rendered row.
+  const dataQuery = sql.unsafe(
     `SELECT o.id, o.event, o.customer, o.product_id, o.unit_price,
             p.name AS product_name, o.unit, o.note,
             o.created_at, o.updated_at, o.unit_buy, o.receipt,
             o.unit_arrive, o.unit_ship, o.unit_hold,
-            c.data_diri AS customer_data_diri,
-            COUNT(*) OVER() AS _total_count
+            c.data_diri AS customer_data_diri
      FROM orders o
      JOIN products p ON p.id = o.product_id
      LEFT JOIN customers c
@@ -166,7 +184,29 @@ export async function getDuplicateFormRowsPaginated(opts: {
     params,
   )
 
-  const totalCount = dataRows.length > 0 ? Number(dataRows[0]._total_count) : 0
+  if (skipCount) {
+    const dataRows = await dataQuery
+    return {
+      rows: dataRows.map(mapFormRow),
+      totalCount: TOTAL_COUNT_UNCHANGED,
+      page,
+      pageSize,
+      totalPages: TOTAL_COUNT_UNCHANGED,
+    }
+  }
+
+  // Count query: mirrors the rows query's WHERE but omits the customers join
+  // (LEFT JOIN can't change row count) so the planner has less to do.
+  const countQuery = sql.unsafe(
+    `SELECT COUNT(*)::int AS c
+     FROM orders o
+     JOIN products p ON p.id = o.product_id
+     ${where}`,
+    params,
+  )
+
+  const [dataRows, countRows] = await Promise.all([dataQuery, countQuery])
+  const totalCount = Number(countRows[0]?.c ?? 0)
   return {
     rows: dataRows.map(mapFormRow),
     totalCount,
