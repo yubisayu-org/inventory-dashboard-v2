@@ -57,7 +57,7 @@ type EditForm = { event: string; customer: string; productId: string; unit: stri
 // Main component
 // ---------------------------------------------------------------------------
 
-export default function DataTable() {
+export default function DataTable({ isOwner }: { isOwner: boolean }) {
   const options = useSheetOptions()
 
   // -- Server-side state (TanStack format) --
@@ -422,6 +422,7 @@ export default function DataTable() {
         <EditOrderModal
           row={editingRow}
           options={options}
+          isOwner={isOwner}
           onClose={() => setEditingRow(null)}
           onSaved={() => refreshRef.current()}
           onDelete={handleDelete}
@@ -535,9 +536,10 @@ function CopyInvoiceRowButton({ row }: { row: FormRow }) {
 // Edit Order Modal
 // ---------------------------------------------------------------------------
 
-function EditOrderModal({ row, options, onClose, onSaved, onDelete }: {
+function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
   row: FormRow
   options: SheetOptions | null
+  isOwner: boolean
   onClose: () => void
   onSaved: () => void
   onDelete: (rowNumber: number) => void
@@ -549,6 +551,10 @@ function EditOrderModal({ row, options, onClose, onSaved, onDelete }: {
     unit: String(row.unit),
     note: row.note,
   })
+  // Owner-only quantity correction. Empty string clears the column back to NULL
+  // so the row reverts to "not arrived" / no hold instead of being forced to 0.
+  const [unitArrive, setUnitArrive] = useState<string>(row.unitArrive == null ? "" : String(row.unitArrive))
+  const [unitHold, setUnitHold] = useState<string>(row.unitHold == null ? "" : String(row.unitHold))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
 
@@ -581,6 +587,26 @@ function EditOrderModal({ row, options, onClose, onSaved, onDelete }: {
         }),
       })
       if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? "Failed to save") }
+
+      if (isOwner) {
+        const arriveOriginal = row.unitArrive == null ? "" : String(row.unitArrive)
+        const holdOriginal = row.unitHold == null ? "" : String(row.unitHold)
+        const arriveChanged = unitArrive !== arriveOriginal
+        const holdChanged = unitHold !== holdOriginal
+        if (arriveChanged || holdChanged) {
+          const res2 = await fetch(`/api/sheets/duplicate-form/${row.rowNumber}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              stage: "owner_qty",
+              unitArrive: unitArrive === "" ? null : Number(unitArrive),
+              unitHold: unitHold === "" ? null : Number(unitHold),
+            }),
+          })
+          if (!res2.ok) { const d = await res2.json(); throw new Error(d.error ?? "Failed to save arrive/hold") }
+        }
+      }
+
       onSaved()
       onClose()
     } catch (err) {
@@ -633,6 +659,23 @@ function EditOrderModal({ row, options, onClose, onSaved, onDelete }: {
               <input type="text" value={form.note} onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))} placeholder="Optional" className={INPUT_CLS} />
             </div>
           </div>
+
+          {isOwner && (
+            <div className="pt-2 border-t border-cream-border">
+              <div className="text-xs font-medium text-gray-500 mb-2">Owner only · manual correction</div>
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className="text-xs text-gray-500 mb-1 block">Arrive</label>
+                  <input type="number" min="0" value={unitArrive} onChange={(e) => setUnitArrive(e.target.value)} placeholder="—" className={INPUT_CLS} />
+                </div>
+                <div className="flex-1">
+                  <label className="text-xs text-gray-500 mb-1 block">Hold</label>
+                  <input type="number" min="0" value={unitHold} onChange={(e) => setUnitHold(e.target.value)} placeholder="—" className={INPUT_CLS} />
+                </div>
+              </div>
+              <p className="text-[11px] text-gray-400 mt-1.5">Leave blank to clear. Shipped units are managed from the Packing List page.</p>
+            </div>
+          )}
 
           {error && <p className="text-xs text-red-600">{error}</p>}
 

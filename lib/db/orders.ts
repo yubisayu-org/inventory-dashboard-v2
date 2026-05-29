@@ -271,6 +271,25 @@ export async function updateFormRowStage3(
   `
 }
 
+/**
+ * Owner-only manual correction of unit_arrive and unit_hold on a single order
+ * row, used by the List Order edit modal. Kept separate from Stage 3 so the
+ * arrival/ship flow contract (which writes all three quantity columns at once)
+ * isn't entangled with one-off manual fixes.
+ */
+export async function updateFormRowOwnerQty(
+  rowNumber: number,
+  data: { unitArrive: number | null; unitHold: number | null },
+): Promise<void> {
+  await sql`
+    UPDATE orders
+    SET unit_arrive = ${data.unitArrive},
+        unit_hold = ${data.unitHold},
+        updated_at = NOW()
+    WHERE id = ${rowNumber}
+  `
+}
+
 export async function deleteFormRow(rowNumber: number): Promise<void> {
   await sql`DELETE FROM orders WHERE id = ${rowNumber}`
 }
