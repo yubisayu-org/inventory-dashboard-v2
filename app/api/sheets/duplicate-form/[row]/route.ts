@@ -49,7 +49,9 @@ export async function PUT(req: NextRequest, { params }: Params) {
     } else {
       // Stage 1 — order details
       const { event, customer, productId, unitPrice, unit, note } = body
-      if (!event || !customer || !productId || !unit) {
+      // `unit == null` (not `!unit`) so 0 is accepted — admins occasionally
+      // zero out an order to cancel it while keeping the row for history.
+      if (!event || !customer || !productId || unit == null) {
         return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
       }
       await updateFormRow(rowNumber, {

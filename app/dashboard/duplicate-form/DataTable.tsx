@@ -626,7 +626,7 @@ function EditOrderModal({ row, options, onClose, onSaved, onDelete }: {
           <div className="flex gap-3">
             <div className="flex-1">
               <label className="text-xs text-gray-500 mb-1 block">Qty</label>
-              <input type="number" min="1" value={form.unit} onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value }))} className={INPUT_CLS} />
+              <input type="number" min="0" value={form.unit} onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value }))} className={INPUT_CLS} />
             </div>
             <div className="flex-1">
               <label className="text-xs text-gray-500 mb-1 block">Note</label>
