@@ -11,14 +11,6 @@ type User = { name?: string | null; email?: string | null; role: Role | null }
 
 const TABS: Tab[] = [
   {
-    href: "/dashboard/events",
-    label: "Events",
-    roles: ["owner"],
-    icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4" /><path d="M8 2v4" /><path d="M3 10h18" /></svg>
-    ),
-  },
-  {
     href: "/dashboard/products",
     label: "Products",
     roles: ["owner"],
@@ -40,6 +32,14 @@ const TABS: Tab[] = [
     roles: ["admin", "owner"],
     icon: (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="8" cy="21" r="1" /><circle cx="19" cy="21" r="1" /><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" /></svg>
+    ),
+  },
+  {
+    href: "/dashboard/payments",
+    label: "Payments",
+    roles: ["admin", "owner"],
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2" /><line x1="1" y1="10" x2="23" y2="10" /></svg>
     ),
   },
 ]

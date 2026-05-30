@@ -126,12 +126,10 @@ export async function lookupOngkir(kabKota: string, kecamatan: string): Promise<
  * Register a self-registered customer, keyed on the normalized handle (so "@User"
  * and "user" don't create duplicate rows).
  *
- * Security: this is a PUBLIC, unauthenticated path, so it must not let anyone
- * overwrite an existing customer's contact data by knowing their handle. On an
- * existing row it only **backfills empty fields** — populated whatsapp/data_diri/
- * ekspedisi/ongkir (and bank info, always) are left untouched. Established
- * customers change their details via the authenticated dashboard, not here.
- * A brand-new handle is inserted normally.
+ * Re-submission is expected behavior — the form tells users to re-register when
+ * their address changes — so an existing row's contact fields (name/whatsapp/
+ * data_diri/ekspedisi/ongkos_kirim) are overwritten with the latest submission.
+ * Bank info is never touched here; that lives behind the authenticated dashboard.
  */
 export async function registerCustomer(data: {
   instagramId: string
@@ -144,11 +142,11 @@ export async function registerCustomer(data: {
   const norm = normalizeId(data.instagramId)
   const updated = await sql`
     UPDATE customers SET
-      name         = CASE WHEN name      = '' THEN ${data.name}      ELSE name      END,
-      whatsapp     = CASE WHEN whatsapp  = '' THEN ${data.whatsapp}  ELSE whatsapp  END,
-      data_diri    = CASE WHEN data_diri = '' THEN ${data.dataDiri}  ELSE data_diri END,
-      ekspedisi    = CASE WHEN ekspedisi = '' THEN ${data.ekspedisi} ELSE ekspedisi END,
-      ongkos_kirim = CASE WHEN ongkos_kirim = 0 AND ${data.ongkosKirim} > 0 THEN ${data.ongkosKirim} ELSE ongkos_kirim END,
+      name         = ${data.name},
+      whatsapp     = ${data.whatsapp},
+      data_diri    = ${data.dataDiri},
+      ekspedisi    = ${data.ekspedisi},
+      ongkos_kirim = ${data.ongkosKirim},
       updated_at   = NOW()
     WHERE lower(replace(instagram_id, '@', '')) = ${norm}
     RETURNING id

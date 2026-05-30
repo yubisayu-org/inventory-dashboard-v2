@@ -6,7 +6,7 @@ import type { SheetOptions, ItemOption, OrderRow, FormRow, ExcessRow, ExcessReas
 
 export async function getSheetOptions(): Promise<SheetOptions> {
   const [eventsRows, productRows, customerRows] = await Promise.all([
-    sql`SELECT name FROM events ORDER BY created_at ASC, id ASC`,
+    sql`SELECT name FROM events ORDER BY created_at DESC, id DESC`,
     sql`SELECT id, name, store, price FROM products WHERE name != '' ORDER BY name`,
     sql`
       SELECT instagram_id FROM customers
@@ -312,22 +312,31 @@ export async function updateFormRowStage3(
 }
 
 /**
- * Owner-only manual correction of unit_arrive and unit_hold on a single order
- * row, used by the List Order edit modal. Kept separate from Stage 3 so the
- * arrival/ship flow contract (which writes all three quantity columns at once)
- * isn't entangled with one-off manual fixes.
+ * Owner-only edit of a single quantity column on an order row, used by both
+ * the List Order table's inline cells and its edit modal. Updates exactly one
+ * column so sibling fields (e.g. unit_hold, receipt) aren't clobbered by a
+ * partial edit. Kept separate from Stages 2/3 so the purchasing/arrival flow
+ * contracts (which write multiple columns together) aren't entangled with
+ * one-off manual fixes.
  */
-export async function updateFormRowOwnerQty(
+export async function updateOrderOwnerCell(
   rowNumber: number,
-  data: { unitArrive: number | null; unitHold: number | null },
+  column: "unit_buy" | "unit_arrive",
+  value: number | null,
 ): Promise<void> {
-  await sql`
-    UPDATE orders
-    SET unit_arrive = ${data.unitArrive},
-        unit_hold = ${data.unitHold},
-        updated_at = NOW()
-    WHERE id = ${rowNumber}
-  `
+  if (column === "unit_buy") {
+    await sql`
+      UPDATE orders
+      SET unit_buy = ${value}, updated_at = NOW()
+      WHERE id = ${rowNumber}
+    `
+  } else {
+    await sql`
+      UPDATE orders
+      SET unit_arrive = ${value}, updated_at = NOW()
+      WHERE id = ${rowNumber}
+    `
+  }
 }
 
 export async function deleteFormRow(rowNumber: number): Promise<void> {

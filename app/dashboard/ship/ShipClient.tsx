@@ -617,6 +617,13 @@ function ShipConfirmModal({
   const [shipping, setShipping] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<{ pdfUrl: string; shippingId: string } | null>(null)
+  // Optional one-time address override. Toggle off (the default) ships to the
+  // customer's profile data_diri. Toggle on reveals an editable textarea pre-
+  // filled with that same address so admin can tweak just the parts that
+  // differ (receiver name, street) without retyping the whole block.
+  const profileAddress = c.customerDetail?.dataDiri ?? ""
+  const [useTempAddress, setUseTempAddress] = useState(false)
+  const [tempAddress, setTempAddress] = useState(profileAddress)
   const toShipRows = c.orders.filter((o) => o.toShip > 0)
 
   const dismissRef = useRef<() => void>(onClose)
@@ -629,6 +636,7 @@ function ShipConfirmModal({
   async function handleConfirm() {
     setShipping(true)
     setError(null)
+    const effectiveAddress = useTempAddress ? tempAddress : profileAddress
     const params: ShipOrdersParams = {
       customer: c.customer,
       event: c.event,
@@ -641,6 +649,7 @@ function ShipConfirmModal({
       })),
       weightKg: c.weightKg,
       ongkirPerKg: c.ongkirPerKg,
+      tempAddress: useTempAddress ? tempAddress : null,
     }
     try {
       const res = await fetch("/api/sheets/ship", {
@@ -655,7 +664,7 @@ function ShipConfirmModal({
         event: c.event,
         customer: c.customer,
         shippingId: data.shippingId,
-        dataDiri: c.customerDetail?.dataDiri ?? "",
+        dataDiri: effectiveAddress,
         packingLines: toShipRows.map((o) => `${o.productName} x ${o.toShip}`),
       })
       const url = URL.createObjectURL(blob)
@@ -705,14 +714,51 @@ function ShipConfirmModal({
               </div>
             </div>
 
-            {c.customerDetail?.dataDiri && (
-              <div>
-                <div className="text-xs font-medium text-gray-500 mb-1">Alamat pengiriman</div>
-                <pre className="whitespace-pre-wrap font-sans text-sm text-foreground leading-relaxed">
-                  {c.customerDetail.dataDiri}
-                </pre>
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <div className="text-xs font-medium text-gray-500">
+                  Alamat pengiriman
+                  {useTempAddress && (
+                    <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-purple-100 text-purple-700">
+                      Sementara
+                    </span>
+                  )}
+                </div>
+                <label className="inline-flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={useTempAddress}
+                    onChange={(e) => setUseTempAddress(e.target.checked)}
+                    className="rounded border-gray-300 text-brand focus:ring-brand/30 cursor-pointer"
+                  />
+                  Kirim ke alamat berbeda
+                </label>
               </div>
-            )}
+              {useTempAddress ? (
+                <>
+                  <textarea
+                    value={tempAddress}
+                    onChange={(e) => setTempAddress(e.target.value)}
+                    rows={5}
+                    placeholder={"Nama Penerima\nAlamat lengkap\nNo. telepon"}
+                    className="w-full border border-purple-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-300 focus:border-purple-500 transition-colors resize-none"
+                  />
+                  <p className="text-[11px] text-gray-400 mt-1">
+                    Alamat ini hanya untuk pengiriman ini. Alamat utama customer tidak berubah.
+                  </p>
+                </>
+              ) : (
+                profileAddress ? (
+                  <pre className="whitespace-pre-wrap font-sans text-sm text-foreground leading-relaxed">
+                    {profileAddress}
+                  </pre>
+                ) : (
+                  <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
+                    Customer belum punya alamat di profil. Aktifkan toggle untuk isi alamat manual.
+                  </p>
+                )
+              )}
+            </div>
 
             <div className="rounded-lg bg-cream/50 px-4 py-3 flex flex-col gap-1 text-sm">
               <div className="flex justify-between">
@@ -802,6 +848,11 @@ function MergeShipConfirmModal({
   const [shipping, setShipping] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<{ pdfUrl: string; shippingId: string; discount: number } | null>(null)
+  // One-time address override for the combined package. Pre-fills with the
+  // customer's profile address once it loads so admin can tweak just the
+  // parts that differ. One address per box — merged shipments share it.
+  const [useTempAddress, setUseTempAddress] = useState(false)
+  const [tempAddress, setTempAddress] = useState("")
 
   // Pull every shippable event for this customer, regardless of which tab the
   // cards live on, so partial + ready events can be combined freely.
@@ -831,6 +882,15 @@ function MergeShipConfirmModal({
   const checkedGroups = (allGroups ?? []).filter((g) => checked.has(g.event))
   const customerDetail = allGroups?.[0]?.customerDetail ?? null
   const ongkirPerKg = allGroups?.[0]?.ongkirPerKg ?? 0
+  const profileAddress = customerDetail?.dataDiri ?? ""
+
+  // Seed the temp-address textarea with the customer's profile address once
+  // the fetch completes. Only seeds when empty so admin's typing isn't blown
+  // away by a re-render.
+  useEffect(() => {
+    if (profileAddress && !tempAddress) setTempAddress(profileAddress)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profileAddress])
   const totalGram = checkedGroups.reduce((s, g) => s + g.orders.reduce((a, o) => a + o.gram * o.toShip, 0), 0)
   const combinedKg = Math.ceil(totalGram / 1000)
   const combinedOngkir = ongkirPerKg * combinedKg
@@ -856,6 +916,7 @@ function MergeShipConfirmModal({
     if (!canConfirm) return
     setShipping(true)
     setError(null)
+    const effectiveAddress = useTempAddress ? tempAddress : profileAddress
     try {
       const res = await fetch("/api/sheets/ship", {
         method: "POST",
@@ -869,6 +930,7 @@ function MergeShipConfirmModal({
               .filter((o) => o.toShip > 0)
               .map((o) => ({ rowNumber: o.rowNumber, productName: o.productName, toShip: o.toShip, gram: o.gram })),
           })),
+          tempAddress: useTempAddress ? tempAddress : null,
         }),
       })
       const data = await res.json()
@@ -884,7 +946,7 @@ function MergeShipConfirmModal({
         event: checkedGroups.map((g) => g.event).join(" + "),
         customer,
         shippingId: data.shippingId,
-        dataDiri: customerDetail?.dataDiri ?? "",
+        dataDiri: effectiveAddress,
         packingLines,
       })
       const url = URL.createObjectURL(blob)
@@ -960,14 +1022,51 @@ function MergeShipConfirmModal({
                   })}
                 </div>
 
-                {customerDetail?.dataDiri && (
-                  <div>
-                    <div className="text-xs font-medium text-gray-500 mb-1">Alamat pengiriman</div>
-                    <pre className="whitespace-pre-wrap font-sans text-sm text-foreground leading-relaxed">
-                      {customerDetail.dataDiri}
-                    </pre>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="text-xs font-medium text-gray-500">
+                      Alamat pengiriman
+                      {useTempAddress && (
+                        <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-purple-100 text-purple-700">
+                          Sementara
+                        </span>
+                      )}
+                    </div>
+                    <label className="inline-flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={useTempAddress}
+                        onChange={(e) => setUseTempAddress(e.target.checked)}
+                        className="rounded border-gray-300 text-brand focus:ring-brand/30 cursor-pointer"
+                      />
+                      Kirim ke alamat berbeda
+                    </label>
                   </div>
-                )}
+                  {useTempAddress ? (
+                    <>
+                      <textarea
+                        value={tempAddress}
+                        onChange={(e) => setTempAddress(e.target.value)}
+                        rows={5}
+                        placeholder={"Nama Penerima\nAlamat lengkap\nNo. telepon"}
+                        className="w-full border border-purple-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-300 focus:border-purple-500 transition-colors resize-none"
+                      />
+                      <p className="text-[11px] text-gray-400 mt-1">
+                        Seluruh paket gabungan akan dikirim ke alamat ini. Alamat utama customer tidak berubah.
+                      </p>
+                    </>
+                  ) : (
+                    profileAddress ? (
+                      <pre className="whitespace-pre-wrap font-sans text-sm text-foreground leading-relaxed">
+                        {profileAddress}
+                      </pre>
+                    ) : (
+                      <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
+                        Customer belum punya alamat di profil. Aktifkan toggle untuk isi alamat manual.
+                      </p>
+                    )
+                  )}
+                </div>
 
                 <div className="rounded-lg bg-cream/50 px-4 py-3 flex flex-col gap-1 text-sm">
                   <div className="flex justify-between">

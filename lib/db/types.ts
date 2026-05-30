@@ -256,6 +256,10 @@ export interface ShipOrdersParams {
   orders: Array<{ rowNumber: number; productId: number; productName: string; toShip: number; unitShip: number }>
   weightKg: number
   ongkirPerKg: number
+  // Optional one-time receiving address. When provided, persisted on the
+  // resulting shipment row so reprints/messages render this address instead of
+  // the customer's profile data_diri.
+  tempAddress?: string | null
 }
 
 /**
@@ -271,6 +275,9 @@ export interface ShipMergedParams {
     event: string
     orders: Array<{ rowNumber: number; productName: string; toShip: number; gram: number }>
   }>
+  // Optional one-time receiving address for the combined package. Written to
+  // every row in the merge_group so any reprint path renders it consistently.
+  tempAddress?: string | null
 }
 
 export interface ShipMergedResult {
@@ -299,6 +306,10 @@ export interface ShippingRecord {
   // Non-null when this row is part of a "Ship together" merged package; all
   // rows sharing the id were one physical shipment (one box, one resi).
   mergeGroup: string | null
+  // One-time override of the receiving address. When set, label generation,
+  // reprints, and the shipment confirmation message all use this instead of
+  // the customer's profile data_diri. Persisted on every row of a merge_group.
+  tempAddress: string | null
 }
 
 export interface CountryRow {

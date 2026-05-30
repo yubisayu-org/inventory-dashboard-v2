@@ -48,7 +48,11 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [addOpen, setAddOpen] = useState(false)
+  const [mobileAddOpen, setMobileAddOpen] = useState(false)
   const [editingRow, setEditingRow] = useState<PaymentRow | null>(null)
+  // Mobile-only filter — DataGrid handles search on desktop; on mobile we
+  // expose a single search box above the card list (no per-column filters).
+  const [mobileSearch, setMobileSearch] = useState("")
 
   const fetchRows = useCallback(() => {
     fetch("/api/sheets/payments")
@@ -216,7 +220,28 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
     </>
   ), [addOpen, fetchRows])
 
-  if (loading) return <TableSkeleton />
+  // Mobile cards reuse the in-memory rows, filtered by the single search box
+  // (matches event, customer handle, account, and remarks — same fields the
+  // DataGrid's global search covers).
+  const mobileRows = useMemo(() => {
+    const q = mobileSearch.trim().toLowerCase()
+    if (!q) return rows
+    return rows.filter((r) =>
+      r.event.toLowerCase().includes(q) ||
+      r.customer.toLowerCase().includes(q) ||
+      r.account.toLowerCase().includes(q) ||
+      r.remarks.toLowerCase().includes(q),
+    )
+  }, [rows, mobileSearch])
+
+  if (loading) {
+    return (
+      <>
+        <div className="hidden md:block"><TableSkeleton /></div>
+        <div className="md:hidden rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">Loading…</div>
+      </>
+    )
+  }
 
   if (error) {
     return (
@@ -228,23 +253,75 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
 
   return (
     <div className="space-y-3">
+      {/* Desktop: existing inline add form */}
       {addOpen && (
-        <AddPaymentForm
-          options={options}
-          isAdmin={isAdmin}
-          onClose={() => setAddOpen(false)}
-          onAdded={() => { fetchRows(); setAddOpen(false) }}
-        />
+        <div className="hidden md:block">
+          <AddPaymentForm
+            options={options}
+            isAdmin={isAdmin}
+            onClose={() => setAddOpen(false)}
+            onAdded={() => { fetchRows(); setAddOpen(false) }}
+          />
+        </div>
       )}
 
-      <DataGrid
-        data={rows}
-        columns={columns}
-        getRowId={(row) => String(row.rowNumber)}
-        searchPlaceholder="Search payments..."
-        toolbarExtra={refreshButton}
-        initialVisibility={{ updatedAt: false }}
-      />
+      {/* Desktop table */}
+      <div className="hidden md:block">
+        <DataGrid
+          data={rows}
+          columns={columns}
+          getRowId={(row) => String(row.rowNumber)}
+          searchPlaceholder="Search payments..."
+          toolbarExtra={refreshButton}
+          initialVisibility={{ updatedAt: false }}
+        />
+      </div>
+
+      {/* Mobile cards */}
+      <div className="md:hidden flex flex-col gap-2.5">
+        <input
+          type="text"
+          value={mobileSearch}
+          onChange={(e) => setMobileSearch(e.target.value)}
+          placeholder="Cari payment…"
+          className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+        />
+        {mobileRows.length === 0 ? (
+          <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">
+            {rows.length === 0 ? "No payments yet" : "No matches"}
+          </div>
+        ) : (
+          mobileRows.map((row) => (
+            <PaymentCard
+              key={row.rowNumber}
+              row={row}
+              isAdmin={isAdmin}
+              onToggleCheck={() => handleToggleCheck(row)}
+              onEdit={() => setEditingRow(row)}
+            />
+          ))
+        )}
+      </div>
+
+      {/* Mobile add FAB */}
+      <button
+        type="button"
+        onClick={() => setMobileAddOpen(true)}
+        aria-label="Add payment"
+        className="md:hidden fixed right-4 bottom-20 z-30 w-14 h-14 rounded-full bg-brand text-white text-3xl leading-none shadow-lg flex items-center justify-center active:bg-brand/90"
+      >
+        +
+      </button>
+
+      {/* Mobile add bottom sheet */}
+      {mobileAddOpen && (
+        <MobileAddPaymentSheet
+          options={options}
+          isAdmin={isAdmin}
+          onClose={() => setMobileAddOpen(false)}
+          onAdded={() => { fetchRows(); setMobileAddOpen(false) }}
+        />
+      )}
 
       {editingRow && (
         <EditPaymentModal
@@ -610,6 +687,211 @@ function AddPaymentForm({
         </button>
       </form>
       {feedback && <p className={`text-xs mt-2 ${feedback.type === "success" ? "text-green-600" : "text-red-600"}`}>{feedback.message}</p>}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Mobile: single-payment card
+// ---------------------------------------------------------------------------
+
+function PaymentCard({
+  row,
+  isAdmin,
+  onToggleCheck,
+  onEdit,
+}: {
+  row: PaymentRow
+  isAdmin: boolean
+  onToggleCheck: () => void
+  onEdit: () => void
+}) {
+  return (
+    <div className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] flex flex-col gap-2">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="font-semibold text-foreground truncate">{displayIg(row.customer)}</div>
+          <div className="text-[12.5px] text-gray-500 mt-0.5 truncate">{row.event}</div>
+        </div>
+        <div className="shrink-0 flex flex-col items-end gap-0.5">
+          <div className="text-base font-semibold tabular-nums text-foreground leading-none">
+            {formatAmount(row.amount)}
+          </div>
+          <div className="text-[11px] text-gray-400">Rp</div>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-[12.5px] text-gray-500 min-w-0">
+          <span className="whitespace-nowrap">{formatDate(row.payDate)}</span>
+          {row.account && (
+            <>
+              <span className="text-gray-300">·</span>
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10.5px] font-medium bg-cream text-gray-600">
+                {row.account}
+              </span>
+            </>
+          )}
+        </div>
+        <div className="shrink-0 flex items-center gap-1">
+          <button
+            type="button"
+            onClick={onToggleCheck}
+            disabled={isAdmin}
+            aria-label={row.isChecked ? "Tandai belum dicek" : "Tandai sudah dicek"}
+            className={`p-2 rounded-lg transition-colors ${
+              row.isChecked
+                ? "bg-green-100 text-green-700 active:bg-green-200"
+                : "text-gray-300 active:bg-cream"
+            } ${isAdmin ? "cursor-default" : "cursor-pointer"}`}
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            onClick={onEdit}
+            aria-label="Edit payment"
+            className="p-2 rounded-lg text-gray-400 active:bg-cream active:text-brand transition-colors"
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {row.remarks && (
+        <div className="text-[12.5px] text-gray-500 leading-snug border-t border-cream-border pt-2 break-words">
+          {row.remarks}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Mobile: add-payment bottom sheet
+// ---------------------------------------------------------------------------
+
+function MobileAddPaymentSheet({
+  options,
+  isAdmin,
+  onClose,
+  onAdded,
+}: {
+  options: ReturnType<typeof useSheetOptions>
+  isAdmin: boolean
+  onClose: () => void
+  onAdded: () => void
+}) {
+  const [event, setEvent] = useState("")
+  const [customer, setCustomer] = useState("")
+  const [amount, setAmount] = useState("")
+  const [account, setAccount] = useState("BCA")
+  const [isChecked, setIsChecked] = useState(false)
+  const [payDate, setPayDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [remarks, setRemarks] = useState("")
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const customerOptions = useMemo(
+    () => (options?.customers ?? []).map((c) => ({ value: c, label: displayIg(c) })),
+    [options],
+  )
+
+  const canSubmit = Boolean(event) && Boolean(customer) && Boolean(amount) && Number(amount) > 0
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!canSubmit) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      const res = await fetch("/api/sheets/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event, customer, amount: Number(amount), account, isChecked, payDate, remarks }),
+      })
+      if (!res.ok) {
+        const d = await res.json()
+        throw new Error(d.error ?? "Failed to save")
+      }
+      onAdded()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="md:hidden fixed inset-0 z-40 flex items-end bg-black/40" onClick={onClose}>
+      <form
+        onSubmit={handleSubmit}
+        onClick={(e) => e.stopPropagation()}
+        className="w-full bg-white rounded-t-2xl p-5 pb-8 flex flex-col gap-3 max-h-[88vh] overflow-y-auto"
+      >
+        <div className="flex items-center justify-between">
+          <span className="text-base font-semibold text-foreground">Add Payment</span>
+          <button type="button" onClick={onClose} aria-label="Close" className="text-gray-400 p-1">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+
+        <div>
+          <label className={LABEL}>Event <span className="text-brand">*</span></label>
+          <EventSelect value={event} onChange={setEvent} events={options?.events ?? []} />
+        </div>
+        <div>
+          <label className={LABEL}>Customer <span className="text-brand">*</span></label>
+          <SearchableSelect
+            value={customer}
+            onChange={setCustomer}
+            options={customerOptions}
+            placeholder="Customer..."
+            allowNewValue
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={LABEL}>Amount <span className="text-brand">*</span></label>
+            <input type="number" min="0" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" className={INPUT_CLASS} />
+          </div>
+          <div>
+            <label className={LABEL}>Account</label>
+            <select value={account} onChange={(e) => setAccount(e.target.value)} className={INPUT_CLASS}>
+              {ACCOUNT_OPTIONS.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </div>
+        </div>
+        <div>
+          <label className={LABEL}>Date</label>
+          <input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} className={INPUT_CLASS} />
+        </div>
+        <div>
+          <label className={LABEL}>Remarks</label>
+          <input type="text" value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Optional" className={INPUT_CLASS} />
+        </div>
+        {!isAdmin && (
+          <label className="flex items-center gap-2 text-xs text-gray-600">
+            <input type="checkbox" checked={isChecked} onChange={(e) => setIsChecked(e.target.checked)} className="accent-brand" />
+            Sudah dicek
+          </label>
+        )}
+
+        {error && <p className="text-xs text-red-500">{error}</p>}
+
+        <button
+          type="submit"
+          disabled={submitting || !canSubmit}
+          className="mt-1 px-4 py-3 rounded-xl bg-brand text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {submitting ? "Saving…" : "Save Payment"}
+        </button>
+      </form>
     </div>
   )
 }
