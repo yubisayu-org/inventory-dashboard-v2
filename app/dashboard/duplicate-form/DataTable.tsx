@@ -145,6 +145,30 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
     }
   }, [])
 
+  // Owner-only inline cell edit. Optimistic local update on success so the
+  // table doesn't have to round-trip a full refetch for every keystroke commit.
+  // On failure, throws so the cell can revert its input to the previous value.
+  const handleCellSave = useCallback(async (
+    rowNumber: number,
+    column: "unit_buy" | "unit_arrive",
+    value: number | null,
+  ) => {
+    const res = await fetch(`/api/sheets/duplicate-form/${rowNumber}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ stage: "owner_cell", column, value }),
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      throw new Error(data.error ?? "Failed to save")
+    }
+    setRows((rs) => rs.map((r) =>
+      r.rowNumber === rowNumber
+        ? { ...r, ...(column === "unit_buy" ? { unitBuy: value } : { unitArrive: value }) }
+        : r,
+    ))
+  }, [])
+
   async function handleBulkDelete() {
     const ids = Object.keys(rowSelection).filter((k) => rowSelection[k]).map(Number)
     if (ids.length === 0) return
@@ -200,6 +224,36 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
       cell: ({ getValue }) => <span className="tabular-nums">{fmt(getValue<number>())}</span>,
     },
     {
+      accessorKey: "unitBuy",
+      header: "Buy",
+      enableColumnFilter: false,
+      enableSorting: true,
+      size: 80,
+      meta: { align: "right" },
+      cell: ({ row }) => (
+        <EditableNumberCell
+          value={row.original.unitBuy}
+          canEdit={isOwner}
+          onSave={(v) => handleCellSave(row.original.rowNumber, "unit_buy", v)}
+        />
+      ),
+    },
+    {
+      accessorKey: "unitArrive",
+      header: "Arrive",
+      enableColumnFilter: false,
+      enableSorting: true,
+      size: 80,
+      meta: { align: "right" },
+      cell: ({ row }) => (
+        <EditableNumberCell
+          value={row.original.unitArrive}
+          canEdit={isOwner}
+          onSave={(v) => handleCellSave(row.original.rowNumber, "unit_arrive", v)}
+        />
+      ),
+    },
+    {
       accessorKey: "note",
       header: "Note",
       enableColumnFilter: false,
@@ -250,7 +304,7 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
         </div>
       ),
     },
-  ], [handleDelete])
+  ], [handleDelete, handleCellSave, isOwner])
 
   // -- Toolbar extras --
   const selectedCount = Object.keys(rowSelection).filter((k) => rowSelection[k]).length
@@ -313,7 +367,7 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
           getRowId={(row) => String(row.rowNumber)}
           searchPlaceholder="Search orders..."
           toolbarExtra={toolbarExtra}
-          initialVisibility={{ note: false, createdAt: false, updatedAt: false }}
+          initialVisibility={{ unitBuy: false, unitArrive: false, note: false, createdAt: false, updatedAt: false }}
           enableRowSelection
           rowSelection={rowSelection}
           onRowSelectionChange={setRowSelection}
@@ -464,6 +518,86 @@ function CopyableText({ text }: { text: string }) {
 }
 
 // ---------------------------------------------------------------------------
+// EditableNumberCell — owner-only inline number edit for Buy / Arrive columns
+// ---------------------------------------------------------------------------
+
+function EditableNumberCell({ value, canEdit, onSave }: {
+  value: number | null
+  canEdit: boolean
+  onSave: (value: number | null) => Promise<void>
+}) {
+  // Admin (and anyone else without edit rights) just sees the number.
+  if (!canEdit) {
+    return <span className="tabular-nums">{value == null ? <span className="text-gray-300">—</span> : fmt(value)}</span>
+  }
+
+  // Owner gets a click-anywhere-in-cell number input. We hold an internal
+  // draft so partial typing doesn't fight with React re-renders, and reset it
+  // whenever the canonical value from the row changes (e.g. on refresh).
+  const [draft, setDraft] = useState(value == null ? "" : String(value))
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const lastValueRef = useRef(value)
+
+  useEffect(() => {
+    // Only resync when the row's value actually changes — typing into the
+    // input would otherwise wipe the draft as setRows propagates.
+    if (lastValueRef.current !== value) {
+      lastValueRef.current = value
+      setDraft(value == null ? "" : String(value))
+    }
+  }, [value])
+
+  async function commit() {
+    const trimmed = draft.trim()
+    const newValue = trimmed === "" ? null : Number(trimmed)
+    if (newValue !== null && !Number.isFinite(newValue)) {
+      setError("Invalid")
+      setDraft(value == null ? "" : String(value))
+      return
+    }
+    if (newValue === value) {
+      setError(null)
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await onSave(newValue)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed")
+      setDraft(value == null ? "" : String(value))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <input
+      type="number"
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") (e.target as HTMLInputElement).blur()
+        if (e.key === "Escape") {
+          setDraft(value == null ? "" : String(value))
+          ;(e.target as HTMLInputElement).blur()
+        }
+      }}
+      disabled={saving}
+      placeholder="—"
+      title={error ?? undefined}
+      className={`w-full bg-transparent border px-2 py-0.5 text-right tabular-nums rounded transition-colors ${
+        error
+          ? "border-red-300 text-red-700"
+          : "border-transparent hover:border-cream-border focus:border-brand focus:bg-white focus:outline-none"
+      } disabled:opacity-50`}
+    />
+  )
+}
+
+// ---------------------------------------------------------------------------
 // CopyInvoiceRowButton — copy the invoice message for a row's customer
 // ---------------------------------------------------------------------------
 
@@ -552,9 +686,9 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
     note: row.note,
   })
   // Owner-only quantity correction. Empty string clears the column back to NULL
-  // so the row reverts to "not arrived" / no hold instead of being forced to 0.
+  // so the row reverts to "not bought" / "not arrived" instead of being forced to 0.
+  const [unitBuy, setUnitBuy] = useState<string>(row.unitBuy == null ? "" : String(row.unitBuy))
   const [unitArrive, setUnitArrive] = useState<string>(row.unitArrive == null ? "" : String(row.unitArrive))
-  const [unitHold, setUnitHold] = useState<string>(row.unitHold == null ? "" : String(row.unitHold))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
 
@@ -589,21 +723,25 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
       if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? "Failed to save") }
 
       if (isOwner) {
+        // Issue a single-column PUT per changed field via stage:"owner_cell".
+        // Keeping them as separate calls avoids clobbering sibling fields and
+        // matches the contract used by the inline cell editors on the table.
+        const buyOriginal = row.unitBuy == null ? "" : String(row.unitBuy)
         const arriveOriginal = row.unitArrive == null ? "" : String(row.unitArrive)
-        const holdOriginal = row.unitHold == null ? "" : String(row.unitHold)
-        const arriveChanged = unitArrive !== arriveOriginal
-        const holdChanged = unitHold !== holdOriginal
-        if (arriveChanged || holdChanged) {
+        const pending: Array<{ column: "unit_buy" | "unit_arrive"; value: number | null }> = []
+        if (unitBuy !== buyOriginal) {
+          pending.push({ column: "unit_buy", value: unitBuy === "" ? null : Number(unitBuy) })
+        }
+        if (unitArrive !== arriveOriginal) {
+          pending.push({ column: "unit_arrive", value: unitArrive === "" ? null : Number(unitArrive) })
+        }
+        for (const p of pending) {
           const res2 = await fetch(`/api/sheets/duplicate-form/${row.rowNumber}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              stage: "owner_qty",
-              unitArrive: unitArrive === "" ? null : Number(unitArrive),
-              unitHold: unitHold === "" ? null : Number(unitHold),
-            }),
+            body: JSON.stringify({ stage: "owner_cell", column: p.column, value: p.value }),
           })
-          if (!res2.ok) { const d = await res2.json(); throw new Error(d.error ?? "Failed to save arrive/hold") }
+          if (!res2.ok) { const d = await res2.json(); throw new Error(d.error ?? `Failed to save ${p.column}`) }
         }
       }
 
@@ -665,15 +803,15 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
               <div className="text-xs font-medium text-gray-500 mb-2">Owner only · manual correction</div>
               <div className="flex gap-3">
                 <div className="flex-1">
+                  <label className="text-xs text-gray-500 mb-1 block">Buy</label>
+                  <input type="number" min="0" value={unitBuy} onChange={(e) => setUnitBuy(e.target.value)} placeholder="—" className={INPUT_CLS} />
+                </div>
+                <div className="flex-1">
                   <label className="text-xs text-gray-500 mb-1 block">Arrive</label>
                   <input type="number" min="0" value={unitArrive} onChange={(e) => setUnitArrive(e.target.value)} placeholder="—" className={INPUT_CLS} />
                 </div>
-                <div className="flex-1">
-                  <label className="text-xs text-gray-500 mb-1 block">Hold</label>
-                  <input type="number" min="0" value={unitHold} onChange={(e) => setUnitHold(e.target.value)} placeholder="—" className={INPUT_CLS} />
-                </div>
               </div>
-              <p className="text-[11px] text-gray-400 mt-1.5">Leave blank to clear. Shipped units are managed from the Packing List page.</p>
+              <p className="text-[11px] text-gray-400 mt-1.5">Leave blank to clear. Shipped and held units are managed from the Packing List page.</p>
             </div>
           )}
 
