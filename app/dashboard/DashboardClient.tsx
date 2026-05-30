@@ -1,9 +1,8 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { use } from "react"
 import Link from "next/link"
 import type { DashboardSummary, DashboardEvent } from "@/lib/db"
-import { fetchJson } from "@/lib/api-fetch"
 
 function formatRp(n: number): string {
   return `Rp ${new Intl.NumberFormat("id-ID").format(n)}`
@@ -30,45 +29,15 @@ const TONE_CLASSES: Record<ActionItem["tone"], string> = {
   purple: "bg-purple-50 border-purple-200 text-purple-800 hover:bg-purple-100",
 }
 
-export default function DashboardClient() {
-  const [summary, setSummary] = useState<DashboardSummary | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  const load = useCallback(() => {
-    setLoading(true)
-    setError(null)
-    let active = true
-    fetchJson<DashboardSummary>("/api/sheets/dashboard")
-      .then((data) => active && setSummary(data))
-      .catch((err) => active && setError(err instanceof Error ? err.message : "Failed to load"))
-      .finally(() => active && setLoading(false))
-    return () => { active = false }
-  }, [])
-
-  useEffect(() => load(), [load])
-
-  if (loading) {
-    return (
-      <div className="rounded-xl border border-cream-border bg-white p-12 text-center text-sm text-gray-400">
-        Loading…
-      </div>
-    )
-  }
-
-  if (error || !summary) {
-    return (
-      <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-sm text-red-700 flex items-center justify-between gap-3">
-        <span>{error ?? "Failed to load"}</span>
-        <button
-          onClick={load}
-          className="text-xs px-3 py-1.5 rounded-lg border border-red-300 text-red-700 hover:bg-red-100 transition-colors shrink-0"
-        >
-          Retry
-        </button>
-      </div>
-    )
-  }
+export default function DashboardClient({
+  summaryPromise,
+}: {
+  summaryPromise: Promise<DashboardSummary>
+}) {
+  // Resolves the promise streamed from the server component. While it's
+  // pending the parent <Suspense> shows the loading card; on rejection it
+  // throws to the route's error boundary (error.tsx), which offers a retry.
+  const summary = use(summaryPromise)
 
   const items: ActionItem[] = ([
     { count: summary.actionQueue.overpaymentCandidates, label: "overpayments to refund", href: "/dashboard/refunds", tone: "yellow" },
