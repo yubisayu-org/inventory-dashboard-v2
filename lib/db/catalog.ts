@@ -80,6 +80,156 @@ export async function getProducts(): Promise<ProductRow[]> {
   }))
 }
 
+// Shared row → ProductRow mapper for the paginated query below.
+function mapProductRow(r: Record<string, unknown>): ProductRow {
+  return {
+    id: r.id as number,
+    name: (r.name as string) ?? "",
+    store: (r.store as string) ?? "",
+    price: (r.price as number) ?? 0,
+    gram: (r.gram as number) ?? 0,
+    countryId: (r.country_id as number | null) ?? null,
+    countryName: (r.country_name as string) ?? "",
+    valas: Number(r.valas) || 0,
+    // kurs is NUMERIC(12,4) — postgres-js returns it as a string, so coerce.
+    kurs: Number(r.kurs) || 0,
+    cargoPerKg: (r.cargo_per_kg as number) ?? 0,
+    profitPct: (r.profit_pct as number) ?? 0,
+    operationalFee: (r.operational_fee as number) ?? 5000,
+    packingFee: (r.packing_fee as number) ?? 5000,
+    cost: (r.cost as number) ?? 0,
+    profitFixed: (r.profit_fixed as number) ?? 0,
+    createdAt: tsToString(r.created_at as Date | null),
+    updatedAt: tsToString(r.updated_at as Date | null),
+  }
+}
+
+export interface PaginatedProducts {
+  rows: ProductRow[]
+  totalCount: number
+  page: number
+  pageSize: number
+  totalPages: number
+}
+
+/** See {@link TOTAL_COUNT_UNCHANGED} in orders.ts — same skipCount sentinel. */
+export const PRODUCTS_TOTAL_COUNT_UNCHANGED = -1
+
+/** Distinct, non-empty store names — for the add/edit store autocomplete. */
+export async function getProductStores(): Promise<string[]> {
+  const rows = await sql`
+    SELECT DISTINCT store FROM products
+    WHERE store IS NOT NULL AND store != ''
+    ORDER BY store
+  `
+  return rows.map((r) => r.store as string)
+}
+
+/**
+ * One page of products with server-side search/filter/sort. LIMIT/OFFSET keeps
+ * this bounded even as the catalogue grows. Mirrors getDuplicateFormRowsPaginated.
+ */
+export async function getProductsPaginated(opts: {
+  page: number
+  pageSize: number
+  search?: string
+  name?: string
+  store?: string
+  type?: string
+  country?: string
+  sortKey?: string
+  sortDir?: "asc" | "desc"
+  skipCount?: boolean
+}): Promise<PaginatedProducts> {
+  const { page, pageSize, search, name, store, type, country, skipCount } = opts
+  const offset = (page - 1) * pageSize
+
+  const conditions: string[] = ["p.name != ''"]
+  const params: (string | number)[] = []
+
+  if (search) {
+    params.push(`%${search.toLowerCase()}%`)
+    const p = `$${params.length}`
+    conditions.push(`(lower(p.name) LIKE ${p} OR lower(p.store) LIKE ${p} OR lower(COALESCE(c.name, '')) LIKE ${p})`)
+  }
+  if (name) {
+    params.push(`%${name.toLowerCase()}%`)
+    conditions.push(`lower(p.name) LIKE $${params.length}`)
+  }
+  if (store) {
+    params.push(`%${store.toLowerCase()}%`)
+    conditions.push(`lower(p.store) LIKE $${params.length}`)
+  }
+  if (country) {
+    params.push(`%${country.toLowerCase()}%`)
+    conditions.push(`lower(COALESCE(c.name, '')) LIKE $${params.length}`)
+  }
+  if (type) {
+    const t = type.toLowerCase()
+    // "Overseas" rows have a country; "Domestic" rows don't.
+    if (t.includes("over") || t.includes("abroad")) conditions.push("p.country_id IS NOT NULL")
+    else if (t.includes("dom")) conditions.push("p.country_id IS NULL")
+  }
+
+  const where = `WHERE ${conditions.join(" AND ")}`
+
+  const SORT_COLUMNS: Record<string, string> = {
+    id: "p.id", name: "p.name", store: "p.store", price: "p.price",
+    type: "p.country_id", countryName: "c.name", valas: "p.valas",
+    gram: "p.gram", kurs: "p.kurs", cargoPerKg: "p.cargo_per_kg",
+    profitPct: "p.profit_pct", operationalFee: "p.operational_fee",
+    packingFee: "p.packing_fee", cost: "p.cost", profitFixed: "p.profit_fixed",
+    createdAt: "p.created_at", updatedAt: "p.updated_at",
+  }
+  const sortCol = (opts.sortKey && SORT_COLUMNS[opts.sortKey]) || "p.id"
+  const sortDir = opts.sortDir === "asc" ? "ASC" : "DESC"
+
+  const dataQuery = sql.unsafe(
+    `SELECT p.id, p.name, p.store, p.price, p.gram,
+            p.country_id, COALESCE(c.name, '') AS country_name,
+            p.valas, p.kurs, p.cargo_per_kg, p.profit_pct,
+            p.operational_fee, p.packing_fee, p.cost, p.profit_fixed,
+            p.created_at, p.updated_at
+     FROM products p
+     LEFT JOIN countries c ON c.id = p.country_id
+     ${where}
+     ORDER BY ${sortCol} ${sortDir}, p.id ${sortDir}
+     LIMIT ${pageSize} OFFSET ${offset}`,
+    params,
+  )
+
+  if (skipCount) {
+    const dataRows = await dataQuery
+    return {
+      rows: dataRows.map(mapProductRow),
+      totalCount: PRODUCTS_TOTAL_COUNT_UNCHANGED,
+      page,
+      pageSize,
+      totalPages: PRODUCTS_TOTAL_COUNT_UNCHANGED,
+    }
+  }
+
+  // The countries join stays in the count query because the search/country
+  // filters reference c.name (a LEFT JOIN can't change the product row count).
+  const countQuery = sql.unsafe(
+    `SELECT COUNT(*)::int AS c
+     FROM products p
+     LEFT JOIN countries c ON c.id = p.country_id
+     ${where}`,
+    params,
+  )
+
+  const [dataRows, countRows] = await Promise.all([dataQuery, countQuery])
+  const totalCount = Number(countRows[0]?.c ?? 0)
+  return {
+    rows: dataRows.map(mapProductRow),
+    totalCount,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(totalCount / pageSize)),
+  }
+}
+
 export async function addProduct(data: {
   name: string
   store: string
