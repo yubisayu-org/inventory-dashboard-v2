@@ -117,7 +117,11 @@ CREATE TABLE shipments (
   is_last_shipment  BOOLEAN NOT NULL DEFAULT FALSE,
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at        TIMESTAMPTZ,
-  tracking_number   TEXT NOT NULL DEFAULT ''
+  tracking_number   TEXT NOT NULL DEFAULT '',
+  -- One-time receiving-address override. NULL = use the customer's profile
+  -- data_diri (the normal case). Persisted so reprints survive future changes
+  -- to the customer's permanent address.
+  temp_address      TEXT
 );
 
 CREATE INDEX idx_shipments_customer ON shipments (lower(customer));

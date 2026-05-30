@@ -187,7 +187,10 @@ export async function getShipOrdersFiltered(opts: {
 }
 
 export async function shipCustomerOrders(params: ShipOrdersParams): Promise<{ shippingId: string }> {
-  const { customer, event, orders, weightKg, ongkirPerKg } = params
+  const { customer, event, orders, weightKg, ongkirPerKg, tempAddress } = params
+  // Empty-string and undefined both mean "no override" — store NULL so the
+  // label flow can fall back to the customer's profile address.
+  const tempAddressValue = tempAddress && tempAddress.trim() ? tempAddress : null
 
   return await sql.begin(async (tx) => {
     const [maxRow] = await tx`
@@ -202,8 +205,8 @@ export async function shipCustomerOrders(params: ShipOrdersParams): Promise<{ sh
     const ongkirTotal = ongkirPerKg * billedKg
 
     await tx`
-      INSERT INTO shipments (event, customer, shipping_id, invoicing, weight_estimation, ongkir, ongkir_total, is_last_shipment)
-      VALUES (${event}, ${customer}, ${shippingId}, ${invoicingText}, ${billedKg}, ${ongkirPerKg}, ${ongkirTotal}, true)
+      INSERT INTO shipments (event, customer, shipping_id, invoicing, weight_estimation, ongkir, ongkir_total, is_last_shipment, temp_address)
+      VALUES (${event}, ${customer}, ${shippingId}, ${invoicingText}, ${billedKg}, ${ongkirPerKg}, ${ongkirTotal}, true, ${tempAddressValue})
     `
 
     for (const order of toShipRows) {
@@ -234,7 +237,10 @@ export async function shipCustomerOrders(params: ShipOrdersParams): Promise<{ sh
  *    invoice math). Skipped when combining saves nothing.
  */
 export async function shipMergedCustomerOrders(params: ShipMergedParams): Promise<ShipMergedResult> {
-  const { customer, ongkirPerKg, groups } = params
+  const { customer, ongkirPerKg, groups, tempAddress } = params
+  // Same value written to every row in the merge_group — one physical box,
+  // one receiving address. NULL means "use the customer's profile address."
+  const tempAddressValue = tempAddress && tempAddress.trim() ? tempAddress : null
   const custKey = normalizeId(customer)
   const events = groups.map((g) => g.event)
 
@@ -279,8 +285,8 @@ export async function shipMergedCustomerOrders(params: ShipMergedParams): Promis
       const ongkirTotal = isPrimary ? combinedOngkir : 0
 
       await tx`
-        INSERT INTO shipments (event, customer, shipping_id, invoicing, weight_estimation, ongkir, ongkir_total, is_last_shipment, merge_group)
-        VALUES (${g.event}, ${customer}, ${shippingId}, ${invoicingText}, ${weight}, ${ongkirPerKg}, ${ongkirTotal}, true, ${mergeGroup})
+        INSERT INTO shipments (event, customer, shipping_id, invoicing, weight_estimation, ongkir, ongkir_total, is_last_shipment, merge_group, temp_address)
+        VALUES (${g.event}, ${customer}, ${shippingId}, ${invoicingText}, ${weight}, ${ongkirPerKg}, ${ongkirTotal}, true, ${mergeGroup}, ${tempAddressValue})
       `
       for (const o of toShipRows) {
         await tx`
@@ -366,7 +372,7 @@ export async function getShippingRecords(): Promise<ShippingRecord[]> {
     SELECT s.id, s.event, s.customer, c.name AS customer_name,
            s.shipping_id, s.invoicing,
            s.weight_estimation, s.ongkir, s.ongkir_total, s.is_last_shipment,
-           s.created_at, s.updated_at, s.tracking_number, s.merge_group
+           s.created_at, s.updated_at, s.tracking_number, s.merge_group, s.temp_address
     FROM shipments s
     LEFT JOIN customers c ON c.instagram_id = s.customer
     WHERE s.shipping_id != ''
@@ -387,6 +393,7 @@ export async function getShippingRecords(): Promise<ShippingRecord[]> {
     updatedAt: tsToString(r.updated_at),
     trackingNumber: r.tracking_number ?? "",
     mergeGroup: r.merge_group ?? null,
+    tempAddress: r.temp_address ?? null,
   }))
 }
 
@@ -399,6 +406,25 @@ export async function updateTrackingNumber(
   await sql`
     UPDATE shipments
     SET tracking_number = ${trackingNumber}, updated_at = NOW()
+    WHERE id = ${rowNumber}
+       OR merge_group = (SELECT merge_group FROM shipments WHERE id = ${rowNumber} AND merge_group IS NOT NULL)
+  `
+}
+
+/**
+ * Replace (or clear, when `tempAddress` is null) the one-time receiving address
+ * on a shipment. Mirrors updateTrackingNumber's merge_group propagation: a
+ * merged "Ship together" package is one physical box with one address, so
+ * editing any row of the merge updates every row.
+ */
+export async function updateShipmentTempAddress(
+  rowNumber: number,
+  tempAddress: string | null,
+): Promise<void> {
+  const value = tempAddress && tempAddress.trim() ? tempAddress : null
+  await sql`
+    UPDATE shipments
+    SET temp_address = ${value}, updated_at = NOW()
     WHERE id = ${rowNumber}
        OR merge_group = (SELECT merge_group FROM shipments WHERE id = ${rowNumber} AND merge_group IS NOT NULL)
   `

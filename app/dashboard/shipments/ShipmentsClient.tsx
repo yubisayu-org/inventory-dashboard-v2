@@ -55,6 +55,10 @@ function collapseMerged(rows: ShippingRecord[]): DisplayShipment[] {
       weightEstimation: sorted.reduce((s, x) => s + x.weightEstimation, 0),
       ongkirTotal: sorted.reduce((s, x) => s + x.ongkirTotal, 0),
       trackingNumber: sorted.find((s) => s.trackingNumber)?.trackingNumber ?? "",
+      // temp_address is replicated across every row in a merge group so
+      // reading from any one works — but defensively pick the first non-null
+      // in case partial writes ever land.
+      tempAddress: sorted.find((s) => s.tempAddress)?.tempAddress ?? null,
       rowNumbers: sorted.map((s) => s.rowNumber),
       mergedCount: sorted.length,
     })
@@ -83,12 +87,19 @@ function CopyShipmentMessageButton({ record }: { record: DisplayShipment }) {
   async function handleClick() {
     setState({ status: "loading" })
     try {
-      const res = await fetch(`/api/sheets/customer?id=${encodeURIComponent(record.customer)}`)
-      const detail = res.ok ? await res.json() : null
+      // Skip the customer fetch when the shipment carries its own temp address —
+      // we already have the address we need on the row.
+      const detail = record.tempAddress
+        ? null
+        : await fetch(`/api/sheets/customer?id=${encodeURIComponent(record.customer)}`)
+            .then((r) => (r.ok ? r.json() : null))
+            .catch(() => null)
       const message = buildShipmentConfirmMessage({
         event: record.event,
         customer: record.customer,
-        dataDiri: detail?.dataDiri ?? "",
+        // Prefer the one-time temp address if this shipment was sent to it,
+        // so a re-copy months later still shows where the box actually went.
+        dataDiri: record.tempAddress ?? detail?.dataDiri ?? "",
         // The `invoicing` field already prefixes merged-event lines with
         // "[event]" so the customer can tell which event each item came from.
         items: record.invoicing.split("\n").filter(Boolean),
@@ -149,13 +160,21 @@ function LabelModal({
 
     async function generate() {
       try {
-        const res = await fetch(`/api/sheets/customer?id=${encodeURIComponent(record.customer)}`)
-        const detail = res.ok ? await res.json() : null
+        // Skip the customer fetch when the shipment already carries a temp
+        // address — we don't need the customer profile in that case.
+        const detail = record.tempAddress
+          ? null
+          : await fetch(`/api/sheets/customer?id=${encodeURIComponent(record.customer)}`)
+              .then((r) => (r.ok ? r.json() : null))
+              .catch(() => null)
         const blob = await generateShippingLabel({
           event: record.event,
           customer: record.customer,
           shippingId: record.shippingId,
-          dataDiri: detail?.dataDiri ?? "",
+          // The temp address is what was actually printed at ship time, so
+          // reprints render it verbatim — even if the customer's permanent
+          // address has changed since.
+          dataDiri: record.tempAddress ?? detail?.dataDiri ?? "",
           packingLines: record.invoicing.split("\n").filter(Boolean),
         })
         if (cancelled) return
@@ -338,6 +357,127 @@ function EditResiModal({
   )
 }
 
+// ─── EditTempAddressModal ─────────────────────────────────────────────────
+
+function EditTempAddressModal({
+  record,
+  onClose,
+  onSaved,
+}: {
+  record: ShippingRecord
+  onClose: () => void
+  onSaved: (tempAddress: string | null) => void
+}) {
+  const [value, setValue] = useState(record.tempAddress ?? "")
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => { textareaRef.current?.focus() }, [])
+  useModalDismiss(onClose)
+
+  async function persist(next: string | null) {
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await fetch("/api/sheets/shipments", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rowNumber: record.rowNumber, tempAddress: next }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? "Failed")
+      onSaved(next)
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal menyimpan")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleSave() {
+    const trimmed = value.trim()
+    const next = trimmed === "" ? null : trimmed
+    if (next === (record.tempAddress ?? null)) { onClose(); return }
+    await persist(next)
+  }
+
+  async function handleClear() {
+    if (!record.tempAddress) { onClose(); return }
+    if (!confirm("Hapus alamat sementara? Label berikutnya akan pakai alamat utama customer.")) return
+    await persist(null)
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-xl shadow-xl border border-cream-border w-full max-w-md"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
+        <div className="px-5 py-4 border-b border-cream-border">
+          <div className="text-sm font-semibold text-foreground">
+            {record.tempAddress ? "Edit Alamat Sementara" : "Set Alamat Sementara"}
+          </div>
+          <div className="text-xs text-gray-500 mt-0.5">
+            {displayIg(record.customer).toUpperCase()} · <span className="font-mono">#{record.shippingId}</span>
+          </div>
+        </div>
+
+        <div className="px-5 py-4 flex flex-col gap-2">
+          <textarea
+            ref={textareaRef}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            disabled={saving}
+            rows={6}
+            placeholder={"Nama Penerima\nAlamat lengkap\nNo. telepon"}
+            className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-300 focus:border-purple-500 transition-colors disabled:opacity-50 resize-none"
+          />
+          <p className="text-[11px] text-gray-400">
+            Alamat utama customer tidak berubah. Kosongkan untuk pakai alamat utama lagi.
+          </p>
+          {error && <p className="text-xs text-red-500">{error}</p>}
+        </div>
+
+        <div className="px-5 py-3 border-t border-cream-border flex justify-end gap-2">
+          {record.tempAddress && (
+            <button
+              type="button"
+              onClick={handleClear}
+              disabled={saving}
+              className="mr-auto px-3 py-1.5 rounded-lg border border-cream-border text-red-500 text-xs font-medium hover:border-red-400 hover:bg-red-50 disabled:opacity-50 transition-colors"
+            >
+              Hapus
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="px-4 py-1.5 rounded-lg border border-cream-border text-gray-600 text-xs font-medium hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+          >
+            Batal
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="px-4 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
+          >
+            {saving ? "Menyimpan…" : "Simpan"}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Main component ───────────────────────────────────────────────────────
 
 export default function ShipmentsClient() {
@@ -348,6 +488,7 @@ export default function ShipmentsClient() {
   const [printingPdf, setPrintingPdf] = useState(false)
   const [labelRecord, setLabelRecord] = useState<DisplayShipment | null>(null)
   const [editResiRecord, setEditResiRecord] = useState<DisplayShipment | null>(null)
+  const [editTempRecord, setEditTempRecord] = useState<DisplayShipment | null>(null)
 
   async function load() {
     setLoading(true)
@@ -379,9 +520,14 @@ export default function ShipmentsClient() {
     if (selected.length === 0) return
     setPrintingPdf(true)
     try {
-      const uniqueCustomers = [...new Set(selected.map((r) => r.customer))]
+      // Only customers whose selected shipments have no temp address need a
+      // profile lookup — for the rest, the row already carries the address
+      // that was printed at ship time.
+      const customersNeedingProfile = [
+        ...new Set(selected.filter((r) => !r.tempAddress).map((r) => r.customer)),
+      ]
       const detailEntries = await Promise.all(
-        uniqueCustomers.map(async (id) => {
+        customersNeedingProfile.map(async (id) => {
           try {
             const res = await fetch(`/api/sheets/customer?id=${encodeURIComponent(id)}`)
             return [id, res.ok ? await res.json() : null] as const
@@ -395,7 +541,7 @@ export default function ShipmentsClient() {
         event: r.event,
         customer: r.customer,
         shippingId: r.shippingId,
-        dataDiri: detailMap[r.customer]?.dataDiri ?? "",
+        dataDiri: r.tempAddress ?? detailMap[r.customer]?.dataDiri ?? "",
         packingLines: r.invoicing.split("\n").filter(Boolean),
       }))
       const blob = await generateMultipleShippingLabels(labels)
@@ -448,8 +594,41 @@ export default function ShipmentsClient() {
         accessorKey: "customer",
         header: "Customer",
         filterFn: "textContains",
-        size: 140,
-        cell: ({ getValue }) => <span>{displayIg(getValue<string>())}</span>,
+        size: 180,
+        cell: ({ row }) => {
+          const r = row.original
+          return (
+            <span className="inline-flex items-center gap-1.5">
+              <span>{displayIg(r.customer)}</span>
+              {r.tempAddress ? (
+                <button
+                  type="button"
+                  onClick={() => setEditTempRecord(r)}
+                  title={`Alamat sementara:\n${r.tempAddress}`}
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-purple-100 text-purple-700 hover:bg-purple-200 transition-colors"
+                >
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 10c0 7-8 12-8 12s-8-5-8-12a8 8 0 0 1 16 0z" />
+                    <circle cx="12" cy="10" r="3" />
+                  </svg>
+                  Alamat sementara
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setEditTempRecord(r)}
+                  title="Set alamat sementara untuk shipment ini"
+                  className="p-0.5 rounded text-gray-300 hover:text-purple-600 transition-colors"
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 10c0 7-8 12-8 12s-8-5-8-12a8 8 0 0 1 16 0z" />
+                    <circle cx="12" cy="10" r="3" />
+                  </svg>
+                </button>
+              )}
+            </span>
+          )
+        },
       },
       {
         accessorKey: "customerName",
@@ -678,6 +857,19 @@ export default function ShipmentsClient() {
             setData((prev) =>
               prev?.map((r) =>
                 editResiRecord.rowNumbers.includes(r.rowNumber) ? { ...r, trackingNumber } : r
+              ) ?? null
+            )
+          }
+        />
+      )}
+      {editTempRecord && (
+        <EditTempAddressModal
+          record={editTempRecord}
+          onClose={() => setEditTempRecord(null)}
+          onSaved={(tempAddress) =>
+            setData((prev) =>
+              prev?.map((r) =>
+                editTempRecord.rowNumbers.includes(r.rowNumber) ? { ...r, tempAddress } : r
               ) ?? null
             )
           }
