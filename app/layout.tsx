@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -15,6 +15,17 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Inventory Dashboard",
   description: "Yubisayu Inventory Management",
+};
+
+// Lock the zoom level. iOS Safari otherwise auto-zooms when a sub-16px input
+// is focused (keyboard pop-out), and won't zoom back out. maximumScale=1 +
+// userScalable=false stops that. Trade-off: it also disables pinch-to-zoom —
+// acceptable for an internal admin tool, but note the accessibility cost.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
 };
 
 export default function RootLayout({
