@@ -347,17 +347,19 @@ export async function applyRefundAsCredit(
     `
     if (!hasTarget) throw new Error(`${customer} has no order in ${target}`)
 
-    // Credit on the new order (negative adjustment reduces what's owed).
+    // Credit on the new order (negative adjustment reduces what's owed). Tagged
+    // with refund_id so the whole credit can be undone precisely (see
+    // undoRefundCredit) if it was applied to the wrong order.
     await tx`
-      INSERT INTO adjustments (event, customer, description, amount)
-      VALUES (${target}, ${customer}, ${`Credit from ${reason} on ${sourceEvent}`}, ${-amount})
+      INSERT INTO adjustments (event, customer, description, amount, refund_id)
+      VALUES (${target}, ${customer}, ${`Credit from ${reason} on ${sourceEvent}`}, ${-amount}, ${refundId})
     `
 
     // Consume the source-side excess for an overpayment.
     if (reason === "overpayment") {
       await tx`
-        INSERT INTO adjustments (event, customer, description, amount)
-        VALUES (${sourceEvent}, ${customer}, ${`Overpayment applied as credit to ${target}`}, ${amount})
+        INSERT INTO adjustments (event, customer, description, amount, refund_id)
+        VALUES (${sourceEvent}, ${customer}, ${`Overpayment applied as credit to ${target}`}, ${amount}, ${refundId})
       `
     }
 
@@ -366,6 +368,29 @@ export async function applyRefundAsCredit(
       SET status = 'applied_to_next_order',
           note = ${`Applied as credit to ${target}`},
           updated_at = NOW()
+      WHERE id = ${refundId}
+    `
+  })
+}
+
+/**
+ * Reverse an `applied_to_next_order` credit — e.g. it was applied to the wrong
+ * order. Deletes the adjustment(s) that credit created (matched by refund_id,
+ * so exactly those rows and no others) and returns the refund to `pending` so
+ * it re-enters the queue to be re-applied or refunded. Atomic. No-op-safe if a
+ * tagged adjustment was already removed by hand.
+ */
+export async function undoRefundCredit(refundId: number): Promise<void> {
+  await sql.begin(async (tx) => {
+    const [refund] = await tx`SELECT status FROM refunds WHERE id = ${refundId} FOR UPDATE`
+    if (!refund) throw new Error("Refund not found")
+    if (refund.status !== "applied_to_next_order") {
+      throw new Error("Only a credit applied to another order can be undone here")
+    }
+    await tx`DELETE FROM adjustments WHERE refund_id = ${refundId}`
+    await tx`
+      UPDATE refunds
+      SET status = 'pending', note = '', updated_at = NOW()
       WHERE id = ${refundId}
     `
   })

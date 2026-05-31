@@ -462,6 +462,13 @@ function RefundDetailModal({
     if (ok) onUpdated({ ...row, status: "applied_to_next_order", note: `Applied as credit to ${creditTarget}` })
   }
 
+  // Reverses the credit's adjustments and reopens — for when it was applied to
+  // the wrong order. (Plain status reopen would leave the money moved.)
+  async function handleUndoCredit() {
+    const ok = await patch({ action: "undo_credit" })
+    if (ok) onUpdated({ ...row, status: "pending", note: "" })
+  }
+
   async function handleSaveBankInfo() {
     const ok = await patch({ status: "ready_to_refund", bankName, bankAccountNumber, bankAccountHolder })
     if (!ok) return
@@ -739,13 +746,11 @@ function RefundDetailModal({
             </div>
           )}
 
-          {/* Cancelled / applied — allow reopening if pressed by mistake */}
-          {(row.status === "cancelled" || row.status === "applied_to_next_order") && (
+          {/* Cancelled — nothing was moved, so a plain status reopen is safe */}
+          {row.status === "cancelled" && (
             <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-gray-50 border border-gray-200">
               <div className="text-xs text-gray-600">
-                {row.status === "cancelled"
-                  ? "This refund was cancelled."
-                  : "This refund was applied to a next order."}
+                This refund was cancelled.
                 <br />
                 <span className="text-gray-400">Pressed by mistake? Reopen to continue processing.</span>
               </div>
@@ -756,6 +761,26 @@ function RefundDetailModal({
                 className="shrink-0 text-xs px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
               >
                 ↩ Reopen
+              </button>
+            </div>
+          )}
+
+          {/* Applied as credit — undoing must REVERSE the adjustments, not just
+              relabel, or the credit stays on the wrong order. */}
+          {row.status === "applied_to_next_order" && (
+            <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-purple-50 border border-purple-200">
+              <div className="text-xs text-purple-700">
+                {row.note || "Applied as credit to another order."}
+                <br />
+                <span className="text-purple-500">Wrong order? Undo to reverse the credit and reopen this refund.</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleUndoCredit}
+                disabled={saving}
+                className="shrink-0 text-xs px-3 py-1.5 rounded-lg border border-purple-300 text-purple-700 hover:border-purple-500 hover:bg-purple-100 disabled:opacity-50 transition-colors"
+              >
+                {saving ? "Undoing…" : "↩ Undo credit"}
               </button>
             </div>
           )}

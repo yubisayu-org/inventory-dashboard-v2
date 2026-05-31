@@ -148,6 +148,10 @@ CREATE TABLE adjustments (
   customer    TEXT NOT NULL REFERENCES customers(instagram_id) ON UPDATE CASCADE ON DELETE RESTRICT,
   description TEXT NOT NULL DEFAULT '',
   amount      INTEGER NOT NULL DEFAULT 0,
+  -- Set when this adjustment was created by applying a refund as credit to
+  -- another order (see migration 028). FK added after the refunds table below,
+  -- since adjustments is declared first.
+  refund_id   INTEGER,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at  TIMESTAMPTZ
 );
@@ -177,3 +181,10 @@ CREATE TABLE refunds (
 CREATE INDEX idx_refunds_event_customer ON refunds (event, lower(customer));
 CREATE INDEX idx_refunds_status ON refunds (status);
 CREATE INDEX idx_refunds_customer ON refunds (lower(customer));
+
+-- adjustments.refund_id FK (declared here because refunds is defined after
+-- adjustments). ON DELETE SET NULL: deleting a refund must not remove the money
+-- it already moved.
+ALTER TABLE adjustments
+  ADD CONSTRAINT adjustments_refund_id_fkey FOREIGN KEY (refund_id) REFERENCES refunds(id) ON DELETE SET NULL;
+CREATE INDEX idx_adjustments_refund_id ON adjustments (refund_id);
