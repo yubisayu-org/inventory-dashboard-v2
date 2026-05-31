@@ -184,6 +184,14 @@ CREATE INDEX idx_refunds_event_customer ON refunds (event, lower(customer));
 CREATE INDEX idx_refunds_status ON refunds (status);
 CREATE INDEX idx_refunds_customer ON refunds (lower(customer));
 
+-- At most one ACTIVE auto-detected overpayment refund per (event, customer).
+-- Prevents the materializer's check-then-insert from producing duplicates under
+-- concurrent /refunds loads (see migration 031).
+CREATE UNIQUE INDEX refunds_one_active_overpayment
+  ON refunds (event, lower(replace(customer, '@', '')))
+  WHERE reason = 'overpayment'
+    AND status IN ('pending', 'awaiting_bank_info', 'ready_to_refund');
+
 -- payments.refund_id FK (declared here because refunds is defined after
 -- payments). ON DELETE SET NULL: deleting a refund must not remove the money
 -- rows it produced.

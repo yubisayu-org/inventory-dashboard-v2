@@ -428,8 +428,18 @@ export async function undoRefundCredit(refundId: number, actor?: string | null):
  *
  * Returns the rows that were just inserted (empty array if nothing to do).
  */
+// Fixed key for the advisory lock that serializes concurrent materialize runs.
+const OVERPAYMENT_MATERIALIZE_LOCK = 778899
+
 export async function materializeOverpaymentRefunds(): Promise<RefundRow[]> {
-  const rows = await sql`
+  const rows = await sql.begin(async (tx) => {
+    // Serialize overlapping /refunds loads. The check-then-insert below isn't
+    // atomic on its own — two concurrent runs could both pass the NOT EXISTS and
+    // double-insert. The transaction-scoped advisory lock makes the second run
+    // wait, then see the first run's committed rows and skip them. (The partial
+    // unique index from migration 031 is the hard backstop.)
+    await tx`SELECT pg_advisory_xact_lock(${OVERPAYMENT_MATERIALIZE_LOCK})`
+    return tx`
     WITH order_aggregates AS (
       SELECT
         o.event,
@@ -482,6 +492,7 @@ export async function materializeOverpaymentRefunds(): Promise<RefundRow[]> {
     FROM candidates
     RETURNING *
   `
+  })
   return rows.map(mapRefundRow)
 }
 
