@@ -118,6 +118,7 @@ export interface ShipOrderLine {
   productName: string
   gram: number
   unit: number
+  unitPrice: number
   unitArrive: number
   unitShip: number
   unitHold: number

@@ -48,6 +48,7 @@ function buildShipGroups(
         productName: r.product_name as string,
         gram: (r.gram as number) ?? 0,
         unit: r.unit as number,
+        unitPrice: (r.unit_price as number) ?? 0,
         unitArrive,
         unitShip,
         unitHold,
@@ -146,7 +147,7 @@ export async function getShipOrdersFiltered(opts: {
 
   const orderRows = await sql.unsafe(
     `SELECT o.id, o.event, o.customer, o.product_id, p.name AS product_name,
-            COALESCE(p.gram, 0) AS gram, o.unit, o.unit_arrive, o.unit_ship, o.unit_hold
+            COALESCE(p.gram, 0) AS gram, o.unit, o.unit_price, o.unit_arrive, o.unit_ship, o.unit_hold
      FROM orders o
      JOIN products p ON p.id = o.product_id
      ${where}
