@@ -107,6 +107,38 @@ const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
+    section: "Payments",
+    items: [
+      {
+        href: "/dashboard/payments",
+        label: "Payments",        icon: (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
+            <line x1="1" y1="10" x2="23" y2="10" />
+          </svg>
+        ),
+      },
+      {
+        href: "/dashboard/adjustments",
+        label: "Adjustments",        icon: (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+          </svg>
+        ),
+      },
+      {
+        href: "/dashboard/refunds",
+        label: "Refunds",        icon: (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+            <path d="M3 3v5h5" />
+            <path d="M12 7v5l4 2" />
+          </svg>
+        ),
+      },
+    ],
+  },
+  {
     section: "Procurement",
     items: [
       {
@@ -138,38 +170,6 @@ const NAV_SECTIONS: NavSection[] = [
             <circle cx="20" cy="21" r="1" />
             <path d="M9 13v4" />
             <path d="M15 13v4" />
-          </svg>
-        ),
-      },
-    ],
-  },
-  {
-    section: "Payments",
-    items: [
-      {
-        href: "/dashboard/payments",
-        label: "Payments",        icon: (
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
-            <line x1="1" y1="10" x2="23" y2="10" />
-          </svg>
-        ),
-      },
-      {
-        href: "/dashboard/adjustments",
-        label: "Adjustments",        icon: (
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-          </svg>
-        ),
-      },
-      {
-        href: "/dashboard/refunds",
-        label: "Refunds",        icon: (
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-            <path d="M3 3v5h5" />
-            <path d="M12 7v5l4 2" />
           </svg>
         ),
       },
