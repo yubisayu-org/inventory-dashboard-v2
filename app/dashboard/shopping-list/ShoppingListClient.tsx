@@ -508,25 +508,19 @@ export default function ShoppingListClient() {
                     </button>
                     {!storeCollapsed && storeItems.map((item) => {
                       const done = item.totalUnits === 0
-                      const paidCustomers = new Set(
-                        item.orders.filter((o) => o.paidStatus === "paid").map((o) => o.customer),
-                      ).size
-                      const allPaid = item.customerCount > 0 && paidCustomers === item.customerCount
                       return (
                         <div key={item.productId} className="flex items-center gap-3 px-4 py-2.5 border-t border-cream-border">
                           <div className="flex-1 min-w-0">
                             <div className={`text-sm ${done ? "text-gray-400" : "text-foreground"}`}>{item.productName}</div>
-                            <div className="text-[11px] text-gray-400 mt-0.5">
-                              {item.customerCount} customer{item.customerCount === 1 ? "" : "s"}
-                              {allPaid ? (
-                                <span className="text-green-600"> · all paid</span>
-                              ) : paidCustomers > 0 ? (
-                                <>
-                                  {" · "}
-                                  <span className="text-green-600 font-medium">{paidCustomers}</span>
-                                  {" paid"}
-                                </>
-                              ) : null}
+                            {/* Same badge as desktop — tap to see who ordered. */}
+                            <div className="mt-0.5">
+                              <CustomerBadge
+                                orders={item.orders.map((o) => ({
+                                  customer: o.customer,
+                                  qty: o.pending,
+                                  paidStatus: o.paidStatus,
+                                }))}
+                              />
                             </div>
                           </div>
                           <div className="text-sm font-bold tabular-nums whitespace-nowrap text-foreground">
