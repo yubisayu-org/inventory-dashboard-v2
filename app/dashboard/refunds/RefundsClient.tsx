@@ -811,11 +811,34 @@ function RefundDetailModal({
                       <option value="">Select an order…</option>
                       {customerEvents
                         .filter((ev) => ev.eventId !== row.event)
-                        .map((ev) => (
-                          <option key={ev.eventId} value={ev.eventId}>{ev.eventId}</option>
-                        ))}
+                        .map((ev) => {
+                          const owed = Math.max(0, ev.invoice.sisaPelunasan)
+                          return (
+                            <option key={ev.eventId} value={ev.eventId}>
+                              {ev.eventId} — {owed > 0 ? `owes ${formatRp(owed)}` : "fully paid"}
+                            </option>
+                          )
+                        })}
                     </select>
                   </label>
+                  {(() => {
+                    // Warn (but don't block) when the credit exceeds what the
+                    // target owes: the excess would resurface as a fresh
+                    // overpayment on that order rather than fully resolving here.
+                    const tgt = customerEvents.find((ev) => ev.eventId === creditTarget)
+                    if (!tgt) return null
+                    const owed = Math.max(0, tgt.invoice.sisaPelunasan)
+                    if (row.refundAmount <= owed) return null
+                    const excess = row.refundAmount - owed
+                    return (
+                      <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2">
+                        ⚠ This credit ({formatRp(row.refundAmount)}) is more than {tgt.eventId} owes ({formatRp(owed)}).
+                        The extra <span className="font-semibold">{formatRp(excess)}</span> will resurface as a new
+                        overpayment on {tgt.eventId} — no money is lost, but it won't fully clear here. You can refund
+                        or re-apply the remainder afterward.
+                      </p>
+                    )
+                  })()}
                   <div className="flex gap-2">
                     <button
                       onClick={handleApplyCredit}
