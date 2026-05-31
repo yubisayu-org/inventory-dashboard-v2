@@ -118,6 +118,7 @@ export interface ShipOrderLine {
   productName: string
   gram: number
   unit: number
+  unitPrice: number
   unitArrive: number
   unitShip: number
   unitHold: number
@@ -180,6 +181,13 @@ export interface RefundRow {
   orderId: number | null
   affectedUnits: number
   note: string
+  /** True when this refund has linked `credit` payments — i.e. some/all of it
+   *  was applied to another order and can be undone. */
+  hasAppliedCredit: boolean
+  /** Total applied as credit to other orders (sum of the +credit legs). For a
+   *  fully-applied refund `refundAmount` is 0 (no overpayment remaining), so the
+   *  UI shows this instead. */
+  appliedCreditAmount: number
   createdAt: string | null
   updatedAt: string | null
 }
@@ -351,6 +359,9 @@ export interface ProductIndoRow {
   updatedAt: string
 }
 
+/** deposit = money in · refund = cash out · credit = internal overpayment transfer */
+export type PaymentKind = "deposit" | "refund" | "credit"
+
 export interface PaymentRow {
   rowNumber: number
   event: string
@@ -360,6 +371,7 @@ export interface PaymentRow {
   isChecked: boolean
   payDate: string
   remarks: string
+  kind: PaymentKind
   createdAt: string
   updatedAt: string
 }

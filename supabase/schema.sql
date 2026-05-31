@@ -135,6 +135,12 @@ CREATE TABLE payments (
   is_checked BOOLEAN NOT NULL DEFAULT FALSE,
   pay_date   DATE DEFAULT NULL,
   remarks    TEXT NOT NULL DEFAULT '',
+  -- 'deposit' (money in) | 'refund' (cash out) | 'credit' (internal overpayment
+  -- transfer). All count toward total_paid; kind is for display + reconciliation.
+  kind       TEXT NOT NULL DEFAULT 'deposit' CHECK (kind IN ('deposit', 'refund', 'credit')),
+  -- The refund this payment was produced by (cash refund or credit transfer).
+  -- FK added after refunds is declared below. NULL for ordinary deposits.
+  refund_id  INTEGER,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ
 );
@@ -148,10 +154,6 @@ CREATE TABLE adjustments (
   customer    TEXT NOT NULL REFERENCES customers(instagram_id) ON UPDATE CASCADE ON DELETE RESTRICT,
   description TEXT NOT NULL DEFAULT '',
   amount      INTEGER NOT NULL DEFAULT 0,
-  -- Set when this adjustment was created by applying a refund as credit to
-  -- another order (see migration 028). FK added after the refunds table below,
-  -- since adjustments is declared first.
-  refund_id   INTEGER,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at  TIMESTAMPTZ
 );
@@ -182,12 +184,20 @@ CREATE INDEX idx_refunds_event_customer ON refunds (event, lower(customer));
 CREATE INDEX idx_refunds_status ON refunds (status);
 CREATE INDEX idx_refunds_customer ON refunds (lower(customer));
 
--- adjustments.refund_id FK (declared here because refunds is defined after
--- adjustments). ON DELETE SET NULL: deleting a refund must not remove the money
--- it already moved.
-ALTER TABLE adjustments
-  ADD CONSTRAINT adjustments_refund_id_fkey FOREIGN KEY (refund_id) REFERENCES refunds(id) ON DELETE SET NULL;
-CREATE INDEX idx_adjustments_refund_id ON adjustments (refund_id);
+-- At most one ACTIVE auto-detected overpayment refund per (event, customer).
+-- Prevents the materializer's check-then-insert from producing duplicates under
+-- concurrent /refunds loads (see migration 031).
+CREATE UNIQUE INDEX refunds_one_active_overpayment
+  ON refunds (event, lower(replace(customer, '@', '')))
+  WHERE reason = 'overpayment'
+    AND status IN ('pending', 'awaiting_bank_info', 'ready_to_refund');
+
+-- payments.refund_id FK (declared here because refunds is defined after
+-- payments). ON DELETE SET NULL: deleting a refund must not remove the money
+-- rows it produced.
+ALTER TABLE payments
+  ADD CONSTRAINT payments_refund_id_fkey FOREIGN KEY (refund_id) REFERENCES refunds(id) ON DELETE SET NULL;
+CREATE INDEX idx_payments_refund_id ON payments (refund_id);
 
 -- ─── Audit log (migration 029) ───────────────────────────────────────────────
 -- Append-only change history for every mutable table. Lives in its own schema

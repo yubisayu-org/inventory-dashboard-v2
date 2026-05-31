@@ -349,7 +349,7 @@ function CopyConfirmMessageButton({ customer: c }: { customer: ShipCustomer }) {
       // so a repeated product reads as two lines (matches downstream messaging).
       const items = c.orders
         .filter((o) => o.toShip > 0)
-        .map((o) => `${o.productName} x ${o.toShip}`)
+        .map((o) => `${o.productName} x ${o.toShip} x Rp ${o.unitPrice.toLocaleString("id-ID")}`)
       const message = buildShipmentConfirmMessage({
         event: c.event,
         customer: c.customer,
