@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto"
 import sql from "../db-pool"
 import { normalizeId, normalizeCustomer, tsToString } from "./helpers"
 import { allocateFifo } from "../fifo-fill"
+import type { DBExecutor } from "./actor"
 import type { ShipOrderLine, ShipCustomer, ShipStatus, ShipOrdersParams, ShipMergedParams, ShipMergedResult, ShippingRecord, CustomerDetail } from "./types"
 import { getPaymentStatus, type PaymentStatus } from "./finance"
 
@@ -186,13 +187,14 @@ export async function getShipOrdersFiltered(opts: {
   }
 }
 
-export async function shipCustomerOrders(params: ShipOrdersParams): Promise<{ shippingId: string }> {
+export async function shipCustomerOrders(params: ShipOrdersParams, actor?: string | null): Promise<{ shippingId: string }> {
   const { customer, event, orders, weightKg, ongkirPerKg, tempAddress } = params
   // Empty-string and undefined both mean "no override" — store NULL so the
   // label flow can fall back to the customer's profile address.
   const tempAddressValue = tempAddress && tempAddress.trim() ? tempAddress : null
 
   return await sql.begin(async (tx) => {
+    await tx`SELECT set_config('app.actor', ${actor ?? ""}, true)`
     const [maxRow] = await tx`
       SELECT COALESCE(MAX(shipping_id::integer), 0) AS max_id FROM shipments
     `
@@ -236,7 +238,7 @@ export async function shipCustomerOrders(params: ShipOrdersParams): Promise<{ sh
  *    (computed from those same full event weights, to stay consistent with the
  *    invoice math). Skipped when combining saves nothing.
  */
-export async function shipMergedCustomerOrders(params: ShipMergedParams): Promise<ShipMergedResult> {
+export async function shipMergedCustomerOrders(params: ShipMergedParams, actor?: string | null): Promise<ShipMergedResult> {
   const { customer, ongkirPerKg, groups, tempAddress } = params
   // Same value written to every row in the merge_group — one physical box,
   // one receiving address. NULL means "use the customer's profile address."
@@ -245,6 +247,7 @@ export async function shipMergedCustomerOrders(params: ShipMergedParams): Promis
   const events = groups.map((g) => g.event)
 
   return await sql.begin(async (tx) => {
+    await tx`SELECT set_config('app.actor', ${actor ?? ""}, true)`
     // Physical weight of what's actually in the box (rounded up once overall).
     let totalShippedGram = 0
     for (const g of groups) for (const o of g.orders) totalShippedGram += (o.gram || 0) * o.toShip
@@ -330,10 +333,10 @@ export async function shipMergedCustomerOrders(params: ShipMergedParams): Promis
 export async function holdPackingList(params: {
   customer: string
   event: string
-}): Promise<void> {
+}, db: DBExecutor = sql): Promise<void> {
   const { customer, event } = params
   const custKey = normalizeId(customer)
-  await sql`
+  await db`
     UPDATE orders
     SET unit_hold = GREATEST(COALESCE(unit_arrive, 0) - COALESCE(unit_ship, 0), 0),
         updated_at = NOW()
@@ -351,10 +354,10 @@ export async function holdPackingList(params: {
 export async function releasePackingList(params: {
   customer: string
   event: string
-}): Promise<void> {
+}, db: DBExecutor = sql): Promise<void> {
   const { customer, event } = params
   const custKey = normalizeId(customer)
-  await sql`
+  await db`
     UPDATE orders
     SET unit_hold = 0, updated_at = NOW()
     WHERE event = ${event}
@@ -400,10 +403,11 @@ export async function getShippingRecords(): Promise<ShippingRecord[]> {
 export async function updateTrackingNumber(
   rowNumber: number,
   trackingNumber: string,
+  db: DBExecutor = sql,
 ): Promise<void> {
   // For a merged ("Ship together") shipment the resi is shared, so setting it on
   // any row applies to every row in the same merge_group; otherwise just the row.
-  await sql`
+  await db`
     UPDATE shipments
     SET tracking_number = ${trackingNumber}, updated_at = NOW()
     WHERE id = ${rowNumber}
@@ -420,9 +424,10 @@ export async function updateTrackingNumber(
 export async function updateShipmentTempAddress(
   rowNumber: number,
   tempAddress: string | null,
+  db: DBExecutor = sql,
 ): Promise<void> {
   const value = tempAddress && tempAddress.trim() ? tempAddress : null
-  await sql`
+  await db`
     UPDATE shipments
     SET temp_address = ${value}, updated_at = NOW()
     WHERE id = ${rowNumber}
@@ -507,11 +512,15 @@ export async function getArrivalList(event?: string): Promise<ArrivalListItem[]>
           ) ORDER BY o.customer, o.id) AS orders
         FROM orders o
         JOIN products p ON p.id = o.product_id
+        JOIN events e ON e.name = o.event
         WHERE o.unit_buy IS NOT NULL
           AND (o.unit_arrive IS NULL OR o.unit_arrive < o.unit_buy)
         GROUP BY o.event, o.product_id, p.name, p.store
         HAVING SUM(o.unit_buy - COALESCE(o.unit_arrive, 0)) > 0
-        ORDER BY o.event, p.name, p.store
+        -- Most recently created event first (matches the shopping list and
+        -- dashboard); product name then store within each event. MAX() because
+        -- created_at is constant per event but not in the GROUP BY.
+        ORDER BY MAX(e.created_at) DESC NULLS LAST, o.event, p.name, p.store
       `
 
   return rows.map((r) => ({
@@ -537,7 +546,7 @@ export async function markProductArrived(data: {
   event: string
   productId: number
   quantityArrived: number
-}): Promise<{ filledOrderIds: number[]; unassignedUnits: number }> {
+}, actor?: string | null): Promise<{ filledOrderIds: number[]; unassignedUnits: number }> {
   type Row = { id: number; unitBuy: number; unitArrive: number; pending: number }
   const orders = (await sql`
     SELECT
@@ -558,6 +567,7 @@ export async function markProductArrived(data: {
 
   if (allocations.length > 0) {
     await sql.begin(async (tx) => {
+      await tx`SELECT set_config('app.actor', ${actor ?? ""}, true)`
       for (const { item: o, allocated } of allocations) {
         const newUnitArrive = o.unitArrive + allocated
         if (newUnitArrive >= o.unitBuy) filledOrderIds.push(o.id)

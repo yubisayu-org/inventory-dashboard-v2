@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireOwner } from "@/lib/api"
-import { updateProduct, deleteProduct } from "@/lib/db"
+import { updateProduct, deleteProduct, withActor } from "@/lib/db"
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -22,7 +22,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "name is required" }, { status: 400 })
     }
 
-    await updateProduct(id, {
+    await withActor(session.user.email, (tx) => updateProduct(id, {
       name: String(body.name).trim(),
       store: String(body.store ?? "").trim(),
       price: Number(body.price) || 0,
@@ -36,7 +36,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
       packingFee: Number(body.packingFee ?? 5000),
       cost: Number(body.cost) || 0,
       profitFixed: Number(body.profitFixed) || 0,
-    })
+    }, tx))
 
     return NextResponse.json({ success: true })
   } catch (err) {
@@ -58,7 +58,7 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   }
 
   try {
-    await deleteProduct(id)
+    await withActor(session.user.email, (tx) => deleteProduct(id, tx))
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error("Failed to delete product:", err)

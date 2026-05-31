@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { updateRefund, executeRefund, deleteRefund } from "@/lib/db"
+import { updateRefund, executeRefund, deleteRefund, applyRefundAsCredit, undoRefundCredit, withActor } from "@/lib/db"
 import type { RefundStatus } from "@/lib/db"
 
 const VALID_STATUSES: RefundStatus[] = [
@@ -26,7 +26,21 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       if (!transferReference?.trim()) {
         return NextResponse.json({ error: "transferReference is required" }, { status: 400 })
       }
-      await executeRefund(refundId, transferReference.trim())
+      await executeRefund(refundId, transferReference.trim(), session.user.email)
+      return NextResponse.json({ success: true })
+    }
+
+    if (action === "apply_credit") {
+      const { targetEvent } = data
+      if (!targetEvent?.trim()) {
+        return NextResponse.json({ error: "targetEvent is required" }, { status: 400 })
+      }
+      await applyRefundAsCredit(refundId, targetEvent.trim(), session.user.email)
+      return NextResponse.json({ success: true })
+    }
+
+    if (action === "undo_credit") {
+      await undoRefundCredit(refundId, session.user.email)
       return NextResponse.json({ success: true })
     }
 
@@ -34,7 +48,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: "Invalid status" }, { status: 400 })
     }
 
-    await updateRefund(refundId, {
+    await withActor(session.user.email, (tx) => updateRefund(refundId, {
       status: data.status,
       refundAmount: data.refundAmount !== undefined ? Number(data.refundAmount) : undefined,
       bankName: data.bankName,
@@ -42,7 +56,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       bankAccountHolder: data.bankAccountHolder,
       transferReference: data.transferReference,
       note: data.note,
-    })
+    }, tx))
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error("Failed to update refund:", err)
@@ -62,7 +76,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   if (!refundId) return NextResponse.json({ error: "Invalid id" }, { status: 400 })
 
   try {
-    await deleteRefund(refundId)
+    await withActor(session.user.email, (tx) => deleteRefund(refundId, tx))
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error("Failed to delete refund:", err)

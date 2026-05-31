@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { getShippingRecords, updateTrackingNumber, updateShipmentTempAddress } from "@/lib/db"
+import { getShippingRecords, updateTrackingNumber, updateShipmentTempAddress, withActor } from "@/lib/db"
 
 export async function GET() {
   const { session, error: authError } = await requireSession()
@@ -43,13 +43,13 @@ export async function PATCH(req: NextRequest) {
       if (typeof trackingNumber !== "string") {
         return NextResponse.json({ error: "trackingNumber must be a string" }, { status: 400 })
       }
-      await updateTrackingNumber(rowNumber, trackingNumber)
+      await withActor(session.user.email, (tx) => updateTrackingNumber(rowNumber, trackingNumber, tx))
     }
     if (tempAddress !== undefined) {
       if (tempAddress !== null && typeof tempAddress !== "string") {
         return NextResponse.json({ error: "tempAddress must be a string or null" }, { status: 400 })
       }
-      await updateShipmentTempAddress(rowNumber, tempAddress)
+      await withActor(session.user.email, (tx) => updateShipmentTempAddress(rowNumber, tempAddress, tx))
     }
     return NextResponse.json({ ok: true })
   } catch (err) {

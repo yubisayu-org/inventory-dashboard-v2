@@ -1,5 +1,6 @@
 // Barrel for the data-access layer. Implementation lives in ./db/*.
 // Existing imports `from "@/lib/db"` keep working unchanged.
+export * from "./db/actor"
 export * from "./db/helpers"
 export * from "./db/types"
 export * from "./db/orders"

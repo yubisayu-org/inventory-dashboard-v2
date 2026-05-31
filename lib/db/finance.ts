@@ -1,6 +1,7 @@
 import sql from "../db-pool"
 import { normalizeId, tsToString, normalizeCustomer } from "./helpers"
 import { getInvoiceForCustomer } from "./invoice"
+import type { DBExecutor } from "./actor"
 import type { PaymentRow, AdjustmentRow, RefundRow, RefundReason, RefundStatus } from "./types"
 
 // ─── Payments ──────────────────────────────────────────────────────────────
@@ -33,13 +34,13 @@ export async function addPayment(data: {
   isChecked: boolean
   payDate: string
   remarks: string
-}): Promise<{ rowNumber: number }> {
+}, db: DBExecutor = sql): Promise<{ rowNumber: number }> {
   const customer = normalizeCustomer(data.customer)
-  await sql`
+  await db`
     INSERT INTO customers (instagram_id) VALUES (${customer})
     ON CONFLICT (instagram_id) DO NOTHING
   `
-  const [row] = await sql`
+  const [row] = await db`
     INSERT INTO payments (event, customer, amount, account, is_checked, pay_date, remarks)
     VALUES (${data.event}, ${customer}, ${data.amount}, ${data.account}, ${data.isChecked}, ${data.payDate || null}, ${data.remarks})
     RETURNING id
@@ -58,13 +59,14 @@ export async function updatePayment(
     payDate: string
     remarks: string
   },
+  db: DBExecutor = sql,
 ): Promise<void> {
   const customer = normalizeCustomer(data.customer)
-  await sql`
+  await db`
     INSERT INTO customers (instagram_id) VALUES (${customer})
     ON CONFLICT (instagram_id) DO NOTHING
   `
-  await sql`
+  await db`
     UPDATE payments
     SET event = ${data.event}, customer = ${customer}, amount = ${data.amount},
         account = ${data.account}, is_checked = ${data.isChecked},
@@ -81,22 +83,23 @@ export async function getPaymentChecked(rowNumber: number): Promise<boolean> {
 export async function togglePaymentChecked(
   rowNumber: number,
   isChecked: boolean,
+  db: DBExecutor = sql,
 ): Promise<void> {
-  await sql`
+  await db`
     UPDATE payments SET is_checked = ${isChecked}, updated_at = NOW()
     WHERE id = ${rowNumber}
   `
 }
 
-export async function updatePaymentRemarks(rowNumber: number, remarks: string): Promise<void> {
-  await sql`
+export async function updatePaymentRemarks(rowNumber: number, remarks: string, db: DBExecutor = sql): Promise<void> {
+  await db`
     UPDATE payments SET remarks = ${remarks}, updated_at = NOW()
     WHERE id = ${rowNumber}
   `
 }
 
-export async function deletePayment(rowNumber: number): Promise<void> {
-  await sql`DELETE FROM payments WHERE id = ${rowNumber}`
+export async function deletePayment(rowNumber: number, db: DBExecutor = sql): Promise<void> {
+  await db`DELETE FROM payments WHERE id = ${rowNumber}`
 }
 
 // ─── Adjustments ───────────────────────────────────────────────────────────
@@ -122,13 +125,13 @@ export async function addAdjustment(data: {
   customer: string
   description: string
   amount: number
-}): Promise<{ rowNumber: number }> {
+}, db: DBExecutor = sql): Promise<{ rowNumber: number }> {
   const customer = normalizeCustomer(data.customer)
-  await sql`
+  await db`
     INSERT INTO customers (instagram_id) VALUES (${customer})
     ON CONFLICT (instagram_id) DO NOTHING
   `
-  const [row] = await sql`
+  const [row] = await db`
     INSERT INTO adjustments (event, customer, description, amount)
     VALUES (${data.event}, ${customer}, ${data.description}, ${data.amount})
     RETURNING id
@@ -144,13 +147,14 @@ export async function updateAdjustment(
     description: string
     amount: number
   },
+  db: DBExecutor = sql,
 ): Promise<void> {
   const customer = normalizeCustomer(data.customer)
-  await sql`
+  await db`
     INSERT INTO customers (instagram_id) VALUES (${customer})
     ON CONFLICT (instagram_id) DO NOTHING
   `
-  await sql`
+  await db`
     UPDATE adjustments
     SET event = ${data.event}, customer = ${customer},
         description = ${data.description}, amount = ${data.amount},
@@ -159,8 +163,8 @@ export async function updateAdjustment(
   `
 }
 
-export async function deleteAdjustment(rowNumber: number): Promise<void> {
-  await sql`DELETE FROM adjustments WHERE id = ${rowNumber}`
+export async function deleteAdjustment(rowNumber: number, db: DBExecutor = sql): Promise<void> {
+  await db`DELETE FROM adjustments WHERE id = ${rowNumber}`
 }
 
 // ─── Refunds ─────────────────────────────────────────────────────────────────
@@ -219,9 +223,9 @@ export async function createRefund(data: {
   orderId?: number | null
   affectedUnits?: number
   note?: string
-}): Promise<RefundRow> {
+}, db: DBExecutor = sql): Promise<RefundRow> {
   const customer = normalizeCustomer(data.customer)
-  const [row] = await sql`
+  const [row] = await db`
     INSERT INTO refunds (event, customer, reason, refund_amount, order_id, affected_units, note)
     VALUES (
       ${data.event}, ${customer}, ${data.reason}, ${data.refundAmount},
@@ -243,6 +247,7 @@ export async function updateRefund(
     transferReference: string
     note: string
   }>,
+  db: DBExecutor = sql,
 ): Promise<void> {
   const fields: string[] = []
   const params: (string | number)[] = []
@@ -257,7 +262,7 @@ export async function updateRefund(
 
   if (fields.length === 0) return
   params.push(id)
-  await sql.unsafe(
+  await db.unsafe(
     `UPDATE refunds SET ${fields.join(", ")}, updated_at = NOW() WHERE id = $${params.length}`,
     params as (string | number)[],
   )
@@ -266,12 +271,14 @@ export async function updateRefund(
 export async function executeRefund(
   refundId: number,
   transferReference: string,
+  actor?: string | null,
 ): Promise<void> {
   const [refund] = await sql`SELECT * FROM refunds WHERE id = ${refundId}`
   if (!refund) throw new Error("Refund not found")
   if (refund.status === "refunded") throw new Error("Refund already executed")
 
   await sql.begin(async (tx) => {
+    await tx`SELECT set_config('app.actor', ${actor ?? ""}, true)`
     const [payment] = await tx`
       INSERT INTO payments (event, customer, amount, account, is_checked, remarks)
       VALUES (
@@ -298,8 +305,105 @@ export async function executeRefund(
   })
 }
 
-export async function deleteRefund(id: number): Promise<void> {
-  await sql`DELETE FROM refunds WHERE id = ${id} AND status != 'refunded'`
+export async function deleteRefund(id: number, db: DBExecutor = sql): Promise<void> {
+  await db`DELETE FROM refunds WHERE id = ${id} AND status != 'refunded'`
+}
+
+/**
+ * Apply an open refund as store credit on another of the customer's orders
+ * instead of refunding cash. Runs in one transaction:
+ *   - Posts a NEGATIVE adjustment (the credit) on the target event, lowering
+ *     what the customer owes there.
+ *   - For an OVERPAYMENT, also posts a matching POSITIVE adjustment on the
+ *     source event so it's no longer overpaid — the excess payment sitting on
+ *     the source is exactly what's being moved. Without this the customer would
+ *     be credited twice (source still overpaid AND target credited). Other
+ *     refund reasons aren't tied to excess payment on the source, so they get
+ *     no source-side entry.
+ *   - Marks the refund `applied_to_next_order`.
+ */
+export async function applyRefundAsCredit(
+  refundId: number,
+  targetEvent: string,
+  actor?: string | null,
+): Promise<void> {
+  const target = targetEvent?.trim()
+  if (!target) throw new Error("Target order is required")
+
+  await sql.begin(async (tx) => {
+    await tx`SELECT set_config('app.actor', ${actor ?? ""}, true)`
+    const [refund] = await tx`SELECT * FROM refunds WHERE id = ${refundId} FOR UPDATE`
+    if (!refund) throw new Error("Refund not found")
+    if (refund.status === "refunded") throw new Error("Already refunded as cash — cannot also apply as credit")
+    if (refund.status === "applied_to_next_order") throw new Error("Already applied to another order")
+
+    const amount = refund.refund_amount as number
+    if (!(amount > 0)) throw new Error("Refund amount must be positive")
+
+    const sourceEvent = refund.event as string
+    const reason = refund.reason as RefundReason
+    const customer = normalizeCustomer(refund.customer as string)
+
+    if (target === sourceEvent) throw new Error("Pick a different order than the overpaid one")
+
+    // The customer must actually have an order in the target event, or the
+    // credit would dangle on an event they aren't part of.
+    const [hasTarget] = await tx`
+      SELECT 1 FROM orders
+      WHERE event = ${target}
+        AND lower(replace(customer, '@', '')) = lower(replace(${customer}, '@', ''))
+      LIMIT 1
+    `
+    if (!hasTarget) throw new Error(`${customer} has no order in ${target}`)
+
+    // Credit on the new order (negative adjustment reduces what's owed). Tagged
+    // with refund_id so the whole credit can be undone precisely (see
+    // undoRefundCredit) if it was applied to the wrong order.
+    await tx`
+      INSERT INTO adjustments (event, customer, description, amount, refund_id)
+      VALUES (${target}, ${customer}, ${`Credit from ${reason} on ${sourceEvent}`}, ${-amount}, ${refundId})
+    `
+
+    // Consume the source-side excess for an overpayment.
+    if (reason === "overpayment") {
+      await tx`
+        INSERT INTO adjustments (event, customer, description, amount, refund_id)
+        VALUES (${sourceEvent}, ${customer}, ${`Overpayment applied as credit to ${target}`}, ${amount}, ${refundId})
+      `
+    }
+
+    await tx`
+      UPDATE refunds
+      SET status = 'applied_to_next_order',
+          note = ${`Applied as credit to ${target}`},
+          updated_at = NOW()
+      WHERE id = ${refundId}
+    `
+  })
+}
+
+/**
+ * Reverse an `applied_to_next_order` credit — e.g. it was applied to the wrong
+ * order. Deletes the adjustment(s) that credit created (matched by refund_id,
+ * so exactly those rows and no others) and returns the refund to `pending` so
+ * it re-enters the queue to be re-applied or refunded. Atomic. No-op-safe if a
+ * tagged adjustment was already removed by hand.
+ */
+export async function undoRefundCredit(refundId: number, actor?: string | null): Promise<void> {
+  await sql.begin(async (tx) => {
+    await tx`SELECT set_config('app.actor', ${actor ?? ""}, true)`
+    const [refund] = await tx`SELECT status FROM refunds WHERE id = ${refundId} FOR UPDATE`
+    if (!refund) throw new Error("Refund not found")
+    if (refund.status !== "applied_to_next_order") {
+      throw new Error("Only a credit applied to another order can be undone here")
+    }
+    await tx`DELETE FROM adjustments WHERE refund_id = ${refundId}`
+    await tx`
+      UPDATE refunds
+      SET status = 'pending', note = '', updated_at = NOW()
+      WHERE id = ${refundId}
+    `
+  })
 }
 
 /**

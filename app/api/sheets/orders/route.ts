@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { appendOrders } from "@/lib/db"
+import { appendOrders, withActor } from "@/lib/db"
 
 export async function POST(req: NextRequest) {
   const { session, error: authError } = await requireSession()
@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    await appendOrders(
+    await withActor(session.user.email, (tx) => appendOrders(
       rows.map((r) => ({
         event: String(r.event),
         customer: String(r.customer),
@@ -32,7 +32,8 @@ export async function POST(req: NextRequest) {
         unit: Number(r.unit),
         note: r.note ? String(r.note) : "",
       })),
-    )
+      tx,
+    ))
 
     return NextResponse.json({ success: true, count: rows.length })
   } catch (err) {

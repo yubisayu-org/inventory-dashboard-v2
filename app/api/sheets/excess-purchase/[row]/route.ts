@@ -6,6 +6,7 @@ import {
   bulkUpdatePurchase,
   deleteExcessRow,
   updateExcessRowUnitBuy,
+  withActor,
 } from "@/lib/db"
 
 type Params = { params: Promise<{ row: string }> }
@@ -75,14 +76,15 @@ export async function POST(req: NextRequest, { params }: Params) {
       remaining -= allocate
     }
 
-    await bulkUpdatePurchase(
+    await withActor(session.user.email, (tx) => bulkUpdatePurchase(
       updates.map(({ rowNumber: rn, unitBuy, receipt }) => ({ rowNumber: rn, unitBuy, receipt })),
-    )
+      tx,
+    ))
 
     if (remaining <= 0) {
-      await deleteExcessRow(rowNumber)
+      await withActor(session.user.email, (tx) => deleteExcessRow(rowNumber, tx))
     } else {
-      await updateExcessRowUnitBuy(rowNumber, remaining)
+      await withActor(session.user.email, (tx) => updateExcessRowUnitBuy(rowNumber, remaining, tx))
     }
 
     return NextResponse.json({

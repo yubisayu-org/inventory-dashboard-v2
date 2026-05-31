@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { updateFormRow, updateFormRowStage2, updateFormRowStage3, updateOrderOwnerCell, deleteFormRow } from "@/lib/db"
+import { updateFormRow, updateFormRowStage2, updateFormRowStage3, updateOrderOwnerCell, deleteFormRow, withActor } from "@/lib/db"
 
 type Params = { params: Promise<{ row: string }> }
 
@@ -30,21 +30,21 @@ export async function PUT(req: NextRequest, { params }: Params) {
       if (unitBuy == null) {
         return NextResponse.json({ error: "unitBuy is required" }, { status: 400 })
       }
-      await updateFormRowStage2(rowNumber, {
+      await withActor(session.user.email, (tx) => updateFormRowStage2(rowNumber, {
         unitBuy: Number(unitBuy),
         receipt: receipt ? String(receipt) : "",
-      })
+      }, tx))
 
     } else if (stage === "3") {
       const { unitArrive, unitShip, unitHold } = body
       if (unitArrive == null || unitShip == null || unitHold == null) {
         return NextResponse.json({ error: "unitArrive, unitShip, unitHold are required" }, { status: 400 })
       }
-      await updateFormRowStage3(rowNumber, {
+      await withActor(session.user.email, (tx) => updateFormRowStage3(rowNumber, {
         unitArrive: Number(unitArrive),
         unitShip: Number(unitShip),
         unitHold: Number(unitHold),
-      })
+      }, tx))
 
     } else if (stage === "owner_cell") {
       // Owner-only inline cell edit from the List Order table — updates one
@@ -61,7 +61,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
       if (numericValue !== null && !Number.isFinite(numericValue)) {
         return NextResponse.json({ error: "value must be a number or null" }, { status: 400 })
       }
-      await updateOrderOwnerCell(rowNumber, column, numericValue)
+      await withActor(session.user.email, (tx) => updateOrderOwnerCell(rowNumber, column, numericValue, tx))
 
     } else {
       // Stage 1 — order details
@@ -71,14 +71,14 @@ export async function PUT(req: NextRequest, { params }: Params) {
       if (!event || !customer || !productId || unit == null) {
         return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
       }
-      await updateFormRow(rowNumber, {
+      await withActor(session.user.email, (tx) => updateFormRow(rowNumber, {
         event: String(event),
         customer: String(customer),
         productId: Number(productId),
         unitPrice: Number(unitPrice ?? 0),
         unit: Number(unit),
         note: note ? String(note) : "",
-      })
+      }, tx))
     }
 
     return NextResponse.json({ success: true })
@@ -102,7 +102,7 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   }
 
   try {
-    await deleteFormRow(rowNumber)
+    await withActor(session.user.email, (tx) => deleteFormRow(rowNumber, tx))
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error("Failed to delete row:", err)

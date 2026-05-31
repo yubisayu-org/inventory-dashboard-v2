@@ -1,5 +1,6 @@
 import sql from "../db-pool"
 import { allocateFifo } from "../fifo-fill"
+import type { DBExecutor } from "./actor"
 
 // ─── Shopping List ────────────────────────────────────────────────────────
 
@@ -89,10 +90,14 @@ export async function getShoppingList(event?: string): Promise<ShoppingListItem[
             ) ORDER BY o.customer, o.id) AS orders
           FROM orders o
           JOIN products p ON p.id = o.product_id
+          JOIN events e ON e.name = o.event
           WHERE o.unit_buy IS NULL OR o.unit_buy < o.unit
           GROUP BY o.event, o.product_id, p.name, p.store
           HAVING SUM(o.unit - COALESCE(o.unit_buy, 0)) > 0
-          ORDER BY o.event, p.name, p.store
+          -- Most recently created event first (matches the dashboard's event
+          -- ordering); product name then store within each event. MAX() because
+          -- created_at is constant per event but not in the GROUP BY.
+          ORDER BY MAX(e.created_at) DESC NULLS LAST, o.event, p.name, p.store
         `,
     fetchPaidStatusMap(eventsForStatus),
   ])
@@ -249,9 +254,9 @@ async function fetchPaidStatusMap(events: string[] | null): Promise<Map<string, 
   return map
 }
 
-export async function markOrdersAsBought(orderIds: number[]): Promise<void> {
+export async function markOrdersAsBought(orderIds: number[], db: DBExecutor = sql): Promise<void> {
   if (orderIds.length === 0) return
-  await sql`
+  await db`
     UPDATE orders
     SET unit_buy = unit, updated_at = NOW()
     WHERE id = ANY(${orderIds}) AND unit_buy IS NULL
@@ -264,7 +269,7 @@ export async function markProductBought(data: {
   productName: string
   quantityBought: number
   receipt: string
-}): Promise<{ filledOrderIds: number[]; excessUnits: number }> {
+}, actor?: string | null): Promise<{ filledOrderIds: number[]; excessUnits: number }> {
   // Partial allocation lets an order have unit_buy < unit, so it stays in the
   // shopping list with reduced "remaining" qty. Mirrors /api/sheets/purchasing.
   type Row = { id: number; unit: number; unitBuy: number; receipt: string; pending: number }
@@ -286,6 +291,7 @@ export async function markProductBought(data: {
   const filledOrderIds: number[] = []
 
   await sql.begin(async (tx) => {
+    await tx`SELECT set_config('app.actor', ${actor ?? ""}, true)`
     for (const { item: o, allocated } of allocations) {
       const newUnitBuy = o.unitBuy + allocated
       const combinedReceipt = data.receipt

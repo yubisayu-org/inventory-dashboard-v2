@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { getAdjustmentRows, addAdjustment } from "@/lib/db"
+import { getAdjustmentRows, addAdjustment, withActor } from "@/lib/db"
 
 export async function GET() {
   const { session, error: authError } = await requireSession()
@@ -33,12 +33,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "event and customer are required" }, { status: 400 })
     }
 
-    const result = await addAdjustment({
+    const result = await withActor(session.user.email, (tx) => addAdjustment({
       event: String(event),
       customer: String(customer),
       description: String(description ?? ""),
       amount: Number(amount ?? 0),
-    })
+    }, tx))
 
     return NextResponse.json({ success: true, rowNumber: result.rowNumber })
   } catch (err) {

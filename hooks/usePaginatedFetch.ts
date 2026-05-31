@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 
-type Filters = { event: string; customer: string; items: string }
+// Arbitrary filter → query-param map. Each non-empty value is sent as a query
+// param named after its key (e.g. { event, customer, items } for orders;
+// { name, store, type, country } for products).
+type Filters = Record<string, string>
 type SortConfig = { key: string; direction: "asc" | "desc" } | null
 
 export type PageData = {
@@ -54,9 +57,9 @@ export function usePaginatedFetch(opts: {
     params.set("page", String(p))
     params.set("pageSize", String(pageSize))
     if (s) params.set("search", s)
-    if (f.event) params.set("event", f.event)
-    if (f.customer) params.set("customer", f.customer)
-    if (f.items) params.set("items", f.items)
+    for (const [key, value] of Object.entries(f)) {
+      if (value) params.set(key, value)
+    }
     if (so) {
       params.set("sortKey", so.key)
       params.set("sortDir", so.direction)

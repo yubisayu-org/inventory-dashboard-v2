@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole, isAdmin } from "@/lib/api"
-import { updatePayment, togglePaymentChecked, updatePaymentRemarks, deletePayment, getPaymentChecked } from "@/lib/db"
+import { updatePayment, togglePaymentChecked, updatePaymentRemarks, deletePayment, getPaymentChecked, withActor } from "@/lib/db"
 
 type Params = { params: Promise<{ row: string }> }
 
@@ -30,7 +30,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
       ? await getPaymentChecked(rowNumber)
       : Boolean(isChecked)
 
-    await updatePayment(rowNumber, {
+    await withActor(session.user.email, (tx) => updatePayment(rowNumber, {
       event: String(event),
       customer: String(customer),
       amount: Number(amount ?? 0),
@@ -38,7 +38,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
       isChecked: isCheckedValue,
       payDate: String(payDate ?? ""),
       remarks: String(remarks ?? ""),
-    })
+    }, tx))
 
     return NextResponse.json({ success: true })
   } catch (err) {
@@ -68,13 +68,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       if (isAdmin(session)) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 })
       }
-      await togglePaymentChecked(rowNumber, body.isChecked)
+      await withActor(session.user.email, (tx) => togglePaymentChecked(rowNumber, body.isChecked, tx))
       return NextResponse.json({ success: true })
     }
 
     // Remarks are freely editable inline (admins included).
     if (typeof body.remarks === "string") {
-      await updatePaymentRemarks(rowNumber, body.remarks)
+      await withActor(session.user.email, (tx) => updatePaymentRemarks(rowNumber, body.remarks, tx))
       return NextResponse.json({ success: true })
     }
 
@@ -99,7 +99,7 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   }
 
   try {
-    await deletePayment(rowNumber)
+    await withActor(session.user.email, (tx) => deletePayment(rowNumber, tx))
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error("Failed to delete payment:", err)

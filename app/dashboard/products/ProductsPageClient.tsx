@@ -1,11 +1,18 @@
 "use client"
 
-import TableSkeleton from "@/components/TableSkeleton"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { ProductRow, CountryRow } from "@/lib/db"
-import DataGrid, { numericFilter, textContainsFilter, type ColumnDef } from "@/components/DataGrid"
+import DataGrid, {
+  type ColumnDef,
+  type SortingState,
+  type ColumnFiltersState,
+  type PaginationState,
+} from "@/components/DataGrid"
+import { usePaginatedFetch, type PageData } from "@/hooks/usePaginatedFetch"
 import SearchableSelect from "@/components/SearchableSelect"
 import { calcAbroadPrice, calcDomesticPrice, abroadProfit } from "@/lib/pricing"
+
+const PAGE_SIZE = 25
 
 type PricingType = "overseas" | "domestic"
 
@@ -44,13 +51,23 @@ function isAbroad(p: ProductRow) {
 // ─── Main component ────────────────────────────────────────────────────────
 
 export default function ProductsPageClient() {
-  const [data, setData] = useState<ProductRow[] | null>(null)
+  // Current page of rows + total — both come from the server now.
+  const [data, setData] = useState<ProductRow[]>([])
+  const [totalCount, setTotalCount] = useState(0)
+  // Dropdown data: the FULL country + distinct-store lists. These can't be
+  // derived from a single page of products, so they load once from the meta
+  // endpoint (a GET with no `page` param).
   const [countries, setCountries] = useState<CountryRow[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [stores, setStores] = useState<string[]>([])
+  const [metaError, setMetaError] = useState<string | null>(null)
+
+  // Server-side table state.
+  const [sorting, setSorting] = useState<SortingState>([{ id: "id", desc: true }])
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
+  const [globalFilter, setGlobalFilter] = useState("")
+  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: PAGE_SIZE })
+
   const [mobileAddOpen, setMobileAddOpen] = useState(false)
-  const [mobileSearch, setMobileSearch] = useState("")
-  const [mobileSortDesc, setMobileSortDesc] = useState(true)
   // When set, the Add form pre-fills itself from this product (Duplicate flow).
   // The Add form clears this via onConsumeSeed once it has copied the values.
   const [seedProduct, setSeedProduct] = useState<ProductRow | null>(null)
@@ -62,39 +79,80 @@ export default function ProductsPageClient() {
     setMobileAddOpen(true)
   }, [])
 
-  // Mobile list: filter by search, then sort by id (creation order).
-  // Default desc = newest-created first.
-  const mobileProducts = useMemo(() => {
-    if (!data) return []
-    const q = mobileSearch.trim().toLowerCase()
-    const filtered = q
-      ? data.filter((p) => p.name.toLowerCase().includes(q) || p.store.toLowerCase().includes(q))
-      : data
-    return [...filtered].sort((a, b) => (mobileSortDesc ? b.id - a.id : a.id - b.id))
-  }, [data, mobileSearch, mobileSortDesc])
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
+  // Load dropdown meta (countries + the full distinct store list) once.
+  const loadMeta = useCallback(async () => {
     try {
       const res = await fetch("/api/sheets/products")
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? "Failed to load")
-      setData(json.products as ProductRow[])
       setCountries(json.countries as CountryRow[])
+      setStores(json.stores as string[])
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load")
-    } finally {
-      setLoading(false)
+      setMetaError(err instanceof Error ? err.message : "Failed to load")
     }
   }, [])
+  useEffect(() => { loadMeta() }, [loadMeta])
 
-  useEffect(() => { load() }, [load])
+  // Text column filters → server query params. Numeric/date columns aren't
+  // server-filterable (their header filter inputs are disabled), so we skip them.
+  const fetchFilters = useMemo<Record<string, string>>(() => {
+    const f: Record<string, string> = {}
+    for (const cf of columnFilters) {
+      const v = String(cf.value ?? "").trim()
+      if (!v) continue
+      if (cf.id === "name") f.name = v
+      else if (cf.id === "store") f.store = v
+      else if (cf.id === "type") f.type = v
+      else if (cf.id === "countryName") f.country = v
+    }
+    return f
+  }, [columnFilters])
 
-  const stores = useMemo(() => {
-    if (!data) return []
-    return [...new Set(data.map((r) => r.store).filter(Boolean))].sort()
-  }, [data])
+  const fetchSort = useMemo(() => {
+    if (sorting.length === 0) return null
+    return { key: sorting[0].id, direction: sorting[0].desc ? ("desc" as const) : ("asc" as const) }
+  }, [sorting])
+
+  const onData = useCallback((d: PageData) => {
+    setData(d.rows as ProductRow[])
+    setTotalCount(d.totalCount)
+  }, [])
+
+  const { fetchState, refresh } = usePaginatedFetch({
+    endpoint: "/api/sheets/products",
+    pageSize: PAGE_SIZE,
+    page: pagination.pageIndex + 1,
+    search: globalFilter,
+    filters: fetchFilters,
+    sort: fetchSort,
+    onData,
+  })
+
+  // Stable ref so the row-action callbacks captured in column defs always call
+  // the latest refresh.
+  const refreshRef = useRef(refresh)
+  refreshRef.current = refresh
+
+  // After a mutation, refetch the current page and the meta (a new product may
+  // introduce a store the autocomplete hasn't seen yet).
+  const reloadAll = useCallback(() => { refreshRef.current(); loadMeta() }, [loadMeta])
+
+  // Reset to page 1 whenever the query shape (sort / filter / search) changes.
+  const handleSortingChange = useCallback((u: SortingState | ((p: SortingState) => SortingState)) => {
+    setSorting(u)
+    setPagination((p) => ({ ...p, pageIndex: 0 }))
+  }, [])
+  const handleColumnFiltersChange = useCallback((u: ColumnFiltersState | ((p: ColumnFiltersState) => ColumnFiltersState)) => {
+    setColumnFilters(u)
+    setPagination((p) => ({ ...p, pageIndex: 0 }))
+  }, [])
+  const handleGlobalFilterChange = useCallback((u: string | ((p: string) => string)) => {
+    setGlobalFilter(u)
+    setPagination((p) => ({ ...p, pageIndex: 0 }))
+  }, [])
+
+  // Mobile sort toggle reads/writes the `id` sort direction.
+  const mobileIdDesc = (sorting.find((s) => s.id === "id")?.desc) ?? true
 
   const columns = useMemo<ColumnDef<ProductRow, unknown>[]>(() => [
     {
@@ -118,6 +176,7 @@ export default function ProductsPageClient() {
       accessorKey: "price",
       header: "Price",
       filterFn: "numeric",
+      enableColumnFilter: false,
       cell: ({ row }) => <span className="tabular-nums font-medium">{fmt(row.original.price)}</span>,
       meta: { align: "right" },
     },
@@ -145,6 +204,7 @@ export default function ProductsPageClient() {
       accessorKey: "valas",
       header: "Valas",
       filterFn: "numeric",
+      enableColumnFilter: false,
       cell: ({ row }) => <span className="tabular-nums">{isAbroad(row.original) ? fmt(row.original.valas) : "—"}</span>,
       meta: { align: "right" },
     },
@@ -152,6 +212,7 @@ export default function ProductsPageClient() {
       accessorKey: "gram",
       header: "Gram",
       filterFn: "numeric",
+      enableColumnFilter: false,
       cell: ({ row }) => <span className="tabular-nums">{row.original.gram ? fmt(row.original.gram) : "—"}</span>,
       meta: { align: "right" },
     },
@@ -159,6 +220,7 @@ export default function ProductsPageClient() {
       accessorKey: "kurs",
       header: "Kurs",
       filterFn: "numeric",
+      enableColumnFilter: false,
       cell: ({ row }) => <span className="tabular-nums">{isAbroad(row.original) ? fmt(row.original.kurs) : "—"}</span>,
       meta: { align: "right" },
     },
@@ -166,6 +228,7 @@ export default function ProductsPageClient() {
       accessorKey: "cargoPerKg",
       header: "Cargo/kg",
       filterFn: "numeric",
+      enableColumnFilter: false,
       cell: ({ row }) => <span className="tabular-nums">{isAbroad(row.original) ? fmt(row.original.cargoPerKg) : "—"}</span>,
       meta: { align: "right" },
     },
@@ -173,6 +236,7 @@ export default function ProductsPageClient() {
       accessorKey: "profitPct",
       header: "%",
       filterFn: "numeric",
+      enableColumnFilter: false,
       cell: ({ row }) => <span className="tabular-nums">{isAbroad(row.original) ? `${row.original.profitPct}%` : "—"}</span>,
       meta: { align: "right" },
     },
@@ -180,6 +244,7 @@ export default function ProductsPageClient() {
       accessorKey: "operationalFee",
       header: "Op Fee",
       filterFn: "numeric",
+      enableColumnFilter: false,
       cell: ({ row }) => <span className="tabular-nums">{isAbroad(row.original) ? fmt(row.original.operationalFee) : "—"}</span>,
       meta: { align: "right" },
     },
@@ -187,6 +252,7 @@ export default function ProductsPageClient() {
       accessorKey: "packingFee",
       header: "Pack Fee",
       filterFn: "numeric",
+      enableColumnFilter: false,
       cell: ({ row }) => <span className="tabular-nums">{isAbroad(row.original) ? fmt(row.original.packingFee) : "—"}</span>,
       meta: { align: "right" },
     },
@@ -194,6 +260,7 @@ export default function ProductsPageClient() {
       accessorKey: "cost",
       header: "Base Cost",
       filterFn: "numeric",
+      enableColumnFilter: false,
       cell: ({ row }) => <span className="tabular-nums">{!isAbroad(row.original) ? fmt(row.original.cost) : "—"}</span>,
       meta: { align: "right" },
     },
@@ -201,18 +268,19 @@ export default function ProductsPageClient() {
       accessorKey: "profitFixed",
       header: "Fixed Profit",
       filterFn: "numeric",
+      enableColumnFilter: false,
       cell: ({ row }) => <span className="tabular-nums">{!isAbroad(row.original) ? fmt(row.original.profitFixed) : "—"}</span>,
       meta: { align: "right" },
     },
     {
       accessorKey: "createdAt",
       header: "Created",
-      filterFn: "textContains",
+      enableColumnFilter: false,
     },
     {
       accessorKey: "updatedAt",
       header: "Updated",
-      filterFn: "textContains",
+      enableColumnFilter: false,
     },
     {
       id: "actions",
@@ -225,12 +293,8 @@ export default function ProductsPageClient() {
           row={row.original}
           countries={countries}
           stores={stores}
-          onUpdated={(updated) =>
-            setData((prev) =>
-              prev?.map((r) => (r.id === row.original.id ? { ...r, ...updated } : r)) ?? null,
-            )
-          }
-          onDeleted={() => setData((prev) => prev?.filter((r) => r.id !== row.original.id) ?? null)}
+          onUpdated={() => refreshRef.current()}
+          onDeleted={() => refreshRef.current()}
           onDuplicate={handleDuplicate}
         />
       ),
@@ -240,13 +304,15 @@ export default function ProductsPageClient() {
   const refreshButton = (
     <button
       type="button"
-      onClick={load}
-      disabled={loading}
+      onClick={reloadAll}
+      disabled={fetchState.loading}
       className="text-xs text-gray-500 hover:text-brand disabled:opacity-50 transition-colors px-3 py-1.5 rounded-lg border border-cream-border hover:border-brand"
     >
-      {loading ? "…" : "Refresh"}
+      {fetchState.loading ? "…" : "Refresh"}
     </button>
   )
+
+  const errorMsg = fetchState.error || metaError
 
   return (
     <div className="flex flex-col gap-6">
@@ -255,108 +321,115 @@ export default function ProductsPageClient() {
         <AddProductForm
           countries={countries}
           stores={stores}
-          onAdded={() => load()}
+          onAdded={reloadAll}
           seed={seedProduct}
           onConsumeSeed={consumeSeed}
         />
       </div>
 
-      {loading && (
-        <>
-          <div className="hidden md:block"><TableSkeleton /></div>
-          <div className="md:hidden rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">Loading…</div>
-        </>
+      {errorMsg && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{errorMsg}</div>
       )}
-      {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
-      )}
-      {!loading && !error && data && (
-        <>
-          {/* Desktop table */}
-          <div className="hidden md:block">
-            <DataGrid
-              data={data}
-              columns={columns}
-              getRowId={(row) => String(row.id)}
-              searchPlaceholder="Search name, store…"
-              toolbarExtra={refreshButton}
-              initialSorting={[{ id: "id", desc: true }]}
-              initialVisibility={{
-                id: false,
-                kurs: false,
-                cargoPerKg: false,
-                operationalFee: false,
-                packingFee: false,
-                createdAt: false,
-                updatedAt: false,
-              }}
+
+      {/* Desktop table — server-side paginated */}
+      <div className="hidden md:block">
+        <DataGrid
+          data={data}
+          columns={columns}
+          getRowId={(row) => String(row.id)}
+          searchPlaceholder="Search name, store, country…"
+          toolbarExtra={refreshButton}
+          initialVisibility={{
+            id: false,
+            kurs: false,
+            cargoPerKg: false,
+            operationalFee: false,
+            packingFee: false,
+            createdAt: false,
+            updatedAt: false,
+          }}
+          serverSide={{
+            rowCount: totalCount,
+            loading: fetchState.loading,
+            sorting,
+            onSortingChange: handleSortingChange,
+            columnFilters,
+            onColumnFiltersChange: handleColumnFiltersChange,
+            globalFilter,
+            onGlobalFilterChange: handleGlobalFilterChange,
+            pagination,
+            onPaginationChange: setPagination,
+          }}
+        />
+      </div>
+
+      {/* Mobile: search + sort + cards (server-driven) */}
+      <div className="md:hidden flex flex-col gap-2.5">
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
+            <input
+              value={globalFilter}
+              onChange={(e) => handleGlobalFilterChange(e.target.value)}
+              placeholder="Search products or store…"
+              className="w-full border border-cream-border rounded-xl pl-9 pr-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
             />
           </div>
-
-          {/* Mobile: search + sort + cards */}
-          <div className="md:hidden flex flex-col gap-2.5">
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
-                <input
-                  value={mobileSearch}
-                  onChange={(e) => setMobileSearch(e.target.value)}
-                  placeholder="Search products or store…"
-                  className="w-full border border-cream-border rounded-xl pl-9 pr-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
-                />
-              </div>
-              <button
-                type="button"
-                onClick={() => setMobileSortDesc((d) => !d)}
-                aria-label="Toggle sort order"
-                className="shrink-0 inline-flex items-center gap-1 px-3 rounded-xl border border-cream-border bg-white text-xs font-medium text-gray-600 active:border-brand active:text-brand"
-              >
-                {mobileSortDesc ? "Newest" : "Oldest"}
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  {mobileSortDesc ? <path d="m6 9 6 6 6-6" /> : <path d="m18 15-6-6-6 6" />}
-                </svg>
-              </button>
-            </div>
-            {mobileProducts.length === 0 && (
-              <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">No products</div>
-            )}
-            {mobileProducts.map((p) => {
-              const abroad = isAbroad(p)
-              return (
-                <div key={p.id} className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="font-semibold text-foreground">{p.name}</div>
-                      <div className="text-[12.5px] text-gray-400 mt-0.5">{p.store || "—"}</div>
-                    </div>
-                    <span className={`shrink-0 inline-block px-2 py-0.5 rounded-full text-[10px] font-medium ${abroad ? "bg-blue-50 text-blue-600" : "bg-green-50 text-green-600"}`}>
-                      {abroad ? "Overseas" : "Domestic"}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between gap-3 mt-2.5 pt-2.5 border-t border-cream-border">
-                    <span className="text-xs text-gray-400 min-w-0 truncate">
-                      {abroad ? (p.countryName || "—") : "Domestic"}{p.gram ? ` · ${fmt(p.gram)} g` : ""}
-                    </span>
-                    <div className="flex items-center gap-2.5 shrink-0">
-                      <span className="text-brand font-bold tabular-nums whitespace-nowrap">Rp {fmt(p.price)}</span>
-                      <ProductActions
-                        row={p}
-                        countries={countries}
-                        stores={stores}
-                        onUpdated={(updated) =>
-                          setData((prev) => prev?.map((r) => (r.id === p.id ? { ...r, ...updated } : r)) ?? null)
-                        }
-                        onDeleted={() => setData((prev) => prev?.filter((r) => r.id !== p.id) ?? null)}
-                        onDuplicate={handleDuplicate}
-                      />
-                    </div>
-                  </div>
+          <button
+            type="button"
+            onClick={() => handleSortingChange([{ id: "id", desc: !mobileIdDesc }])}
+            aria-label="Toggle sort order"
+            className="shrink-0 inline-flex items-center gap-1 px-3 rounded-xl border border-cream-border bg-white text-xs font-medium text-gray-600 active:border-brand active:text-brand"
+          >
+            {mobileIdDesc ? "Newest" : "Oldest"}
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              {mobileIdDesc ? <path d="m6 9 6 6 6-6" /> : <path d="m18 15-6-6-6 6" />}
+            </svg>
+          </button>
+        </div>
+        {data.length === 0 && (
+          <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">{fetchState.loading ? "Loading…" : "No products"}</div>
+        )}
+        {data.map((p) => {
+          const abroad = isAbroad(p)
+          return (
+            <div key={p.id} className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-semibold text-foreground">{p.name}</div>
+                  <div className="text-[12.5px] text-gray-400 mt-0.5">{p.store || "—"}</div>
                 </div>
-              )
-            })}
+                <span className={`shrink-0 inline-block px-2 py-0.5 rounded-full text-[10px] font-medium ${abroad ? "bg-blue-50 text-blue-600" : "bg-green-50 text-green-600"}`}>
+                  {abroad ? "Overseas" : "Domestic"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-3 mt-2.5 pt-2.5 border-t border-cream-border">
+                <span className="text-xs text-gray-400 min-w-0 truncate">
+                  {abroad ? (p.countryName || "—") : "Domestic"}{p.gram ? ` · ${fmt(p.gram)} g` : ""}
+                </span>
+                <div className="flex items-center gap-2.5 shrink-0">
+                  <span className="text-brand font-bold tabular-nums whitespace-nowrap">Rp {fmt(p.price)}</span>
+                  <ProductActions
+                    row={p}
+                    countries={countries}
+                    stores={stores}
+                    onUpdated={() => refreshRef.current()}
+                    onDeleted={() => refreshRef.current()}
+                    onDuplicate={handleDuplicate}
+                  />
+                </div>
+              </div>
+            </div>
+          )
+        })}
+        {totalCount > PAGE_SIZE && (
+          <div className="flex items-center justify-between gap-3 pt-1">
+            <button type="button" disabled={pagination.pageIndex === 0} onClick={() => setPagination((p) => ({ ...p, pageIndex: p.pageIndex - 1 }))} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-gray-600 disabled:opacity-40">Prev</button>
+            <span className="text-xs text-gray-400">Page {pagination.pageIndex + 1} of {Math.max(1, Math.ceil(totalCount / PAGE_SIZE))}</span>
+            <button type="button" disabled={(pagination.pageIndex + 1) * PAGE_SIZE >= totalCount} onClick={() => setPagination((p) => ({ ...p, pageIndex: p.pageIndex + 1 }))} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-gray-600 disabled:opacity-40">Next</button>
           </div>
-        </>
-      )}
+        )}
+      </div>
 
       {/* Mobile add FAB */}
       <button
@@ -382,7 +455,7 @@ export default function ProductsPageClient() {
               <AddProductForm
                 countries={countries}
                 stores={stores}
-                onAdded={() => { setMobileAddOpen(false); load() }}
+                onAdded={() => { setMobileAddOpen(false); reloadAll() }}
                 seed={seedProduct}
                 onConsumeSeed={consumeSeed}
               />

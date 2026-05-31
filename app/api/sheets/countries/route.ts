@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireOwner } from "@/lib/api"
-import { getCountries, addCountry } from "@/lib/db"
+import { getCountries, addCountry, withActor } from "@/lib/db"
 
 export async function GET() {
   const { session, error: authError } = await requireSession()
@@ -33,12 +33,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "name is required" }, { status: 400 })
     }
 
-    const result = await addCountry({
+    const result = await withActor(session.user.email, (tx) => addCountry({
       name: String(name),
       currency: String(currency ?? ""),
       kurs: Number(kurs ?? 0),
       cargoPerKg: Number(cargoPerKg ?? 0),
-    })
+    }, tx))
 
     return NextResponse.json({ success: true, id: result.id })
   } catch (err) {
