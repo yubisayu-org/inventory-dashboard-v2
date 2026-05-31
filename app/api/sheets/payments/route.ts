@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole, isAdmin } from "@/lib/api"
-import { getPaymentRows, addPayment } from "@/lib/db"
+import { getPaymentRows, addPayment, withActor } from "@/lib/db"
 
 export async function GET() {
   const { session, error: authError } = await requireSession()
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "event and customer are required" }, { status: 400 })
     }
 
-    const result = await addPayment({
+    const result = await withActor(session.user.email, (tx) => addPayment({
       event: String(event),
       customer: String(customer),
       amount: Number(amount ?? 0),
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
       isChecked: isAdmin(session) ? false : Boolean(isChecked),
       payDate: String(payDate ?? ""),
       remarks: String(remarks ?? ""),
-    })
+    }, tx))
 
     return NextResponse.json({ success: true, rowNumber: result.rowNumber })
   } catch (err) {

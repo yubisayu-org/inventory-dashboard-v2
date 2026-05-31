@@ -1,6 +1,7 @@
 import sql from "../db-pool"
 import { normalizeId, tsToString, normalizeCustomer } from "./helpers"
 import { getInvoiceForCustomer } from "./invoice"
+import type { DBExecutor } from "./actor"
 import type { PaymentRow, AdjustmentRow, RefundRow, RefundReason, RefundStatus } from "./types"
 
 // ─── Payments ──────────────────────────────────────────────────────────────
@@ -33,13 +34,13 @@ export async function addPayment(data: {
   isChecked: boolean
   payDate: string
   remarks: string
-}): Promise<{ rowNumber: number }> {
+}, db: DBExecutor = sql): Promise<{ rowNumber: number }> {
   const customer = normalizeCustomer(data.customer)
-  await sql`
+  await db`
     INSERT INTO customers (instagram_id) VALUES (${customer})
     ON CONFLICT (instagram_id) DO NOTHING
   `
-  const [row] = await sql`
+  const [row] = await db`
     INSERT INTO payments (event, customer, amount, account, is_checked, pay_date, remarks)
     VALUES (${data.event}, ${customer}, ${data.amount}, ${data.account}, ${data.isChecked}, ${data.payDate || null}, ${data.remarks})
     RETURNING id
@@ -58,13 +59,14 @@ export async function updatePayment(
     payDate: string
     remarks: string
   },
+  db: DBExecutor = sql,
 ): Promise<void> {
   const customer = normalizeCustomer(data.customer)
-  await sql`
+  await db`
     INSERT INTO customers (instagram_id) VALUES (${customer})
     ON CONFLICT (instagram_id) DO NOTHING
   `
-  await sql`
+  await db`
     UPDATE payments
     SET event = ${data.event}, customer = ${customer}, amount = ${data.amount},
         account = ${data.account}, is_checked = ${data.isChecked},
@@ -81,22 +83,23 @@ export async function getPaymentChecked(rowNumber: number): Promise<boolean> {
 export async function togglePaymentChecked(
   rowNumber: number,
   isChecked: boolean,
+  db: DBExecutor = sql,
 ): Promise<void> {
-  await sql`
+  await db`
     UPDATE payments SET is_checked = ${isChecked}, updated_at = NOW()
     WHERE id = ${rowNumber}
   `
 }
 
-export async function updatePaymentRemarks(rowNumber: number, remarks: string): Promise<void> {
-  await sql`
+export async function updatePaymentRemarks(rowNumber: number, remarks: string, db: DBExecutor = sql): Promise<void> {
+  await db`
     UPDATE payments SET remarks = ${remarks}, updated_at = NOW()
     WHERE id = ${rowNumber}
   `
 }
 
-export async function deletePayment(rowNumber: number): Promise<void> {
-  await sql`DELETE FROM payments WHERE id = ${rowNumber}`
+export async function deletePayment(rowNumber: number, db: DBExecutor = sql): Promise<void> {
+  await db`DELETE FROM payments WHERE id = ${rowNumber}`
 }
 
 // ─── Adjustments ───────────────────────────────────────────────────────────
@@ -122,13 +125,13 @@ export async function addAdjustment(data: {
   customer: string
   description: string
   amount: number
-}): Promise<{ rowNumber: number }> {
+}, db: DBExecutor = sql): Promise<{ rowNumber: number }> {
   const customer = normalizeCustomer(data.customer)
-  await sql`
+  await db`
     INSERT INTO customers (instagram_id) VALUES (${customer})
     ON CONFLICT (instagram_id) DO NOTHING
   `
-  const [row] = await sql`
+  const [row] = await db`
     INSERT INTO adjustments (event, customer, description, amount)
     VALUES (${data.event}, ${customer}, ${data.description}, ${data.amount})
     RETURNING id
@@ -144,13 +147,14 @@ export async function updateAdjustment(
     description: string
     amount: number
   },
+  db: DBExecutor = sql,
 ): Promise<void> {
   const customer = normalizeCustomer(data.customer)
-  await sql`
+  await db`
     INSERT INTO customers (instagram_id) VALUES (${customer})
     ON CONFLICT (instagram_id) DO NOTHING
   `
-  await sql`
+  await db`
     UPDATE adjustments
     SET event = ${data.event}, customer = ${customer},
         description = ${data.description}, amount = ${data.amount},
@@ -159,8 +163,8 @@ export async function updateAdjustment(
   `
 }
 
-export async function deleteAdjustment(rowNumber: number): Promise<void> {
-  await sql`DELETE FROM adjustments WHERE id = ${rowNumber}`
+export async function deleteAdjustment(rowNumber: number, db: DBExecutor = sql): Promise<void> {
+  await db`DELETE FROM adjustments WHERE id = ${rowNumber}`
 }
 
 // ─── Refunds ─────────────────────────────────────────────────────────────────
@@ -219,9 +223,9 @@ export async function createRefund(data: {
   orderId?: number | null
   affectedUnits?: number
   note?: string
-}): Promise<RefundRow> {
+}, db: DBExecutor = sql): Promise<RefundRow> {
   const customer = normalizeCustomer(data.customer)
-  const [row] = await sql`
+  const [row] = await db`
     INSERT INTO refunds (event, customer, reason, refund_amount, order_id, affected_units, note)
     VALUES (
       ${data.event}, ${customer}, ${data.reason}, ${data.refundAmount},
@@ -243,6 +247,7 @@ export async function updateRefund(
     transferReference: string
     note: string
   }>,
+  db: DBExecutor = sql,
 ): Promise<void> {
   const fields: string[] = []
   const params: (string | number)[] = []
@@ -257,7 +262,7 @@ export async function updateRefund(
 
   if (fields.length === 0) return
   params.push(id)
-  await sql.unsafe(
+  await db.unsafe(
     `UPDATE refunds SET ${fields.join(", ")}, updated_at = NOW() WHERE id = $${params.length}`,
     params as (string | number)[],
   )
@@ -266,12 +271,14 @@ export async function updateRefund(
 export async function executeRefund(
   refundId: number,
   transferReference: string,
+  actor?: string | null,
 ): Promise<void> {
   const [refund] = await sql`SELECT * FROM refunds WHERE id = ${refundId}`
   if (!refund) throw new Error("Refund not found")
   if (refund.status === "refunded") throw new Error("Refund already executed")
 
   await sql.begin(async (tx) => {
+    await tx`SELECT set_config('app.actor', ${actor ?? ""}, true)`
     const [payment] = await tx`
       INSERT INTO payments (event, customer, amount, account, is_checked, remarks)
       VALUES (
@@ -298,8 +305,8 @@ export async function executeRefund(
   })
 }
 
-export async function deleteRefund(id: number): Promise<void> {
-  await sql`DELETE FROM refunds WHERE id = ${id} AND status != 'refunded'`
+export async function deleteRefund(id: number, db: DBExecutor = sql): Promise<void> {
+  await db`DELETE FROM refunds WHERE id = ${id} AND status != 'refunded'`
 }
 
 /**
@@ -318,11 +325,13 @@ export async function deleteRefund(id: number): Promise<void> {
 export async function applyRefundAsCredit(
   refundId: number,
   targetEvent: string,
+  actor?: string | null,
 ): Promise<void> {
   const target = targetEvent?.trim()
   if (!target) throw new Error("Target order is required")
 
   await sql.begin(async (tx) => {
+    await tx`SELECT set_config('app.actor', ${actor ?? ""}, true)`
     const [refund] = await tx`SELECT * FROM refunds WHERE id = ${refundId} FOR UPDATE`
     if (!refund) throw new Error("Refund not found")
     if (refund.status === "refunded") throw new Error("Already refunded as cash — cannot also apply as credit")
@@ -380,8 +389,9 @@ export async function applyRefundAsCredit(
  * it re-enters the queue to be re-applied or refunded. Atomic. No-op-safe if a
  * tagged adjustment was already removed by hand.
  */
-export async function undoRefundCredit(refundId: number): Promise<void> {
+export async function undoRefundCredit(refundId: number, actor?: string | null): Promise<void> {
   await sql.begin(async (tx) => {
+    await tx`SELECT set_config('app.actor', ${actor ?? ""}, true)`
     const [refund] = await tx`SELECT status FROM refunds WHERE id = ${refundId} FOR UPDATE`
     if (!refund) throw new Error("Refund not found")
     if (refund.status !== "applied_to_next_order") {

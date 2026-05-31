@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { getRefunds, createRefund, materializeOverpaymentRefunds } from "@/lib/db"
+import { getRefunds, createRefund, materializeOverpaymentRefunds, withActor } from "@/lib/db"
 import type { RefundReason } from "@/lib/db"
 
 const VALID_REASONS: RefundReason[] = ["overpayment", "unavailable", "shipping_loss", "damaged", "goodwill", "other"]
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid reason" }, { status: 400 })
     }
 
-    const row = await createRefund({
+    const row = await withActor(session.user.email, (tx) => createRefund({
       event,
       customer,
       reason,
@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
       orderId: orderId ?? null,
       affectedUnits: affectedUnits ?? 0,
       note: note ?? "",
-    })
+    }, tx))
     return NextResponse.json({ success: true, row })
   } catch (err) {
     console.error("Failed to create refund:", err)
