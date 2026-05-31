@@ -214,7 +214,16 @@ export default function ArrivalListClient() {
       ? `/api/sheets/arrival-list?event=${encodeURIComponent(event)}`
       : "/api/sheets/arrival-list"
     fetchJson<{ items: ArrivalListItem[] }>(url)
-      .then((data) => setItems(data.items ?? []))
+      .then((data) => {
+        const items = data.items ?? []
+        setItems(items)
+        // Stores start collapsed (event headers + store headers visible, items
+        // hidden). Only on an explicit load — a silent post-mutation refresh
+        // leaves whatever the user has expanded alone.
+        if (!silent) {
+          setCollapsedStores(new Set(items.map((i) => `${i.event}|${i.store || "—"}`)))
+        }
+      })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"))
       .finally(() => { if (!silent) setLoading(false) })
   }, [])
