@@ -16,7 +16,9 @@ function buildInvoiceMessage(
 ): string {
   const { orders, totals, invoice } = event
   const handle = customer.startsWith("@") ? customer : `@${customer}`
-  const produkLines = orders.map((o) => o.order).join("\n")
+  // e.g. "Lip Balm x 2 x Rp 150,000" — o.order is "name x unit", o.price is the
+  // formatted unit price.
+  const produkLines = orders.map((o) => `${o.order} x Rp ${o.price}`).join("\n")
 
   const perKgCandidate = Number(invoice.ongkirPerKg)
   const perKg =
