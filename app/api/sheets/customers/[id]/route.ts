@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { updateCustomer, deleteCustomer } from "@/lib/db"
+import { updateCustomer, deleteCustomer, withActor } from "@/lib/db"
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -24,7 +24,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "instagramId is required" }, { status: 400 })
     }
 
-    await updateCustomer(id, {
+    await withActor(session.user.email, (tx) => updateCustomer(id, {
       instagramId,
       name: String(body.name ?? "").trim(),
       whatsapp: String(body.whatsapp ?? "").trim(),
@@ -34,7 +34,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
       bankName: String(body.bankName ?? "").trim(),
       bankAccountNumber: String(body.bankAccountNumber ?? "").trim(),
       bankAccountHolder: String(body.bankAccountHolder ?? "").trim(),
-    })
+    }, tx))
 
     return NextResponse.json({ success: true })
   } catch (err) {
@@ -61,7 +61,7 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   }
 
   try {
-    await deleteCustomer(id)
+    await withActor(session.user.email, (tx) => deleteCustomer(id, tx))
     return NextResponse.json({ success: true })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)

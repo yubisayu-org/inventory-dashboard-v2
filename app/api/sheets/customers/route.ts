@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { getCustomers, addCustomer } from "@/lib/db"
+import { getCustomers, addCustomer, withActor } from "@/lib/db"
 
 export async function GET() {
   const { session, error: authError } = await requireSession()
@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "instagramId is required" }, { status: 400 })
     }
 
-    const result = await addCustomer({
+    const result = await withActor(session.user.email, (tx) => addCustomer({
       instagramId,
       name: String(body.name ?? "").trim(),
       whatsapp: String(body.whatsapp ?? "").trim(),
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
       bankName: String(body.bankName ?? "").trim(),
       bankAccountNumber: String(body.bankAccountNumber ?? "").trim(),
       bankAccountHolder: String(body.bankAccountHolder ?? "").trim(),
-    })
+    }, tx))
 
     return NextResponse.json({ success: true, id: result.id })
   } catch (err) {

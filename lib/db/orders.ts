@@ -1,5 +1,6 @@
 import sql from "../db-pool"
 import { tsToString, normalizeCustomer } from "./helpers"
+import type { DBExecutor } from "./actor"
 import type { SheetOptions, ItemOption, OrderRow, FormRow, ExcessRow, ExcessReason, PurchaseUpdate, ArriveUpdate } from "./types"
 
 // ─── Options ────────────────────────────────────────────────────────────────
@@ -239,7 +240,7 @@ function mapFormRow(r: Record<string, unknown>): FormRow {
   }
 }
 
-export async function appendOrders(orders: OrderRow[]): Promise<void> {
+export async function appendOrders(orders: OrderRow[], db: DBExecutor = sql): Promise<void> {
   if (orders.length === 0) return
 
   const normalized = orders.map((o) => ({
@@ -249,14 +250,14 @@ export async function appendOrders(orders: OrderRow[]): Promise<void> {
 
   // Auto-create customer records for any new customers
   const uniqueCustomers = [...new Set(normalized.map((o) => o.customer))]
-  await sql`
+  await db`
     INSERT INTO customers (instagram_id)
-    VALUES ${sql(uniqueCustomers.map((c) => [c]))}
+    VALUES ${db(uniqueCustomers.map((c) => [c]))}
     ON CONFLICT (instagram_id) DO NOTHING
   `
 
-  await sql`
-    INSERT INTO orders ${sql(
+  await db`
+    INSERT INTO orders ${db(
       normalized.map((o) => ({
         event: o.event,
         customer: o.customer,
@@ -272,14 +273,15 @@ export async function appendOrders(orders: OrderRow[]): Promise<void> {
 export async function updateFormRow(
   rowNumber: number,
   data: Pick<FormRow, "event" | "customer" | "productId" | "unitPrice" | "unit" | "note">,
+  db: DBExecutor = sql,
 ): Promise<void> {
   const customer = normalizeCustomer(data.customer)
   // Auto-create customer record if it doesn't exist
-  await sql`
+  await db`
     INSERT INTO customers (instagram_id) VALUES (${customer})
     ON CONFLICT (instagram_id) DO NOTHING
   `
-  await sql`
+  await db`
     UPDATE orders
     SET event = ${data.event}, customer = ${customer}, product_id = ${data.productId},
         unit_price = ${data.unitPrice}, unit = ${data.unit}, note = ${data.note},
@@ -291,8 +293,9 @@ export async function updateFormRow(
 export async function updateFormRowStage2(
   rowNumber: number,
   data: { unitBuy: number; receipt: string },
+  db: DBExecutor = sql,
 ): Promise<void> {
-  await sql`
+  await db`
     UPDATE orders
     SET unit_buy = ${data.unitBuy}, receipt = ${data.receipt}, updated_at = NOW()
     WHERE id = ${rowNumber}
@@ -302,8 +305,9 @@ export async function updateFormRowStage2(
 export async function updateFormRowStage3(
   rowNumber: number,
   data: { unitArrive: number; unitShip: number; unitHold: number },
+  db: DBExecutor = sql,
 ): Promise<void> {
-  await sql`
+  await db`
     UPDATE orders
     SET unit_arrive = ${data.unitArrive}, unit_ship = ${data.unitShip},
         unit_hold = ${data.unitHold}, updated_at = NOW()
@@ -323,15 +327,16 @@ export async function updateOrderOwnerCell(
   rowNumber: number,
   column: "unit_buy" | "unit_arrive",
   value: number | null,
+  db: DBExecutor = sql,
 ): Promise<void> {
   if (column === "unit_buy") {
-    await sql`
+    await db`
       UPDATE orders
       SET unit_buy = ${value}, updated_at = NOW()
       WHERE id = ${rowNumber}
     `
   } else {
-    await sql`
+    await db`
       UPDATE orders
       SET unit_arrive = ${value}, updated_at = NOW()
       WHERE id = ${rowNumber}
@@ -339,18 +344,18 @@ export async function updateOrderOwnerCell(
   }
 }
 
-export async function deleteFormRow(rowNumber: number): Promise<void> {
-  await sql`DELETE FROM orders WHERE id = ${rowNumber}`
+export async function deleteFormRow(rowNumber: number, db: DBExecutor = sql): Promise<void> {
+  await db`DELETE FROM orders WHERE id = ${rowNumber}`
 }
 
 // ─── Bulk updates ───────────────────────────────────────────────────────────
 
-export async function bulkUpdatePurchase(updates: PurchaseUpdate[]): Promise<void> {
+export async function bulkUpdatePurchase(updates: PurchaseUpdate[], db: DBExecutor = sql): Promise<void> {
   if (updates.length === 0) return
   const ids = updates.map((u) => u.rowNumber)
   const unitBuys = updates.map((u) => u.unitBuy)
   const receipts = updates.map((u) => u.receipt)
-  await sql`
+  await db`
     UPDATE orders SET
       unit_buy = data.unit_buy,
       receipt = data.receipt,
@@ -361,11 +366,11 @@ export async function bulkUpdatePurchase(updates: PurchaseUpdate[]): Promise<voi
   `
 }
 
-export async function bulkUpdateArrive(updates: ArriveUpdate[]): Promise<void> {
+export async function bulkUpdateArrive(updates: ArriveUpdate[], db: DBExecutor = sql): Promise<void> {
   if (updates.length === 0) return
   const ids = updates.map((u) => u.rowNumber)
   const arrives = updates.map((u) => u.unitArrive)
-  await sql`
+  await db`
     UPDATE orders SET
       unit_arrive = data.unit_arrive,
       updated_at = NOW()
@@ -404,10 +409,11 @@ export async function appendExcessPurchase(
     reason?: ExcessReason
     expectedItem?: string
   }[],
+  db: DBExecutor = sql,
 ): Promise<void> {
   if (rows.length === 0) return
-  await sql`
-    INSERT INTO excess_purchase ${sql(
+  await db`
+    INSERT INTO excess_purchase ${db(
       rows.map((r) => ({
         event: r.event,
         items: r.items,
@@ -420,14 +426,14 @@ export async function appendExcessPurchase(
   `
 }
 
-export async function updateExcessRowUnitBuy(rowNumber: number, unitBuy: number): Promise<void> {
-  await sql`
+export async function updateExcessRowUnitBuy(rowNumber: number, unitBuy: number, db: DBExecutor = sql): Promise<void> {
+  await db`
     UPDATE excess_purchase SET unit_buy = ${unitBuy}, updated_at = NOW()
     WHERE id = ${rowNumber}
   `
 }
 
-export async function deleteExcessRow(rowNumber: number): Promise<void> {
-  await sql`DELETE FROM excess_purchase WHERE id = ${rowNumber}`
+export async function deleteExcessRow(rowNumber: number, db: DBExecutor = sql): Promise<void> {
+  await db`DELETE FROM excess_purchase WHERE id = ${rowNumber}`
 }
 

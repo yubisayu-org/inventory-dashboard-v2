@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireOwner } from "@/lib/api"
-import { getProductsPaginated, getProductStores, addProduct, getCountries } from "@/lib/db"
+import { getProductsPaginated, getProductStores, addProduct, getCountries, withActor } from "@/lib/db"
 
 export async function GET(req: NextRequest) {
   const { session, error: authError } = await requireSession()
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "name is required" }, { status: 400 })
     }
 
-    const result = await addProduct({
+    const result = await withActor(session.user.email, (tx) => addProduct({
       name: String(name).trim(),
       store: String(store ?? "").trim(),
       price: Number(body.price) || 0,
@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
       packingFee: Number(body.packingFee ?? 5000),
       cost: Number(body.cost) || 0,
       profitFixed: Number(body.profitFixed) || 0,
-    })
+    }, tx))
 
     return NextResponse.json({ success: true, id: result.id })
   } catch (err) {

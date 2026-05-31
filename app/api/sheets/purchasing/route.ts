@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireOwner } from "@/lib/api"
-import { getDuplicateFormRowsForEvent, bulkUpdatePurchase, appendExcessPurchase } from "@/lib/db"
+import { getDuplicateFormRowsForEvent, bulkUpdatePurchase, appendExcessPurchase, withActor } from "@/lib/db"
 
 type ItemLine = { item: string; qty: number }
 type UpdatedRow = { rowNumber: number; customer: string; oldUnitBuy: number; unitBuy: number }
@@ -105,10 +105,11 @@ export async function POST(req: NextRequest) {
     }
 
     await Promise.all([
-      bulkUpdatePurchase(
+      withActor(session.user.email, (tx) => bulkUpdatePurchase(
         allUpdates.map(({ rowNumber, unitBuy, receipt: r }) => ({ rowNumber, unitBuy, receipt: r })),
-      ),
-      appendExcessPurchase(excessRows),
+        tx,
+      )),
+      withActor(session.user.email, (tx) => appendExcessPurchase(excessRows, tx)),
     ])
 
     return NextResponse.json({ results })

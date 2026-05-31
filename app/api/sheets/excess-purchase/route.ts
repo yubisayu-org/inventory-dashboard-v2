@@ -6,6 +6,7 @@ import {
   bulkUpdatePurchase,
   deleteExcessRow,
   updateExcessRowUnitBuy,
+  withActor,
 } from "@/lib/db"
 
 type UpdatedRow = { rowNumber: number; customer: string; oldUnitBuy: number; unitBuy: number }
@@ -91,22 +92,23 @@ export async function POST(req: NextRequest) {
     }
 
     // 1. Write all Duplicate_Form updates in one batch
-    await bulkUpdatePurchase(
+    await withActor(session.user.email, (tx) => bulkUpdatePurchase(
       Array.from(formUpdates.entries()).map(([rowNumber, d]) => ({
         rowNumber,
         unitBuy: d.unitBuy,
         receipt: d.receipt,
       })),
-    )
+      tx,
+    ))
 
     // 2. Update partially-consumed excess rows (before deletes shift row numbers)
     for (const { rowNumber, unitBuy } of excessToUpdate) {
-      await updateExcessRowUnitBuy(rowNumber, unitBuy)
+      await withActor(session.user.email, (tx) => updateExcessRowUnitBuy(rowNumber, unitBuy, tx))
     }
 
     // 3. Delete fully-consumed excess rows highest-first so lower indices stay valid
     for (const rowNumber of excessToDelete.sort((a, b) => b - a)) {
-      await deleteExcessRow(rowNumber)
+      await withActor(session.user.email, (tx) => deleteExcessRow(rowNumber, tx))
     }
 
     return NextResponse.json({ results })

@@ -1,5 +1,6 @@
 import sql from "../db-pool"
 import { normalizeId } from "./helpers"
+import type { DBExecutor } from "./actor"
 import type { CustomerDetail, CustomerRow, CustomerInput } from "./types"
 
 // ─── Customers ──────────────────────────────────────────────────────────────
@@ -30,9 +31,10 @@ export async function lookupCustomerDetail(instagramId: string): Promise<Custome
 export async function updateCustomerBankInfo(
   instagramId: string,
   data: { bankName: string; bankAccountNumber: string; bankAccountHolder: string },
+  db: DBExecutor = sql,
 ): Promise<void> {
   const searchId = normalizeId(instagramId)
-  await sql`
+  await db`
     UPDATE customers
     SET bank_name           = ${data.bankName},
         bank_account_number = ${data.bankAccountNumber},
@@ -66,13 +68,13 @@ export async function getCustomers(): Promise<CustomerRow[]> {
   }))
 }
 
-export async function addCustomer(data: CustomerInput): Promise<{ id: number }> {
+export async function addCustomer(data: CustomerInput, db: DBExecutor = sql): Promise<{ id: number }> {
   // Canonical form is bare lowercase, no '@'. Without this, "@User" and "user"
   // would each create their own row and the order flow (which normalizes the
   // handle on insert) would attach orders to a different row than the one the
   // admin filled out.
   const instagramId = normalizeId(data.instagramId)
-  const rows = await sql`
+  const rows = await db`
     INSERT INTO customers (
       instagram_id, name, whatsapp, data_diri, ekspedisi, ongkos_kirim,
       bank_name, bank_account_number, bank_account_holder
@@ -85,9 +87,9 @@ export async function addCustomer(data: CustomerInput): Promise<{ id: number }> 
   return { id: rows[0].id as number }
 }
 
-export async function updateCustomer(id: number, data: CustomerInput): Promise<void> {
+export async function updateCustomer(id: number, data: CustomerInput, db: DBExecutor = sql): Promise<void> {
   const instagramId = normalizeId(data.instagramId)
-  await sql`
+  await db`
     UPDATE customers
     SET instagram_id        = ${instagramId},
         name                = ${data.name},
@@ -103,8 +105,8 @@ export async function updateCustomer(id: number, data: CustomerInput): Promise<v
   `
 }
 
-export async function deleteCustomer(id: number): Promise<void> {
-  await sql`DELETE FROM customers WHERE id = ${id}`
+export async function deleteCustomer(id: number, db: DBExecutor = sql): Promise<void> {
+  await db`DELETE FROM customers WHERE id = ${id}`
 }
 
 // ─── Public registration ──────────────────────────────────────────────────────

@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
       event,
       productId: Number(productId),
       quantityArrived,
-    })
+    }, session.user.email)
     return NextResponse.json({ success: true, ...result })
   } catch (err) {
     console.error("Failed to mark orders as arrived:", err)

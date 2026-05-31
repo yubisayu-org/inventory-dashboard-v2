@@ -1,5 +1,6 @@
 import sql from "../db-pool"
 import { tsToString } from "./helpers"
+import type { DBExecutor } from "./actor"
 import type { ProductRow, ProductIndoRow, CountryRow } from "./types"
 
 // ─── Products Indo ──────────────────────────────────────────────────────────
@@ -23,8 +24,8 @@ export async function addProductIndo(data: {
   product: string
   store: string
   price: number
-}): Promise<{ rowNumber: number }> {
-  const [row] = await sql`
+}, db: DBExecutor = sql): Promise<{ rowNumber: number }> {
+  const [row] = await db`
     INSERT INTO products_indo (product, store, price)
     VALUES (${data.product}, ${data.store}, ${data.price})
     RETURNING id
@@ -35,8 +36,9 @@ export async function addProductIndo(data: {
 export async function updateProductIndo(
   rowNumber: number,
   data: { product: string; store: string; price: number },
+  db: DBExecutor = sql,
 ): Promise<void> {
-  await sql`
+  await db`
     UPDATE products_indo
     SET product = ${data.product}, store = ${data.store}, price = ${data.price},
         updated_at = NOW()
@@ -244,8 +246,8 @@ export async function addProduct(data: {
   packingFee: number
   cost: number
   profitFixed: number
-}): Promise<{ id: number }> {
-  const [row] = await sql`
+}, db: DBExecutor = sql): Promise<{ id: number }> {
+  const [row] = await db`
     INSERT INTO products (name, store, price, gram, country_id, valas, kurs,
       cargo_per_kg, profit_pct, operational_fee, packing_fee, cost, profit_fixed)
     VALUES (${data.name}, ${data.store}, ${data.price}, ${data.gram},
@@ -274,8 +276,9 @@ export async function updateProduct(
     cost: number
     profitFixed: number
   },
+  db: DBExecutor = sql,
 ): Promise<void> {
-  await sql`
+  await db`
     UPDATE products
     SET name = ${data.name}, store = ${data.store}, price = ${data.price},
         gram = ${data.gram}, country_id = ${data.countryId},
@@ -287,8 +290,8 @@ export async function updateProduct(
   `
 }
 
-export async function deleteProduct(id: number): Promise<void> {
-  await sql`DELETE FROM products WHERE id = ${id}`
+export async function deleteProduct(id: number, db: DBExecutor = sql): Promise<void> {
+  await db`DELETE FROM products WHERE id = ${id}`
 }
 
 // ─── Countries ─────────────────────────────────────────────────────────────
@@ -315,8 +318,8 @@ export async function addCountry(data: {
   currency: string
   kurs: number
   cargoPerKg: number
-}): Promise<{ id: number }> {
-  const [row] = await sql`
+}, db: DBExecutor = sql): Promise<{ id: number }> {
+  const [row] = await db`
     INSERT INTO countries (name, currency, kurs, cargo_per_kg)
     VALUES (${data.name}, ${data.currency}, ${data.kurs}, ${data.cargoPerKg})
     RETURNING id
@@ -327,8 +330,9 @@ export async function addCountry(data: {
 export async function updateCountry(
   id: number,
   data: { name: string; currency: string; kurs: number; cargoPerKg: number },
+  db: DBExecutor = sql,
 ): Promise<void> {
-  await sql`
+  await db`
     UPDATE countries
     SET name = ${data.name}, currency = ${data.currency},
         kurs = ${data.kurs}, cargo_per_kg = ${data.cargoPerKg},
@@ -337,8 +341,8 @@ export async function updateCountry(
   `
 }
 
-export async function deleteCountry(id: number): Promise<void> {
-  await sql`DELETE FROM countries WHERE id = ${id}`
+export async function deleteCountry(id: number, db: DBExecutor = sql): Promise<void> {
+  await db`DELETE FROM countries WHERE id = ${id}`
 }
 
 // ─── Events ───────────────────────────────────────────────────────────────
@@ -369,8 +373,8 @@ export async function getEvents(): Promise<EventRow[]> {
 export async function addEvent(data: {
   name: string
   eta: string
-}): Promise<{ id: number }> {
-  const [row] = await sql`
+}, db: DBExecutor = sql): Promise<{ id: number }> {
+  const [row] = await db`
     INSERT INTO events (name, eta)
     VALUES (${data.name}, ${data.eta})
     RETURNING id
@@ -381,15 +385,16 @@ export async function addEvent(data: {
 export async function updateEvent(
   id: number,
   data: { name: string; eta: string },
+  db: DBExecutor = sql,
 ): Promise<void> {
-  await sql`
+  await db`
     UPDATE events
     SET name = ${data.name}, eta = ${data.eta}, updated_at = NOW()
     WHERE id = ${id}
   `
 }
 
-export async function deleteEvent(id: number): Promise<void> {
-  await sql`DELETE FROM events WHERE id = ${id}`
+export async function deleteEvent(id: number, db: DBExecutor = sql): Promise<void> {
+  await db`DELETE FROM events WHERE id = ${id}`
 }
 

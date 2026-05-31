@@ -4,6 +4,7 @@ import {
   getDuplicateFormRowsForEvent,
   bulkUpdateArrive,
   appendExcessPurchase,
+  withActor,
   type ExcessReason,
 } from "@/lib/db"
 
@@ -142,10 +143,11 @@ export async function POST(req: NextRequest) {
     }
 
     await Promise.all([
-      bulkUpdateArrive(
+      withActor(session.user.email, (tx) => bulkUpdateArrive(
         allUpdates.map(({ rowNumber, unitArrive }) => ({ rowNumber, unitArrive })),
-      ),
-      appendExcessPurchase(excessRows),
+        tx,
+      )),
+      withActor(session.user.email, (tx) => appendExcessPurchase(excessRows, tx)),
     ])
 
     return NextResponse.json({ results })

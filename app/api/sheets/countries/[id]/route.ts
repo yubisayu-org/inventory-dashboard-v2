@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireOwner } from "@/lib/api"
-import { updateCountry, deleteCountry } from "@/lib/db"
+import { updateCountry, deleteCountry, withActor } from "@/lib/db"
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -25,12 +25,12 @@ export async function PUT(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "name is required" }, { status: 400 })
     }
 
-    await updateCountry(id, {
+    await withActor(session.user.email, (tx) => updateCountry(id, {
       name: String(name),
       currency: String(currency ?? ""),
       kurs: Number(kurs ?? 0),
       cargoPerKg: Number(cargoPerKg ?? 0),
-    })
+    }, tx))
 
     return NextResponse.json({ success: true })
   } catch (err) {
@@ -53,7 +53,7 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   }
 
   try {
-    await deleteCountry(id)
+    await withActor(session.user.email, (tx) => deleteCountry(id, tx))
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error("Failed to delete country:", err)

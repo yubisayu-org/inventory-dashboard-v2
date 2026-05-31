@@ -1,5 +1,6 @@
 import sql from "../db-pool"
 import { allocateFifo } from "../fifo-fill"
+import type { DBExecutor } from "./actor"
 
 // ─── Shopping List ────────────────────────────────────────────────────────
 
@@ -253,9 +254,9 @@ async function fetchPaidStatusMap(events: string[] | null): Promise<Map<string, 
   return map
 }
 
-export async function markOrdersAsBought(orderIds: number[]): Promise<void> {
+export async function markOrdersAsBought(orderIds: number[], db: DBExecutor = sql): Promise<void> {
   if (orderIds.length === 0) return
-  await sql`
+  await db`
     UPDATE orders
     SET unit_buy = unit, updated_at = NOW()
     WHERE id = ANY(${orderIds}) AND unit_buy IS NULL
@@ -268,7 +269,7 @@ export async function markProductBought(data: {
   productName: string
   quantityBought: number
   receipt: string
-}): Promise<{ filledOrderIds: number[]; excessUnits: number }> {
+}, actor?: string | null): Promise<{ filledOrderIds: number[]; excessUnits: number }> {
   // Partial allocation lets an order have unit_buy < unit, so it stays in the
   // shopping list with reduced "remaining" qty. Mirrors /api/sheets/purchasing.
   type Row = { id: number; unit: number; unitBuy: number; receipt: string; pending: number }
@@ -290,6 +291,7 @@ export async function markProductBought(data: {
   const filledOrderIds: number[] = []
 
   await sql.begin(async (tx) => {
+    await tx`SELECT set_config('app.actor', ${actor ?? ""}, true)`
     for (const { item: o, allocated } of allocations) {
       const newUnitBuy = o.unitBuy + allocated
       const combinedReceipt = data.receipt

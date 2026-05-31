@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireOwner } from "@/lib/api"
-import { getEvents, addEvent } from "@/lib/db"
+import { getEvents, addEvent, withActor } from "@/lib/db"
 
 export async function GET() {
   const { session, error: authError } = await requireSession()
@@ -33,10 +33,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "name is required" }, { status: 400 })
     }
 
-    const result = await addEvent({
+    const result = await withActor(session.user.email, (tx) => addEvent({
       name: String(name),
       eta: String(eta ?? ""),
-    })
+    }, tx))
 
     return NextResponse.json({ success: true, id: result.id })
   } catch (err) {

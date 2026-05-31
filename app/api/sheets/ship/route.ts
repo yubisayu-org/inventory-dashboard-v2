@@ -35,8 +35,8 @@ export async function POST(req: NextRequest) {
     // A "Ship together" payload carries `groups` (one customer, several events);
     // a single-event ship carries `event` + `orders`.
     const result = Array.isArray(body?.groups)
-      ? await shipMergedCustomerOrders(body)
-      : await shipCustomerOrders(body)
+      ? await shipMergedCustomerOrders(body, session.user.email)
+      : await shipCustomerOrders(body, session.user.email)
     return NextResponse.json(result)
   } catch (err) {
     console.error("Failed to ship orders:", err)

@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
     if (!event || !productId || !productName || typeof quantityBought !== "number" || quantityBought < 1) {
       return NextResponse.json({ error: "event, productId, productName and quantityBought are required" }, { status: 400 })
     }
-    const result = await markProductBought({ event, productId: Number(productId), productName, quantityBought, receipt: receipt ?? "" })
+    const result = await markProductBought({ event, productId: Number(productId), productName, quantityBought, receipt: receipt ?? "" }, session.user.email)
     return NextResponse.json({ success: true, ...result })
   } catch (err) {
     console.error("Failed to mark orders as bought:", err)

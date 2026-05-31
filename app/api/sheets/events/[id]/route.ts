@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireOwner } from "@/lib/api"
-import { updateEvent, deleteEvent } from "@/lib/db"
+import { updateEvent, deleteEvent, withActor } from "@/lib/db"
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -25,10 +25,10 @@ export async function PUT(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "name is required" }, { status: 400 })
     }
 
-    await updateEvent(id, {
+    await withActor(session.user.email, (tx) => updateEvent(id, {
       name: String(name),
       eta: String(eta ?? ""),
-    })
+    }, tx))
 
     return NextResponse.json({ success: true })
   } catch (err) {
@@ -51,7 +51,7 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   }
 
   try {
-    await deleteEvent(id)
+    await withActor(session.user.email, (tx) => deleteEvent(id, tx))
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error("Failed to delete event:", err)
