@@ -405,6 +405,11 @@ function RefundDetailModal({
   const [invoiceLoading, setInvoiceLoading] = useState(true)
   const [invoiceError, setInvoiceError] = useState<string | null>(null)
 
+  // Apply-as-credit flow: the customer's other orders are the valid targets.
+  const [customerEvents, setCustomerEvents] = useState<InvoiceEvent[]>([])
+  const [showCredit, setShowCredit] = useState(false)
+  const [creditTarget, setCreditTarget] = useState("")
+
   useEffect(() => {
     let cancelled = false
     setInvoiceLoading(true)
@@ -412,6 +417,7 @@ function RefundDetailModal({
     fetchJson<InvoiceResult>(`/api/sheets/invoice?customer=${encodeURIComponent(row.customer)}`)
       .then((data) => {
         if (cancelled) return
+        setCustomerEvents(data.events)
         const match = data.events.find((ev) => ev.eventId === row.event) ?? null
         setInvoiceEvent(match)
         if (!match) setInvoiceError("No invoice found for this event")
@@ -448,6 +454,12 @@ function RefundDetailModal({
   async function handleStatusChange(status: RefundStatus) {
     const ok = await patch({ status })
     if (ok) onUpdated({ ...row, status })
+  }
+
+  async function handleApplyCredit() {
+    if (!creditTarget) { setError("Pick a target order"); return }
+    const ok = await patch({ action: "apply_credit", targetEvent: creditTarget })
+    if (ok) onUpdated({ ...row, status: "applied_to_next_order", note: `Applied as credit to ${creditTarget}` })
   }
 
   async function handleSaveBankInfo() {
@@ -747,6 +759,58 @@ function RefundDetailModal({
               </button>
             </div>
           )}
+
+          {/* Apply as credit — pick which of the customer's other orders to credit */}
+          {showCredit && !isReadOnly && (
+            <div className="flex flex-col gap-3 p-3 rounded-lg bg-purple-50 border border-purple-200">
+              <div className="text-xs font-semibold text-purple-800">Apply as Credit</div>
+              <div className="text-xs text-purple-700">
+                Apply <span className="font-bold">{formatRp(row.refundAmount)}</span> as credit to another order
+                for <span className="font-medium">{displayIg(row.customer)}</span>. No cash is transferred — the
+                overpayment is cleared here and the credit lowers what they owe on the chosen order.
+              </div>
+              {customerEvents.filter((ev) => ev.eventId !== row.event).length === 0 ? (
+                <p className="text-xs text-purple-600">
+                  This customer has no other orders to credit. Create their next order first, then apply the credit.
+                </p>
+              ) : (
+                <>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-xs font-medium text-purple-800">Target order (event)</span>
+                    <select
+                      value={creditTarget}
+                      onChange={(e) => setCreditTarget(e.target.value)}
+                      disabled={saving}
+                      className={`${INPUT_CLASS} w-full`}
+                    >
+                      <option value="">Select an order…</option>
+                      {customerEvents
+                        .filter((ev) => ev.eventId !== row.event)
+                        .map((ev) => (
+                          <option key={ev.eventId} value={ev.eventId}>{ev.eventId}</option>
+                        ))}
+                    </select>
+                  </label>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleApplyCredit}
+                      disabled={saving || !creditTarget}
+                      className="px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-medium hover:bg-purple-700 disabled:opacity-50 transition-colors"
+                    >
+                      {saving ? "Applying…" : "Apply Credit"}
+                    </button>
+                    <button
+                      onClick={() => { setShowCredit(false); setCreditTarget("") }}
+                      disabled={saving}
+                      className="px-3 py-2 rounded-lg border border-purple-200 text-purple-700 text-sm hover:bg-purple-100 disabled:opacity-50 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -757,7 +821,7 @@ function RefundDetailModal({
               {row.status !== "cancelled" && row.status !== "applied_to_next_order" && (
                 <>
                   <button
-                    onClick={() => handleStatusChange("applied_to_next_order")}
+                    onClick={() => setShowCredit(true)}
                     disabled={saving}
                     className="text-xs px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 hover:border-purple-400 hover:text-purple-600 disabled:opacity-50 transition-colors"
                   >

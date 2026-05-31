@@ -303,6 +303,75 @@ export async function deleteRefund(id: number): Promise<void> {
 }
 
 /**
+ * Apply an open refund as store credit on another of the customer's orders
+ * instead of refunding cash. Runs in one transaction:
+ *   - Posts a NEGATIVE adjustment (the credit) on the target event, lowering
+ *     what the customer owes there.
+ *   - For an OVERPAYMENT, also posts a matching POSITIVE adjustment on the
+ *     source event so it's no longer overpaid — the excess payment sitting on
+ *     the source is exactly what's being moved. Without this the customer would
+ *     be credited twice (source still overpaid AND target credited). Other
+ *     refund reasons aren't tied to excess payment on the source, so they get
+ *     no source-side entry.
+ *   - Marks the refund `applied_to_next_order`.
+ */
+export async function applyRefundAsCredit(
+  refundId: number,
+  targetEvent: string,
+): Promise<void> {
+  const target = targetEvent?.trim()
+  if (!target) throw new Error("Target order is required")
+
+  await sql.begin(async (tx) => {
+    const [refund] = await tx`SELECT * FROM refunds WHERE id = ${refundId} FOR UPDATE`
+    if (!refund) throw new Error("Refund not found")
+    if (refund.status === "refunded") throw new Error("Already refunded as cash — cannot also apply as credit")
+    if (refund.status === "applied_to_next_order") throw new Error("Already applied to another order")
+
+    const amount = refund.refund_amount as number
+    if (!(amount > 0)) throw new Error("Refund amount must be positive")
+
+    const sourceEvent = refund.event as string
+    const reason = refund.reason as RefundReason
+    const customer = normalizeCustomer(refund.customer as string)
+
+    if (target === sourceEvent) throw new Error("Pick a different order than the overpaid one")
+
+    // The customer must actually have an order in the target event, or the
+    // credit would dangle on an event they aren't part of.
+    const [hasTarget] = await tx`
+      SELECT 1 FROM orders
+      WHERE event = ${target}
+        AND lower(replace(customer, '@', '')) = lower(replace(${customer}, '@', ''))
+      LIMIT 1
+    `
+    if (!hasTarget) throw new Error(`${customer} has no order in ${target}`)
+
+    // Credit on the new order (negative adjustment reduces what's owed).
+    await tx`
+      INSERT INTO adjustments (event, customer, description, amount)
+      VALUES (${target}, ${customer}, ${`Credit from ${reason} on ${sourceEvent}`}, ${-amount})
+    `
+
+    // Consume the source-side excess for an overpayment.
+    if (reason === "overpayment") {
+      await tx`
+        INSERT INTO adjustments (event, customer, description, amount)
+        VALUES (${sourceEvent}, ${customer}, ${`Overpayment applied as credit to ${target}`}, ${amount})
+      `
+    }
+
+    await tx`
+      UPDATE refunds
+      SET status = 'applied_to_next_order',
+          note = ${`Applied as credit to ${target}`},
+          updated_at = NOW()
+      WHERE id = ${refundId}
+    `
+  })
+}
+
+/**
  * Auto-creates pending refund rows for every (event, customer) pair where
  * total checked payments exceed the invoice total, skipping pairs that
  * already have an active overpayment refund.
