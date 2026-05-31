@@ -187,6 +187,7 @@ function mapRefundRow(r: Record<string, unknown>): RefundRow {
     affectedUnits: (r.affected_units as number) ?? 0,
     note: (r.note as string) ?? "",
     hasAppliedCredit: Boolean(r.has_applied_credit),
+    appliedCreditAmount: (r.applied_credit_amount as number) ?? 0,
     createdAt: tsToString(r.created_at as Date | null | undefined),
     updatedAt: tsToString(r.updated_at as Date | null | undefined),
   }
@@ -212,7 +213,9 @@ export async function getRefunds(filters?: { event?: string; status?: string; cu
   const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""
   const rows = await sql.unsafe(
     `SELECT r.*,
-            EXISTS (SELECT 1 FROM payments p WHERE p.refund_id = r.id AND p.kind = 'credit') AS has_applied_credit
+            EXISTS (SELECT 1 FROM payments p WHERE p.refund_id = r.id AND p.kind = 'credit') AS has_applied_credit,
+            (SELECT COALESCE(SUM(p.amount), 0)::int FROM payments p
+             WHERE p.refund_id = r.id AND p.kind = 'credit' AND p.amount > 0) AS applied_credit_amount
      FROM refunds r ${where} ORDER BY r.created_at DESC`,
     params,
   )

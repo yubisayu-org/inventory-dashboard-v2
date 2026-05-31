@@ -213,7 +213,7 @@ export default function RefundsClient() {
                   <td className="px-4 py-3 text-gray-600">{row.event}</td>
                   <td className="px-4 py-3 text-gray-600">{REASON_LABELS[row.reason]}</td>
                   <td className="px-4 py-3 text-right tabular-nums font-semibold text-foreground">
-                    {formatRp(row.refundAmount)}
+                    {formatRp(row.appliedCreditAmount > 0 ? row.appliedCreditAmount : row.refundAmount)}
                   </td>
                   <td className="px-4 py-3">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${STATUS_COLORS[row.status]}`}>
@@ -468,6 +468,7 @@ function RefundDetailModal({
       onUpdated({
         ...row,
         refundAmount: Math.max(0, remaining),
+        appliedCreditAmount: (row.appliedCreditAmount ?? 0) + amt,
         status: remaining <= 0 ? "applied_to_next_order" : "pending",
         hasAppliedCredit: true,
         note: remaining <= 0
@@ -482,7 +483,15 @@ function RefundDetailModal({
   // wrong order (or by mistake). Restores the full overpayment.
   async function handleUndoCredit() {
     const ok = await patch({ action: "undo_credit" })
-    if (ok) onUpdated({ ...row, status: "pending", hasAppliedCredit: false, note: "" })
+    if (ok) onUpdated({
+      ...row,
+      status: "pending",
+      hasAppliedCredit: false,
+      // Restore the full overpayment = remaining + what had been applied.
+      refundAmount: row.refundAmount + (row.appliedCreditAmount ?? 0),
+      appliedCreditAmount: 0,
+      note: "",
+    })
   }
 
   async function handleSaveBankInfo() {
@@ -585,9 +594,13 @@ function RefundDetailModal({
           {/* Amount + Note */}
           <div className="flex flex-col gap-3">
             <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-gray-500">Refund Amount (Rp)</span>
+              <span className="text-xs font-medium text-gray-500">
+                {row.appliedCreditAmount > 0 ? "Applied as Credit (Rp)" : "Refund Amount (Rp)"}
+              </span>
               {isReadOnly ? (
-                <div className="text-lg font-bold text-foreground">{formatRp(row.refundAmount)}</div>
+                <div className="text-lg font-bold text-foreground">
+                  {formatRp(row.appliedCreditAmount > 0 ? row.appliedCreditAmount : row.refundAmount)}
+                </div>
               ) : (
                 <input
                   type="number"
@@ -762,11 +775,14 @@ function RefundDetailModal({
             </div>
           )}
 
-          {/* Cancelled — nothing was moved, so a plain status reopen is safe */}
-          {row.status === "cancelled" && (
+          {/* Cancelled, or marked applied with no credit actually moved (legacy
+              label-only) — nothing to reverse, so a plain status reopen is safe. */}
+          {(row.status === "cancelled" || (row.status === "applied_to_next_order" && !row.hasAppliedCredit)) && (
             <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-gray-50 border border-gray-200">
               <div className="text-xs text-gray-600">
-                This refund was cancelled.
+                {row.status === "cancelled"
+                  ? "This refund was cancelled."
+                  : "Marked as applied to a next order, but no credit was actually moved."}
                 <br />
                 <span className="text-gray-400">Pressed by mistake? Reopen to continue processing.</span>
               </div>

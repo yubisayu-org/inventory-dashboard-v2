@@ -184,6 +184,10 @@ export interface RefundRow {
   /** True when this refund has linked `credit` payments — i.e. some/all of it
    *  was applied to another order and can be undone. */
   hasAppliedCredit: boolean
+  /** Total applied as credit to other orders (sum of the +credit legs). For a
+   *  fully-applied refund `refundAmount` is 0 (no overpayment remaining), so the
+   *  UI shows this instead. */
+  appliedCreditAmount: number
   createdAt: string | null
   updatedAt: string | null
 }
