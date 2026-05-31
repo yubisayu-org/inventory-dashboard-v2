@@ -31,11 +31,15 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     if (action === "apply_credit") {
-      const { targetEvent } = data
+      const { targetEvent, amount } = data
       if (!targetEvent?.trim()) {
         return NextResponse.json({ error: "targetEvent is required" }, { status: 400 })
       }
-      await applyRefundAsCredit(refundId, targetEvent.trim(), session.user.email)
+      const amt = Math.round(Number(amount))
+      if (!Number.isFinite(amt) || amt <= 0) {
+        return NextResponse.json({ error: "amount must be a positive number" }, { status: 400 })
+      }
+      await applyRefundAsCredit(refundId, targetEvent.trim(), amt, session.user.email)
       return NextResponse.json({ success: true })
     }
 

@@ -181,6 +181,9 @@ export interface RefundRow {
   orderId: number | null
   affectedUnits: number
   note: string
+  /** True when this refund has linked `credit` payments — i.e. some/all of it
+   *  was applied to another order and can be undone. */
+  hasAppliedCredit: boolean
   createdAt: string | null
   updatedAt: string | null
 }
@@ -352,6 +355,9 @@ export interface ProductIndoRow {
   updatedAt: string
 }
 
+/** deposit = money in · refund = cash out · credit = internal overpayment transfer */
+export type PaymentKind = "deposit" | "refund" | "credit"
+
 export interface PaymentRow {
   rowNumber: number
   event: string
@@ -361,6 +367,7 @@ export interface PaymentRow {
   isChecked: boolean
   payDate: string
   remarks: string
+  kind: PaymentKind
   createdAt: string
   updatedAt: string
 }

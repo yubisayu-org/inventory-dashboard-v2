@@ -409,6 +409,7 @@ function RefundDetailModal({
   const [customerEvents, setCustomerEvents] = useState<InvoiceEvent[]>([])
   const [showCredit, setShowCredit] = useState(false)
   const [creditTarget, setCreditTarget] = useState("")
+  const [creditAmount, setCreditAmount] = useState("")
 
   useEffect(() => {
     let cancelled = false
@@ -458,15 +459,30 @@ function RefundDetailModal({
 
   async function handleApplyCredit() {
     if (!creditTarget) { setError("Pick a target order"); return }
-    const ok = await patch({ action: "apply_credit", targetEvent: creditTarget })
-    if (ok) onUpdated({ ...row, status: "applied_to_next_order", note: `Applied as credit to ${creditTarget}` })
+    const amt = Math.round(Number(creditAmount))
+    if (!Number.isFinite(amt) || amt <= 0) { setError("Enter a valid amount"); return }
+    if (amt > row.refundAmount) { setError(`Amount exceeds the overpayment (${formatRp(row.refundAmount)})`); return }
+    const ok = await patch({ action: "apply_credit", targetEvent: creditTarget, amount: amt })
+    if (ok) {
+      const remaining = row.refundAmount - amt
+      onUpdated({
+        ...row,
+        refundAmount: Math.max(0, remaining),
+        status: remaining <= 0 ? "applied_to_next_order" : "pending",
+        hasAppliedCredit: true,
+        note: remaining <= 0
+          ? `Applied as credit to ${creditTarget}`
+          : `Applied ${formatRp(amt)} as credit to ${creditTarget}; ${formatRp(remaining)} overpayment remaining`,
+      })
+      setShowCredit(false); setCreditTarget(""); setCreditAmount("")
+    }
   }
 
-  // Reverses the credit's adjustments and reopens — for when it was applied to
-  // the wrong order. (Plain status reopen would leave the money moved.)
+  // Reverses the credit payments and reopens — for when it was applied to the
+  // wrong order (or by mistake). Restores the full overpayment.
   async function handleUndoCredit() {
     const ok = await patch({ action: "undo_credit" })
-    if (ok) onUpdated({ ...row, status: "pending", note: "" })
+    if (ok) onUpdated({ ...row, status: "pending", hasAppliedCredit: false, note: "" })
   }
 
   async function handleSaveBankInfo() {
@@ -765,14 +781,14 @@ function RefundDetailModal({
             </div>
           )}
 
-          {/* Applied as credit — undoing must REVERSE the adjustments, not just
-              relabel, or the credit stays on the wrong order. */}
-          {row.status === "applied_to_next_order" && (
+          {/* Credit applied (fully or partially) — undoing REVERSES the credit
+              payments and restores the overpayment, not just relabels. */}
+          {row.hasAppliedCredit && (
             <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-purple-50 border border-purple-200">
               <div className="text-xs text-purple-700">
                 {row.note || "Applied as credit to another order."}
                 <br />
-                <span className="text-purple-500">Wrong order? Undo to reverse the credit and reopen this refund.</span>
+                <span className="text-purple-500">Wrong order? Undo to reverse the credit{row.status !== "applied_to_next_order" ? " applied so far" : " and reopen this refund"}.</span>
               </div>
               <button
                 type="button"
@@ -790,9 +806,9 @@ function RefundDetailModal({
             <div className="flex flex-col gap-3 p-3 rounded-lg bg-purple-50 border border-purple-200">
               <div className="text-xs font-semibold text-purple-800">Apply as Credit</div>
               <div className="text-xs text-purple-700">
-                Apply <span className="font-bold">{formatRp(row.refundAmount)}</span> as credit to another order
-                for <span className="font-medium">{displayIg(row.customer)}</span>. No cash is transferred — the
-                overpayment is cleared here and the credit lowers what they owe on the chosen order.
+                Move up to <span className="font-bold">{formatRp(row.refundAmount)}</span> of overpayment credit to
+                another order for <span className="font-medium">{displayIg(row.customer)}</span>. No cash moves — it
+                leaves this order and counts as payment on the chosen one.
               </div>
               {customerEvents.filter((ev) => ev.eventId !== row.event).length === 0 ? (
                 <p className="text-xs text-purple-600">
@@ -804,7 +820,16 @@ function RefundDetailModal({
                     <span className="text-xs font-medium text-purple-800">Target order (event)</span>
                     <select
                       value={creditTarget}
-                      onChange={(e) => setCreditTarget(e.target.value)}
+                      onChange={(e) => {
+                        const id = e.target.value
+                        setCreditTarget(id)
+                        // Default the amount to what the target owes, capped at
+                        // the overpayment — so the common case fully settles the
+                        // target without over-crediting it.
+                        const tgt = customerEvents.find((ev) => ev.eventId === id)
+                        const owed = Math.max(0, tgt?.invoice.sisaPelunasan ?? 0)
+                        setCreditAmount(id ? String(Math.min(row.refundAmount, owed) || row.refundAmount) : "")
+                      }}
                       disabled={saving}
                       className={`${INPUT_CLASS} w-full`}
                     >
@@ -821,34 +846,46 @@ function RefundDetailModal({
                         })}
                     </select>
                   </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-xs font-medium text-purple-800">Amount to apply (max {formatRp(row.refundAmount)})</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max={row.refundAmount}
+                      value={creditAmount}
+                      onChange={(e) => setCreditAmount(e.target.value)}
+                      disabled={saving || !creditTarget}
+                      className={`${INPUT_CLASS} w-full`}
+                    />
+                  </label>
                   {(() => {
-                    // Warn (but don't block) when the credit exceeds what the
-                    // target owes: the excess would resurface as a fresh
-                    // overpayment on that order rather than fully resolving here.
+                    // Warn (but don't block) when the chosen amount exceeds what
+                    // the target owes: the excess resurfaces as a fresh
+                    // overpayment on that order rather than fully clearing.
                     const tgt = customerEvents.find((ev) => ev.eventId === creditTarget)
-                    if (!tgt) return null
+                    const amt = Math.round(Number(creditAmount)) || 0
+                    if (!tgt || amt <= 0) return null
                     const owed = Math.max(0, tgt.invoice.sisaPelunasan)
-                    if (row.refundAmount <= owed) return null
-                    const excess = row.refundAmount - owed
+                    if (amt <= owed) return null
+                    const excess = amt - owed
                     return (
                       <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2">
-                        ⚠ This credit ({formatRp(row.refundAmount)}) is more than {tgt.eventId} owes ({formatRp(owed)}).
-                        The extra <span className="font-semibold">{formatRp(excess)}</span> will resurface as a new
-                        overpayment on {tgt.eventId} — no money is lost, but it won't fully clear here. You can refund
-                        or re-apply the remainder afterward.
+                        ⚠ {formatRp(amt)} is more than {tgt.eventId} owes ({formatRp(owed)}). The extra{" "}
+                        <span className="font-semibold">{formatRp(excess)}</span> will resurface as a new overpayment
+                        on {tgt.eventId} — no money is lost, but it won't fully clear there.
                       </p>
                     )
                   })()}
                   <div className="flex gap-2">
                     <button
                       onClick={handleApplyCredit}
-                      disabled={saving || !creditTarget}
+                      disabled={saving || !creditTarget || !(Math.round(Number(creditAmount)) > 0)}
                       className="px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-medium hover:bg-purple-700 disabled:opacity-50 transition-colors"
                     >
                       {saving ? "Applying…" : "Apply Credit"}
                     </button>
                     <button
-                      onClick={() => { setShowCredit(false); setCreditTarget("") }}
+                      onClick={() => { setShowCredit(false); setCreditTarget(""); setCreditAmount("") }}
                       disabled={saving}
                       className="px-3 py-2 rounded-lg border border-purple-200 text-purple-700 text-sm hover:bg-purple-100 disabled:opacity-50 transition-colors"
                     >

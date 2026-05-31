@@ -129,6 +129,23 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
       ),
     },
     {
+      accessorKey: "kind",
+      header: "Type",
+      filterFn: "textContains",
+      cell: ({ getValue }) => {
+        const k = getValue<PaymentRow["kind"]>()
+        // Deposit = real money in; refund = cash out; credit = internal
+        // overpayment transfer (no cash moved).
+        const cls = k === "credit"
+          ? "bg-purple-50 text-purple-700 border-purple-200"
+          : k === "refund"
+            ? "bg-orange-50 text-orange-700 border-orange-200"
+            : "bg-gray-50 text-gray-500 border-cream-border"
+        const label = k === "credit" ? "Credit" : k === "refund" ? "Refund" : "Deposit"
+        return <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-medium border ${cls}`}>{label}</span>
+      },
+    },
+    {
       accessorKey: "account",
       header: "Account",
       filterFn: "textContains",

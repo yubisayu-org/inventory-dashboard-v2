@@ -9,7 +9,7 @@ import type { PaymentRow, AdjustmentRow, RefundRow, RefundReason, RefundStatus }
 export async function getPaymentRows(): Promise<PaymentRow[]> {
   const rows = await sql`
     SELECT id, event, customer, amount, account, is_checked,
-           pay_date, remarks, created_at, updated_at
+           pay_date, remarks, kind, created_at, updated_at
     FROM payments ORDER BY id DESC
   `
   return rows.map((r) => ({
@@ -21,6 +21,7 @@ export async function getPaymentRows(): Promise<PaymentRow[]> {
     isChecked: r.is_checked ?? false,
     payDate: r.pay_date ? new Date(r.pay_date).toISOString().slice(0, 10) : "",
     remarks: r.remarks ?? "",
+    kind: (r.kind as PaymentRow["kind"]) ?? "deposit",
     createdAt: tsToString(r.created_at),
     updatedAt: tsToString(r.updated_at),
   }))
@@ -185,6 +186,7 @@ function mapRefundRow(r: Record<string, unknown>): RefundRow {
     orderId: (r.order_id as number | null) ?? null,
     affectedUnits: (r.affected_units as number) ?? 0,
     note: (r.note as string) ?? "",
+    hasAppliedCredit: Boolean(r.has_applied_credit),
     createdAt: tsToString(r.created_at as Date | null | undefined),
     updatedAt: tsToString(r.updated_at as Date | null | undefined),
   }
@@ -209,7 +211,9 @@ export async function getRefunds(filters?: { event?: string; status?: string; cu
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""
   const rows = await sql.unsafe(
-    `SELECT r.* FROM refunds r ${where} ORDER BY r.created_at DESC`,
+    `SELECT r.*,
+            EXISTS (SELECT 1 FROM payments p WHERE p.refund_id = r.id AND p.kind = 'credit') AS has_applied_credit
+     FROM refunds r ${where} ORDER BY r.created_at DESC`,
     params,
   )
   return rows.map(mapRefundRow)
@@ -280,14 +284,16 @@ export async function executeRefund(
   await sql.begin(async (tx) => {
     await tx`SELECT set_config('app.actor', ${actor ?? ""}, true)`
     const [payment] = await tx`
-      INSERT INTO payments (event, customer, amount, account, is_checked, remarks)
+      INSERT INTO payments (event, customer, amount, account, is_checked, remarks, kind, refund_id)
       VALUES (
         ${refund.event as string},
         ${refund.customer as string},
         ${-(refund.refund_amount as number)},
         ${refund.bank_account_number as string},
         true,
-        ${`Refund: ${refund.reason}`}
+        ${`Refund: ${refund.reason}`},
+        'refund',
+        ${refundId}
       )
       RETURNING id
     `
@@ -310,40 +316,42 @@ export async function deleteRefund(id: number, db: DBExecutor = sql): Promise<vo
 }
 
 /**
- * Apply an open refund as store credit on another of the customer's orders
- * instead of refunding cash. Runs in one transaction:
- *   - Posts a NEGATIVE adjustment (the credit) on the target event, lowering
- *     what the customer owes there.
- *   - For an OVERPAYMENT, also posts a matching POSITIVE adjustment on the
- *     source event so it's no longer overpaid — the excess payment sitting on
- *     the source is exactly what's being moved. Without this the customer would
- *     be credited twice (source still overpaid AND target credited). Other
- *     refund reasons aren't tied to excess payment on the source, so they get
- *     no source-side entry.
- *   - Marks the refund `applied_to_next_order`.
+ * Apply (part of) an overpayment as credit on another of the customer's orders,
+ * instead of refunding cash. Moves money as a pair of `credit` payments in one
+ * transaction:
+ *   - −amount on the SOURCE event (the overpayment leaving) → no longer overpaid
+ *     by that much;
+ *   - +amount on the TARGET event → lowers what the customer owes there.
+ * Both are is_checked (so they count toward total_paid immediately) and linked
+ * to the refund via refund_id for a precise undo.
+ *
+ * Partial-friendly: `amount` may be less than the overpayment. The refund row
+ * tracks the REMAINING overpayment and stays `pending` until fully applied, at
+ * which point it becomes `applied_to_next_order`.
  */
 export async function applyRefundAsCredit(
   refundId: number,
   targetEvent: string,
+  amount: number,
   actor?: string | null,
 ): Promise<void> {
   const target = targetEvent?.trim()
   if (!target) throw new Error("Target order is required")
+  if (!(amount > 0)) throw new Error("Amount must be positive")
 
   await sql.begin(async (tx) => {
     await tx`SELECT set_config('app.actor', ${actor ?? ""}, true)`
     const [refund] = await tx`SELECT * FROM refunds WHERE id = ${refundId} FOR UPDATE`
     if (!refund) throw new Error("Refund not found")
     if (refund.status === "refunded") throw new Error("Already refunded as cash — cannot also apply as credit")
-    if (refund.status === "applied_to_next_order") throw new Error("Already applied to another order")
 
-    const amount = refund.refund_amount as number
-    if (!(amount > 0)) throw new Error("Refund amount must be positive")
+    const remaining = refund.refund_amount as number
+    if (!(remaining > 0)) throw new Error("Nothing left to apply")
+    if (amount > remaining) throw new Error(`Amount exceeds the overpayment (Rp ${remaining})`)
 
     const sourceEvent = refund.event as string
     const reason = refund.reason as RefundReason
     const customer = normalizeCustomer(refund.customer as string)
-
     if (target === sourceEvent) throw new Error("Pick a different order than the overpaid one")
 
     // The customer must actually have an order in the target event, or the
@@ -356,26 +364,25 @@ export async function applyRefundAsCredit(
     `
     if (!hasTarget) throw new Error(`${customer} has no order in ${target}`)
 
-    // Credit on the new order (negative adjustment reduces what's owed). Tagged
-    // with refund_id so the whole credit can be undone precisely (see
-    // undoRefundCredit) if it was applied to the wrong order.
     await tx`
-      INSERT INTO adjustments (event, customer, description, amount, refund_id)
-      VALUES (${target}, ${customer}, ${`Credit from ${reason} on ${sourceEvent}`}, ${-amount}, ${refundId})
+      INSERT INTO payments (event, customer, amount, account, is_checked, remarks, kind, refund_id)
+      VALUES (${sourceEvent}, ${customer}, ${-amount}, '', true,
+              ${`Overpayment applied as credit to ${target}`}, 'credit', ${refundId})
+    `
+    await tx`
+      INSERT INTO payments (event, customer, amount, account, is_checked, remarks, kind, refund_id)
+      VALUES (${target}, ${customer}, ${amount}, '', true,
+              ${`Credit from ${reason} on ${sourceEvent}`}, 'credit', ${refundId})
     `
 
-    // Consume the source-side excess for an overpayment.
-    if (reason === "overpayment") {
-      await tx`
-        INSERT INTO adjustments (event, customer, description, amount, refund_id)
-        VALUES (${sourceEvent}, ${customer}, ${`Overpayment applied as credit to ${target}`}, ${amount}, ${refundId})
-      `
-    }
-
+    const newRemaining = remaining - amount
     await tx`
       UPDATE refunds
-      SET status = 'applied_to_next_order',
-          note = ${`Applied as credit to ${target}`},
+      SET refund_amount = ${newRemaining},
+          status = ${newRemaining <= 0 ? "applied_to_next_order" : "pending"},
+          note = ${newRemaining <= 0
+            ? `Applied as credit to ${target}`
+            : `Applied Rp ${amount} as credit to ${target}; Rp ${newRemaining} overpayment remaining`},
           updated_at = NOW()
       WHERE id = ${refundId}
     `
@@ -383,24 +390,29 @@ export async function applyRefundAsCredit(
 }
 
 /**
- * Reverse an `applied_to_next_order` credit — e.g. it was applied to the wrong
- * order. Deletes the adjustment(s) that credit created (matched by refund_id,
- * so exactly those rows and no others) and returns the refund to `pending` so
- * it re-enters the queue to be re-applied or refunded. Atomic. No-op-safe if a
- * tagged adjustment was already removed by hand.
+ * Reverse the credit transfer(s) this refund produced — e.g. applied to the
+ * wrong order. Deletes exactly the linked `credit` payments (matched by
+ * refund_id), restores the overpayment amount, and reopens it as `pending`.
+ * Atomic. Does not touch a cash refund's `refund` payment.
  */
 export async function undoRefundCredit(refundId: number, actor?: string | null): Promise<void> {
   await sql.begin(async (tx) => {
     await tx`SELECT set_config('app.actor', ${actor ?? ""}, true)`
-    const [refund] = await tx`SELECT status FROM refunds WHERE id = ${refundId} FOR UPDATE`
+    const [refund] = await tx`SELECT refund_amount FROM refunds WHERE id = ${refundId} FOR UPDATE`
     if (!refund) throw new Error("Refund not found")
-    if (refund.status !== "applied_to_next_order") {
-      throw new Error("Only a credit applied to another order can be undone here")
-    }
-    await tx`DELETE FROM adjustments WHERE refund_id = ${refundId}`
+
+    // The target (+) legs sum to how much was applied — that's what we restore.
+    const [applied] = await tx`
+      SELECT COALESCE(SUM(amount), 0)::int AS total
+      FROM payments WHERE refund_id = ${refundId} AND kind = 'credit' AND amount > 0
+    `
+    if (!(applied.total > 0)) throw new Error("No applied credit to undo")
+
+    await tx`DELETE FROM payments WHERE refund_id = ${refundId} AND kind = 'credit'`
     await tx`
       UPDATE refunds
-      SET status = 'pending', note = '', updated_at = NOW()
+      SET refund_amount = ${(refund.refund_amount as number) + (applied.total as number)},
+          status = 'pending', note = '', updated_at = NOW()
       WHERE id = ${refundId}
     `
   })
