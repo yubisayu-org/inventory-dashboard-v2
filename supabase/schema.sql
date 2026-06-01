@@ -43,6 +43,11 @@ CREATE TABLE customers (
   data_diri    TEXT NOT NULL DEFAULT '',
   ekspedisi    TEXT NOT NULL DEFAULT '',
   ongkos_kirim INTEGER NOT NULL DEFAULT 0,
+  -- Shipping destination, used to resolve per-warehouse ongkir (migration 034).
+  -- kota = kabupaten/kota (matches jne_rates.kab_kota_nama).
+  kota         TEXT NOT NULL DEFAULT '',
+  kecamatan    TEXT NOT NULL DEFAULT '',
+  kode_pos     TEXT NOT NULL DEFAULT '',
   bank_name           TEXT NOT NULL DEFAULT '',
   bank_account_number TEXT NOT NULL DEFAULT '',
   bank_account_holder TEXT NOT NULL DEFAULT '',

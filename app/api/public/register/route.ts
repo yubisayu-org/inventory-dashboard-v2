@@ -152,6 +152,7 @@ export async function POST(req: NextRequest) {
       ekspedisi: b.ekspedisi,
       kota: b.kota,
       kecamatan: b.kecamatan,
+      kodePos: b.kode_pos,
     })
     return NextResponse.json(
       { success: true, id: result.id, created: result.created },

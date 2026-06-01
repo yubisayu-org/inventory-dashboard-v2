@@ -208,14 +208,20 @@ export async function registerCustomer(data: {
   ekspedisi: string
   kota: string
   kecamatan: string
+  kodePos: string
 }): Promise<{ id: number; created: boolean }> {
   const norm = normalizeId(data.instagramId)
+  // Persist the destination so future warehouses can re-derive ongkir without
+  // re-collecting it (see migration 034).
   const updated = await sql`
     UPDATE customers SET
       name         = ${data.name},
       whatsapp     = ${data.whatsapp},
       data_diri    = ${data.dataDiri},
       ekspedisi    = ${data.ekspedisi},
+      kota         = ${data.kota},
+      kecamatan    = ${data.kecamatan},
+      kode_pos     = ${data.kodePos},
       updated_at   = NOW()
     WHERE lower(replace(instagram_id, '@', '')) = ${norm}
     RETURNING id
@@ -228,8 +234,9 @@ export async function registerCustomer(data: {
     created = false
   } else {
     const inserted = await sql`
-      INSERT INTO customers (instagram_id, name, whatsapp, data_diri, ekspedisi)
-      VALUES (${norm}, ${data.name}, ${data.whatsapp}, ${data.dataDiri}, ${data.ekspedisi})
+      INSERT INTO customers (instagram_id, name, whatsapp, data_diri, ekspedisi, kota, kecamatan, kode_pos)
+      VALUES (${norm}, ${data.name}, ${data.whatsapp}, ${data.dataDiri}, ${data.ekspedisi},
+              ${data.kota}, ${data.kecamatan}, ${data.kodePos})
       RETURNING id
     `
     id = inserted[0].id as number
