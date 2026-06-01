@@ -2,10 +2,10 @@
 
 import TableSkeleton from "@/components/TableSkeleton"
 import { useEffect, useMemo, useRef, useState } from "react"
-import type { EventRow, WarehouseRow } from "@/lib/db"
+import type { EventRow, WarehouseRow, CountryRow } from "@/lib/db"
 import DataGrid, { type ColumnDef } from "@/components/DataGrid"
 
-const EMPTY_FORM = { name: "", eta: "", warehouseId: "" }
+const EMPTY_FORM = { name: "", eta: "", warehouseId: "", countryId: "" }
 
 const formInputCls = "border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
 const modalInputCls = "w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors disabled:opacity-50"
@@ -13,6 +13,7 @@ const modalInputCls = "w-full border border-cream-border rounded-lg px-3 py-2 te
 export default function EventsClient() {
   const [data, setData] = useState<EventRow[] | null>(null)
   const [warehouses, setWarehouses] = useState<WarehouseRow[]>([])
+  const [countries, setCountries] = useState<CountryRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -27,16 +28,20 @@ export default function EventsClient() {
     setLoading(true)
     setError(null)
     try {
-      const [evRes, whRes] = await Promise.all([
+      const [evRes, whRes, coRes] = await Promise.all([
         fetch("/api/sheets/events"),
         fetch("/api/sheets/warehouses"),
+        fetch("/api/sheets/countries"),
       ])
       const evJson = await evRes.json()
       if (!evRes.ok) throw new Error(evJson.error ?? "Failed to load events")
       const whJson = await whRes.json()
       if (!whRes.ok) throw new Error(whJson.error ?? "Failed to load warehouses")
+      const coJson = await coRes.json()
+      if (!coRes.ok) throw new Error(coJson.error ?? "Failed to load countries")
       setData(evJson.rows as EventRow[])
       setWarehouses(whJson.rows as WarehouseRow[])
+      setCountries(coJson.rows as CountryRow[])
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load")
     } finally {
@@ -71,6 +76,7 @@ export default function EventsClient() {
           name: form.name.trim(),
           eta: form.eta.trim(),
           warehouseId: form.warehouseId ? Number(form.warehouseId) : null,
+          countryId: form.countryId ? Number(form.countryId) : null,
         }),
       })
       const json = await res.json()
@@ -133,6 +139,17 @@ export default function EventsClient() {
         return wh
           ? <span className="text-foreground">{wh.code}</span>
           : <span className="text-gray-400">—</span>
+      },
+    },
+    {
+      accessorKey: "countryName",
+      header: "Country",
+      filterFn: "textContains",
+      cell: ({ row }) => {
+        const { countryName, currency } = row.original
+        return countryName
+          ? <span className="text-foreground">{countryName} <span className="text-gray-400">({currency})</span></span>
+          : <span className="text-gray-400">— IDR</span>
       },
     },
     {
@@ -206,7 +223,7 @@ export default function EventsClient() {
       {/* Add form (desktop only) */}
       <form onSubmit={handleAdd} className="hidden md:flex rounded-xl border border-cream-border bg-white p-5 flex-col gap-4">
         <div className="text-sm font-semibold text-foreground">Add Event</div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
           <input
             {...field("name")}
             placeholder="Event name"
@@ -230,6 +247,20 @@ export default function EventsClient() {
             {warehouses.map((w) => (
               <option key={w.id} value={String(w.id)}>
                 {w.name} ({w.code})
+              </option>
+            ))}
+          </select>
+          <select
+            value={form.countryId}
+            onChange={(e) => setForm((f) => ({ ...f, countryId: e.target.value }))}
+            disabled={adding}
+            className={formInputCls}
+            aria-label="Country"
+          >
+            <option value="">No country (IDR)</option>
+            {countries.map((c) => (
+              <option key={c.id} value={String(c.id)}>
+                {c.name} ({c.currency})
               </option>
             ))}
           </select>
@@ -285,6 +316,7 @@ export default function EventsClient() {
                     <div className="font-semibold text-foreground truncate">{ev.name}</div>
                     <div className={`text-[12.5px] mt-0.5 ${ev.eta ? "text-gray-500" : "text-gray-400"}`}>
                       {ev.eta ? `ETA ${ev.eta}` : "No ETA"}
+                      {ev.countryName ? ` · ${ev.countryName} (${ev.currency})` : " · IDR"}
                     </div>
                   </div>
                   <div className="flex gap-0.5 shrink-0">
@@ -335,6 +367,18 @@ export default function EventsClient() {
                 <option key={w.id} value={String(w.id)}>{w.name} ({w.code})</option>
               ))}
             </select>
+            <select
+              value={form.countryId}
+              onChange={(e) => setForm((f) => ({ ...f, countryId: e.target.value }))}
+              disabled={adding}
+              className={modalInputCls}
+              aria-label="Country"
+            >
+              <option value="">No country (IDR)</option>
+              {countries.map((c) => (
+                <option key={c.id} value={String(c.id)}>{c.name} ({c.currency})</option>
+              ))}
+            </select>
             {addError && <p className="text-xs text-red-500">{addError}</p>}
             <button type="submit" disabled={adding} className="px-4 py-3 rounded-xl bg-brand text-white text-sm font-semibold disabled:opacity-50">
               {adding ? "Saving…" : "Save Event"}
@@ -348,6 +392,7 @@ export default function EventsClient() {
         <EditEventModal
           row={editRow}
           warehouses={warehouses}
+          countries={countries}
           onSave={(updated) => {
             setData((prev) =>
               prev?.map((r) => r.id === editRow.id ? { ...r, ...updated } : r) ?? null
@@ -366,11 +411,13 @@ export default function EventsClient() {
 function EditEventModal({
   row,
   warehouses,
+  countries,
   onSave,
   onCancel,
 }: {
   row: EventRow
   warehouses: WarehouseRow[]
+  countries: CountryRow[]
   onSave: (updated: Partial<EventRow>) => void
   onCancel: () => void
 }) {
@@ -378,6 +425,7 @@ function EditEventModal({
     name: row.name,
     eta: row.eta,
     warehouseId: String(row.warehouseId),
+    countryId: row.countryId != null ? String(row.countryId) : "",
   })
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -405,14 +453,20 @@ function EditEventModal({
           name: draft.name.trim(),
           eta: draft.eta.trim(),
           warehouseId: draft.warehouseId ? Number(draft.warehouseId) : null,
+          countryId: draft.countryId ? Number(draft.countryId) : null,
         }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? "Failed")
+      const selectedCountry = countries.find((c) => String(c.id) === draft.countryId)
       onSave({
         name: draft.name.trim(),
         eta: draft.eta.trim(),
         warehouseId: Number(draft.warehouseId),
+        countryId: draft.countryId ? Number(draft.countryId) : null,
+        countryName: selectedCountry?.name ?? "",
+        currency: selectedCountry?.currency ?? "",
+        kurs: selectedCountry?.kurs ?? 0,
       })
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Failed to save")
@@ -467,6 +521,20 @@ function EditEventModal({
             >
               {warehouses.map((w) => (
                 <option key={w.id} value={String(w.id)}>{w.name} ({w.code})</option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-gray-500">Country (sets expense currency &amp; kurs)</span>
+            <select
+              value={draft.countryId}
+              onChange={(e) => setDraft((d) => ({ ...d, countryId: e.target.value }))}
+              disabled={saving}
+              className={modalInputCls}
+            >
+              <option value="">No country (IDR)</option>
+              {countries.map((c) => (
+                <option key={c.id} value={String(c.id)}>{c.name} ({c.currency})</option>
               ))}
             </select>
           </label>

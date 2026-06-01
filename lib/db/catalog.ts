@@ -369,21 +369,37 @@ export interface EventRow {
   name: string
   eta: string
   warehouseId: number
+  // The event's country (1 event = 1 country). Drives the operational-expense
+  // currency/kurs. Null until set on the Events page. currency/kurs are joined
+  // from countries for convenience ("" / 0 when no country).
+  countryId: number | null
+  countryName: string
+  currency: string
+  kurs: number
   createdAt: string
   updatedAt: string
 }
 
 export async function getEvents(): Promise<EventRow[]> {
   const rows = await sql`
-    SELECT id, name, eta, warehouse_id, created_at, updated_at
-    FROM events
-    ORDER BY id DESC
+    SELECT e.id, e.name, e.eta, e.warehouse_id, e.country_id,
+           COALESCE(c.name, '') AS country_name,
+           COALESCE(c.currency, '') AS currency, c.kurs,
+           e.created_at, e.updated_at
+    FROM events e
+    LEFT JOIN countries c ON c.id = e.country_id
+    ORDER BY e.id DESC
   `
   return rows.map((r) => ({
     id: r.id,
     name: r.name,
     eta: r.eta ?? "",
     warehouseId: r.warehouse_id as number,
+    countryId: (r.country_id as number | null) ?? null,
+    countryName: (r.country_name as string) ?? "",
+    currency: (r.currency as string) ?? "",
+    // kurs is NUMERIC(12,4) — postgres-js returns it as a string, so coerce.
+    kurs: Number(r.kurs) || 0,
     createdAt: tsToString(r.created_at),
     updatedAt: tsToString(r.updated_at),
   }))
@@ -393,14 +409,16 @@ export async function addEvent(data: {
   name: string
   eta: string
   warehouseId?: number | null
+  countryId?: number | null
 }, db: DBExecutor = sql): Promise<{ id: number }> {
   // Fall back to the default warehouse when the caller omits one (keeps older
   // callers/tests working and satisfies the events.warehouse_id NOT NULL column).
   const [row] = await db`
-    INSERT INTO events (name, eta, warehouse_id)
+    INSERT INTO events (name, eta, warehouse_id, country_id)
     VALUES (
       ${data.name}, ${data.eta},
-      COALESCE(${data.warehouseId ?? null}, (SELECT id FROM warehouses WHERE is_default))
+      COALESCE(${data.warehouseId ?? null}, (SELECT id FROM warehouses WHERE is_default)),
+      ${data.countryId ?? null}
     )
     RETURNING id
   `
@@ -409,13 +427,14 @@ export async function addEvent(data: {
 
 export async function updateEvent(
   id: number,
-  data: { name: string; eta: string; warehouseId?: number | null },
+  data: { name: string; eta: string; warehouseId?: number | null; countryId?: number | null },
   db: DBExecutor = sql,
 ): Promise<void> {
   await db`
     UPDATE events
     SET name = ${data.name}, eta = ${data.eta},
         warehouse_id = COALESCE(${data.warehouseId ?? null}, warehouse_id),
+        country_id = ${data.countryId ?? null},
         updated_at = NOW()
     WHERE id = ${id}
   `
