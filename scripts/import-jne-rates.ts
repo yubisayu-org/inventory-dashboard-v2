@@ -14,9 +14,12 @@
  *   DATABASE_URL — Supabase pooler connection string
  *
  * The CSV is mapped BY HEADER NAME, so extra exported columns (COUNTIF,
- * kecamatan_nama_code, …) are ignored. Expected headers:
+ * kecamatan_nama_code, destination_village_code, postal_code_used, …) are
+ * ignored. Expected headers:
  *   provinsi_nama, kab_kota_nama, kecamatan_nama,
- *   village_postal_codes, bs_jne_reg_duration, final_price
+ *   village_postal_codes, bs_jne_reg_duration,
+ *   and a price column named `final_price` OR `bs_jne_reg_price`
+ *   (raw JNE export uses bs_jne_reg_price; the post-processed sheet uses final_price).
  */
 
 import { readFileSync } from "node:fs"
@@ -99,12 +102,23 @@ async function main() {
     }
     return idx
   }
+  // Accept any of the given header names (first match wins). Lets the script take
+  // both the raw JNE export (price = bs_jne_reg_price) and the post-processed
+  // sheet format (price = final_price).
+  const colAny = (...names: string[]) => {
+    for (const n of names) {
+      const idx = header.indexOf(n)
+      if (idx !== -1) return idx
+    }
+    console.error(`❌ CSV is missing a price column (one of: ${names.join(", ")}). Headers: ${header.join(", ")}`)
+    process.exit(1)
+  }
   const iProv = col("provinsi_nama")
   const iKab = col("kab_kota_nama")
   const iKec = col("kecamatan_nama")
   const iPostal = col("village_postal_codes")
   const iDur = col("bs_jne_reg_duration")
-  const iPrice = col("final_price")
+  const iPrice = colAny("final_price", "bs_jne_reg_price")
 
   // Guard: the origin must exist (the FK would also reject, but fail early and
   // with a clearer message).
