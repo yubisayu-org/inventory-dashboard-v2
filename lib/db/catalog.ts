@@ -1,7 +1,7 @@
 import sql from "../db-pool"
 import { tsToString } from "./helpers"
 import type { DBExecutor } from "./actor"
-import type { ProductRow, ProductIndoRow, CountryRow } from "./types"
+import type { ProductRow, ProductIndoRow, CountryRow, WarehouseRow } from "./types"
 
 // ─── Products Indo ──────────────────────────────────────────────────────────
 
@@ -345,19 +345,37 @@ export async function deleteCountry(id: number, db: DBExecutor = sql): Promise<v
   await db`DELETE FROM countries WHERE id = ${id}`
 }
 
+// ─── Warehouses ─────────────────────────────────────────────────────────────
+
+/** Shipping origins, default first. Used for event/customer ongkir UIs. */
+export async function getWarehouses(): Promise<WarehouseRow[]> {
+  const rows = await sql`
+    SELECT id, code, name, is_default
+    FROM warehouses
+    ORDER BY is_default DESC, code ASC
+  `
+  return rows.map((r) => ({
+    id: r.id as number,
+    code: r.code as string,
+    name: r.name as string,
+    isDefault: Boolean(r.is_default),
+  }))
+}
+
 // ─── Events ───────────────────────────────────────────────────────────────
 
 export interface EventRow {
   id: number
   name: string
   eta: string
+  warehouseId: number
   createdAt: string
   updatedAt: string
 }
 
 export async function getEvents(): Promise<EventRow[]> {
   const rows = await sql`
-    SELECT id, name, eta, created_at, updated_at
+    SELECT id, name, eta, warehouse_id, created_at, updated_at
     FROM events
     ORDER BY id DESC
   `
@@ -365,6 +383,7 @@ export async function getEvents(): Promise<EventRow[]> {
     id: r.id,
     name: r.name,
     eta: r.eta ?? "",
+    warehouseId: r.warehouse_id as number,
     createdAt: tsToString(r.created_at),
     updatedAt: tsToString(r.updated_at),
   }))
@@ -373,10 +392,16 @@ export async function getEvents(): Promise<EventRow[]> {
 export async function addEvent(data: {
   name: string
   eta: string
+  warehouseId?: number | null
 }, db: DBExecutor = sql): Promise<{ id: number }> {
+  // Fall back to the default warehouse when the caller omits one (keeps older
+  // callers/tests working and satisfies the events.warehouse_id NOT NULL column).
   const [row] = await db`
-    INSERT INTO events (name, eta)
-    VALUES (${data.name}, ${data.eta})
+    INSERT INTO events (name, eta, warehouse_id)
+    VALUES (
+      ${data.name}, ${data.eta},
+      COALESCE(${data.warehouseId ?? null}, (SELECT id FROM warehouses WHERE is_default))
+    )
     RETURNING id
   `
   return { id: row.id }
@@ -384,12 +409,14 @@ export async function addEvent(data: {
 
 export async function updateEvent(
   id: number,
-  data: { name: string; eta: string },
+  data: { name: string; eta: string; warehouseId?: number | null },
   db: DBExecutor = sql,
 ): Promise<void> {
   await db`
     UPDATE events
-    SET name = ${data.name}, eta = ${data.eta}, updated_at = NOW()
+    SET name = ${data.name}, eta = ${data.eta},
+        warehouse_id = COALESCE(${data.warehouseId ?? null}, warehouse_id),
+        updated_at = NOW()
     WHERE id = ${id}
   `
 }

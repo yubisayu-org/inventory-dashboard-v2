@@ -1,11 +1,14 @@
 /**
- * Import JNE shipping rates: CSV (exported from the `Database_JNE` sheet) → Supabase `jne_rates`.
+ * Import JNE shipping rates for ONE origin warehouse: CSV → Supabase `jne_rates`.
  *
- * Re-runnable: TRUNCATEs and reloads the whole table. The CSV is bulky, re-importable
- * reference data and is gitignored (scripts/data/).
+ * Each warehouse ships from a different origin city, so it has its own rate sheet.
+ * Rows are tagged with --origin <code> (must match a warehouses.code) and this
+ * script replaces ONLY that origin's rows — other origins' rates are untouched.
+ * The CSV is bulky, re-importable reference data and is gitignored (scripts/data/).
  *
  * Usage:
- *   node --env-file=.env.local --import=tsx scripts/import-jne-rates.ts scripts/data/database_jne.csv
+ *   node --env-file=.env.local --import=tsx scripts/import-jne-rates.ts \
+ *     scripts/data/database_jne_cimahi.csv --origin CIMAHI
  *
  * Required env var:
  *   DATABASE_URL — Supabase pooler connection string
@@ -19,14 +22,28 @@
 import { readFileSync } from "node:fs"
 import postgres from "postgres"
 
-const csvPath = process.argv[2]
+// Parse args: <path-to-csv> --origin <code>  (order-independent).
+const argv = process.argv.slice(2)
+let csvPath: string | undefined
+let originCode: string | undefined
+for (let i = 0; i < argv.length; i++) {
+  const a = argv[i]
+  if (a === "--origin") originCode = argv[++i]
+  else if (a.startsWith("--origin=")) originCode = a.slice("--origin=".length)
+  else if (!csvPath) csvPath = a
+}
+originCode = originCode?.trim()
 
 if (!process.env.DATABASE_URL) {
   console.error("❌ DATABASE_URL is not set")
   process.exit(1)
 }
 if (!csvPath) {
-  console.error("❌ Usage: import-jne-rates.ts <path-to-csv>")
+  console.error("❌ Usage: import-jne-rates.ts <path-to-csv> --origin <warehouse-code>")
+  process.exit(1)
+}
+if (!originCode) {
+  console.error("❌ --origin <warehouse-code> is required (must match a warehouses.code)")
   process.exit(1)
 }
 
@@ -67,7 +84,7 @@ function parseCsv(text: string): string[][] {
 }
 
 async function main() {
-  const rows = parseCsv(readFileSync(csvPath, "utf8"))
+  const rows = parseCsv(readFileSync(csvPath!, "utf8"))
   if (rows.length < 2) {
     console.error("❌ CSV has no data rows")
     process.exit(1)
@@ -89,9 +106,18 @@ async function main() {
   const iDur = col("bs_jne_reg_duration")
   const iPrice = col("final_price")
 
+  // Guard: the origin must exist (the FK would also reject, but fail early and
+  // with a clearer message).
+  const wh = await sql`SELECT 1 FROM warehouses WHERE code = ${originCode!} LIMIT 1`
+  if (wh.length === 0) {
+    console.error(`❌ No warehouse with code "${originCode}". Create it first (warehouses.code).`)
+    process.exit(1)
+  }
+
   const records = rows.slice(1)
     .filter((r) => r.length > 1 && r[iKab]?.trim() && r[iKec]?.trim())
     .map((r) => ({
+      origin_code: originCode!,
       provinsi_nama: (r[iProv] ?? "").trim(),
       kab_kota_nama: (r[iKab] ?? "").trim(),
       kecamatan_nama: (r[iKec] ?? "").trim(),
@@ -100,9 +126,10 @@ async function main() {
       final_price: parseNum(r[iPrice]),
     }))
 
-  console.log(`Parsed ${records.length} rate rows from ${csvPath}`)
+  console.log(`Parsed ${records.length} rate rows from ${csvPath} for origin "${originCode}"`)
 
-  await sql`TRUNCATE jne_rates RESTART IDENTITY`
+  // Replace ONLY this origin's rows; other origins' rates are left intact.
+  await sql`DELETE FROM jne_rates WHERE origin_code = ${originCode!}`
 
   const BATCH = 1000
   for (let i = 0; i < records.length; i += BATCH) {
@@ -111,8 +138,8 @@ async function main() {
     console.log(`  inserted ${Math.min(i + BATCH, records.length)} / ${records.length}`)
   }
 
-  const [{ count }] = await sql`SELECT count(*)::int AS count FROM jne_rates`
-  console.log(`✅ Done. jne_rates now has ${count} rows.`)
+  const [{ count }] = await sql`SELECT count(*)::int AS count FROM jne_rates WHERE origin_code = ${originCode!}`
+  console.log(`✅ Done. jne_rates now has ${count} rows for origin "${originCode}".`)
   await sql.end()
 }
 

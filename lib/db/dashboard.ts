@@ -64,6 +64,10 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
       SELECT COUNT(*)::int AS count
       FROM order_aggregates oa
       LEFT JOIN customers c ON c.instagram_id = oa.customer
+      -- Ongkir is the rate from the event's warehouse (per-event routing).
+      LEFT JOIN events ev ON ev.name = oa.event
+      LEFT JOIN customer_warehouse_ongkir cwo
+        ON cwo.customer_id = c.id AND cwo.warehouse_id = ev.warehouse_id
       LEFT JOIN payment_aggregates pa ON pa.event = oa.event AND pa.customer = oa.customer
       LEFT JOIN adjustment_aggregates adj ON adj.event = oa.event AND adj.customer = oa.customer
       LEFT JOIN refunds r ON r.event = oa.event AND r.customer = oa.customer
@@ -71,7 +75,7 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
       WHERE r.id IS NULL
         AND COALESCE(pa.total_paid, 0) > (
           oa.subtotal
-          + COALESCE(c.ongkos_kirim, 0) * CEIL(oa.total_gram::numeric / 1000)
+          + COALESCE(cwo.ongkos_kirim, 0) * CEIL(oa.total_gram::numeric / 1000)
           + COALESCE(adj.total_adj, 0)
         )
     `,

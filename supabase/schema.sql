@@ -11,13 +11,29 @@ CREATE TABLE countries (
   updated_at    TIMESTAMPTZ
 );
 
+-- Shipping origins. A package's ongkir depends on which warehouse it ships from
+-- (see customer_warehouse_ongkir + jne_rates.origin_code in migration 032).
+CREATE TABLE warehouses (
+  id          SERIAL PRIMARY KEY,
+  code        TEXT NOT NULL UNIQUE,    -- also the jne_rates origin tag, e.g. 'CIMAHI'
+  name        TEXT NOT NULL,
+  is_default  BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ
+);
+
+-- At most one default warehouse.
+CREATE UNIQUE INDEX warehouses_one_default ON warehouses (is_default) WHERE is_default;
+
 CREATE TABLE events (
-  id         SERIAL PRIMARY KEY,
-  name       TEXT NOT NULL UNIQUE,
-  eta        TEXT NOT NULL DEFAULT '',
-  country_id INTEGER REFERENCES countries(id) ON DELETE RESTRICT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ
+  id           SERIAL PRIMARY KEY,
+  name         TEXT NOT NULL UNIQUE,
+  eta          TEXT NOT NULL DEFAULT '',
+  country_id   INTEGER REFERENCES countries(id) ON DELETE RESTRICT,
+  -- Which warehouse fulfills this event; drives the per-order ongkir lookup.
+  warehouse_id INTEGER NOT NULL REFERENCES warehouses(id) ON DELETE RESTRICT,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ
 );
 
 CREATE TABLE customers (
@@ -35,6 +51,16 @@ CREATE TABLE customers (
 );
 
 CREATE UNIQUE INDEX customers_instagram_normalized_uniq ON customers (lower(replace(instagram_id, '@', '')));
+
+-- Per-(customer, warehouse) shipping rate. Single source of truth for ongkir;
+-- the legacy customers.ongkos_kirim column is retained for transition only.
+CREATE TABLE customer_warehouse_ongkir (
+  customer_id   INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+  warehouse_id  INTEGER NOT NULL REFERENCES warehouses(id) ON DELETE CASCADE,
+  ongkos_kirim  INTEGER NOT NULL DEFAULT 0,
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (customer_id, warehouse_id)
+);
 
 CREATE TABLE products (
   id              SERIAL PRIMARY KEY,
@@ -248,7 +274,8 @@ DECLARE t TEXT;
 BEGIN
   FOREACH t IN ARRAY ARRAY[
     'payments','adjustments','refunds','orders','excess_purchase',
-    'customers','products','products_indo','countries','events','shipments'
+    'customers','products','products_indo','countries','events','shipments',
+    'warehouses','customer_warehouse_ongkir'
   ] LOOP
     EXECUTE format('DROP TRIGGER IF EXISTS audit_%1$s ON %1$I', t);
     EXECUTE format(

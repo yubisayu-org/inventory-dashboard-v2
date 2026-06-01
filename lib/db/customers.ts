@@ -1,14 +1,52 @@
 import sql from "../db-pool"
 import { normalizeId } from "./helpers"
 import type { DBExecutor } from "./actor"
-import type { CustomerDetail, CustomerRow, CustomerInput } from "./types"
+import type { CustomerDetail, CustomerRow, CustomerInput, OngkirByWarehouse } from "./types"
 
 // ─── Customers ──────────────────────────────────────────────────────────────
+
+/**
+ * Write a customer's per-warehouse shipping rates into customer_warehouse_ongkir.
+ * Upsert so re-saving a customer updates existing rates without wiping ones for
+ * warehouses not present in the input. ongkir is keyed by warehouse id.
+ */
+async function upsertCustomerOngkir(
+  customerId: number,
+  ongkir: OngkirByWarehouse,
+  db: DBExecutor = sql,
+): Promise<void> {
+  const entries = Object.entries(ongkir)
+  for (const [warehouseId, value] of entries) {
+    await db`
+      INSERT INTO customer_warehouse_ongkir (customer_id, warehouse_id, ongkos_kirim, updated_at)
+      VALUES (${customerId}, ${Number(warehouseId)}, ${Number(value) || 0}, NOW())
+      ON CONFLICT (customer_id, warehouse_id)
+      DO UPDATE SET ongkos_kirim = EXCLUDED.ongkos_kirim, updated_at = NOW()
+    `
+  }
+}
+
+/**
+ * Coerce a request-body ongkir object ({ [warehouseId]: value }) into a clean
+ * per-warehouse map, dropping malformed keys/values. Shared by the add/edit
+ * customer API routes.
+ */
+export function parseOngkir(input: unknown): OngkirByWarehouse {
+  const out: OngkirByWarehouse = {}
+  if (input && typeof input === "object") {
+    for (const [k, v] of Object.entries(input as Record<string, unknown>)) {
+      const wid = Number(k)
+      const val = Number(v)
+      if (Number.isInteger(wid) && wid > 0) out[wid] = Number.isFinite(val) ? Math.trunc(val) : 0
+    }
+  }
+  return out
+}
 
 export async function lookupCustomerDetail(instagramId: string): Promise<CustomerDetail | null> {
   const searchId = normalizeId(instagramId)
   const rows = await sql`
-    SELECT name, whatsapp, data_diri, ekspedisi, ongkos_kirim,
+    SELECT name, whatsapp, data_diri, ekspedisi,
            bank_name, bank_account_number, bank_account_holder
     FROM customers
     WHERE lower(replace(instagram_id, '@', '')) = ${searchId}
@@ -21,7 +59,6 @@ export async function lookupCustomerDetail(instagramId: string): Promise<Custome
     whatsapp: r.whatsapp ?? "",
     dataDiri: r.data_diri ?? "",
     ekspedisi: r.ekspedisi ?? "",
-    ongkosKirim: r.ongkos_kirim ?? 0,
     bankName: r.bank_name ?? "",
     bankAccountNumber: r.bank_account_number ?? "",
     bankAccountHolder: r.bank_account_holder ?? "",
@@ -45,13 +82,26 @@ export async function updateCustomerBankInfo(
 }
 
 export async function getCustomers(): Promise<CustomerRow[]> {
-  const rows = await sql`
-    SELECT id, instagram_id, name, whatsapp, data_diri, ekspedisi, ongkos_kirim,
-           bank_name, bank_account_number, bank_account_holder,
-           created_at, updated_at
-    FROM customers
-    ORDER BY instagram_id ASC
-  `
+  const [rows, ongkirRows] = await Promise.all([
+    sql`
+      SELECT id, instagram_id, name, whatsapp, data_diri, ekspedisi,
+             bank_name, bank_account_number, bank_account_holder,
+             created_at, updated_at
+      FROM customers
+      ORDER BY instagram_id ASC
+    `,
+    sql`SELECT customer_id, warehouse_id, ongkos_kirim FROM customer_warehouse_ongkir`,
+  ])
+
+  // Group the per-warehouse rates by customer so each row carries its full map.
+  const ongkirByCustomer = new Map<number, OngkirByWarehouse>()
+  for (const o of ongkirRows) {
+    const cid = o.customer_id as number
+    const map = ongkirByCustomer.get(cid) ?? {}
+    map[o.warehouse_id as number] = (o.ongkos_kirim as number) ?? 0
+    ongkirByCustomer.set(cid, map)
+  }
+
   return rows.map((r) => ({
     id: r.id as number,
     instagramId: r.instagram_id ?? "",
@@ -59,7 +109,7 @@ export async function getCustomers(): Promise<CustomerRow[]> {
     whatsapp: r.whatsapp ?? "",
     dataDiri: r.data_diri ?? "",
     ekspedisi: r.ekspedisi ?? "",
-    ongkosKirim: r.ongkos_kirim ?? 0,
+    ongkir: ongkirByCustomer.get(r.id as number) ?? {},
     bankName: r.bank_name ?? "",
     bankAccountNumber: r.bank_account_number ?? "",
     bankAccountHolder: r.bank_account_holder ?? "",
@@ -76,15 +126,17 @@ export async function addCustomer(data: CustomerInput, db: DBExecutor = sql): Pr
   const instagramId = normalizeId(data.instagramId)
   const rows = await db`
     INSERT INTO customers (
-      instagram_id, name, whatsapp, data_diri, ekspedisi, ongkos_kirim,
+      instagram_id, name, whatsapp, data_diri, ekspedisi,
       bank_name, bank_account_number, bank_account_holder
     ) VALUES (
-      ${instagramId}, ${data.name}, ${data.whatsapp}, ${data.dataDiri}, ${data.ekspedisi}, ${data.ongkosKirim},
+      ${instagramId}, ${data.name}, ${data.whatsapp}, ${data.dataDiri}, ${data.ekspedisi},
       ${data.bankName}, ${data.bankAccountNumber}, ${data.bankAccountHolder}
     )
     RETURNING id
   `
-  return { id: rows[0].id as number }
+  const id = rows[0].id as number
+  await upsertCustomerOngkir(id, data.ongkir, db)
+  return { id }
 }
 
 export async function updateCustomer(id: number, data: CustomerInput, db: DBExecutor = sql): Promise<void> {
@@ -96,13 +148,13 @@ export async function updateCustomer(id: number, data: CustomerInput, db: DBExec
         whatsapp            = ${data.whatsapp},
         data_diri           = ${data.dataDiri},
         ekspedisi           = ${data.ekspedisi},
-        ongkos_kirim        = ${data.ongkosKirim},
         bank_name           = ${data.bankName},
         bank_account_number = ${data.bankAccountNumber},
         bank_account_holder = ${data.bankAccountHolder},
         updated_at          = NOW()
     WHERE id = ${id}
   `
+  await upsertCustomerOngkir(id, data.ongkir, db)
 }
 
 export async function deleteCustomer(id: number, db: DBExecutor = sql): Promise<void> {
@@ -111,13 +163,23 @@ export async function deleteCustomer(id: number, db: DBExecutor = sql): Promise<
 
 // ─── Public registration ──────────────────────────────────────────────────────
 
-/** JNE rate for a destination, matched on the (city, district) pair. 0 = no rate. */
-export async function lookupOngkir(kabKota: string, kecamatan: string): Promise<number> {
-  if (!kabKota?.trim() || !kecamatan?.trim()) return 0
+/**
+ * JNE rate from a given origin warehouse to a destination, matched on the
+ * (origin, city, district) triple. 0 = no rate. Each warehouse ships from a
+ * different origin city, so the same destination resolves to a different price
+ * per origin (see jne_rates.origin_code in migration 032).
+ */
+export async function lookupOngkir(
+  originCode: string,
+  kabKota: string,
+  kecamatan: string,
+): Promise<number> {
+  if (!originCode?.trim() || !kabKota?.trim() || !kecamatan?.trim()) return 0
   const rows = await sql`
     SELECT final_price
     FROM jne_rates
-    WHERE upper(trim(kab_kota_nama))  = upper(trim(${kabKota}))
+    WHERE upper(trim(origin_code))    = upper(trim(${originCode}))
+      AND upper(trim(kab_kota_nama))  = upper(trim(${kabKota}))
       AND upper(trim(kecamatan_nama)) = upper(trim(${kecamatan}))
     LIMIT 1
   `
@@ -130,8 +192,13 @@ export async function lookupOngkir(kabKota: string, kecamatan: string): Promise<
  *
  * Re-submission is expected behavior — the form tells users to re-register when
  * their address changes — so an existing row's contact fields (name/whatsapp/
- * data_diri/ekspedisi/ongkos_kirim) are overwritten with the latest submission.
- * Bank info is never touched here; that lives behind the authenticated dashboard.
+ * data_diri/ekspedisi) and per-warehouse ongkir are overwritten with the latest
+ * submission. Bank info is never touched here; that lives behind the
+ * authenticated dashboard.
+ *
+ * Ongkir is resolved per warehouse: the destination (kota, kecamatan) is matched
+ * against each warehouse origin's JNE rate set, so every warehouse gets its own
+ * customer_warehouse_ongkir row.
  */
 export async function registerCustomer(data: {
   instagramId: string
@@ -139,7 +206,8 @@ export async function registerCustomer(data: {
   whatsapp: string
   dataDiri: string
   ekspedisi: string
-  ongkosKirim: number
+  kota: string
+  kecamatan: string
 }): Promise<{ id: number; created: boolean }> {
   const norm = normalizeId(data.instagramId)
   const updated = await sql`
@@ -148,18 +216,34 @@ export async function registerCustomer(data: {
       whatsapp     = ${data.whatsapp},
       data_diri    = ${data.dataDiri},
       ekspedisi    = ${data.ekspedisi},
-      ongkos_kirim = ${data.ongkosKirim},
       updated_at   = NOW()
     WHERE lower(replace(instagram_id, '@', '')) = ${norm}
     RETURNING id
   `
-  if (updated.length) return { id: updated[0].id as number, created: false }
 
-  const inserted = await sql`
-    INSERT INTO customers (instagram_id, name, whatsapp, data_diri, ekspedisi, ongkos_kirim)
-    VALUES (${norm}, ${data.name}, ${data.whatsapp}, ${data.dataDiri}, ${data.ekspedisi}, ${data.ongkosKirim})
-    RETURNING id
-  `
-  return { id: inserted[0].id as number, created: true }
+  let id: number
+  let created: boolean
+  if (updated.length) {
+    id = updated[0].id as number
+    created = false
+  } else {
+    const inserted = await sql`
+      INSERT INTO customers (instagram_id, name, whatsapp, data_diri, ekspedisi)
+      VALUES (${norm}, ${data.name}, ${data.whatsapp}, ${data.dataDiri}, ${data.ekspedisi})
+      RETURNING id
+    `
+    id = inserted[0].id as number
+    created = true
+  }
+
+  // Resolve and store a rate per warehouse from its own origin's JNE rate set.
+  const warehouses = await sql`SELECT id, code FROM warehouses`
+  const ongkir: OngkirByWarehouse = {}
+  for (const w of warehouses) {
+    ongkir[w.id as number] = await lookupOngkir(w.code as string, data.kota, data.kecamatan)
+  }
+  await upsertCustomerOngkir(id, ongkir)
+
+  return { id, created }
 }
 

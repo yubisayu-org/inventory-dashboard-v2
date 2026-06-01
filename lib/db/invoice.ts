@@ -1,7 +1,7 @@
 import sql from "../db-pool"
 import { normalizeId } from "./helpers"
 import { lookupCustomerDetail } from "./customers"
-import type { InvoiceResult, InvoiceEvent, InvoiceShipment, InvoiceOrderLine, PublicInvoiceResult, PublicInvoiceEvent, PublicInvoiceOrderLine, CustomerDetail } from "./types"
+import type { InvoiceResult, InvoiceEvent, InvoiceShipment, InvoiceOrderLine, PublicInvoiceResult, PublicInvoiceEvent, PublicInvoiceOrderLine } from "./types"
 
 // ─── Invoice ────────────────────────────────────────────────────────────────
 
@@ -148,10 +148,16 @@ export async function getInvoiceForCustomer(instagramId: string): Promise<Invoic
              o.unit_buy, o.receipt, o.unit_arrive, o.unit_ship, o.unit_hold,
              p.name AS product_name, COALESCE(p.store, '') AS store,
              COALESCE(p.gram, 0) AS gram,
-             COALESCE(e.eta, '') AS event_eta
+             COALESCE(e.eta, '') AS event_eta,
+             -- Ongkir for this order = the rate the customer pays from the
+             -- event's warehouse (per-event routing).
+             COALESCE(cwo.ongkos_kirim, 0) AS ongkir
       FROM orders o
       JOIN products p ON p.id = o.product_id
       LEFT JOIN events e ON e.name = o.event
+      LEFT JOIN customers c ON lower(replace(c.instagram_id, '@', '')) = ${searchId}
+      LEFT JOIN customer_warehouse_ongkir cwo
+        ON cwo.customer_id = c.id AND cwo.warehouse_id = e.warehouse_id
       WHERE lower(replace(o.customer, '@', '')) = ${searchId}
       ORDER BY o.event, o.id
     `,
@@ -176,7 +182,6 @@ export async function getInvoiceForCustomer(instagramId: string): Promise<Invoic
   }
 
   const customer = orderRows[0].customer
-  const ongkirPerKg = customerDetail?.ongkosKirim ?? 0
 
   const paymentByEvent = new Map<string, number>()
   for (const r of paymentRows) paymentByEvent.set(r.event, Number(r.total_paid))
@@ -202,7 +207,7 @@ export async function getInvoiceForCustomer(instagramId: string): Promise<Invoic
 
     const { eta, totals, invoice } = computeEventCore(
       group,
-      ongkirPerKg,
+      Number(group[0]?.ongkir ?? 0),
       paymentByEvent.get(eid) ?? 0,
       adjustmentByEvent.get(eid) ?? 0,
     )
@@ -267,22 +272,23 @@ export async function getPublicInvoiceForCustomer(
 ): Promise<PublicInvoiceResult> {
   const searchId = normalizeId(instagramId)
 
-  const [orderRows, ongkirRows, paymentRows, adjustmentRows, shipmentRows] = await Promise.all([
+  const [orderRows, paymentRows, adjustmentRows, shipmentRows] = await Promise.all([
     db`
       SELECT o.event, o.customer, o.unit, o.unit_price, o.unit_arrive, o.unit_ship,
              p.name AS product_name, COALESCE(p.gram, 0) AS gram,
-             COALESCE(e.eta, '') AS event_eta
+             COALESCE(e.eta, '') AS event_eta,
+             -- Per-event ongkir: the rate from the event's warehouse. The
+             -- invoice_reader role can read customer id + the join table but
+             -- still cannot read name/whatsapp/bank columns.
+             COALESCE(cwo.ongkos_kirim, 0) AS ongkir
       FROM orders o
       JOIN products p ON p.id = o.product_id
       LEFT JOIN events e ON e.name = o.event
+      LEFT JOIN customers c ON lower(replace(c.instagram_id, '@', '')) = ${searchId}
+      LEFT JOIN customer_warehouse_ongkir cwo
+        ON cwo.customer_id = c.id AND cwo.warehouse_id = e.warehouse_id
       WHERE lower(replace(o.customer, '@', '')) = ${searchId}
       ORDER BY o.event, o.id
-    `,
-    db`
-      SELECT ongkos_kirim
-      FROM customers
-      WHERE lower(replace(instagram_id, '@', '')) = ${searchId}
-      LIMIT 1
     `,
     db`
       SELECT event, COALESCE(SUM(amount), 0) AS total_paid
@@ -309,7 +315,6 @@ export async function getPublicInvoiceForCustomer(
   if (orderRows.length === 0) return { customer: "", events: [] }
 
   const customer = String(orderRows[0].customer ?? "")
-  const ongkirPerKg = Number(ongkirRows[0]?.ongkos_kirim ?? 0)
 
   const paymentByEvent = new Map<string, number>()
   for (const r of paymentRows) paymentByEvent.set(r.event, Number(r.total_paid))
@@ -339,7 +344,7 @@ export async function getPublicInvoiceForCustomer(
 
     const { eta, totals, invoice } = computeEventCore(
       group,
-      ongkirPerKg,
+      Number(group[0]?.ongkir ?? 0),
       paymentByEvent.get(eid) ?? 0,
       adjustmentByEvent.get(eid) ?? 0,
     )
