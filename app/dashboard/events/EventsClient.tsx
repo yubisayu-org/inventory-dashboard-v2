@@ -2,16 +2,17 @@
 
 import TableSkeleton from "@/components/TableSkeleton"
 import { useEffect, useMemo, useRef, useState } from "react"
-import type { EventRow } from "@/lib/db"
+import type { EventRow, WarehouseRow } from "@/lib/db"
 import DataGrid, { type ColumnDef } from "@/components/DataGrid"
 
-const EMPTY_FORM = { name: "", eta: "" }
+const EMPTY_FORM = { name: "", eta: "", warehouseId: "" }
 
 const formInputCls = "border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
 const modalInputCls = "w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors disabled:opacity-50"
 
 export default function EventsClient() {
   const [data, setData] = useState<EventRow[] | null>(null)
+  const [warehouses, setWarehouses] = useState<WarehouseRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -26,10 +27,16 @@ export default function EventsClient() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch("/api/sheets/events")
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error ?? "Failed to load events")
-      setData(json.rows as EventRow[])
+      const [evRes, whRes] = await Promise.all([
+        fetch("/api/sheets/events"),
+        fetch("/api/sheets/warehouses"),
+      ])
+      const evJson = await evRes.json()
+      if (!evRes.ok) throw new Error(evJson.error ?? "Failed to load events")
+      const whJson = await whRes.json()
+      if (!whRes.ok) throw new Error(whJson.error ?? "Failed to load warehouses")
+      setData(evJson.rows as EventRow[])
+      setWarehouses(whJson.rows as WarehouseRow[])
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load")
     } finally {
@@ -38,6 +45,19 @@ export default function EventsClient() {
   }
 
   useEffect(() => { load() }, [])
+
+  // Default the add-form warehouse to the default warehouse once loaded.
+  useEffect(() => {
+    if (warehouses.length > 0 && !form.warehouseId) {
+      const def = warehouses.find((w) => w.isDefault) ?? warehouses[0]
+      setForm((f) => ({ ...f, warehouseId: String(def.id) }))
+    }
+  }, [warehouses, form.warehouseId])
+
+  const warehouseById = useMemo(
+    () => new Map(warehouses.map((w) => [w.id, w])),
+    [warehouses],
+  )
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault()
@@ -50,11 +70,12 @@ export default function EventsClient() {
         body: JSON.stringify({
           name: form.name.trim(),
           eta: form.eta.trim(),
+          warehouseId: form.warehouseId ? Number(form.warehouseId) : null,
         }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? "Failed to add")
-      setForm(EMPTY_FORM)
+      setForm({ ...EMPTY_FORM, warehouseId: form.warehouseId })
       setMobileAddOpen(false)
       load()
     } catch (err) {
@@ -101,6 +122,17 @@ export default function EventsClient() {
       cell: ({ getValue }) => {
         const v = getValue<string>()
         return <span className={v ? "text-foreground" : "text-gray-400"}>{v || "—"}</span>
+      },
+    },
+    {
+      accessorKey: "warehouseId",
+      header: "Gudang",
+      filterFn: "textContains",
+      cell: ({ getValue }) => {
+        const wh = warehouseById.get(getValue<number>())
+        return wh
+          ? <span className="text-foreground">{wh.code}</span>
+          : <span className="text-gray-400">—</span>
       },
     },
     {
@@ -156,7 +188,7 @@ export default function EventsClient() {
         </div>
       ),
     },
-  ], [])
+  ], [warehouseById])
 
   const refreshButton = (
     <button
@@ -174,7 +206,7 @@ export default function EventsClient() {
       {/* Add form (desktop only) */}
       <form onSubmit={handleAdd} className="hidden md:flex rounded-xl border border-cream-border bg-white p-5 flex-col gap-4">
         <div className="text-sm font-semibold text-foreground">Add Event</div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <input
             {...field("name")}
             placeholder="Event name"
@@ -188,6 +220,19 @@ export default function EventsClient() {
             disabled={adding}
             className={formInputCls}
           />
+          <select
+            value={form.warehouseId}
+            onChange={(e) => setForm((f) => ({ ...f, warehouseId: e.target.value }))}
+            disabled={adding || warehouses.length === 0}
+            className={formInputCls}
+            aria-label="Gudang"
+          >
+            {warehouses.map((w) => (
+              <option key={w.id} value={String(w.id)}>
+                {w.name} ({w.code})
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="flex items-center justify-end gap-3">
@@ -279,6 +324,17 @@ export default function EventsClient() {
             </div>
             <input {...field("name")} placeholder="Event name" required disabled={adding} className={modalInputCls} />
             <input {...field("eta")} placeholder="ETA (e.g. 2026-06-15)" disabled={adding} className={modalInputCls} />
+            <select
+              value={form.warehouseId}
+              onChange={(e) => setForm((f) => ({ ...f, warehouseId: e.target.value }))}
+              disabled={adding || warehouses.length === 0}
+              className={modalInputCls}
+              aria-label="Gudang"
+            >
+              {warehouses.map((w) => (
+                <option key={w.id} value={String(w.id)}>{w.name} ({w.code})</option>
+              ))}
+            </select>
             {addError && <p className="text-xs text-red-500">{addError}</p>}
             <button type="submit" disabled={adding} className="px-4 py-3 rounded-xl bg-brand text-white text-sm font-semibold disabled:opacity-50">
               {adding ? "Saving…" : "Save Event"}
@@ -291,6 +347,7 @@ export default function EventsClient() {
       {editRow && (
         <EditEventModal
           row={editRow}
+          warehouses={warehouses}
           onSave={(updated) => {
             setData((prev) =>
               prev?.map((r) => r.id === editRow.id ? { ...r, ...updated } : r) ?? null
@@ -308,16 +365,19 @@ export default function EventsClient() {
 
 function EditEventModal({
   row,
+  warehouses,
   onSave,
   onCancel,
 }: {
   row: EventRow
+  warehouses: WarehouseRow[]
   onSave: (updated: Partial<EventRow>) => void
   onCancel: () => void
 }) {
   const [draft, setDraft] = useState({
     name: row.name,
     eta: row.eta,
+    warehouseId: String(row.warehouseId),
   })
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -344,6 +404,7 @@ function EditEventModal({
         body: JSON.stringify({
           name: draft.name.trim(),
           eta: draft.eta.trim(),
+          warehouseId: draft.warehouseId ? Number(draft.warehouseId) : null,
         }),
       })
       const json = await res.json()
@@ -351,6 +412,7 @@ function EditEventModal({
       onSave({
         name: draft.name.trim(),
         eta: draft.eta.trim(),
+        warehouseId: Number(draft.warehouseId),
       })
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Failed to save")
@@ -394,6 +456,19 @@ function EditEventModal({
               placeholder="ETA (e.g. 2026-06-15)"
               className={modalInputCls}
             />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-gray-500">Gudang</span>
+            <select
+              value={draft.warehouseId}
+              onChange={(e) => setDraft((d) => ({ ...d, warehouseId: e.target.value }))}
+              disabled={saving || warehouses.length === 0}
+              className={modalInputCls}
+            >
+              {warehouses.map((w) => (
+                <option key={w.id} value={String(w.id)}>{w.name} ({w.code})</option>
+              ))}
+            </select>
           </label>
         </div>
 

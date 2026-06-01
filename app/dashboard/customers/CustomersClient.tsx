@@ -2,7 +2,7 @@
 
 import TableSkeleton from "@/components/TableSkeleton"
 import { useEffect, useMemo, useRef, useState } from "react"
-import type { CustomerRow } from "@/lib/db"
+import type { CustomerRow, WarehouseRow } from "@/lib/db"
 import DataGrid, { type ColumnDef, numericFilter, textContainsFilter } from "@/components/DataGrid"
 import { fmt, displayIg } from "@/lib/format"
 
@@ -14,7 +14,8 @@ type DraftCustomer = {
   whatsapp: string
   dataDiri: string
   ekspedisi: string
-  ongkosKirim: string
+  // Per-warehouse ongkir, keyed by warehouse id (string for the number input).
+  ongkir: Record<number, string>
   bankName: string
   bankAccountNumber: string
   bankAccountHolder: string
@@ -26,20 +27,24 @@ const EMPTY_DRAFT: DraftCustomer = {
   whatsapp: "",
   dataDiri: "",
   ekspedisi: "",
-  ongkosKirim: "",
+  ongkir: {},
   bankName: "",
   bankAccountNumber: "",
   bankAccountHolder: "",
 }
 
 function rowToDraft(row: CustomerRow): DraftCustomer {
+  const ongkir: Record<number, string> = {}
+  for (const [wid, val] of Object.entries(row.ongkir ?? {})) {
+    ongkir[Number(wid)] = val ? String(val) : ""
+  }
   return {
     instagramId: row.instagramId,
     name: row.name,
     whatsapp: row.whatsapp,
     dataDiri: row.dataDiri,
     ekspedisi: row.ekspedisi,
-    ongkosKirim: row.ongkosKirim ? String(row.ongkosKirim) : "",
+    ongkir,
     bankName: row.bankName,
     bankAccountNumber: row.bankAccountNumber,
     bankAccountHolder: row.bankAccountHolder,
@@ -48,6 +53,7 @@ function rowToDraft(row: CustomerRow): DraftCustomer {
 
 export default function CustomersClient() {
   const [data, setData] = useState<CustomerRow[] | null>(null)
+  const [warehouses, setWarehouses] = useState<WarehouseRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -58,10 +64,16 @@ export default function CustomersClient() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch("/api/sheets/customers")
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error ?? "Failed to load")
-      setData(json.rows as CustomerRow[])
+      const [custRes, whRes] = await Promise.all([
+        fetch("/api/sheets/customers"),
+        fetch("/api/sheets/warehouses"),
+      ])
+      const custJson = await custRes.json()
+      if (!custRes.ok) throw new Error(custJson.error ?? "Failed to load")
+      const whJson = await whRes.json()
+      if (!whRes.ok) throw new Error(whJson.error ?? "Failed to load warehouses")
+      setData(custJson.rows as CustomerRow[])
+      setWarehouses(whJson.rows as WarehouseRow[])
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load")
     } finally {
@@ -132,9 +144,11 @@ export default function CustomersClient() {
         return <span className={v ? "text-gray-600" : "text-gray-400"}>{v || "—"}</span>
       },
     },
-    {
-      accessorKey: "ongkosKirim",
-      header: "Ongkir",
+    // One ongkir column per warehouse (origin). Header shows the warehouse code.
+    ...warehouses.map((wh): ColumnDef<CustomerRow, unknown> => ({
+      id: `ongkir_${wh.id}`,
+      accessorFn: (row) => row.ongkir?.[wh.id] ?? 0,
+      header: `Ongkir ${wh.code}`,
       filterFn: "numeric",
       meta: { align: "right" },
       cell: ({ getValue }) => {
@@ -143,7 +157,7 @@ export default function CustomersClient() {
           ? <span className="tabular-nums">Rp {fmt(v)}</span>
           : <span className="text-gray-400">—</span>
       },
-    },
+    })),
     {
       accessorKey: "dataDiri",
       header: "Alamat",
@@ -222,7 +236,7 @@ export default function CustomersClient() {
         </div>
       ),
     },
-  ], [])
+  ], [warehouses])
 
   const toolbarExtra = (
     <>
@@ -266,6 +280,7 @@ export default function CustomersClient() {
       {creating && (
         <CustomerModal
           mode="create"
+          warehouses={warehouses}
           initial={EMPTY_DRAFT}
           onSaved={(row) => {
             setData((prev) => prev ? [...prev, row].sort((a, b) => a.instagramId.localeCompare(b.instagramId)) : [row])
@@ -279,6 +294,7 @@ export default function CustomersClient() {
         <CustomerModal
           mode="edit"
           rowId={editRow.id}
+          warehouses={warehouses}
           initial={rowToDraft(editRow)}
           onSaved={(row) => {
             setData((prev) => prev?.map((r) => r.id === row.id ? row : r) ?? null)
@@ -296,12 +312,14 @@ export default function CustomersClient() {
 function CustomerModal({
   mode,
   rowId,
+  warehouses,
   initial,
   onSaved,
   onCancel,
 }: {
   mode: "create" | "edit"
   rowId?: number
+  warehouses: WarehouseRow[]
   initial: DraftCustomer
   onSaved: (row: CustomerRow) => void
   onCancel: () => void
@@ -313,7 +331,9 @@ function CustomerModal({
 
   useEffect(() => { firstInputRef.current?.focus() }, [])
 
-  function field(key: keyof DraftCustomer) {
+  // Only the plain string fields go through this helper; ongkir is a map and is
+  // handled with its own per-warehouse inputs below.
+  function field(key: Exclude<keyof DraftCustomer, "ongkir">) {
     return {
       value: draft[key],
       onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
@@ -330,13 +350,19 @@ function CustomerModal({
     setSaving(true)
     setSaveError(null)
 
+    // Build the per-warehouse ongkir map (numbers) from the form's string inputs.
+    const ongkir: Record<number, number> = {}
+    for (const wh of warehouses) {
+      ongkir[wh.id] = Number(draft.ongkir[wh.id]) || 0
+    }
+
     const payload = {
       instagramId: draft.instagramId.trim(),
       name: draft.name.trim(),
       whatsapp: draft.whatsapp.trim(),
       dataDiri: draft.dataDiri.trim(),
       ekspedisi: draft.ekspedisi.trim(),
-      ongkosKirim: Number(draft.ongkosKirim) || 0,
+      ongkir,
       bankName: draft.bankName.trim(),
       bankAccountNumber: draft.bankAccountNumber.trim(),
       bankAccountHolder: draft.bankAccountHolder.trim(),
@@ -428,26 +454,39 @@ function CustomerModal({
             />
           </label>
 
-          <div className="grid grid-cols-2 gap-3">
-            <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-gray-500">Ekspedisi</span>
-              <input
-                {...field("ekspedisi")}
-                placeholder="e.g. JNE, J&T"
-                className={modalInputCls}
-              />
-            </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-gray-500">Ekspedisi</span>
+            <input
+              {...field("ekspedisi")}
+              placeholder="e.g. JNE, J&T"
+              className={modalInputCls}
+            />
+          </label>
 
-            <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-gray-500">Ongkos Kirim (IDR)</span>
-              <input
-                {...field("ongkosKirim")}
-                type="number"
-                min="0"
-                placeholder="0"
-                className={modalInputCls}
-              />
-            </label>
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-gray-500">Ongkos Kirim per Gudang (IDR)</span>
+            {warehouses.length === 0 ? (
+              <span className="text-xs text-gray-400">No warehouses configured.</span>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                {warehouses.map((wh) => (
+                  <label key={wh.id} className="flex flex-col gap-1">
+                    <span className="text-[11px] font-medium text-gray-400">{wh.name} ({wh.code})</span>
+                    <input
+                      value={draft.ongkir[wh.id] ?? ""}
+                      onChange={(e) =>
+                        setDraft((d) => ({ ...d, ongkir: { ...d.ongkir, [wh.id]: e.target.value } }))
+                      }
+                      disabled={saving}
+                      type="number"
+                      min="0"
+                      placeholder="0"
+                      className={modalInputCls}
+                    />
+                  </label>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="pt-2 border-t border-cream-border" />

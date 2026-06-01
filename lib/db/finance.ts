@@ -469,11 +469,15 @@ export async function materializeOverpaymentRefunds(): Promise<RefundRow[]> {
         oa.event,
         oa.customer,
         (oa.subtotal
-          + COALESCE(c.ongkos_kirim, 0) * CEIL(oa.total_gram::numeric / 1000)
+          + COALESCE(cwo.ongkos_kirim, 0) * CEIL(oa.total_gram::numeric / 1000)
           + COALESCE(adj.total_adj, 0))::int AS invoice_total,
         COALESCE(pa.total_paid, 0)::int AS total_paid
       FROM order_aggregates oa
       LEFT JOIN customers c ON c.instagram_id = oa.customer
+      -- Ongkir is the rate from the event's warehouse (per-event routing).
+      LEFT JOIN events ev ON ev.name = oa.event
+      LEFT JOIN customer_warehouse_ongkir cwo
+        ON cwo.customer_id = c.id AND cwo.warehouse_id = ev.warehouse_id
       LEFT JOIN payment_aggregates pa ON pa.event = oa.event AND pa.customer = oa.customer
       LEFT JOIN adjustment_aggregates adj ON adj.event = oa.event AND adj.customer = oa.customer
       LEFT JOIN refunds r ON r.event = oa.event AND r.customer = oa.customer
@@ -481,7 +485,7 @@ export async function materializeOverpaymentRefunds(): Promise<RefundRow[]> {
       WHERE r.id IS NULL
         AND COALESCE(pa.total_paid, 0) > (
           oa.subtotal
-          + COALESCE(c.ongkos_kirim, 0) * CEIL(oa.total_gram::numeric / 1000)
+          + COALESCE(cwo.ongkos_kirim, 0) * CEIL(oa.total_gram::numeric / 1000)
           + COALESCE(adj.total_adj, 0)
         )
     )
@@ -531,8 +535,9 @@ function paymentStatusFor(totalPaid: number, invoiceTotal: number): PaymentStatu
 export async function getPaymentStatus(event?: string): Promise<PaymentStatusRow[]> {
   // When an event is given, push the filter into every event-keyed CTE so the
   // planner can use the (event, ...) indexes on orders/payments/adjustments
-  // instead of aggregating the world and filtering in JS. customer_ongkir has
-  // no event column so it stays unscoped — the join still picks only the
+  // instead of aggregating the world and filtering in JS. customer_ongkir is
+  // keyed by (event, customer) via the event's warehouse but stays unscoped by
+  // the event filter — the join on (cust_key, event) still picks only the
   // customers that show up in the event's all_keys union.
   const rows = event
     ? await sql`
@@ -559,10 +564,13 @@ export async function getPaymentStatus(event?: string): Promise<PaymentStatusRow
           GROUP BY event, lower(replace(customer, '@', ''))
         ),
         customer_ongkir AS (
-          SELECT lower(replace(instagram_id, '@', '')) AS cust_key,
-                 MAX(COALESCE(ongkos_kirim, 0)) AS ongkos_kirim
-          FROM customers
-          GROUP BY lower(replace(instagram_id, '@', ''))
+          -- Per-(event, customer) ongkir from the event's warehouse.
+          SELECT ev.name AS event,
+                 lower(replace(c.instagram_id, '@', '')) AS cust_key,
+                 COALESCE(cwo.ongkos_kirim, 0) AS ongkos_kirim
+          FROM events ev
+          JOIN customer_warehouse_ongkir cwo ON cwo.warehouse_id = ev.warehouse_id
+          JOIN customers c ON c.id = cwo.customer_id
         ),
         all_keys AS (
           SELECT event, cust_key FROM order_aggregates
@@ -580,7 +588,7 @@ export async function getPaymentStatus(event?: string): Promise<PaymentStatusRow
           COALESCE(pa.total_paid, 0)::int AS total_paid
         FROM all_keys k
         LEFT JOIN order_aggregates oa ON oa.event = k.event AND oa.cust_key = k.cust_key
-        LEFT JOIN customer_ongkir c ON c.cust_key = k.cust_key
+        LEFT JOIN customer_ongkir c ON c.cust_key = k.cust_key AND c.event = k.event
         LEFT JOIN payment_aggregates pa ON pa.event = k.event AND pa.cust_key = k.cust_key
         LEFT JOIN adjustment_aggregates adj ON adj.event = k.event AND adj.cust_key = k.cust_key
         ORDER BY k.event, k.cust_key
@@ -607,10 +615,13 @@ export async function getPaymentStatus(event?: string): Promise<PaymentStatusRow
           GROUP BY event, lower(replace(customer, '@', ''))
         ),
         customer_ongkir AS (
-          SELECT lower(replace(instagram_id, '@', '')) AS cust_key,
-                 MAX(COALESCE(ongkos_kirim, 0)) AS ongkos_kirim
-          FROM customers
-          GROUP BY lower(replace(instagram_id, '@', ''))
+          -- Per-(event, customer) ongkir from the event's warehouse.
+          SELECT ev.name AS event,
+                 lower(replace(c.instagram_id, '@', '')) AS cust_key,
+                 COALESCE(cwo.ongkos_kirim, 0) AS ongkos_kirim
+          FROM events ev
+          JOIN customer_warehouse_ongkir cwo ON cwo.warehouse_id = ev.warehouse_id
+          JOIN customers c ON c.id = cwo.customer_id
         ),
         all_keys AS (
           SELECT event, cust_key FROM order_aggregates
@@ -628,7 +639,7 @@ export async function getPaymentStatus(event?: string): Promise<PaymentStatusRow
           COALESCE(pa.total_paid, 0)::int AS total_paid
         FROM all_keys k
         LEFT JOIN order_aggregates oa ON oa.event = k.event AND oa.cust_key = k.cust_key
-        LEFT JOIN customer_ongkir c ON c.cust_key = k.cust_key
+        LEFT JOIN customer_ongkir c ON c.cust_key = k.cust_key AND c.event = k.event
         LEFT JOIN payment_aggregates pa ON pa.event = k.event AND pa.cust_key = k.cust_key
         LEFT JOIN adjustment_aggregates adj ON adj.event = k.event AND adj.cust_key = k.cust_key
         ORDER BY k.event, k.cust_key

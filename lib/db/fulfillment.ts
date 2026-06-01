@@ -26,6 +26,7 @@ function buildShipGroups(
   orderRows: Record<string, unknown>[],
   detailMap: Map<string, CustomerDetail>,
   paymentMap: Map<string, PaymentStatus>,
+  ongkirMap: Map<string, number>,
 ): ShipCustomer[] {
   const groupMap = new Map<string, { customer: string; event: string; rows: Record<string, unknown>[] }>()
   for (const row of orderRows) {
@@ -58,7 +59,7 @@ function buildShipGroups(
     const totalToShipGram = orders.reduce((s, o) => s + o.gram * o.toShip, 0)
     const totalToShip = orders.reduce((s, o) => s + o.toShip, 0)
     const totalHold = orders.reduce((s, o) => s + o.unitHold, 0)
-    const ongkirPerKg = detailMap.get(customerKey)?.ongkosKirim ?? 0
+    const ongkirPerKg = ongkirMap.get(`${customerKey}|${event}`) ?? 0
 
     // Arrival-first status: compare arrived vs ordered units per line.
     const anyArrived = orders.some((o) => o.unitArrive > 0)
@@ -100,7 +101,7 @@ async function fetchCustomerDetails(customerIds: Set<string>): Promise<Map<strin
   const detailMap = new Map<string, CustomerDetail>()
   if (customerIds.size === 0) return detailMap
   const rows = await sql`
-    SELECT instagram_id, name, whatsapp, data_diri, ekspedisi, ongkos_kirim,
+    SELECT instagram_id, name, whatsapp, data_diri, ekspedisi,
            bank_name, bank_account_number, bank_account_holder
     FROM customers
     WHERE lower(replace(instagram_id, '@', '')) = ANY(${[...customerIds]})
@@ -113,7 +114,6 @@ async function fetchCustomerDetails(customerIds: Set<string>): Promise<Map<strin
         whatsapp: r.whatsapp ?? "",
         dataDiri: r.data_diri ?? "",
         ekspedisi: r.ekspedisi ?? "",
-        ongkosKirim: r.ongkos_kirim ?? 0,
         bankName: r.bank_name ?? "",
         bankAccountNumber: r.bank_account_number ?? "",
         bankAccountHolder: r.bank_account_holder ?? "",
@@ -121,6 +121,31 @@ async function fetchCustomerDetails(customerIds: Set<string>): Promise<Map<strin
     }
   }
   return detailMap
+}
+
+/**
+ * Per-(customer, event) ongkir, resolved from the event's warehouse. Keyed
+ * `${normalizedCustomer}|${event}`. Ship groups are per (customer, event), so
+ * each gets the rate for the warehouse that fulfills its event.
+ */
+async function fetchEventOngkir(
+  customerIds: Set<string>,
+  eventNames: Set<string>,
+): Promise<Map<string, number>> {
+  const map = new Map<string, number>()
+  if (customerIds.size === 0 || eventNames.size === 0) return map
+  const rows = await sql`
+    SELECT ev.name AS event,
+           lower(replace(c.instagram_id, '@', '')) AS norm_cust,
+           COALESCE(cwo.ongkos_kirim, 0)::int AS ongkir
+    FROM events ev
+    JOIN customer_warehouse_ongkir cwo ON cwo.warehouse_id = ev.warehouse_id
+    JOIN customers c ON c.id = cwo.customer_id
+    WHERE ev.name = ANY(${[...eventNames]})
+      AND lower(replace(c.instagram_id, '@', '')) = ANY(${[...customerIds]})
+  `
+  for (const r of rows) map.set(`${r.norm_cust}|${r.event}`, Number(r.ongkir) || 0)
+  return map
 }
 
 export type ShipSegment = "all" | ShipStatus
@@ -156,18 +181,23 @@ export async function getShipOrdersFiltered(opts: {
   )
 
   const customerIds = new Set<string>()
-  for (const r of orderRows) customerIds.add(normalizeId(r.customer))
+  const eventNames = new Set<string>()
+  for (const r of orderRows) {
+    customerIds.add(normalizeId(r.customer))
+    eventNames.add(String(r.event))
+  }
 
-  // Fetch customer details and payment status concurrently — both keyed by
-  // normalized customer handle (payment status additionally by event).
-  const [detailMap, paymentRows] = await Promise.all([
+  // Fetch customer details, per-event ongkir, and payment status concurrently —
+  // all keyed by normalized customer handle (ongkir/payment additionally by event).
+  const [detailMap, ongkirMap, paymentRows] = await Promise.all([
     fetchCustomerDetails(customerIds),
+    fetchEventOngkir(customerIds, eventNames),
     getPaymentStatus(event),
   ])
   const paymentMap = new Map<string, PaymentStatus>()
   for (const row of paymentRows) paymentMap.set(`${row.customer}|${row.event}`, row.status)
 
-  const allGroups = buildShipGroups(orderRows, detailMap, paymentMap)
+  const allGroups = buildShipGroups(orderRows, detailMap, paymentMap, ongkirMap)
 
   // Counts and the filtered list both derive from the same in-memory status,
   // so the tab badges can never drift from the rows actually shown.

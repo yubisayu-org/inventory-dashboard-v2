@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { lookupOngkir, registerCustomer } from "@/lib/db"
+import { registerCustomer } from "@/lib/db"
 
 // Public, no-login endpoint for the external registration form
 // (yubisayu-org.github.io/registration_form). Inserts/updates a row in the
@@ -143,7 +143,6 @@ export async function POST(req: NextRequest) {
   if (b.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(b.email)) return bad("Invalid email")
 
   try {
-    const ongkosKirim = await lookupOngkir(b.kota, b.kecamatan)
     const name = [b.nama_depan, b.nama_belakang].filter(Boolean).join(" ").trim()
     const result = await registerCustomer({
       instagramId: b.instagram,
@@ -151,7 +150,8 @@ export async function POST(req: NextRequest) {
       whatsapp: b.ponsel,
       dataDiri: composeDataDiri(b),
       ekspedisi: b.ekspedisi,
-      ongkosKirim,
+      kota: b.kota,
+      kecamatan: b.kecamatan,
     })
     return NextResponse.json(
       { success: true, id: result.id, created: result.created },
