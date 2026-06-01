@@ -14,6 +14,12 @@ import SearchableSelect from "@/components/SearchableSelect"
 
 const PAGE_SIZE = 25
 
+/** An event plus the currency/kurs derived from its country (1 event = 1
+ *  country). currency is "" and kurs 0 when the event has no country set. */
+type EventOption = { name: string; currency: string; kurs: number }
+
+const IDR = "IDR"
+
 const fmt = (n: number) => n.toLocaleString("id-ID")
 
 const formInputCls =
@@ -67,7 +73,7 @@ export default function OperationalExpensesClient() {
   const [totalCount, setTotalCount] = useState(0)
   // Full dropdown lists (event names + distinct methods) — load once from the
   // meta endpoint (a GET with no `page` param), like products' countries/stores.
-  const [events, setEvents] = useState<string[]>([])
+  const [events, setEvents] = useState<EventOption[]>([])
   const [methods, setMethods] = useState<string[]>([])
   const [metaError, setMetaError] = useState<string | null>(null)
 
@@ -83,7 +89,7 @@ export default function OperationalExpensesClient() {
       const res = await fetch("/api/sheets/operational-expenses")
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? "Failed to load")
-      setEvents(json.events as string[])
+      setEvents(json.events as EventOption[])
       setMethods(json.methods as string[])
     } catch (err) {
       setMetaError(err instanceof Error ? err.message : "Failed to load")
@@ -472,6 +478,7 @@ const emptyDraft = () => ({
   expenseDate: todayIso(),
   description: "",
   category: "Flight" as ExpenseCategory,
+  currency: IDR,
   amountForeign: "",
   rate: "1",
   amountIdr: "",
@@ -484,7 +491,7 @@ function AddExpenseForm({
   methods,
   onAdded,
 }: {
-  events: string[]
+  events: EventOption[]
   methods: string[]
   onAdded: () => void
 }) {
@@ -493,14 +500,28 @@ function AddExpenseForm({
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
 
-  const autoIdr = calcIdr(Number(draft.amountForeign), Number(draft.rate))
+  const selectedEvent = events.find((e) => e.name === draft.event)
+  const eventCurrency = selectedEvent?.currency || ""
+  const eventKurs = selectedEvent?.kurs || 0
+  const currencyOptions = eventCurrency ? [IDR, eventCurrency] : [IDR]
+  const isIdr = draft.currency === IDR
+  const effectiveRate = isIdr ? 1 : Number(draft.rate)
+
+  const autoIdr = calcIdr(Number(draft.amountForeign), effectiveRate)
   const idrShown = idrManual ? draft.amountIdr : (draft.amountForeign ? String(autoIdr) : "")
 
-  function setForeign(v: string) {
-    setDraft((d) => ({ ...d, amountForeign: v }))
+  // Picking an event sets the default currency (its country's, else IDR) and the
+  // starting kurs. Picking a currency flips between IDR (kurs locked at 1) and the
+  // event's foreign currency (kurs pre-filled from the country, still editable).
+  function pickEvent(name: string) {
+    const ev = events.find((e) => e.name === name)
+    const cur = ev?.currency || IDR
+    setIdrManual(false)
+    setDraft((d) => ({ ...d, event: name, currency: cur, rate: cur === IDR ? "1" : String(ev?.kurs || "") }))
   }
-  function setRate(v: string) {
-    setDraft((d) => ({ ...d, rate: v }))
+  function pickCurrency(cur: string) {
+    setIdrManual(false)
+    setDraft((d) => ({ ...d, currency: cur, rate: cur === IDR ? "1" : String(eventKurs || d.rate || "") }))
   }
 
   async function handleAdd(e: React.FormEvent) {
@@ -518,7 +539,7 @@ function AddExpenseForm({
           description: draft.description.trim(),
           category: draft.category,
           amountForeign: Number(draft.amountForeign) || 0,
-          rate: Number(draft.rate) || 0,
+          rate: effectiveRate || 0,
           amountIdr: Number(idrShown) || 0,
           isSettled: draft.isSettled,
           method: draft.method.trim(),
@@ -545,8 +566,8 @@ function AddExpenseForm({
         <Field label="Event">
           <SearchableSelect
             value={draft.event}
-            onChange={(v) => setDraft((d) => ({ ...d, event: v }))}
-            options={events.map((e) => ({ value: e, label: e }))}
+            onChange={pickEvent}
+            options={events.map((e) => ({ value: e.name, label: e.name, meta: e.currency || IDR }))}
             placeholder="Select event…"
             disabled={adding}
           />
@@ -564,12 +585,24 @@ function AddExpenseForm({
         </Field>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Field label="VLS (foreign)">
-          <input value={draft.amountForeign} onChange={(e) => setForeign(e.target.value)} type="number" step="any" min="0" placeholder="0" disabled={adding} className={formInputCls} />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <Field label="Currency">
+          <select value={draft.currency} onChange={(e) => pickCurrency(e.target.value)} disabled={adding} className={formInputCls}>
+            {currencyOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </Field>
+        <Field label={`Amount (${draft.currency})`}>
+          <input value={draft.amountForeign} onChange={(e) => setDraft((d) => ({ ...d, amountForeign: e.target.value }))} type="number" step="any" min="0" placeholder="0" disabled={adding} className={formInputCls} />
         </Field>
         <Field label="Kurs">
-          <input value={draft.rate} onChange={(e) => setRate(e.target.value)} type="number" step="any" min="0" placeholder="1" disabled={adding} className={formInputCls} />
+          <input
+            value={isIdr ? "1" : draft.rate}
+            onChange={(e) => setDraft((d) => ({ ...d, rate: e.target.value }))}
+            type="number" step="any" min="0" placeholder="1"
+            disabled={adding || isIdr}
+            title={isIdr ? "IDR expense — kurs is always 1" : "Pre-filled from the event's currency; adjust to the actual rate"}
+            className={`${formInputCls} ${isIdr ? "bg-gray-50 text-gray-400" : ""}`}
+          />
         </Field>
         <Field label="IDR">
           <input
@@ -617,7 +650,7 @@ function ExpenseActions({
   onDeleted,
 }: {
   row: OperationalExpenseRow
-  events: string[]
+  events: EventOption[]
   methods: string[]
   onUpdated: () => void
   onDeleted: () => void
@@ -681,16 +714,20 @@ function EditExpenseModal({
   onCancel,
 }: {
   row: OperationalExpenseRow
-  events: string[]
+  events: EventOption[]
   methods: string[]
   onSave: () => void
   onCancel: () => void
 }) {
+  // Infer the row's currency from its stored kurs: 1 = paid in IDR, otherwise the
+  // event's foreign currency (or "FX" if the event has no country recorded).
+  const rowForeign = events.find((e) => e.name === row.event)?.currency || (Number(row.rate) !== 1 ? "FX" : "")
   const [draft, setDraft] = useState({
     event: row.event,
     expenseDate: row.expenseDate,
     description: row.description,
     category: row.category,
+    currency: Number(row.rate) === 1 ? IDR : (rowForeign || "FX"),
     amountForeign: String(row.amountForeign),
     rate: String(row.rate),
     amountIdr: String(row.amountIdr),
@@ -705,8 +742,26 @@ function EditExpenseModal({
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
-  const autoIdr = calcIdr(Number(draft.amountForeign), Number(draft.rate))
+  const selectedEvent = events.find((e) => e.name === draft.event)
+  const eventKurs = selectedEvent?.kurs || 0
+  const foreignCurrency = selectedEvent?.currency || (draft.currency !== IDR ? draft.currency : "")
+  const currencyOptions = foreignCurrency ? [IDR, foreignCurrency] : [IDR]
+  const isIdr = draft.currency === IDR
+  const effectiveRate = isIdr ? 1 : Number(draft.rate)
+
+  const autoIdr = calcIdr(Number(draft.amountForeign), effectiveRate)
   const idrShown = idrManual ? draft.amountIdr : String(autoIdr)
+
+  function pickEvent(name: string) {
+    const ev = events.find((e) => e.name === name)
+    const cur = ev?.currency || IDR
+    setIdrManual(false)
+    setDraft((d) => ({ ...d, event: name, currency: cur, rate: cur === IDR ? "1" : String(ev?.kurs || "") }))
+  }
+  function pickCurrency(cur: string) {
+    setIdrManual(false)
+    setDraft((d) => ({ ...d, currency: cur, rate: cur === IDR ? "1" : String(eventKurs || d.rate || "") }))
+  }
 
   async function handleSave() {
     if (!draft.event.trim()) { setSaveError("Event is required"); return }
@@ -722,7 +777,7 @@ function EditExpenseModal({
           description: draft.description.trim(),
           category: draft.category,
           amountForeign: Number(draft.amountForeign) || 0,
-          rate: Number(draft.rate) || 0,
+          rate: effectiveRate || 0,
           amountIdr: Number(idrShown) || 0,
           isSettled: draft.isSettled,
           method: draft.method.trim(),
@@ -751,8 +806,8 @@ function EditExpenseModal({
           <Field label="Event">
             <SearchableSelect
               value={draft.event}
-              onChange={(v) => setDraft((d) => ({ ...d, event: v }))}
-              options={events.map((e) => ({ value: e, label: e }))}
+              onChange={pickEvent}
+              options={events.map((e) => ({ value: e.name, label: e.name, meta: e.currency || IDR }))}
               placeholder="Select event…"
               disabled={saving}
             />
@@ -768,11 +823,23 @@ function EditExpenseModal({
               {EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </Field>
-          <Field label="VLS (foreign)">
+          <Field label="Currency">
+            <select value={draft.currency} onChange={(e) => pickCurrency(e.target.value)} disabled={saving} className={formInputCls}>
+              {currencyOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </Field>
+          <Field label={`Amount (${draft.currency})`}>
             <input value={draft.amountForeign} onChange={(e) => setDraft((d) => ({ ...d, amountForeign: e.target.value }))} type="number" step="any" min="0" disabled={saving} className={formInputCls} />
           </Field>
           <Field label="Kurs">
-            <input value={draft.rate} onChange={(e) => setDraft((d) => ({ ...d, rate: e.target.value }))} type="number" step="any" min="0" disabled={saving} className={formInputCls} />
+            <input
+              value={isIdr ? "1" : draft.rate}
+              onChange={(e) => setDraft((d) => ({ ...d, rate: e.target.value }))}
+              type="number" step="any" min="0"
+              disabled={saving || isIdr}
+              title={isIdr ? "IDR expense — kurs is always 1" : "Pre-filled from the event's currency; adjust to the actual rate"}
+              className={`${formInputCls} ${isIdr ? "bg-gray-50 text-gray-400" : ""}`}
+            />
           </Field>
           <Field label="IDR">
             <input

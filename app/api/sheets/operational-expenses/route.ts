@@ -36,11 +36,15 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(result, { headers: { "Cache-Control": "no-store" } })
     }
 
-    // Otherwise return dropdown meta: event names (required field) + the distinct
-    // method list (autocomplete). Both are full lists, not derivable from a page.
+    // Otherwise return dropdown meta: events with their currency + kurs (1 event =
+    // 1 country drives the expense's default currency/kurs) and the distinct method
+    // list (autocomplete). Both are full lists, not derivable from a page.
     const [events, methods] = await Promise.all([getEvents(), getExpenseMethods()])
     return NextResponse.json(
-      { events: events.map((e) => e.name), methods },
+      {
+        events: events.map((e) => ({ name: e.name, currency: e.currency, kurs: e.kurs })),
+        methods,
+      },
       { headers: { "Cache-Control": "no-store" } },
     )
   } catch (err) {
