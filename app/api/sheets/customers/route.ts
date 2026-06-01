@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { getCustomers, addCustomer, withActor } from "@/lib/db"
+import { getCustomers, addCustomer, parseOngkir, withActor } from "@/lib/db"
 
 export async function GET() {
   const { session, error: authError } = await requireSession()
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
       whatsapp: String(body.whatsapp ?? "").trim(),
       dataDiri: String(body.dataDiri ?? "").trim(),
       ekspedisi: String(body.ekspedisi ?? "").trim(),
-      ongkosKirim: Number(body.ongkosKirim ?? 0),
+      ongkir: parseOngkir(body.ongkir),
       bankName: String(body.bankName ?? "").trim(),
       bankAccountNumber: String(body.bankAccountNumber ?? "").trim(),
       bankAccountHolder: String(body.bankAccountHolder ?? "").trim(),

@@ -172,10 +172,14 @@ async function fetchPaidStatusMap(events: string[] | null): Promise<Map<string, 
           GROUP BY event, norm_cust
         ),
         customer_ongkir AS (
+          -- Per-(event, customer) ongkir: the rate from the event's warehouse.
           SELECT
-            lower(replace(instagram_id, '@', '')) AS norm_id,
-            COALESCE(ongkos_kirim, 0)::numeric AS ongkir
-          FROM customers
+            ev.name AS event,
+            lower(replace(c.instagram_id, '@', '')) AS norm_id,
+            COALESCE(cwo.ongkos_kirim, 0)::numeric AS ongkir
+          FROM events ev
+          JOIN customer_warehouse_ongkir cwo ON cwo.warehouse_id = ev.warehouse_id
+          JOIN customers c ON c.id = cwo.customer_id
         )
         SELECT
           ot.event,
@@ -186,7 +190,7 @@ async function fetchPaidStatusMap(events: string[] | null): Promise<Map<string, 
           COALESCE(at.adj, 0)::numeric    AS adj,
           COALESCE(pt.paid, 0)::numeric   AS paid
         FROM order_totals ot
-        LEFT JOIN customer_ongkir co  ON co.norm_id = ot.norm_cust
+        LEFT JOIN customer_ongkir co  ON co.norm_id = ot.norm_cust AND co.event = ot.event
         LEFT JOIN payment_totals pt   ON pt.event = ot.event AND pt.norm_cust = ot.norm_cust
         LEFT JOIN adjustment_totals at ON at.event = ot.event AND at.norm_cust = ot.norm_cust
       `
@@ -222,10 +226,14 @@ async function fetchPaidStatusMap(events: string[] | null): Promise<Map<string, 
           GROUP BY event, norm_cust
         ),
         customer_ongkir AS (
+          -- Per-(event, customer) ongkir: the rate from the event's warehouse.
           SELECT
-            lower(replace(instagram_id, '@', '')) AS norm_id,
-            COALESCE(ongkos_kirim, 0)::numeric AS ongkir
-          FROM customers
+            ev.name AS event,
+            lower(replace(c.instagram_id, '@', '')) AS norm_id,
+            COALESCE(cwo.ongkos_kirim, 0)::numeric AS ongkir
+          FROM events ev
+          JOIN customer_warehouse_ongkir cwo ON cwo.warehouse_id = ev.warehouse_id
+          JOIN customers c ON c.id = cwo.customer_id
         )
         SELECT
           ot.event,
@@ -236,7 +244,7 @@ async function fetchPaidStatusMap(events: string[] | null): Promise<Map<string, 
           COALESCE(at.adj, 0)::numeric    AS adj,
           COALESCE(pt.paid, 0)::numeric   AS paid
         FROM order_totals ot
-        LEFT JOIN customer_ongkir co  ON co.norm_id = ot.norm_cust
+        LEFT JOIN customer_ongkir co  ON co.norm_id = ot.norm_cust AND co.event = ot.event
         LEFT JOIN payment_totals pt   ON pt.event = ot.event AND pt.norm_cust = ot.norm_cust
         LEFT JOIN adjustment_totals at ON at.event = ot.event AND at.norm_cust = ot.norm_cust
       `

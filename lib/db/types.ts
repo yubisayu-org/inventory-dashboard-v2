@@ -130,11 +130,15 @@ export interface CustomerDetail {
   whatsapp: string
   dataDiri: string
   ekspedisi: string
-  ongkosKirim: number
   bankName: string
   bankAccountNumber: string
   bankAccountHolder: string
 }
+
+// Per-warehouse shipping rate, keyed by warehouse id. The shipping cost a
+// customer pays now depends on which warehouse an order ships from (the event's
+// warehouse), so a single ongkos_kirim is replaced by this map.
+export type OngkirByWarehouse = Record<number, number>
 
 export interface CustomerRow {
   id: number
@@ -143,7 +147,7 @@ export interface CustomerRow {
   whatsapp: string
   dataDiri: string
   ekspedisi: string
-  ongkosKirim: number
+  ongkir: OngkirByWarehouse
   bankName: string
   bankAccountNumber: string
   bankAccountHolder: string
@@ -157,10 +161,17 @@ export interface CustomerInput {
   whatsapp: string
   dataDiri: string
   ekspedisi: string
-  ongkosKirim: number
+  ongkir: OngkirByWarehouse
   bankName: string
   bankAccountNumber: string
   bankAccountHolder: string
+}
+
+export interface WarehouseRow {
+  id: number
+  code: string
+  name: string
+  isDefault: boolean
 }
 
 export type RefundReason = "overpayment" | "unavailable" | "shipping_loss" | "damaged" | "goodwill" | "other"
