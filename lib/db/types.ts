@@ -397,3 +397,33 @@ export interface AdjustmentRow {
   updatedAt: string
 }
 
+/** Closed set of operational-expense categories — mirrors the dashboard's
+ *  fixed dropdown and the operational_expenses.category CHECK constraint. */
+export type ExpenseCategory = "Flight" | "Lodging" | "Cargo" | "Meal" | "Transport" | "Shop"
+
+export const EXPENSE_CATEGORIES: ExpenseCategory[] = [
+  "Flight", "Lodging", "Cargo", "Meal", "Transport", "Shop",
+]
+
+/** One operational expense row (replaces the "Operational_2026" sheet). */
+export interface OperationalExpenseRow {
+  rowNumber: number
+  event: string
+  /** ISO date (YYYY-MM-DD), or "" when unset. */
+  expenseDate: string
+  description: string
+  category: ExpenseCategory
+  /** Cost in the currency it was paid in (the "# VLS" column). */
+  amountForeign: number
+  /** IDR per unit of foreign currency (the "Kurs" column); 1 for IDR rows. */
+  rate: number
+  /** Cost in rupiah (the "IDR" column). */
+  amountIdr: number
+  isSettled: boolean
+  /** Payment method — card last-4, account label, etc. */
+  method: string
+  remarks: string
+  createdAt: string
+  updatedAt: string
+}
+
