@@ -425,6 +425,8 @@ export async function getShippingRecords(): Promise<ShippingRecord[]> {
     isLastShipment: r.is_last_shipment ?? false,
     createdAt: tsToString(r.created_at),
     updatedAt: tsToString(r.updated_at),
+    createdAtTs: r.created_at ? new Date(r.created_at as string).getTime() : 0,
+    updatedAtTs: r.updated_at ? new Date(r.updated_at as string).getTime() : 0,
     trackingNumber: r.tracking_number ?? "",
     mergeGroup: r.merge_group ?? null,
     tempAddress: r.temp_address ?? null,
