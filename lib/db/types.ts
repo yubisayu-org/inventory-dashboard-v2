@@ -321,6 +321,10 @@ export interface ShippingRecord {
   isLastShipment: boolean
   createdAt: string
   updatedAt: string
+  // Epoch ms for chronological sorting — createdAt/updatedAt are localized
+  // display strings (DD/MM/YYYY …) that don't sort by date as text. 0 when null.
+  createdAtTs: number
+  updatedAtTs: number
   trackingNumber: string
   // Non-null when this row is part of a "Ship together" merged package; all
   // rows sharing the id were one physical shipment (one box, one resi).
