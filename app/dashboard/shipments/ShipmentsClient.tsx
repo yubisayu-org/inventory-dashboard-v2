@@ -728,6 +728,9 @@ export default function ShipmentsClient() {
         accessorKey: "createdAt",
         header: "Tanggal",
         filterFn: "textContains",
+        // Display + filter on the formatted string, but sort by the real epoch:
+        // the localized DD/MM/YYYY string doesn't sort chronologically as text.
+        sortingFn: (a, b) => a.original.createdAtTs - b.original.createdAtTs,
         size: 160,
         cell: ({ getValue }) => (
           <span className="text-xs text-gray-400 whitespace-nowrap">{getValue<string>()}</span>
@@ -737,6 +740,7 @@ export default function ShipmentsClient() {
         accessorKey: "updatedAt",
         header: "Diperbarui",
         enableHiding: true,
+        sortingFn: (a, b) => a.original.updatedAtTs - b.original.updatedAtTs,
         size: 160,
         cell: ({ getValue }) => (
           <span className="text-xs text-gray-400 whitespace-nowrap">{getValue<string>()}</span>
