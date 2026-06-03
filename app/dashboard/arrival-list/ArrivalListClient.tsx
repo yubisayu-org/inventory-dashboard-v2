@@ -480,6 +480,9 @@ function ArriveModal({
   const [qty, setQty] = useState(String(item.totalPending))
   const [wrongProduct, setWrongProduct] = useState(false)
   const [receivedItem, setReceivedItem] = useState("")
+  // Which waiting customer orders to cancel when the wrong product arrives —
+  // default all of them (the expected item won't be fulfilled).
+  const [cancelIds, setCancelIds] = useState<Set<number>>(() => new Set(item.orders.map((o) => o.id)))
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
@@ -502,15 +505,20 @@ function ArriveModal({
           )
           return
         }
-        // Reuse the bulk-arrival endpoint's wrong-product path: log the received
-        // SKU to Excess Purchase (reason = wrong_product, expected = this product),
-        // and leave this product pending — it never arrived.
-        const res = await fetch("/api/sheets/arrive", {
+        // Log the received SKU to ready stock and cancel the chosen customer
+        // orders. Their invoices drop, so overpayment refunds auto-materialize
+        // for anyone who already paid (overseas — the expected item can't be
+        // re-ordered).
+        const res = await fetch("/api/sheets/arrival-list", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            action: "wrong_product",
             event: item.event,
-            items: [{ item: receivedItem, qty: quantityArrived, expectedItem: item.productName }],
+            expectedItem: item.productName,
+            receivedItem,
+            qty: quantityArrived,
+            cancelOrderIds: [...cancelIds],
           }),
         })
         const data = await res.json()
@@ -576,18 +584,46 @@ function ArriveModal({
         </div>
 
         {wrongProduct && (
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-yellow-700">Received item (what supplier sent)</label>
-            <SearchableSelect
-              value={receivedItem}
-              onChange={(v) => { setReceivedItem(v); setSaveError(null) }}
-              options={itemOptions}
-              placeholder="Search item…"
-            />
-            <p className="text-[11px] text-gray-400">
-              &ldquo;{item.productName}&rdquo; stays pending (it didn&rsquo;t arrive). The received item is logged to Excess Purchase as a wrong product.
-            </p>
-          </div>
+          <>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-yellow-700">Received item (what supplier sent)</label>
+              <SearchableSelect
+                value={receivedItem}
+                onChange={(v) => { setReceivedItem(v); setSaveError(null) }}
+                options={itemOptions}
+                placeholder="Search item…"
+              />
+              <p className="text-[11px] text-gray-400">Logged to Excess Purchase as ready stock.</p>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-yellow-700">Cancel &amp; refund affected orders</label>
+              <div className="flex flex-col gap-0.5 max-h-40 overflow-y-auto pr-0.5">
+                {item.orders.map((o) => (
+                  <label key={o.id} className="flex items-center justify-between gap-2 px-2 py-1 rounded-md bg-gray-50 cursor-pointer">
+                    <span className="flex items-center gap-1.5 min-w-0">
+                      <input
+                        type="checkbox"
+                        checked={cancelIds.has(o.id)}
+                        onChange={(e) => setCancelIds((prev) => {
+                          const next = new Set(prev)
+                          if (e.target.checked) next.add(o.id)
+                          else next.delete(o.id)
+                          return next
+                        })}
+                        className="accent-yellow-600"
+                      />
+                      <span className="truncate text-gray-600">{displayIg(o.customer)}</span>
+                    </span>
+                    <span className="text-gray-400 tabular-nums shrink-0">{o.pending}×</span>
+                  </label>
+                ))}
+              </div>
+              <p className="text-[11px] text-gray-400">
+                Checked orders are removed from the customer&rsquo;s invoice; a refund appears in the Refunds page if they already paid. Unchecked orders stay pending.
+              </p>
+            </div>
+          </>
         )}
 
         {!wrongProduct && quantityArrived > 0 && (

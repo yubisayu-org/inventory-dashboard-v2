@@ -518,6 +518,52 @@ export async function getExcessPurchaseRows(): Promise<ExcessRow[]> {
   }))
 }
 
+/**
+ * Wrong-product delivery for overseas events where the expected item can't be
+ * re-ordered. In one audited transaction:
+ *  - log the received SKU to excess_purchase as ready stock (reason=wrong_product), and
+ *  - zero the chosen customer orders (unit + unit_buy → 0, rows kept for history)
+ *    so the expected item drops off their invoices.
+ * No refund is created here: once the invoice drops, the existing overpayment
+ * materialization auto-creates a refund for any customer who already paid.
+ */
+export async function recordWrongProduct(
+  data: {
+    event: string
+    expectedItem: string
+    receivedItem: string
+    qty: number
+    cancelOrderIds: number[]
+  },
+  db: DBExecutor = sql,
+): Promise<{ cancelledOrders: number; excessUnits: number }> {
+  if (data.qty > 0 && data.receivedItem.trim()) {
+    await appendExcessPurchase(
+      [{
+        event: data.event,
+        items: data.receivedItem,
+        unitBuy: data.qty,
+        receipt: "",
+        reason: "wrong_product",
+        expectedItem: data.expectedItem,
+      }],
+      db,
+    )
+  }
+
+  let cancelledOrders = 0
+  if (data.cancelOrderIds.length > 0) {
+    const res = await db`
+      UPDATE orders
+      SET unit = 0, unit_buy = 0, updated_at = NOW()
+      WHERE id = ANY(${data.cancelOrderIds})
+    `
+    cancelledOrders = res.count
+  }
+
+  return { cancelledOrders, excessUnits: data.qty }
+}
+
 export async function appendExcessPurchase(
   rows: {
     event: string
