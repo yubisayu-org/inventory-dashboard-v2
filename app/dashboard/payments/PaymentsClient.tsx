@@ -1,7 +1,6 @@
 "use client"
 
 import { displayIg } from "@/lib/format"
-import TableSkeleton from "@/components/TableSkeleton"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { PaymentRow } from "@/lib/db"
 import type { Role } from "@/lib/roles"
@@ -14,7 +13,13 @@ import DataGrid, {
   textContainsFilter,
   booleanFilter,
   type ColumnDef,
+  type SortingState,
+  type ColumnFiltersState,
+  type PaginationState,
 } from "@/components/DataGrid"
+import { usePaginatedFetch, type PageData } from "@/hooks/usePaginatedFetch"
+
+const PAGE_SIZE = 25
 
 const INPUT_CLASS =
   "w-full border border-cream-border rounded-md px-2 py-1 text-sm text-foreground bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
@@ -45,27 +50,67 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
   const isAdmin = role === "admin"
   const options = useSheetOptions()
   const [rows, setRows] = useState<PaymentRow[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState("")
+  const [totalCount, setTotalCount] = useState(0)
   const [addOpen, setAddOpen] = useState(false)
   const [mobileAddOpen, setMobileAddOpen] = useState(false)
   const [editingRow, setEditingRow] = useState<PaymentRow | null>(null)
-  // Mobile-only filter — DataGrid handles search on desktop; on mobile we
-  // expose a single search box above the card list (no per-column filters).
-  const [mobileSearch, setMobileSearch] = useState("")
 
-  const fetchRows = useCallback(() => {
-    fetch("/api/sheets/payments")
-      .then((r) => r.json())
-      .then((data: { rows?: PaymentRow[]; error?: string }) => {
-        if (data.error) throw new Error(data.error)
-        setRows(data.rows ?? [])
-      })
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"))
-      .finally(() => setLoading(false))
+  // Server-side table state.
+  const [sorting, setSorting] = useState<SortingState>([])
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
+  const [globalFilter, setGlobalFilter] = useState("")
+  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: PAGE_SIZE })
+
+  // Only the text columns are server-filterable; amount/date/checkbox header
+  // filters are disabled (see column defs), so we don't map them.
+  const fetchFilters = useMemo<Record<string, string>>(() => {
+    const f: Record<string, string> = {}
+    for (const cf of columnFilters) {
+      const v = String(cf.value ?? "").trim()
+      if (!v) continue
+      if (cf.id === "event") f.event = v
+      else if (cf.id === "customer") f.customer = v
+      else if (cf.id === "account") f.account = v
+      else if (cf.id === "remarks") f.remarks = v
+      else if (cf.id === "kind") f.kind = v
+    }
+    return f
+  }, [columnFilters])
+
+  const fetchSort = useMemo(() => {
+    if (sorting.length === 0) return null
+    return { key: sorting[0].id, direction: sorting[0].desc ? ("desc" as const) : ("asc" as const) }
+  }, [sorting])
+
+  const onData = useCallback((d: PageData) => {
+    setRows(d.rows as PaymentRow[])
+    setTotalCount(d.totalCount)
   }, [])
 
-  useEffect(() => { fetchRows() }, [fetchRows])
+  const { fetchState, refresh } = usePaginatedFetch({
+    endpoint: "/api/sheets/payments",
+    pageSize: PAGE_SIZE,
+    page: pagination.pageIndex + 1,
+    search: globalFilter,
+    filters: fetchFilters,
+    sort: fetchSort,
+    onData,
+  })
+
+  // Stable ref so row-action callbacks captured in column defs call latest refresh.
+  const refreshRef = useRef(refresh)
+  refreshRef.current = refresh
+
+  // Reset to page 1 when the query shape (sort/filter/search) changes.
+  const handleSortingChange = useCallback((u: SortingState | ((p: SortingState) => SortingState)) => {
+    setSorting(u); setPagination((p) => ({ ...p, pageIndex: 0 }))
+  }, [])
+  const handleColumnFiltersChange = useCallback((u: ColumnFiltersState | ((p: ColumnFiltersState) => ColumnFiltersState)) => {
+    setColumnFilters(u); setPagination((p) => ({ ...p, pageIndex: 0 }))
+  }, [])
+  const handleGlobalFilterChange = useCallback((u: string | ((p: string) => string)) => {
+    setGlobalFilter(u); setPagination((p) => ({ ...p, pageIndex: 0 }))
+  }, [])
 
   async function handleToggleCheck(row: PaymentRow) {
     if (isAdmin) return
@@ -122,7 +167,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
     {
       accessorKey: "amount",
       header: "Amount",
-      filterFn: "numeric",
+      enableColumnFilter: false,
       meta: { align: "right" },
       cell: ({ row }) => (
         <span className="tabular-nums font-medium">{formatAmount(row.original.amount)}</span>
@@ -156,7 +201,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
     {
       accessorKey: "isChecked",
       header: "✓",
-      filterFn: "boolean",
+      enableColumnFilter: false,
       enableSorting: false,
       size: 60,
       cell: ({ row }) => (
@@ -172,7 +217,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
     {
       accessorKey: "payDate",
       header: "Date",
-      filterFn: "textContains",
+      enableColumnFilter: false,
       cell: ({ row }) => (
         <span className="text-gray-500 text-xs whitespace-nowrap">
           {formatDate(row.original.payDate)}
@@ -188,7 +233,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
     {
       accessorKey: "createdAt",
       header: "Created",
-      filterFn: "textContains",
+      enableColumnFilter: false,
       cell: ({ row }) => (
         <span className="text-gray-400 text-xs whitespace-nowrap">{row.original.createdAt}</span>
       ),
@@ -196,6 +241,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
     {
       accessorKey: "updatedAt",
       header: "Updated",
+      enableColumnFilter: false,
       enableHiding: true,
     },
     {
@@ -218,7 +264,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
 
   const refreshButton = useMemo(() => (
     <>
-      <button onClick={fetchRows} title="Refresh" className="p-1.5 text-gray-400 hover:text-brand transition-colors rounded">
+      <button onClick={() => refreshRef.current()} title="Refresh" className="p-1.5 text-gray-400 hover:text-brand transition-colors rounded">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M21 12a9 9 0 1 1-6.22-8.56" /><polyline points="21 3 21 9 15 9" />
         </svg>
@@ -235,35 +281,13 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
         Add Payment
       </button>
     </>
-  ), [addOpen, fetchRows])
+  ), [addOpen])
 
-  // Mobile cards reuse the in-memory rows, filtered by the single search box
-  // (matches event, customer handle, account, and remarks — same fields the
-  // DataGrid's global search covers).
-  const mobileRows = useMemo(() => {
-    const q = mobileSearch.trim().toLowerCase()
-    if (!q) return rows
-    return rows.filter((r) =>
-      r.event.toLowerCase().includes(q) ||
-      r.customer.toLowerCase().includes(q) ||
-      r.account.toLowerCase().includes(q) ||
-      r.remarks.toLowerCase().includes(q),
-    )
-  }, [rows, mobileSearch])
-
-  if (loading) {
-    return (
-      <>
-        <div className="hidden md:block"><TableSkeleton /></div>
-        <div className="md:hidden rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">Loading…</div>
-      </>
-    )
-  }
-
-  if (error) {
+  if (fetchState.error) {
     return (
       <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-red-500">
-        {error}
+        {fetchState.error}
+        <button onClick={() => refreshRef.current()} className="ml-2 underline hover:no-underline">Retry</button>
       </div>
     )
   }
@@ -277,7 +301,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
             options={options}
             isAdmin={isAdmin}
             onClose={() => setAddOpen(false)}
-            onAdded={() => { fetchRows(); setAddOpen(false) }}
+            onAdded={() => { refreshRef.current(); setAddOpen(false) }}
           />
         </div>
       )}
@@ -291,6 +315,18 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
           searchPlaceholder="Search payments..."
           toolbarExtra={refreshButton}
           initialVisibility={{ updatedAt: false }}
+          serverSide={{
+            rowCount: totalCount,
+            loading: fetchState.loading,
+            sorting,
+            onSortingChange: handleSortingChange,
+            columnFilters,
+            onColumnFiltersChange: handleColumnFiltersChange,
+            globalFilter,
+            onGlobalFilterChange: handleGlobalFilterChange,
+            pagination,
+            onPaginationChange: setPagination,
+          }}
         />
       </div>
 
@@ -298,17 +334,17 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
       <div className="md:hidden flex flex-col gap-2.5">
         <input
           type="text"
-          value={mobileSearch}
-          onChange={(e) => setMobileSearch(e.target.value)}
+          value={globalFilter}
+          onChange={(e) => handleGlobalFilterChange(e.target.value)}
           placeholder="Cari payment…"
           className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
         />
-        {mobileRows.length === 0 ? (
+        {rows.length === 0 ? (
           <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">
-            {rows.length === 0 ? "No payments yet" : "No matches"}
+            {fetchState.loading ? "Loading…" : globalFilter ? "No matches" : "No payments yet"}
           </div>
         ) : (
-          mobileRows.map((row) => (
+          rows.map((row) => (
             <PaymentCard
               key={row.rowNumber}
               row={row}
@@ -317,6 +353,13 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
               onEdit={() => setEditingRow(row)}
             />
           ))
+        )}
+        {totalCount > PAGE_SIZE && (
+          <div className="flex items-center justify-between gap-3 pt-1">
+            <button type="button" disabled={pagination.pageIndex === 0} onClick={() => setPagination((p) => ({ ...p, pageIndex: p.pageIndex - 1 }))} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-gray-600 disabled:opacity-40">Prev</button>
+            <span className="text-xs text-gray-400">Page {pagination.pageIndex + 1} of {Math.max(1, Math.ceil(totalCount / PAGE_SIZE))}</span>
+            <button type="button" disabled={(pagination.pageIndex + 1) * PAGE_SIZE >= totalCount} onClick={() => setPagination((p) => ({ ...p, pageIndex: p.pageIndex + 1 }))} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-gray-600 disabled:opacity-40">Next</button>
+          </div>
         )}
       </div>
 
@@ -336,7 +379,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
           options={options}
           isAdmin={isAdmin}
           onClose={() => setMobileAddOpen(false)}
-          onAdded={() => { fetchRows(); setMobileAddOpen(false) }}
+          onAdded={() => { refreshRef.current(); setMobileAddOpen(false) }}
         />
       )}
 
@@ -346,16 +389,8 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
           options={options}
           isAdmin={isAdmin}
           onClose={() => setEditingRow(null)}
-          onSaved={(updated) => {
-            setRows((prev) =>
-              prev.map((r) => (r.rowNumber === updated.rowNumber ? { ...r, ...updated } : r)),
-            )
-            setEditingRow(null)
-          }}
-          onDeleted={(rowNumber) => {
-            setRows((prev) => prev.filter((r) => r.rowNumber !== rowNumber))
-            setEditingRow(null)
-          }}
+          onSaved={() => { setEditingRow(null); refreshRef.current() }}
+          onDeleted={() => { setEditingRow(null); refreshRef.current() }}
         />
       )}
     </div>

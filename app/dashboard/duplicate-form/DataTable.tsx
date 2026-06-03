@@ -812,6 +812,9 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
                 </div>
               </div>
               <p className="text-[11px] text-gray-400 mt-1.5">Leave blank to clear. Shipped and held units are managed from the Packing List page.</p>
+              {(row.unitBuy ?? 0) > 0 && (
+                <ReturnToExcessControl row={row} onDone={() => { onSaved(); onClose() }} />
+              )}
             </div>
           )}
 
@@ -834,6 +837,111 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
           </div>
         </form>
       </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Return-to-excess control (revert a mistaken order)
+// ---------------------------------------------------------------------------
+
+function ReturnToExcessControl({ row, onDone }: { row: FormRow; onDone: () => void }) {
+  const bought = row.unitBuy ?? 0
+  // Units already committed to this customer can't be reassigned to excess.
+  const committed = Math.max(row.unitArrive ?? 0, (row.unitShip ?? 0) + (row.unitHold ?? 0))
+  const maxRemovable = Math.max(0, row.unit - committed)
+
+  const [open, setOpen] = useState(false)
+  const [qty, setQty] = useState("1")
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState("")
+
+  const n = Math.floor(Number(qty) || 0)
+  const valid = n >= 1 && n <= maxRemovable
+  const newUnit = row.unit - n
+  const excess = valid ? Math.max(0, bought - Math.max(0, newUnit)) : 0
+  const willDelete = newUnit <= 0
+
+  async function submit() {
+    if (!valid) return
+    setBusy(true); setErr("")
+    try {
+      const res = await fetch(`/api/sheets/duplicate-form/${row.rowNumber}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stage: "return_excess", removeUnits: n }),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.error ?? "Failed")
+      onDone()
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="mt-2 text-xs font-medium text-amber-700 hover:text-amber-800 hover:underline"
+      >
+        Return bought units to excess…
+      </button>
+    )
+  }
+
+  return (
+    <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 flex flex-col gap-2">
+      <div className="text-[11px] text-amber-800">
+        Bought {bought} · ordered {row.unit}
+        {committed > 0 ? ` · ${committed} already arrived/shipped/held` : ""}
+      </div>
+      {maxRemovable === 0 ? (
+        <p className="text-xs text-gray-500">All units are already arrived/shipped/held — nothing to return.</p>
+      ) : (
+        <>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-gray-600">Remove</label>
+            <input
+              type="number"
+              min={1}
+              max={maxRemovable}
+              value={qty}
+              onChange={(e) => setQty(e.target.value)}
+              className={`${INPUT_CLS} w-20`}
+            />
+            <span className="text-xs text-gray-500">unit(s) from this order</span>
+          </div>
+          <div className="text-[11px] text-gray-600">
+            {valid
+              ? willDelete
+                ? `Deletes this order; ${excess} bought unit(s) → excess for "${row.items}".`
+                : `Order quantity → ${newUnit}; ${excess} bought unit(s) → excess for "${row.items}".`
+              : `Enter a number between 1 and ${maxRemovable}.`}
+          </div>
+          {err && <p className="text-xs text-red-600">{err}</p>}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={!valid || busy}
+              onClick={submit}
+              className="px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-medium hover:bg-amber-700 disabled:opacity-50 transition-colors"
+            >
+              {busy ? "Working…" : "Confirm"}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setOpen(false); setErr("") }}
+              className="px-3 py-1.5 text-xs text-gray-500 hover:text-foreground transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </>
+      )}
     </div>
   )
 }

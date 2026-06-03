@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireOwner } from "@/lib/api"
 import {
   getExcessPurchaseRows,
-  getDuplicateFormRows,
+  getDuplicateFormRowsForEvents,
   bulkUpdatePurchase,
   deleteExcessRow,
   updateExcessRowUnitBuy,
@@ -23,14 +23,17 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({})) as { receipt?: string }
     const receipt = body.receipt ? String(body.receipt).trim() : ""
 
-    const [excessRows, formRows] = await Promise.all([
-      getExcessPurchaseRows(),
-      getDuplicateFormRows(),
-    ])
+    const excessRows = await getExcessPurchaseRows()
 
     if (excessRows.length === 0) {
       return NextResponse.json({ results: [] })
     }
+
+    // Each excess row is only ever matched against form rows of its own event
+    // (see the r.event === excessRow.event filter below), so fetch orders for
+    // just those events instead of the whole orders table.
+    const events = [...new Set(excessRows.map((r) => r.event))]
+    const formRows = await getDuplicateFormRowsForEvents(events)
 
     // Working copy of unitBuy so sequential excess rows see each other's allocations
     const workingUnitBuy = new Map<number, number>()

@@ -6,25 +6,122 @@ import type { PaymentRow, AdjustmentRow, RefundRow, RefundReason, RefundStatus }
 
 // ─── Payments ──────────────────────────────────────────────────────────────
 
+function mapPaymentRow(r: Record<string, unknown>): PaymentRow {
+  return {
+    rowNumber: r.id as number,
+    event: r.event as string,
+    customer: r.customer as string,
+    amount: (r.amount as number) ?? 0,
+    account: (r.account as string) ?? "",
+    isChecked: (r.is_checked as boolean) ?? false,
+    payDate: r.pay_date ? new Date(r.pay_date as string).toISOString().slice(0, 10) : "",
+    remarks: (r.remarks as string) ?? "",
+    kind: (r.kind as PaymentRow["kind"]) ?? "deposit",
+    createdAt: tsToString(r.created_at as Date | null),
+    updatedAt: tsToString(r.updated_at as Date | null),
+  }
+}
+
 export async function getPaymentRows(): Promise<PaymentRow[]> {
   const rows = await sql`
     SELECT id, event, customer, amount, account, is_checked,
            pay_date, remarks, kind, created_at, updated_at
     FROM payments ORDER BY id DESC
   `
-  return rows.map((r) => ({
-    rowNumber: r.id,
-    event: r.event,
-    customer: r.customer,
-    amount: r.amount ?? 0,
-    account: r.account ?? "",
-    isChecked: r.is_checked ?? false,
-    payDate: r.pay_date ? new Date(r.pay_date).toISOString().slice(0, 10) : "",
-    remarks: r.remarks ?? "",
-    kind: (r.kind as PaymentRow["kind"]) ?? "deposit",
-    createdAt: tsToString(r.created_at),
-    updatedAt: tsToString(r.updated_at),
-  }))
+  return rows.map(mapPaymentRow)
+}
+
+export interface PaginatedPayments {
+  rows: PaymentRow[]
+  totalCount: number
+  page: number
+  pageSize: number
+  totalPages: number
+}
+
+/** Sentinel for totalCount/totalPages when skipCount was requested. */
+export const PAYMENTS_TOTAL_COUNT_UNCHANGED = -1
+
+/**
+ * One page of payments with server-side search/filter/sort. The payments table
+ * is one of the largest (many per customer × event over time), so loading it
+ * all on every page open is slow — this bounds it. Mirrors getCustomersPaginated.
+ */
+export async function getPaymentsPaginated(opts: {
+  page: number
+  pageSize: number
+  search?: string
+  event?: string
+  customer?: string
+  account?: string
+  remarks?: string
+  kind?: string
+  isChecked?: boolean
+  sortKey?: string
+  sortDir?: "asc" | "desc"
+  skipCount?: boolean
+}): Promise<PaginatedPayments> {
+  const { page, pageSize, search, skipCount } = opts
+  const offset = (page - 1) * pageSize
+
+  const conditions: string[] = []
+  const params: (string | number | boolean)[] = []
+
+  if (search) {
+    params.push(`%${search.toLowerCase()}%`)
+    const p = `$${params.length}`
+    conditions.push(
+      `(lower(event) LIKE ${p} OR lower(customer) LIKE ${p} OR ` +
+        `lower(COALESCE(account,'')) LIKE ${p} OR lower(COALESCE(remarks,'')) LIKE ${p})`,
+    )
+  }
+
+  const textFilters: [string | undefined, string][] = [
+    [opts.event, "event"],
+    [opts.customer, "customer"],
+    [opts.account, "account"],
+    [opts.remarks, "remarks"],
+    [opts.kind, "kind"],
+  ]
+  for (const [value, col] of textFilters) {
+    if (value) {
+      params.push(`%${value.toLowerCase()}%`)
+      conditions.push(`lower(COALESCE(${col},'')) LIKE $${params.length}`)
+    }
+  }
+  if (typeof opts.isChecked === "boolean") {
+    params.push(opts.isChecked)
+    conditions.push(`is_checked = $${params.length}`)
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""
+
+  const SORT_COLUMNS: Record<string, string> = {
+    event: "event", customer: "customer", amount: "amount", kind: "kind",
+    account: "account", payDate: "pay_date", remarks: "remarks",
+    createdAt: "created_at", updatedAt: "updated_at",
+  }
+  const sortCol = (opts.sortKey && SORT_COLUMNS[opts.sortKey]) || "id"
+  const sortDir = opts.sortDir === "asc" ? "ASC" : "DESC"
+
+  const dataRows = await sql.unsafe(
+    `SELECT id, event, customer, amount, account, is_checked,
+            pay_date, remarks, kind, created_at, updated_at
+     FROM payments
+     ${where}
+     ORDER BY ${sortCol} ${sortDir}, id ${sortDir}
+     LIMIT ${pageSize} OFFSET ${offset}`,
+    params,
+  )
+  const rows = dataRows.map(mapPaymentRow)
+
+  if (skipCount) {
+    return { rows, totalCount: PAYMENTS_TOTAL_COUNT_UNCHANGED, page, pageSize, totalPages: PAYMENTS_TOTAL_COUNT_UNCHANGED }
+  }
+
+  const countRows = await sql.unsafe(`SELECT COUNT(*)::int AS c FROM payments ${where}`, params)
+  const totalCount = Number((countRows as Record<string, unknown>[])[0]?.c ?? 0)
+  return { rows, totalCount, page, pageSize, totalPages: Math.max(1, Math.ceil(totalCount / pageSize)) }
 }
 
 export async function addPayment(data: {

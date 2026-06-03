@@ -399,7 +399,17 @@ export async function releasePackingList(params: {
 
 // ─── Shipments ──────────────────────────────────────────────────────────────
 
-export async function getShippingRecords(): Promise<ShippingRecord[]> {
+export async function getShippingRecords(sinceDays?: number | null): Promise<ShippingRecord[]> {
+  // The shipments grid loads everything client-side (search/sort/merge/bulk
+  // print all need the full set), and the `invoicing` packing text makes each
+  // row heavy — so the whole-history fetch grows unbounded and dominates DB
+  // egress over time. Default callers to a recent window; pass null for "all".
+  // Filtering on created_at is safe for merge groups: rows shipped together
+  // share a timestamp, so a window never splits a group.
+  const windowClause =
+    sinceDays != null && sinceDays > 0
+      ? sql`AND s.created_at >= now() - make_interval(days => ${sinceDays})`
+      : sql``
   // Join customers via the existing FK (shipments.customer → customers.instagram_id)
   // so the page can show the human-readable name alongside the IG handle.
   const rows = await sql`
@@ -410,6 +420,7 @@ export async function getShippingRecords(): Promise<ShippingRecord[]> {
     FROM shipments s
     LEFT JOIN customers c ON c.instagram_id = s.customer
     WHERE s.shipping_id != ''
+      ${windowClause}
     ORDER BY s.id ASC
   `
   return rows.map((r) => ({

@@ -64,13 +64,15 @@ export default function RefundsClient() {
   const [creating, setCreating] = useState(false)
   const [editRow, setEditRow] = useState<RefundRow | null>(null)
 
-  const fetchRows = useCallback(() => {
+  const fetchRows = useCallback((forceScan = false) => {
     setLoading(true)
     setError("")
     const params = new URLSearchParams()
     if (selectedEvent) params.set("event", selectedEvent)
-    // GET /refunds auto-materializes overpayment refunds server-side, so
-    // any detected overpayments appear in `rows` without further action.
+    // GET /refunds auto-materializes overpayment refunds server-side (throttled).
+    // Refresh passes forceScan=1 to run the detection immediately regardless of
+    // the throttle window; normal opens/filters reuse the throttled result.
+    if (forceScan) params.set("forceScan", "1")
     fetchJson<{ rows: RefundRow[] }>(`/api/sheets/refunds?${params}`)
       .then((data) => setRows(data.rows ?? []))
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"))
@@ -136,8 +138,8 @@ export default function RefundsClient() {
           />
         </div>
         <button
-          onClick={fetchRows}
-          title="Refresh"
+          onClick={() => fetchRows(true)}
+          title="Refresh (re-scan for overpayments)"
           className="p-1.5 text-gray-400 hover:text-brand transition-colors rounded"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { updateFormRow, updateFormRowStage2, updateFormRowStage3, updateOrderOwnerCell, deleteFormRow, withActor } from "@/lib/db"
+import { updateFormRow, updateFormRowStage2, updateFormRowStage3, updateOrderOwnerCell, deleteFormRow, returnOrderUnitsToExcess, withActor } from "@/lib/db"
 
 type Params = { params: Promise<{ row: string }> }
 
@@ -62,6 +62,27 @@ export async function PUT(req: NextRequest, { params }: Params) {
         return NextResponse.json({ error: "value must be a number or null" }, { status: 400 })
       }
       await withActor(session.user.email, (tx) => updateOrderOwnerCell(rowNumber, column, numericValue, tx))
+
+    } else if (stage === "return_excess") {
+      // Owner-only: remove units from this order and bank the bought-but-not-
+      // yet-arrived surplus into excess_purchase (reverting a mistaken order).
+      if (session.user.role !== "owner") {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+      }
+      const removeUnits = Number(body.removeUnits)
+      if (!Number.isInteger(removeUnits) || removeUnits < 1) {
+        return NextResponse.json({ error: "removeUnits must be a positive integer" }, { status: 400 })
+      }
+      try {
+        const result = await withActor(session.user.email, (tx) => returnOrderUnitsToExcess(rowNumber, removeUnits, tx))
+        return NextResponse.json({ success: true, ...result })
+      } catch (e) {
+        // Guard violations (e.g. units already arrived) are user-actionable.
+        return NextResponse.json(
+          { error: e instanceof Error ? e.message : "Failed to return units" },
+          { status: 400 },
+        )
+      }
 
     } else {
       // Stage 1 — order details

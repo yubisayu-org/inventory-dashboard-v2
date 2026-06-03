@@ -489,12 +489,15 @@ export default function ShipmentsClient() {
   const [labelRecord, setLabelRecord] = useState<DisplayShipment | null>(null)
   const [editResiRecord, setEditResiRecord] = useState<DisplayShipment | null>(null)
   const [editTempRecord, setEditTempRecord] = useState<DisplayShipment | null>(null)
+  // Bound the default fetch to recent shipments so the payload stays small as
+  // history grows; "all" loads everything on demand.
+  const [windowDays, setWindowDays] = useState<string>("90")
 
-  async function load() {
+  async function load(days: string = windowDays) {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch("/api/sheets/shipments")
+      const res = await fetch(`/api/sheets/shipments?days=${encodeURIComponent(days)}`)
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? "Failed to load")
       setData(json as ShippingRecord[])
@@ -506,7 +509,8 @@ export default function ShipmentsClient() {
     }
   }
 
-  useEffect(() => { load() }, [])
+  // Refetch whenever the window changes (and on mount).
+  useEffect(() => { load(windowDays) }, [windowDays])
 
   // Merged ("Ship together") rows are collapsed into one combined grid entry.
   const displayData = useMemo(() => (data ? collapseMerged(data) : []), [data])
@@ -785,6 +789,18 @@ export default function ShipmentsClient() {
 
   const toolbarExtra = (
     <div className="flex items-center gap-2">
+      <select
+        value={windowDays}
+        onChange={(e) => setWindowDays(e.target.value)}
+        disabled={loading}
+        title="Rentang waktu shipment yang dimuat"
+        className="text-xs text-gray-600 bg-white border border-cream-border rounded-lg px-2 py-1.5 hover:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand disabled:opacity-50 transition-colors"
+      >
+        <option value="90">90 hari terakhir</option>
+        <option value="180">180 hari terakhir</option>
+        <option value="365">1 tahun terakhir</option>
+        <option value="all">Semua</option>
+      </select>
       {selectedCount > 0 && (
         <button
           type="button"
@@ -813,7 +829,7 @@ export default function ShipmentsClient() {
       )}
       <button
         type="button"
-        onClick={load}
+        onClick={() => load()}
         disabled={loading}
         className="text-xs text-gray-500 hover:text-brand disabled:opacity-50 transition-colors px-3 py-1.5 rounded-lg border border-cream-border hover:border-brand"
       >
@@ -832,7 +848,20 @@ export default function ShipmentsClient() {
       )}
       {!loading && !error && data?.length === 0 && (
         <div className="rounded-xl border border-cream-border bg-white p-12 text-center text-gray-400 text-sm">
-          No shipments yet.
+          {windowDays === "all" ? (
+            "No shipments yet."
+          ) : (
+            <span className="inline-flex flex-col items-center gap-2">
+              Tidak ada shipment dalam rentang ini.
+              <button
+                type="button"
+                onClick={() => setWindowDays("all")}
+                className="text-xs font-medium text-brand hover:underline"
+              >
+                Muat semua shipment
+              </button>
+            </span>
+          )}
         </div>
       )}
       {!loading && !error && data && data.length > 0 && (
