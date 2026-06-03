@@ -5,6 +5,13 @@ import type { RefundReason } from "@/lib/db"
 
 const VALID_REASONS: RefundReason[] = ["overpayment", "unavailable", "shipping_loss", "damaged", "goodwill", "other"]
 
+// Overpayment detection is a full aggregate over orders/payments/adjustments,
+// so it shouldn't run on every page open. Skip re-running it if it fired within
+// this window. Module-level state persists on the long-lived (Railway) server
+// and is shared across requests, so two open tabs don't both pay the cost.
+let lastMaterializeAt = 0
+const MATERIALIZE_THROTTLE_MS = 30_000
+
 export async function GET(req: NextRequest) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
@@ -15,16 +22,23 @@ export async function GET(req: NextRequest) {
   const event = searchParams.get("event") ?? undefined
   const status = searchParams.get("status") ?? undefined
   const customer = searchParams.get("customer") ?? undefined
+  // The Refresh button forces a fresh scan; normal opens use the throttle.
+  const forceScan = searchParams.get("forceScan") === "1"
 
   try {
-    // Auto-create pending refunds for any detected overpayments before listing.
-    // Idempotent: skips pairs that already have an active overpayment refund.
-    try {
-      await materializeOverpaymentRefunds()
-    } catch (err) {
-      console.error("Failed to auto-create overpayment refunds:", err)
-      // Continue to list whatever's already there; one bad write shouldn't
-      // hide the entire refunds page.
+    // Auto-create pending refunds for detected overpayments before listing.
+    // Idempotent (skips pairs that already have an active overpayment refund),
+    // but expensive — so throttle it. Set the marker before awaiting so
+    // concurrent opens (e.g. two tabs) don't pile up on the advisory lock.
+    if (forceScan || Date.now() - lastMaterializeAt >= MATERIALIZE_THROTTLE_MS) {
+      lastMaterializeAt = Date.now()
+      try {
+        await materializeOverpaymentRefunds()
+      } catch (err) {
+        console.error("Failed to auto-create overpayment refunds:", err)
+        // Continue to list whatever's already there; one bad write shouldn't
+        // hide the entire refunds page.
+      }
     }
 
     const rows = await getRefunds({ event, status, customer })
