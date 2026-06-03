@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
 import { getShippingRecords, updateTrackingNumber, updateShipmentTempAddress, withActor } from "@/lib/db"
 
-export async function GET() {
+// Default recent window (days) for the shipments list, so the payload stays
+// bounded as shipment history grows. `?days=all` loads the full history.
+const DEFAULT_WINDOW_DAYS = 90
+
+export async function GET(req: NextRequest) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
 
@@ -10,7 +14,16 @@ export async function GET() {
   if (roleError) return roleError
 
   try {
-    const data = await getShippingRecords()
+    const daysParam = req.nextUrl.searchParams.get("days")
+    let sinceDays: number | null = DEFAULT_WINDOW_DAYS
+    if (daysParam === "all") {
+      sinceDays = null
+    } else if (daysParam) {
+      const parsed = parseInt(daysParam, 10)
+      if (Number.isFinite(parsed) && parsed > 0) sinceDays = parsed
+    }
+
+    const data = await getShippingRecords(sinceDays)
     return NextResponse.json(data)
   } catch (err) {
     console.error("Failed to load shipments:", err)
