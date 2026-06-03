@@ -81,6 +81,42 @@ export async function updateCustomerBankInfo(
   `
 }
 
+/** Group the per-warehouse rates by customer id, so each customer row can carry its own map. */
+function groupOngkirByCustomer(
+  ongkirRows: readonly Record<string, unknown>[],
+): Map<number, OngkirByWarehouse> {
+  const byCustomer = new Map<number, OngkirByWarehouse>()
+  for (const o of ongkirRows) {
+    const cid = o.customer_id as number
+    const map = byCustomer.get(cid) ?? {}
+    map[o.warehouse_id as number] = (o.ongkos_kirim as number) ?? 0
+    byCustomer.set(cid, map)
+  }
+  return byCustomer
+}
+
+function mapCustomerRow(r: Record<string, unknown>, ongkir: OngkirByWarehouse): CustomerRow {
+  return {
+    id: r.id as number,
+    instagramId: (r.instagram_id as string) ?? "",
+    name: (r.name as string) ?? "",
+    whatsapp: (r.whatsapp as string) ?? "",
+    dataDiri: (r.data_diri as string) ?? "",
+    ekspedisi: (r.ekspedisi as string) ?? "",
+    ongkir,
+    bankName: (r.bank_name as string) ?? "",
+    bankAccountNumber: (r.bank_account_number as string) ?? "",
+    bankAccountHolder: (r.bank_account_holder as string) ?? "",
+    createdAt: r.created_at ? new Date(r.created_at as string).toISOString() : null,
+    updatedAt: r.updated_at ? new Date(r.updated_at as string).toISOString() : null,
+  }
+}
+
+/**
+ * Full customer list (every row + every warehouse's ongkir). Kept for callers
+ * that need the whole set; the dashboard list now uses getCustomersPaginated so
+ * it doesn't load every customer's address/bank text on each visit.
+ */
 export async function getCustomers(): Promise<CustomerRow[]> {
   const [rows, ongkirRows] = await Promise.all([
     sql`
@@ -93,29 +129,127 @@ export async function getCustomers(): Promise<CustomerRow[]> {
     sql`SELECT customer_id, warehouse_id, ongkos_kirim FROM customer_warehouse_ongkir`,
   ])
 
-  // Group the per-warehouse rates by customer so each row carries its full map.
-  const ongkirByCustomer = new Map<number, OngkirByWarehouse>()
-  for (const o of ongkirRows) {
-    const cid = o.customer_id as number
-    const map = ongkirByCustomer.get(cid) ?? {}
-    map[o.warehouse_id as number] = (o.ongkos_kirim as number) ?? 0
-    ongkirByCustomer.set(cid, map)
+  const ongkirByCustomer = groupOngkirByCustomer(ongkirRows)
+  return rows.map((r) => mapCustomerRow(r, ongkirByCustomer.get(r.id as number) ?? {}))
+}
+
+export interface PaginatedCustomers {
+  rows: CustomerRow[]
+  totalCount: number
+  page: number
+  pageSize: number
+  totalPages: number
+}
+
+/** Sentinel for totalCount/totalPages when skipCount was requested (see usePaginatedFetch). */
+export const CUSTOMERS_TOTAL_COUNT_UNCHANGED = -1
+
+/**
+ * One page of customers with server-side search/filter/sort. Only the page's
+ * rows — and the ongkir for just those customers — cross the wire, so address
+ * and bank text for the whole table no longer load on every visit. Mirrors
+ * getProductsPaginated / getDuplicateFormRowsPaginated.
+ */
+export async function getCustomersPaginated(opts: {
+  page: number
+  pageSize: number
+  search?: string
+  instagramId?: string
+  name?: string
+  whatsapp?: string
+  ekspedisi?: string
+  dataDiri?: string
+  bankName?: string
+  sortKey?: string
+  sortDir?: "asc" | "desc"
+  skipCount?: boolean
+}): Promise<PaginatedCustomers> {
+  const { page, pageSize, search, skipCount } = opts
+  const offset = (page - 1) * pageSize
+
+  const conditions: string[] = []
+  const params: (string | number)[] = []
+
+  if (search) {
+    params.push(`%${search.toLowerCase()}%`)
+    const p = `$${params.length}`
+    conditions.push(
+      `(lower(instagram_id) LIKE ${p} OR lower(COALESCE(name,'')) LIKE ${p} OR ` +
+        `lower(COALESCE(whatsapp,'')) LIKE ${p} OR lower(COALESCE(ekspedisi,'')) LIKE ${p} OR ` +
+        `lower(COALESCE(data_diri,'')) LIKE ${p} OR lower(COALESCE(bank_name,'')) LIKE ${p})`,
+    )
   }
 
-  return rows.map((r) => ({
-    id: r.id as number,
-    instagramId: r.instagram_id ?? "",
-    name: r.name ?? "",
-    whatsapp: r.whatsapp ?? "",
-    dataDiri: r.data_diri ?? "",
-    ekspedisi: r.ekspedisi ?? "",
-    ongkir: ongkirByCustomer.get(r.id as number) ?? {},
-    bankName: r.bank_name ?? "",
-    bankAccountNumber: r.bank_account_number ?? "",
-    bankAccountHolder: r.bank_account_holder ?? "",
-    createdAt: r.created_at ? new Date(r.created_at as string).toISOString() : null,
-    updatedAt: r.updated_at ? new Date(r.updated_at as string).toISOString() : null,
-  }))
+  // Per-column "contains" filters from the grid headers.
+  const colFilters: [string | undefined, string][] = [
+    [opts.instagramId, "instagram_id"],
+    [opts.name, "name"],
+    [opts.whatsapp, "whatsapp"],
+    [opts.ekspedisi, "ekspedisi"],
+    [opts.dataDiri, "data_diri"],
+    [opts.bankName, "bank_name"],
+  ]
+  for (const [value, col] of colFilters) {
+    if (value) {
+      params.push(`%${value.toLowerCase()}%`)
+      conditions.push(`lower(COALESCE(${col},'')) LIKE $${params.length}`)
+    }
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""
+
+  const SORT_COLUMNS: Record<string, string> = {
+    instagramId: "instagram_id", name: "name", whatsapp: "whatsapp",
+    ekspedisi: "ekspedisi", dataDiri: "data_diri", bankName: "bank_name",
+    createdAt: "created_at", updatedAt: "updated_at",
+  }
+  const sortCol = (opts.sortKey && SORT_COLUMNS[opts.sortKey]) || "instagram_id"
+  const sortDir = opts.sortDir === "desc" ? "DESC" : "ASC"
+
+  const dataRows = await sql.unsafe(
+    `SELECT id, instagram_id, name, whatsapp, data_diri, ekspedisi,
+            bank_name, bank_account_number, bank_account_holder,
+            created_at, updated_at
+     FROM customers
+     ${where}
+     ORDER BY ${sortCol} ${sortDir}, id ${sortDir}
+     LIMIT ${pageSize} OFFSET ${offset}`,
+    params,
+  )
+
+  // Ongkir only for the page's customers, plus the count (skipped when paging
+  // within an unchanged query shape).
+  const pageIds = dataRows.map((r) => r.id as number)
+  const [ongkirRows, countRows] = await Promise.all([
+    pageIds.length
+      ? sql`SELECT customer_id, warehouse_id, ongkos_kirim FROM customer_warehouse_ongkir WHERE customer_id = ANY(${pageIds})`
+      : Promise.resolve([] as Record<string, unknown>[]),
+    skipCount
+      ? Promise.resolve(null)
+      : sql.unsafe(`SELECT COUNT(*)::int AS c FROM customers ${where}`, params),
+  ])
+
+  const ongkirByCustomer = groupOngkirByCustomer(ongkirRows)
+  const rows = dataRows.map((r) => mapCustomerRow(r, ongkirByCustomer.get(r.id as number) ?? {}))
+
+  if (!countRows) {
+    return {
+      rows,
+      totalCount: CUSTOMERS_TOTAL_COUNT_UNCHANGED,
+      page,
+      pageSize,
+      totalPages: CUSTOMERS_TOTAL_COUNT_UNCHANGED,
+    }
+  }
+
+  const totalCount = Number((countRows as Record<string, unknown>[])[0]?.c ?? 0)
+  return {
+    rows,
+    totalCount,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(totalCount / pageSize)),
+  }
 }
 
 export async function addCustomer(data: CustomerInput, db: DBExecutor = sql): Promise<{ id: number }> {

@@ -1,15 +1,39 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { getCustomers, addCustomer, parseOngkir, withActor } from "@/lib/db"
+import { getCustomers, getCustomersPaginated, addCustomer, parseOngkir, withActor } from "@/lib/db"
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
 
   const ownerError = requireRole(session)
   if (ownerError) return ownerError
 
+  const params = req.nextUrl.searchParams
+
   try {
+    // Paginated page of rows when ?page is present (the dashboard list).
+    if (params.get("page")) {
+      const page = Math.max(1, parseInt(params.get("page")!, 10) || 1)
+      const pageSize = Math.min(100, Math.max(1, parseInt(params.get("pageSize") ?? "25", 10)))
+      const result = await getCustomersPaginated({
+        page,
+        pageSize,
+        search: params.get("search") ?? undefined,
+        instagramId: params.get("instagramId") ?? undefined,
+        name: params.get("name") ?? undefined,
+        whatsapp: params.get("whatsapp") ?? undefined,
+        ekspedisi: params.get("ekspedisi") ?? undefined,
+        dataDiri: params.get("dataDiri") ?? undefined,
+        bankName: params.get("bankName") ?? undefined,
+        sortKey: params.get("sortKey") ?? undefined,
+        sortDir: (params.get("sortDir") as "asc" | "desc") ?? undefined,
+        skipCount: params.get("skipCount") === "true",
+      })
+      return NextResponse.json(result, { headers: { "Cache-Control": "no-store" } })
+    }
+
+    // Otherwise the full list (back-compat for any non-paginated caller).
     const rows = await getCustomers()
     return NextResponse.json({ rows }, { headers: { "Cache-Control": "no-store" } })
   } catch (err) {
