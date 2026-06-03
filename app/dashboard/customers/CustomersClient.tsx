@@ -1,10 +1,17 @@
 "use client"
 
-import TableSkeleton from "@/components/TableSkeleton"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { CustomerRow, WarehouseRow } from "@/lib/db"
-import DataGrid, { type ColumnDef, numericFilter, textContainsFilter } from "@/components/DataGrid"
+import DataGrid, {
+  type ColumnDef,
+  type SortingState,
+  type ColumnFiltersState,
+  type PaginationState,
+} from "@/components/DataGrid"
+import { usePaginatedFetch, type PageData } from "@/hooks/usePaginatedFetch"
 import { fmt, displayIg } from "@/lib/format"
+
+const PAGE_SIZE = 25
 
 const modalInputCls = "w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors disabled:opacity-50"
 
@@ -52,36 +59,90 @@ function rowToDraft(row: CustomerRow): DraftCustomer {
 }
 
 export default function CustomersClient() {
-  const [data, setData] = useState<CustomerRow[] | null>(null)
+  // Current page of rows + total — both come from the server now.
+  const [data, setData] = useState<CustomerRow[]>([])
+  const [totalCount, setTotalCount] = useState(0)
+  // Warehouses drive the dynamic ongkir columns and the modal's per-warehouse
+  // inputs; they can't be derived from one page of customers, so load once.
   const [warehouses, setWarehouses] = useState<WarehouseRow[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [metaError, setMetaError] = useState<string | null>(null)
 
   const [creating, setCreating] = useState(false)
   const [editRow, setEditRow] = useState<CustomerRow | null>(null)
 
-  async function load() {
-    setLoading(true)
-    setError(null)
-    try {
-      const [custRes, whRes] = await Promise.all([
-        fetch("/api/sheets/customers"),
-        fetch("/api/sheets/warehouses"),
-      ])
-      const custJson = await custRes.json()
-      if (!custRes.ok) throw new Error(custJson.error ?? "Failed to load")
-      const whJson = await whRes.json()
-      if (!whRes.ok) throw new Error(whJson.error ?? "Failed to load warehouses")
-      setData(custJson.rows as CustomerRow[])
-      setWarehouses(whJson.rows as WarehouseRow[])
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load")
-    } finally {
-      setLoading(false)
-    }
-  }
+  // Server-side table state.
+  const [sorting, setSorting] = useState<SortingState>([{ id: "instagramId", desc: false }])
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
+  const [globalFilter, setGlobalFilter] = useState("")
+  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: PAGE_SIZE })
 
-  useEffect(() => { load() }, [])
+  const loadMeta = useCallback(async () => {
+    try {
+      const res = await fetch("/api/sheets/warehouses")
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? "Failed to load warehouses")
+      setWarehouses(json.rows as WarehouseRow[])
+    } catch (err) {
+      setMetaError(err instanceof Error ? err.message : "Failed to load")
+    }
+  }, [])
+  useEffect(() => { loadMeta() }, [loadMeta])
+
+  // Text column filters → server query params. The dynamic ongkir columns and
+  // the date column aren't server-filterable, so they're skipped here.
+  const fetchFilters = useMemo<Record<string, string>>(() => {
+    const f: Record<string, string> = {}
+    for (const cf of columnFilters) {
+      const v = String(cf.value ?? "").trim()
+      if (!v) continue
+      if (cf.id === "instagramId") f.instagramId = v
+      else if (cf.id === "name") f.name = v
+      else if (cf.id === "whatsapp") f.whatsapp = v
+      else if (cf.id === "ekspedisi") f.ekspedisi = v
+      else if (cf.id === "dataDiri") f.dataDiri = v
+      else if (cf.id === "bankName") f.bankName = v
+    }
+    return f
+  }, [columnFilters])
+
+  const fetchSort = useMemo(() => {
+    if (sorting.length === 0) return null
+    return { key: sorting[0].id, direction: sorting[0].desc ? ("desc" as const) : ("asc" as const) }
+  }, [sorting])
+
+  const onData = useCallback((d: PageData) => {
+    setData(d.rows as CustomerRow[])
+    setTotalCount(d.totalCount)
+  }, [])
+
+  const { fetchState, refresh } = usePaginatedFetch({
+    endpoint: "/api/sheets/customers",
+    pageSize: PAGE_SIZE,
+    page: pagination.pageIndex + 1,
+    search: globalFilter,
+    filters: fetchFilters,
+    sort: fetchSort,
+    onData,
+  })
+
+  // Stable ref so row-action callbacks captured in column defs always call the
+  // latest refresh.
+  const refreshRef = useRef(refresh)
+  refreshRef.current = refresh
+
+  // Reset to page 1 whenever the query shape (sort / filter / search) changes.
+  const handleSortingChange = useCallback((u: SortingState | ((p: SortingState) => SortingState)) => {
+    setSorting(u)
+    setPagination((p) => ({ ...p, pageIndex: 0 }))
+  }, [])
+  const handleColumnFiltersChange = useCallback((u: ColumnFiltersState | ((p: ColumnFiltersState) => ColumnFiltersState)) => {
+    setColumnFilters(u)
+    setPagination((p) => ({ ...p, pageIndex: 0 }))
+  }, [])
+  const handleGlobalFilterChange = useCallback((u: string | ((p: string) => string)) => {
+    setGlobalFilter(u)
+    setPagination((p) => ({ ...p, pageIndex: 0 }))
+  }, [])
 
   async function handleDelete(row: CustomerRow) {
     if (!confirm(`Delete "${displayIg(row.instagramId)}"? This cannot be undone.`)) return
@@ -89,7 +150,7 @@ export default function CustomersClient() {
       const res = await fetch(`/api/sheets/customers/${row.id}`, { method: "DELETE" })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? "Failed")
-      setData((prev) => prev?.filter((r) => r.id !== row.id) ?? null)
+      refreshRef.current()
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to delete")
     }
@@ -145,11 +206,14 @@ export default function CustomersClient() {
       },
     },
     // One ongkir column per warehouse (origin). Header shows the warehouse code.
+    // Not server-sortable/filterable (it's a per-warehouse join, not a customer
+    // column), so sorting/filtering are disabled on these.
     ...warehouses.map((wh): ColumnDef<CustomerRow, unknown> => ({
       id: `ongkir_${wh.id}`,
       accessorFn: (row) => row.ongkir?.[wh.id] ?? 0,
       header: `Ongkir ${wh.code}`,
-      filterFn: "numeric",
+      enableSorting: false,
+      enableColumnFilter: false,
       meta: { align: "right" },
       cell: ({ getValue }) => {
         const v = getValue<number>()
@@ -242,11 +306,11 @@ export default function CustomersClient() {
     <>
       <button
         type="button"
-        onClick={load}
-        disabled={loading}
+        onClick={() => { refreshRef.current(); loadMeta() }}
+        disabled={fetchState.loading}
         className="text-xs text-gray-500 hover:text-brand disabled:opacity-50 transition-colors px-3 py-1.5 rounded-lg border border-cream-border hover:border-brand"
       >
-        {loading ? "…" : "Refresh"}
+        {fetchState.loading ? "…" : "Refresh"}
       </button>
       <button
         type="button"
@@ -258,34 +322,41 @@ export default function CustomersClient() {
     </>
   )
 
+  const errorMsg = fetchState.error || metaError
+
   return (
     <div className="flex flex-col gap-6">
-      {loading && <TableSkeleton />}
-      {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+      {errorMsg && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{errorMsg}</div>
       )}
-      {!loading && !error && data && (
-        <DataGrid
-          data={data}
-          columns={columns}
-          pageSize={25}
-          searchPlaceholder="Search customers…"
-          toolbarExtra={toolbarExtra}
-          getRowId={(row) => String(row.id)}
-          initialVisibility={{ updatedAt: false }}
-          initialSorting={[{ id: "instagramId", desc: false }]}
-        />
-      )}
+
+      <DataGrid
+        data={data}
+        columns={columns}
+        getRowId={(row) => String(row.id)}
+        searchPlaceholder="Search customers…"
+        toolbarExtra={toolbarExtra}
+        initialVisibility={{ updatedAt: false }}
+        serverSide={{
+          rowCount: totalCount,
+          loading: fetchState.loading,
+          sorting,
+          onSortingChange: handleSortingChange,
+          columnFilters,
+          onColumnFiltersChange: handleColumnFiltersChange,
+          globalFilter,
+          onGlobalFilterChange: handleGlobalFilterChange,
+          pagination,
+          onPaginationChange: setPagination,
+        }}
+      />
 
       {creating && (
         <CustomerModal
           mode="create"
           warehouses={warehouses}
           initial={EMPTY_DRAFT}
-          onSaved={(row) => {
-            setData((prev) => prev ? [...prev, row].sort((a, b) => a.instagramId.localeCompare(b.instagramId)) : [row])
-            setCreating(false)
-          }}
+          onSaved={() => { setCreating(false); refreshRef.current() }}
           onCancel={() => setCreating(false)}
         />
       )}
@@ -296,10 +367,7 @@ export default function CustomersClient() {
           rowId={editRow.id}
           warehouses={warehouses}
           initial={rowToDraft(editRow)}
-          onSaved={(row) => {
-            setData((prev) => prev?.map((r) => r.id === row.id ? row : r) ?? null)
-            setEditRow(null)
-          }}
+          onSaved={() => { setEditRow(null); refreshRef.current() }}
           onCancel={() => setEditRow(null)}
         />
       )}
@@ -321,7 +389,7 @@ function CustomerModal({
   rowId?: number
   warehouses: WarehouseRow[]
   initial: DraftCustomer
-  onSaved: (row: CustomerRow) => void
+  onSaved: () => void
   onCancel: () => void
 }) {
   const [draft, setDraft] = useState<DraftCustomer>(initial)
@@ -380,14 +448,9 @@ function CustomerModal({
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? "Failed")
 
-      const id = mode === "create" ? (json.id as number) : rowId!
-      const now = new Date().toISOString()
-      onSaved({
-        id,
-        ...payload,
-        createdAt: now,
-        updatedAt: now,
-      })
+      // The list re-fetches the current page from the server (onSaved → refresh),
+      // so we don't reconstruct the row optimistically here.
+      onSaved()
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Failed to save")
     } finally {
@@ -547,7 +610,3 @@ function CustomerModal({
     </div>
   )
 }
-
-// Silence unused-import warning for filter symbols expected by DataGrid types
-void numericFilter
-void textContainsFilter
