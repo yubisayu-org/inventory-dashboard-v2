@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireOwner } from "@/lib/api"
-import { getArrivalList, markProductArrived, recordWrongProduct, withActor } from "@/lib/db"
+import { getArrivalList, markProductArrived, recordWrongProduct, cancelOrderLines, withActor } from "@/lib/db"
 
 export async function GET(req: NextRequest) {
   const { session, error: authError } = await requireSession()
@@ -51,6 +51,22 @@ export async function POST(req: NextRequest) {
         recordWrongProduct({ event, expectedItem, receivedItem, qty, cancelOrderIds }, tx),
       )
       return NextResponse.json({ success: true, ...result })
+    }
+
+    // Broken path: item arrived damaged and can't be sold. Cancel the chosen
+    // customer orders (refunds auto-materialize if paid). Nothing is added to
+    // ready stock — it's a loss, not sellable.
+    if (body.action === "broken") {
+      const cancelOrderIds = Array.isArray(body.cancelOrderIds)
+        ? body.cancelOrderIds.filter((n: unknown) => Number.isInteger(n)) as number[]
+        : []
+      if (cancelOrderIds.length === 0) {
+        return NextResponse.json({ error: "Select at least one order to cancel" }, { status: 400 })
+      }
+      const cancelledOrders = await withActor(session.user.email, (tx) =>
+        cancelOrderLines(cancelOrderIds, tx),
+      )
+      return NextResponse.json({ success: true, cancelledOrders })
     }
 
     const { event, productId, quantityArrived } = body

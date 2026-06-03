@@ -478,9 +478,12 @@ function ArriveModal({
   onSuccess: () => void
 }) {
   const [qty, setQty] = useState(String(item.totalPending))
-  const [wrongProduct, setWrongProduct] = useState(false)
+  // "arrive" = normal receipt; "wrong" = different SKU sent; "broken" = arrived
+  // damaged/unsellable. Wrong & broken both cancel + refund the picked orders;
+  // only "wrong" adds the received SKU to ready stock.
+  const [mode, setMode] = useState<"arrive" | "wrong" | "broken">("arrive")
   const [receivedItem, setReceivedItem] = useState("")
-  // Which waiting customer orders to cancel when the wrong product arrives —
+  // Which waiting customer orders to cancel on a wrong/broken delivery —
   // default all of them (the expected item won't be fulfilled).
   const [cancelIds, setCancelIds] = useState<Set<number>>(() => new Set(item.orders.map((o) => o.id)))
   const [saving, setSaving] = useState(false)
@@ -492,11 +495,11 @@ function ArriveModal({
   const wrongValid = receivedItem.trim() !== "" && receivedItem !== item.productName
 
   async function handleSubmit() {
-    if (quantityArrived < 1) return
     setSaving(true)
     setSaveError(null)
     try {
-      if (wrongProduct) {
+      if (mode === "wrong") {
+        if (quantityArrived < 1) { setSaveError("Enter how many units arrived."); return }
         if (!wrongValid) {
           setSaveError(
             receivedItem === item.productName
@@ -523,7 +526,22 @@ function ArriveModal({
         })
         const data = await res.json()
         if (!res.ok) throw new Error(data.error ?? "Failed to log wrong product")
+      } else if (mode === "broken") {
+        if (cancelIds.size === 0) { setSaveError("Select at least one order to cancel."); return }
+        // Broken on arrival, unsellable: cancel the chosen orders (refunds
+        // auto-materialize if paid). Nothing goes to ready stock.
+        const res = await fetch("/api/sheets/arrival-list", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "broken",
+            cancelOrderIds: [...cancelIds],
+          }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error ?? "Failed to cancel broken orders")
       } else {
+        if (quantityArrived < 1) { setSaveError("Enter how many units arrived."); return }
         const res = await fetch("/api/sheets/arrival-list", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -568,33 +586,61 @@ function ArriveModal({
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-medium text-gray-500">
-            {wrongProduct ? "Units received (wrong product)" : "Units arrived"}{" "}
-            <span className="text-gray-400">(pending: {item.totalPending})</span>
-          </label>
-          <input
-            type="number"
-            min="1"
-            value={qty}
-            onChange={(e) => setQty(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") handleSubmit(); if (e.key === "Escape") onClose() }}
-            autoFocus
-            className="border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
-          />
+          <span className="text-xs font-medium text-gray-500">Problem with this delivery?</span>
+          <div className="flex rounded-lg border border-cream-border overflow-hidden text-xs">
+            {([
+              ["arrive", "Arrived OK"],
+              ["wrong", "Wrong product"],
+              ["broken", "Broken"],
+            ] as const).map(([m, label]) => {
+              const active = mode === m
+              const activeCls = m === "arrive" ? "bg-blue-600 text-white" : "bg-yellow-500 text-white"
+              return (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => { setMode(m); setSaveError(null) }}
+                  className={`flex-1 px-2 py-1.5 transition-colors ${active ? `${activeCls} font-medium` : "bg-white text-gray-600 hover:bg-cream"}`}
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </div>
         </div>
 
-        {wrongProduct && (
+        {mode !== "broken" && (
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium text-gray-500">
+              {mode === "wrong" ? "Units received (wrong product)" : "Units arrived"}{" "}
+              <span className="text-gray-400">(pending: {item.totalPending})</span>
+            </label>
+            <input
+              type="number"
+              min="1"
+              value={qty}
+              onChange={(e) => setQty(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleSubmit(); if (e.key === "Escape") onClose() }}
+              autoFocus
+              className="border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+            />
+          </div>
+        )}
+
+        {mode !== "arrive" && (
           <>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-yellow-700">Received item (what supplier sent)</label>
-              <SearchableSelect
-                value={receivedItem}
-                onChange={(v) => { setReceivedItem(v); setSaveError(null) }}
-                options={itemOptions}
-                placeholder="Search item…"
-              />
-              <p className="text-[11px] text-gray-400">Logged to Excess Purchase as ready stock.</p>
-            </div>
+            {mode === "wrong" && (
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium text-yellow-700">Received item (what supplier sent)</label>
+                <SearchableSelect
+                  value={receivedItem}
+                  onChange={(v) => { setReceivedItem(v); setSaveError(null) }}
+                  options={itemOptions}
+                  placeholder="Search item…"
+                />
+                <p className="text-[11px] text-gray-400">Logged to Excess Purchase as ready stock.</p>
+              </div>
+            )}
 
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-yellow-700">Cancel &amp; refund affected orders</label>
@@ -620,13 +666,15 @@ function ArriveModal({
                 ))}
               </div>
               <p className="text-[11px] text-gray-400">
-                Checked orders are removed from the customer&rsquo;s invoice; a refund appears in the Refunds page if they already paid. Unchecked orders stay pending.
+                {mode === "broken"
+                  ? "Broken units can’t be sold — checked orders are removed from the invoice and refunded if paid. Nothing is added to ready stock."
+                  : "Checked orders are removed from the customer’s invoice; a refund appears in the Refunds page if they already paid. Unchecked orders stay pending."}
               </p>
             </div>
           </>
         )}
 
-        {!wrongProduct && quantityArrived > 0 && (
+        {mode === "arrive" && quantityArrived > 0 && (
           <div className="flex flex-col gap-2 text-xs">
             {preview.filled.length > 0 && (
               <div>
@@ -672,16 +720,6 @@ function ArriveModal({
           </div>
         )}
 
-        <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={wrongProduct}
-            onChange={(e) => { setWrongProduct(e.target.checked); setSaveError(null) }}
-            className="accent-yellow-600"
-          />
-          Supplier sent wrong product
-        </label>
-
         <div className="flex items-center justify-end gap-2">
           {saveError && <p className="text-xs text-red-500 mr-auto">{saveError}</p>}
           <button
@@ -695,10 +733,20 @@ function ArriveModal({
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={saving || quantityArrived < 1 || (wrongProduct && !wrongValid)}
-            className={`px-4 py-1.5 rounded-lg text-white text-sm font-medium disabled:opacity-50 transition-colors ${wrongProduct ? "bg-yellow-600 hover:bg-yellow-700" : "bg-blue-600 hover:bg-blue-700"}`}
+            disabled={
+              saving ||
+              (mode === "broken" ? cancelIds.size === 0 : quantityArrived < 1) ||
+              (mode === "wrong" && !wrongValid)
+            }
+            className={`px-4 py-1.5 rounded-lg text-white text-sm font-medium disabled:opacity-50 transition-colors ${mode === "arrive" ? "bg-blue-600 hover:bg-blue-700" : "bg-yellow-600 hover:bg-yellow-700"}`}
           >
-            {saving ? "Saving…" : wrongProduct ? "Log Wrong Product" : "Mark as Arrived"}
+            {saving
+              ? "Saving…"
+              : mode === "wrong"
+                ? "Log Wrong Product"
+                : mode === "broken"
+                  ? "Cancel & Refund"
+                  : "Mark as Arrived"}
           </button>
         </div>
       </div>

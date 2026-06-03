@@ -519,6 +519,22 @@ export async function getExcessPurchaseRows(): Promise<ExcessRow[]> {
 }
 
 /**
+ * Zero the given order lines (unit + unit_buy → 0), keeping the rows for
+ * history. Used when an order can't be fulfilled (wrong/broken delivery): each
+ * invoice drops, so the existing overpayment materialization auto-creates a
+ * refund for any customer who already paid. Returns rows affected.
+ */
+export async function cancelOrderLines(orderIds: number[], db: DBExecutor = sql): Promise<number> {
+  if (orderIds.length === 0) return 0
+  const res = await db`
+    UPDATE orders
+    SET unit = 0, unit_buy = 0, updated_at = NOW()
+    WHERE id = ANY(${orderIds})
+  `
+  return res.count
+}
+
+/**
  * Wrong-product delivery for overseas events where the expected item can't be
  * re-ordered. In one audited transaction:
  *  - log the received SKU to excess_purchase as ready stock (reason=wrong_product), and
@@ -551,16 +567,7 @@ export async function recordWrongProduct(
     )
   }
 
-  let cancelledOrders = 0
-  if (data.cancelOrderIds.length > 0) {
-    const res = await db`
-      UPDATE orders
-      SET unit = 0, unit_buy = 0, updated_at = NOW()
-      WHERE id = ANY(${data.cancelOrderIds})
-    `
-    cancelledOrders = res.count
-  }
-
+  const cancelledOrders = await cancelOrderLines(data.cancelOrderIds, db)
   return { cancelledOrders, excessUnits: data.qty }
 }
 
