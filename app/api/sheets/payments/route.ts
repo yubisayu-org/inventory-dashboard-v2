@@ -1,15 +1,40 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole, isAdmin } from "@/lib/api"
-import { getPaymentRows, addPayment, withActor } from "@/lib/db"
+import { getPaymentRows, getPaymentsPaginated, addPayment, withActor } from "@/lib/db"
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
 
   const roleError = requireRole(session)
   if (roleError) return roleError
 
+  const params = req.nextUrl.searchParams
+
   try {
+    // Paginated page of rows when ?page is present (the dashboard table).
+    if (params.get("page")) {
+      const page = Math.max(1, parseInt(params.get("page")!, 10) || 1)
+      const pageSize = Math.min(100, Math.max(1, parseInt(params.get("pageSize") ?? "25", 10)))
+      const checkedParam = params.get("isChecked")
+      const result = await getPaymentsPaginated({
+        page,
+        pageSize,
+        search: params.get("search") ?? undefined,
+        event: params.get("event") ?? undefined,
+        customer: params.get("customer") ?? undefined,
+        account: params.get("account") ?? undefined,
+        remarks: params.get("remarks") ?? undefined,
+        kind: params.get("kind") ?? undefined,
+        isChecked: checkedParam == null ? undefined : checkedParam === "true",
+        sortKey: params.get("sortKey") ?? undefined,
+        sortDir: (params.get("sortDir") as "asc" | "desc") ?? undefined,
+        skipCount: params.get("skipCount") === "true",
+      })
+      return NextResponse.json(result, { headers: { "Cache-Control": "no-store" } })
+    }
+
+    // Otherwise the full list (back-compat for any non-paginated caller).
     const rows = await getPaymentRows()
     return NextResponse.json({ rows }, { headers: { "Cache-Control": "no-store" } })
   } catch (err) {

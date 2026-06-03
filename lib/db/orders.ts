@@ -373,6 +373,99 @@ export async function deleteFormRow(rowNumber: number, db: DBExecutor = sql): Pr
   await db`DELETE FROM orders WHERE id = ${rowNumber}`
 }
 
+export interface ReturnToExcessResult {
+  /** Bought units moved into excess_purchase. */
+  excessUnits: number
+  /** Whether the order row was removed entirely (quantity hit 0). */
+  deleted: boolean
+  /** The order's quantity after the operation (0 when deleted). */
+  newUnit: number
+}
+
+/**
+ * Reverse a mistaken order: remove `removeUnits` from an order row and bank the
+ * bought-but-not-yet-arrived surplus into excess_purchase — atomically.
+ *
+ * Handles both mistake shapes:
+ *  - doubled quantity on one row → the row shrinks; surplus bought units → excess.
+ *  - a whole duplicate row       → removing its full quantity deletes the row;
+ *                                  its bought units → excess.
+ *
+ * Only bought units that have NOT progressed to arrived/shipped/held can move
+ * to excess (stock already committed to this customer can't be reassigned), so
+ * the order may not shrink below what's already arrived/shipped/held. Run via
+ * withActor so the read-modify-write is one audited transaction.
+ */
+export async function returnOrderUnitsToExcess(
+  rowNumber: number,
+  removeUnits: number,
+  db: DBExecutor = sql,
+): Promise<ReturnToExcessResult> {
+  if (!Number.isInteger(removeUnits) || removeUnits < 1) {
+    throw new Error("removeUnits must be a positive integer")
+  }
+
+  const rows = await db`
+    SELECT o.event, o.unit, o.unit_buy, o.unit_arrive, o.unit_ship, o.unit_hold,
+           o.receipt, p.name AS product_name
+    FROM orders o
+    JOIN products p ON p.id = o.product_id
+    WHERE o.id = ${rowNumber}
+    FOR UPDATE OF o
+  `
+  if (rows.length === 0) throw new Error("Order not found")
+  const r = rows[0]
+
+  const unit = Number(r.unit) || 0
+  const unitBuy = Number(r.unit_buy) || 0
+  const unitArrive = Number(r.unit_arrive) || 0
+  const unitShip = Number(r.unit_ship) || 0
+  const unitHold = Number(r.unit_hold) || 0
+
+  // Units already received/committed to this customer can't be reassigned.
+  const committed = Math.max(unitArrive, unitShip + unitHold)
+  const newUnit = unit - removeUnits
+  if (newUnit < committed) {
+    throw new Error(
+      `Cannot remove ${removeUnits} unit(s): ${committed} already arrived/shipped/held on this order.`,
+    )
+  }
+
+  // Bought units the shrunk order no longer needs become excess. Because
+  // newUnit >= committed >= unitArrive, this never moves arrived stock.
+  const excessUnits = Math.max(0, unitBuy - newUnit)
+  const receipt = (r.receipt as string) ?? ""
+
+  if (excessUnits > 0) {
+    await db`
+      INSERT INTO excess_purchase (event, items, unit_buy, receipt)
+      VALUES (${r.event as string}, ${r.product_name as string}, ${excessUnits}, ${receipt})
+    `
+  }
+
+  if (newUnit <= 0) {
+    await db`DELETE FROM orders WHERE id = ${rowNumber}`
+    return { excessUnits, deleted: true, newUnit: 0 }
+  }
+
+  // Drop unit_buy to the row's new (smaller) need only when units actually moved
+  // to excess; otherwise leave unit_buy untouched (e.g. removing unbought units).
+  if (excessUnits > 0) {
+    await db`
+      UPDATE orders
+      SET unit = ${newUnit}, unit_buy = ${unitBuy - excessUnits}, updated_at = NOW()
+      WHERE id = ${rowNumber}
+    `
+  } else {
+    await db`
+      UPDATE orders
+      SET unit = ${newUnit}, updated_at = NOW()
+      WHERE id = ${rowNumber}
+    `
+  }
+  return { excessUnits, deleted: false, newUnit }
+}
+
 // ─── Bulk updates ───────────────────────────────────────────────────────────
 
 export async function bulkUpdatePurchase(updates: PurchaseUpdate[], db: DBExecutor = sql): Promise<void> {
@@ -423,6 +516,59 @@ export async function getExcessPurchaseRows(): Promise<ExcessRow[]> {
     createdAt: tsToString(r.created_at),
     updatedAt: tsToString(r.updated_at),
   }))
+}
+
+/**
+ * Zero the given order lines (unit + unit_buy → 0), keeping the rows for
+ * history. Used when an order can't be fulfilled (wrong/broken delivery): each
+ * invoice drops, so the existing overpayment materialization auto-creates a
+ * refund for any customer who already paid. Returns rows affected.
+ */
+export async function cancelOrderLines(orderIds: number[], db: DBExecutor = sql): Promise<number> {
+  if (orderIds.length === 0) return 0
+  const res = await db`
+    UPDATE orders
+    SET unit = 0, unit_buy = 0, updated_at = NOW()
+    WHERE id = ANY(${orderIds})
+  `
+  return res.count
+}
+
+/**
+ * Wrong-product delivery for overseas events where the expected item can't be
+ * re-ordered. In one audited transaction:
+ *  - log the received SKU to excess_purchase as ready stock (reason=wrong_product), and
+ *  - zero the chosen customer orders (unit + unit_buy → 0, rows kept for history)
+ *    so the expected item drops off their invoices.
+ * No refund is created here: once the invoice drops, the existing overpayment
+ * materialization auto-creates a refund for any customer who already paid.
+ */
+export async function recordWrongProduct(
+  data: {
+    event: string
+    expectedItem: string
+    receivedItem: string
+    qty: number
+    cancelOrderIds: number[]
+  },
+  db: DBExecutor = sql,
+): Promise<{ cancelledOrders: number; excessUnits: number }> {
+  if (data.qty > 0 && data.receivedItem.trim()) {
+    await appendExcessPurchase(
+      [{
+        event: data.event,
+        items: data.receivedItem,
+        unitBuy: data.qty,
+        receipt: "",
+        reason: "wrong_product",
+        expectedItem: data.expectedItem,
+      }],
+      db,
+    )
+  }
+
+  const cancelledOrders = await cancelOrderLines(data.cancelOrderIds, db)
+  return { cancelledOrders, excessUnits: data.qty }
 }
 
 export async function appendExcessPurchase(
