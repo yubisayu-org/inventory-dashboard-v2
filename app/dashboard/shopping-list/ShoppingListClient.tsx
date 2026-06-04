@@ -763,7 +763,7 @@ function ConfirmPurchasePanel({
                 return (
                   <div key={k} className="flex items-center gap-3">
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm text-foreground truncate">{it.productName}</div>
+                      <div className="text-sm text-foreground break-words">{it.productName}</div>
                       {it.store && <div className="text-[11px] text-gray-400">{it.store}</div>}
                     </div>
                     <input
