@@ -135,7 +135,7 @@ export default function ArriveBulkModal({
           <div>
             <h3 className="text-sm font-semibold text-foreground">Add Bulk Arrival</h3>
             <p className="text-xs text-gray-500 mt-0.5">
-              Select an event, add items + quantities. Extra units beyond demand are logged as overship in Excess Purchase. Toggle &ldquo;wrong product&rdquo; on a line if the supplier shipped a different SKU.
+              Select an event, add items + quantities. Extra units beyond demand are logged as overship in Inventory. Toggle &ldquo;wrong product&rdquo; on a line if the supplier shipped a different SKU.
             </p>
           </div>
           <button
@@ -323,9 +323,9 @@ export default function ArriveBulkModal({
                       <span className="text-xs text-yellow-700">
                         <strong>{itemResult.unmatched}</strong> unit{itemResult.unmatched === 1 ? "" : "s"} →{" "}
                         {itemResult.loggedAs === "wrong_product"
-                          ? "logged as wrong product in Excess Purchase"
+                          ? "logged as wrong product in Inventory"
                           : itemResult.loggedAs === "overship"
-                            ? "logged as overship in Excess Purchase"
+                            ? "logged as overship in Inventory"
                             : "could not be matched to any order"}
                       </span>
                     </div>

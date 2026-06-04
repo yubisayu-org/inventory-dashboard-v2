@@ -527,19 +527,23 @@ function ArriveModal({
         const data = await res.json()
         if (!res.ok) throw new Error(data.error ?? "Failed to log wrong product")
       } else if (mode === "broken") {
-        if (cancelIds.size === 0) { setSaveError("Select at least one order to cancel."); return }
-        // Broken on arrival, unsellable: cancel the chosen orders (refunds
-        // auto-materialize if paid). Nothing goes to ready stock.
+        if (quantityArrived < 1) { setSaveError("Enter how many units arrived broken."); return }
+        // Broken on arrival: log the broken units to Inventory (flagged broken,
+        // never assignable to orders) and cancel the chosen customer orders
+        // (refunds auto-materialize if paid).
         const res = await fetch("/api/sheets/arrival-list", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "broken",
+            event: item.event,
+            productName: item.productName,
+            qty: quantityArrived,
             cancelOrderIds: [...cancelIds],
           }),
         })
         const data = await res.json()
-        if (!res.ok) throw new Error(data.error ?? "Failed to cancel broken orders")
+        if (!res.ok) throw new Error(data.error ?? "Failed to record broken units")
       } else {
         if (quantityArrived < 1) { setSaveError("Enter how many units arrived."); return }
         const res = await fetch("/api/sheets/arrival-list", {
@@ -609,23 +613,21 @@ function ArriveModal({
           </div>
         </div>
 
-        {mode !== "broken" && (
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-gray-500">
-              {mode === "wrong" ? "Units received (wrong product)" : "Units arrived"}{" "}
-              <span className="text-gray-400">(pending: {item.totalPending})</span>
-            </label>
-            <input
-              type="number"
-              min="1"
-              value={qty}
-              onChange={(e) => setQty(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") handleSubmit(); if (e.key === "Escape") onClose() }}
-              autoFocus
-              className="border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
-            />
-          </div>
-        )}
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-medium text-gray-500">
+            {mode === "wrong" ? "Units received (wrong product)" : mode === "broken" ? "Units broken" : "Units arrived"}{" "}
+            <span className="text-gray-400">(pending: {item.totalPending})</span>
+          </label>
+          <input
+            type="number"
+            min="1"
+            value={qty}
+            onChange={(e) => setQty(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") handleSubmit(); if (e.key === "Escape") onClose() }}
+            autoFocus
+            className="border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+          />
+        </div>
 
         {mode !== "arrive" && (
           <>
@@ -638,7 +640,7 @@ function ArriveModal({
                   options={itemOptions}
                   placeholder="Search item…"
                 />
-                <p className="text-[11px] text-gray-400">Logged to Excess Purchase as ready stock.</p>
+                <p className="text-[11px] text-gray-400">Logged to Inventory as ready stock.</p>
               </div>
             )}
 
@@ -667,7 +669,7 @@ function ArriveModal({
               </div>
               <p className="text-[11px] text-gray-400">
                 {mode === "broken"
-                  ? "Broken units can’t be sold — checked orders are removed from the invoice and refunded if paid. Nothing is added to ready stock."
+                  ? "Broken units are logged to Inventory (flagged “broken”, not sellable). Checked orders are removed from the invoice and refunded if paid; unchecked stay pending."
                   : "Checked orders are removed from the customer’s invoice; a refund appears in the Refunds page if they already paid. Unchecked orders stay pending."}
               </p>
             </div>
@@ -735,7 +737,7 @@ function ArriveModal({
             onClick={handleSubmit}
             disabled={
               saving ||
-              (mode === "broken" ? cancelIds.size === 0 : quantityArrived < 1) ||
+              quantityArrived < 1 ||
               (mode === "wrong" && !wrongValid)
             }
             className={`px-4 py-1.5 rounded-lg text-white text-sm font-medium disabled:opacity-50 transition-colors ${mode === "arrive" ? "bg-blue-600 hover:bg-blue-700" : "bg-yellow-600 hover:bg-yellow-700"}`}
@@ -745,7 +747,7 @@ function ArriveModal({
               : mode === "wrong"
                 ? "Log Wrong Product"
                 : mode === "broken"
-                  ? "Cancel & Refund"
+                  ? "Log Broken & Cancel"
                   : "Mark as Arrived"}
           </button>
         </div>
