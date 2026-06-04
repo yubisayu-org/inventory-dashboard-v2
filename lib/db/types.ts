@@ -48,7 +48,7 @@ export interface FormRow {
   hasAddress: boolean
 }
 
-export type ExcessReason = "overbuy" | "overship" | "wrong_product"
+export type ExcessReason = "overbuy" | "overship" | "wrong_product" | "broken"
 
 export interface ExcessRow {
   rowNumber: number
@@ -403,10 +403,13 @@ export interface AdjustmentRow {
 
 /** Closed set of operational-expense categories — mirrors the dashboard's
  *  fixed dropdown and the operational_expenses.category CHECK constraint. */
-export type ExpenseCategory = "Flight" | "Lodging" | "Cargo" | "Meal" | "Transport" | "Shop"
+export type ExpenseCategory =
+  | "Flight" | "Lodging" | "Cargo" | "Meal" | "Transport" | "Shop"
+  | "Supplies" | "Delivery" | "Personal" | "Payroll" | "Dividend"
 
 export const EXPENSE_CATEGORIES: ExpenseCategory[] = [
   "Flight", "Lodging", "Cargo", "Meal", "Transport", "Shop",
+  "Supplies", "Delivery", "Personal", "Payroll", "Dividend",
 ]
 
 /** One operational expense row (replaces the "Operational_2026" sheet). */

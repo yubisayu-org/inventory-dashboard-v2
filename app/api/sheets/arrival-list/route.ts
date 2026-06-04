@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireOwner } from "@/lib/api"
-import { getArrivalList, markProductArrived, recordWrongProduct, cancelOrderLines, withActor } from "@/lib/db"
+import { getArrivalList, markProductArrived, recordWrongProduct, recordBrokenArrival, withActor } from "@/lib/db"
 
 export async function GET(req: NextRequest) {
   const { session, error: authError } = await requireSession()
@@ -53,20 +53,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, ...result })
     }
 
-    // Broken path: item arrived damaged and can't be sold. Cancel the chosen
-    // customer orders (refunds auto-materialize if paid). Nothing is added to
-    // ready stock — it's a loss, not sellable.
+    // Broken path: the expected item arrived damaged. Log the broken units to
+    // inventory flagged 'broken' (tracked but never assignable to orders) and
+    // cancel the chosen customer orders (refunds auto-materialize if paid).
     if (body.action === "broken") {
+      const { event, productName, qty } = body
+      if (!event || !productName || typeof qty !== "number" || qty < 1) {
+        return NextResponse.json(
+          { error: "event, productName and qty are required" },
+          { status: 400 },
+        )
+      }
       const cancelOrderIds = Array.isArray(body.cancelOrderIds)
         ? body.cancelOrderIds.filter((n: unknown) => Number.isInteger(n)) as number[]
         : []
-      if (cancelOrderIds.length === 0) {
-        return NextResponse.json({ error: "Select at least one order to cancel" }, { status: 400 })
-      }
-      const cancelledOrders = await withActor(session.user.email, (tx) =>
-        cancelOrderLines(cancelOrderIds, tx),
+      const result = await withActor(session.user.email, (tx) =>
+        recordBrokenArrival({ event, productName, qty, cancelOrderIds }, tx),
       )
-      return NextResponse.json({ success: true, cancelledOrders })
+      return NextResponse.json({ success: true, ...result })
     }
 
     const { event, productId, quantityArrived } = body

@@ -23,7 +23,9 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({})) as { receipt?: string }
     const receipt = body.receipt ? String(body.receipt).trim() : ""
 
-    const excessRows = await getExcessPurchaseRows()
+    // Broken inventory is tracked but never sellable, so exclude it from the
+    // apply-to-orders working set entirely (not matched, not deleted/updated).
+    const excessRows = (await getExcessPurchaseRows()).filter((r) => r.reason !== "broken")
 
     if (excessRows.length === 0) {
       return NextResponse.json({ results: [] })

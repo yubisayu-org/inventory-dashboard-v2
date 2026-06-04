@@ -10,12 +10,14 @@ const REASON_LABEL: Record<ExcessReason, string> = {
   overbuy: "Overbuy",
   overship: "Overship",
   wrong_product: "Wrong product",
+  broken: "Broken",
 }
 
 const REASON_CLASS: Record<ExcessReason, string> = {
   overbuy: "bg-gray-100 text-gray-700 border-gray-200",
   overship: "bg-blue-50 text-blue-700 border-blue-200",
   wrong_product: "bg-yellow-50 text-yellow-700 border-yellow-200",
+  broken: "bg-red-50 text-red-700 border-red-200",
 }
 
 function ReasonBadge({ reason }: { reason: ExcessReason }) {
@@ -221,6 +223,10 @@ export default function ExcessTable() {
           const r = row.original
           const busy = busyRow === r.rowNumber
           const isPending = pendingRow === r.rowNumber
+          // Broken stock isn't sellable — no apply action.
+          if (r.reason === "broken") {
+            return <div className="text-right text-[11px] text-gray-400 italic">Not sellable</div>
+          }
           return (
             <div className="text-right">
               <button
