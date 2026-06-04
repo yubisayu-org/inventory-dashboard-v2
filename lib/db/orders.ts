@@ -571,6 +571,39 @@ export async function recordWrongProduct(
   return { cancelledOrders, excessUnits: data.qty }
 }
 
+/**
+ * Broken on arrival: the expected product arrived but is damaged/unsellable.
+ * Log the broken units to inventory (excess_purchase) flagged reason 'broken'
+ * — so they're tracked but NOT assignable to orders (the apply-to-orders flow
+ * skips broken rows) — and cancel the chosen customer orders (refunds
+ * auto-materialize if paid). Mirrors recordWrongProduct.
+ */
+export async function recordBrokenArrival(
+  data: {
+    event: string
+    productName: string
+    qty: number
+    cancelOrderIds: number[]
+  },
+  db: DBExecutor = sql,
+): Promise<{ cancelledOrders: number; excessUnits: number }> {
+  if (data.qty > 0 && data.productName.trim()) {
+    await appendExcessPurchase(
+      [{
+        event: data.event,
+        items: data.productName,
+        unitBuy: data.qty,
+        receipt: "",
+        reason: "broken",
+      }],
+      db,
+    )
+  }
+
+  const cancelledOrders = await cancelOrderLines(data.cancelOrderIds, db)
+  return { cancelledOrders, excessUnits: data.qty }
+}
+
 export async function appendExcessPurchase(
   rows: {
     event: string

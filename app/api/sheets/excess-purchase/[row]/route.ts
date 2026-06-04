@@ -35,6 +35,9 @@ export async function POST(req: NextRequest, { params }: Params) {
     if (!excessRow) {
       return NextResponse.json({ error: "Excess row not found" }, { status: 404 })
     }
+    if (excessRow.reason === "broken") {
+      return NextResponse.json({ error: "Broken inventory can't be applied to orders" }, { status: 400 })
+    }
 
     // Only this excess row's event is matched below, so scope the read to it
     // rather than fetching every order in the table.

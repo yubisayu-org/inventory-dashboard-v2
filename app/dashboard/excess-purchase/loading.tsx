@@ -5,7 +5,7 @@ import TableSkeleton from "@/components/TableSkeleton"
 export default function Loading() {
   return (
     <PageShell>
-      <PageHeader title="Excess Purchase" subtitle="Items purchased beyond total ordered quantity" />
+      <PageHeader title="Inventory" subtitle="Ready stock — overbuys, overships, wrong-product and broken receipts" />
       <TableSkeleton />
     </PageShell>
   )

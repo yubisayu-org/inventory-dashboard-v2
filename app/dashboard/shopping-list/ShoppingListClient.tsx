@@ -36,6 +36,11 @@ function groupItems(items: ShoppingListItem[]) {
   return map
 }
 
+/** Stable selection key: event + productId (productId repeats across events). */
+function selKey(item: Pick<ShoppingListItem, "event" | "productId">): string {
+  return `${item.event}|${item.productId}`
+}
+
 type RowDescriptor =
   | { type: "event-collapsed"; event: string; totalItems: number }
   | { type: "store-collapsed"; event: string; store: string; totalItems: number; showEvent: boolean; eventRowSpan?: number }
@@ -249,6 +254,9 @@ export default function ShoppingListClient() {
   const [purchaseOpen, setPurchaseOpen] = useState(false)
   const [collapsedEvents, setCollapsedEvents] = useState<Set<string>>(new Set())
   const [collapsedStores, setCollapsedStores] = useState<Set<string>>(new Set())
+  // Multi-select for marking several items purchased under one shared receipt.
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [confirmOpen, setConfirmOpen] = useState(false)
 
   const fetchItems = useCallback((event?: string, silent = false) => {
     if (!silent) setLoading(true)
@@ -281,6 +289,24 @@ export default function ShoppingListClient() {
   function handleBoughtSuccess() {
     fetchItems(selectedEvent || undefined, true)
   }
+
+  // Resolve selected keys back to live items (off `items`, not `filteredItems`,
+  // so a search-hidden selection still submits). Drops anything no longer pending.
+  const selectedItems = useMemo(
+    () => items.filter((i) => selected.has(selKey(i))),
+    [items, selected],
+  )
+
+  function toggleSelect(item: ShoppingListItem) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      const k = selKey(item)
+      if (next.has(k)) next.delete(k)
+      else next.add(k)
+      return next
+    })
+  }
+  function clearSelection() { setSelected(new Set()) }
 
   function toggleEvent(event: string) {
     setCollapsedEvents((prev) => {
@@ -346,7 +372,7 @@ export default function ShoppingListClient() {
         <div style={{ width: "12rem" }}>
           <EventSelect
             value={selectedEvent}
-            onChange={setSelectedEvent}
+            onChange={(v) => { setSelectedEvent(v); clearSelection() }}
             events={options?.events ?? []}
             placeholder="All Events"
             clearable
@@ -451,15 +477,26 @@ export default function ShoppingListClient() {
                     </td>
                   )}
                   <td className="px-4 py-2.5">
-                    <div className="flex items-baseline gap-1.5">
-                      <span className="text-foreground">{row.item.productName}</span>
-                      <CustomerBadge
-                        orders={row.item.orders.map((o) => ({
-                          customer: o.customer,
-                          qty: o.pending,
-                          paidStatus: o.paidStatus,
-                        }))}
-                      />
+                    <div className="flex items-center gap-2">
+                      {row.item.totalUnits > 0 && (
+                        <input
+                          type="checkbox"
+                          checked={selected.has(selKey(row.item))}
+                          onChange={() => toggleSelect(row.item)}
+                          className="w-4 h-4 shrink-0 accent-brand cursor-pointer"
+                          aria-label={`Select ${row.item.productName}`}
+                        />
+                      )}
+                      <div className="flex items-baseline gap-1.5 min-w-0">
+                        <span className="text-foreground">{row.item.productName}</span>
+                        <CustomerBadge
+                          orders={row.item.orders.map((o) => ({
+                            customer: o.customer,
+                            qty: o.pending,
+                            paidStatus: o.paidStatus,
+                          }))}
+                        />
+                      </div>
                     </div>
                   </td>
                   <td className="px-4 py-2.5 text-right">
@@ -519,6 +556,15 @@ export default function ShoppingListClient() {
                       const done = item.totalUnits === 0
                       return (
                         <div key={item.productId} className="flex items-center gap-3 px-4 py-2.5 border-t border-cream-border">
+                          {!done && (
+                            <input
+                              type="checkbox"
+                              checked={selected.has(selKey(item))}
+                              onChange={() => toggleSelect(item)}
+                              className="w-5 h-5 shrink-0 accent-brand"
+                              aria-label={`Select ${item.productName}`}
+                            />
+                          )}
                           <div className="flex-1 min-w-0">
                             <div className={`text-sm ${done ? "text-gray-400" : "text-foreground"}`}>{item.productName}</div>
                             {/* Same badge as desktop — tap to see who ordered. */}
@@ -568,7 +614,211 @@ export default function ShoppingListClient() {
           onProcessed={handleBoughtSuccess}
         />
       )}
+
+      {/* Multi-select action bar */}
+      {selected.size > 0 && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 rounded-full bg-gray-900 text-white shadow-xl px-4 py-2.5">
+          <span className="text-sm tabular-nums">{selected.size} selected</span>
+          <button
+            onClick={() => setConfirmOpen(true)}
+            className="px-3 py-1.5 rounded-full bg-green-600 text-white text-xs font-medium hover:bg-green-700 transition-colors"
+          >
+            Mark purchased
+          </button>
+          <button onClick={clearSelection} aria-label="Clear selection" className="text-white/70 hover:text-white transition-colors">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+      )}
+
+      {confirmOpen && (
+        <ConfirmPurchasePanel
+          items={selectedItems}
+          onClose={() => setConfirmOpen(false)}
+          onSuccess={() => { clearSelection(); setConfirmOpen(false); handleBoughtSuccess() }}
+          onPartial={(succeeded) => {
+            setSelected((prev) => {
+              const next = new Set(prev)
+              for (const key of prev) {
+                const ev = key.slice(0, key.lastIndexOf("|"))
+                if (succeeded.includes(ev)) next.delete(key)
+              }
+              return next
+            })
+            handleBoughtSuccess()
+          }}
+        />
+      )}
     </>
+  )
+}
+
+// ─── Confirm multi-purchase panel ────────────────────────────────────────────
+
+function ConfirmPurchasePanel({
+  items,
+  onClose,
+  onSuccess,
+  onPartial,
+}: {
+  items: ShoppingListItem[]
+  onClose: () => void
+  onSuccess: () => void
+  onPartial: (succeededEvents: string[]) => void
+}) {
+  // Qty per selected item, defaulting to its pending units. Keyed by selKey.
+  const [qtys, setQtys] = useState<Record<string, string>>(() => {
+    const m: Record<string, string> = {}
+    for (const it of items) m[selKey(it)] = String(it.totalUnits)
+    return m
+  })
+  const [receipt, setReceipt] = useState("")
+  const [submitting, setSubmitting] = useState(false)
+  const [errors, setErrors] = useState<string[]>([])
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose() }
+    document.addEventListener("keydown", onKey)
+    return () => document.removeEventListener("keydown", onKey)
+  }, [onClose])
+
+  // /api/sheets/purchasing is per-event, so group the selection by event.
+  const byEvent = useMemo(() => {
+    const m = new Map<string, ShoppingListItem[]>()
+    for (const it of items) {
+      const arr = m.get(it.event) ?? []
+      arr.push(it)
+      m.set(it.event, arr)
+    }
+    return m
+  }, [items])
+
+  const anyQty = items.some((it) => (Number(qtys[selKey(it)]) || 0) > 0)
+
+  async function handleSubmit() {
+    if (!anyQty || submitting) return
+    setSubmitting(true)
+    setErrors([])
+
+    const payloads = [...byEvent.entries()]
+      .map(([event, evItems]) => ({
+        event,
+        items: evItems
+          .map((it) => ({ item: it.productName, qty: Number(qtys[selKey(it)]) || 0 }))
+          .filter((l) => l.qty > 0),
+      }))
+      .filter((p) => p.items.length > 0)
+
+    const settled = await Promise.allSettled(
+      payloads.map((p) =>
+        fetch("/api/sheets/purchasing", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ event: p.event, items: p.items, receipt: receipt.trim() }),
+        }).then(async (res) => {
+          const data = await res.json()
+          if (!res.ok) throw new Error(data.error ?? `Failed for ${p.event}`)
+          return p.event
+        }),
+      ),
+    )
+
+    const succeeded: string[] = []
+    const failed: string[] = []
+    settled.forEach((r, i) => {
+      if (r.status === "fulfilled") succeeded.push(payloads[i].event)
+      else failed.push(`${payloads[i].event}: ${r.reason instanceof Error ? r.reason.message : "failed"}`)
+    })
+
+    setSubmitting(false)
+    if (failed.length === 0) {
+      onSuccess()
+    } else {
+      setErrors(failed)
+      if (succeeded.length > 0) onPartial(succeeded)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6" onClick={onClose}>
+      <div
+        className="bg-white rounded-xl shadow-xl border border-cream-border w-full max-w-lg flex flex-col max-h-[90vh]"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
+        <div className="px-5 py-4 border-b border-cream-border shrink-0">
+          <h3 className="text-sm font-semibold text-foreground">
+            Mark {items.length} item{items.length === 1 ? "" : "s"} purchased
+          </h3>
+          <p className="text-xs text-gray-500 mt-0.5">Adjust quantities if needed, then add one receipt for all of them.</p>
+        </div>
+
+        <div className="px-5 py-4 overflow-y-auto flex flex-col gap-4">
+          {[...byEvent.entries()].map(([event, evItems]) => (
+            <div key={event} className="flex flex-col gap-2">
+              <div className="text-xs font-semibold text-gray-500">{event}</div>
+              {evItems.map((it) => {
+                const k = selKey(it)
+                return (
+                  <div key={k} className="flex items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm text-foreground break-words">{it.productName}</div>
+                      {it.store && <div className="text-[11px] text-gray-400">{it.store}</div>}
+                    </div>
+                    <input
+                      type="number"
+                      min="1"
+                      value={qtys[k] ?? ""}
+                      onChange={(e) => setQtys((p) => ({ ...p, [k]: e.target.value }))}
+                      className="w-20 shrink-0 border border-cream-border rounded-lg px-2 py-1.5 text-sm text-right bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+                    />
+                    <span className="text-[11px] text-gray-400 w-14 shrink-0">/ {it.totalUnits} left</span>
+                  </div>
+                )
+              })}
+            </div>
+          ))}
+        </div>
+
+        <div className="px-5 py-4 border-t border-cream-border shrink-0 flex flex-col gap-3">
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-gray-500">Receipt (optional)</span>
+            <input
+              type="text"
+              value={receipt}
+              onChange={(e) => setReceipt(e.target.value)}
+              placeholder="e.g. INV-001"
+              className={INPUT_CLASS}
+            />
+          </label>
+          {errors.length > 0 && (
+            <div className="text-xs text-red-600">
+              <div className="font-medium">Some events failed (others were recorded):</div>
+              <ul className="list-disc pl-4">{errors.map((e, i) => <li key={i}>{e}</li>)}</ul>
+            </div>
+          )}
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={submitting}
+              className="px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={submitting || !anyQty}
+              className="px-4 py-1.5 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700 disabled:opacity-50 transition-colors"
+            >
+              {submitting ? "Saving…" : "Mark purchased"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -713,7 +963,7 @@ function BuyModal({
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-600 shrink-0">
                   <path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
                 </svg>
-                <span className="text-amber-700 font-medium">{preview.excessUnits} excess units → will be added to Excess Purchase</span>
+                <span className="text-amber-700 font-medium">{preview.excessUnits} excess units → will be added to Inventory</span>
               </div>
             )}
           </div>
