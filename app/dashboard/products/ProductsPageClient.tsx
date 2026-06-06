@@ -11,6 +11,7 @@ import DataGrid, {
 import { usePaginatedFetch, type PageData } from "@/hooks/usePaginatedFetch"
 import SearchableSelect from "@/components/SearchableSelect"
 import { calcAbroadPrice, calcDomesticPrice, abroadProfit } from "@/lib/pricing"
+import { useCopyFeedback } from "@/hooks/useCopyFeedback"
 
 const PAGE_SIZE = 25
 
@@ -22,6 +23,33 @@ const rowInputCls =
   "w-full border border-cream-border rounded-md px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors disabled:opacity-50"
 
 const fmt = (n: number) => n.toLocaleString("id-ID")
+
+// Inline copy button. Stays subtly visible (not hover-only) so it's usable on
+// the mobile card too, where there's no hover. Stops propagation so it doesn't
+// trigger the row/card click that opens the edit modal.
+function CopyButton({ value, label = "Copy" }: { value: string; label?: string }) {
+  const { copied, copy } = useCopyFeedback()
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); copy(value) }}
+      title={label}
+      aria-label={label}
+      className="shrink-0 p-0.5 rounded text-gray-300 hover:text-brand transition-colors"
+    >
+      {copied ? (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-green-600">
+          <path d="M20 6 9 17l-5-5" />
+        </svg>
+      ) : (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="9" y="9" width="13" height="13" rx="2" />
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+        </svg>
+      )}
+    </button>
+  )
+}
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -165,7 +193,12 @@ export default function ProductsPageClient() {
       accessorKey: "name",
       header: "Name",
       filterFn: "textContains",
-      cell: ({ row }) => <span className="font-medium whitespace-nowrap">{row.original.name}</span>,
+      cell: ({ row }) => (
+        <span className="inline-flex items-center gap-1">
+          <span className="font-medium whitespace-nowrap">{row.original.name}</span>
+          <CopyButton value={row.original.name} label="Copy name" />
+        </span>
+      ),
     },
     {
       accessorKey: "store",
@@ -177,7 +210,12 @@ export default function ProductsPageClient() {
       header: "Price",
       filterFn: "numeric",
       enableColumnFilter: false,
-      cell: ({ row }) => <span className="tabular-nums font-medium">{fmt(row.original.price)}</span>,
+      cell: ({ row }) => (
+        <span className="inline-flex items-center justify-end gap-1">
+          <span className="tabular-nums font-medium">{fmt(row.original.price)}</span>
+          <CopyButton value={String(row.original.price)} label="Copy price" />
+        </span>
+      ),
       meta: { align: "right" },
     },
     {
@@ -396,7 +434,10 @@ export default function ProductsPageClient() {
             <div key={p.id} className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="font-semibold text-foreground">{p.name}</div>
+                  <div className="font-semibold text-foreground flex items-center gap-1">
+                    <span className="min-w-0 truncate">{p.name}</span>
+                    <CopyButton value={p.name} label="Copy name" />
+                  </div>
                   <div className="text-[12.5px] text-gray-400 mt-0.5">{p.store || "—"}</div>
                 </div>
                 <span className={`shrink-0 inline-block px-2 py-0.5 rounded-full text-[10px] font-medium ${abroad ? "bg-blue-50 text-blue-600" : "bg-green-50 text-green-600"}`}>
@@ -408,7 +449,10 @@ export default function ProductsPageClient() {
                   {abroad ? (p.countryName || "—") : "Domestic"}{p.gram ? ` · ${fmt(p.gram)} g` : ""}
                 </span>
                 <div className="flex items-center gap-2.5 shrink-0">
-                  <span className="text-brand font-bold tabular-nums whitespace-nowrap">Rp {fmt(p.price)}</span>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="text-brand font-bold tabular-nums whitespace-nowrap">Rp {fmt(p.price)}</span>
+                    <CopyButton value={String(p.price)} label="Copy price" />
+                  </span>
                   <ProductActions
                     row={p}
                     countries={countries}
