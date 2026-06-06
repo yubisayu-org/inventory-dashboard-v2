@@ -312,7 +312,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
           data={rows}
           columns={columns}
           getRowId={(row) => String(row.rowNumber)}
-          searchPlaceholder="Search payments..."
+          searchPlaceholder="Search name, amount, account..."
           toolbarExtra={refreshButton}
           initialVisibility={{ updatedAt: false }}
           serverSide={{
@@ -336,7 +336,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
           type="text"
           value={globalFilter}
           onChange={(e) => handleGlobalFilterChange(e.target.value)}
-          placeholder="Cari payment…"
+          placeholder="Cari nama, nominal, akun…"
           className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
         />
         {rows.length === 0 ? (

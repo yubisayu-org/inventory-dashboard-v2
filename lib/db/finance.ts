@@ -70,10 +70,22 @@ export async function getPaymentsPaginated(opts: {
   if (search) {
     params.push(`%${search.toLowerCase()}%`)
     const p = `$${params.length}`
-    conditions.push(
-      `(lower(event) LIKE ${p} OR lower(customer) LIKE ${p} OR ` +
-        `lower(COALESCE(account,'')) LIKE ${p} OR lower(COALESCE(remarks,'')) LIKE ${p})`,
-    )
+    const ors = [
+      `lower(event) LIKE ${p}`,
+      `lower(customer) LIKE ${p}`,
+      `lower(COALESCE(account,'')) LIKE ${p}`,
+      `lower(COALESCE(remarks,'')) LIKE ${p}`,
+    ]
+    // Amount search: amounts are whole numbers shown with thousand separators
+    // (e.g. "762.000"), so strip dots/commas/spaces and, if what's left is all
+    // digits, match it against the numeric amount as text. Cast via bigint so a
+    // numeric column's trailing ".00" never breaks the match.
+    const digits = search.replace(/[.,\s]/g, "")
+    if (/^\d+$/.test(digits)) {
+      params.push(`%${digits}%`)
+      ors.push(`CAST(amount AS BIGINT)::text LIKE $${params.length}`)
+    }
+    conditions.push(`(${ors.join(" OR ")})`)
   }
 
   const textFilters: [string | undefined, string][] = [
