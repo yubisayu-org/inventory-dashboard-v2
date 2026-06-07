@@ -224,6 +224,15 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
       cell: ({ getValue }) => <span className="tabular-nums">{fmt(getValue<number>())}</span>,
     },
     {
+      accessorKey: "unitPrice",
+      header: "Unit Price",
+      enableColumnFilter: false,
+      enableSorting: true,
+      size: 110,
+      meta: { align: "right" },
+      cell: ({ getValue }) => <span className="tabular-nums">{fmt(getValue<number>())}</span>,
+    },
+    {
       accessorKey: "unitBuy",
       header: "Buy",
       enableColumnFilter: false,
@@ -367,7 +376,7 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
           getRowId={(row) => String(row.rowNumber)}
           searchPlaceholder="Search orders..."
           toolbarExtra={toolbarExtra}
-          initialVisibility={{ unitBuy: false, unitArrive: false, note: false, createdAt: false, updatedAt: false }}
+          initialVisibility={{ unitPrice: false, unitBuy: false, unitArrive: false, note: false, createdAt: false, updatedAt: false }}
           enableRowSelection
           rowSelection={rowSelection}
           onRowSelectionChange={setRowSelection}
@@ -691,6 +700,7 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
   const [unitArrive, setUnitArrive] = useState<string>(row.unitArrive == null ? "" : String(row.unitArrive))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
+  const [confirmPriceOpen, setConfirmPriceOpen] = useState(false)
 
   const customerOptions = useMemo(
     () => (options?.customers ?? []).map((c) => ({ value: c, label: displayIg(c) })),
@@ -701,8 +711,24 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
     [options],
   )
 
-  async function handleSubmit(e: React.FormEvent) {
+  // Price comparison: the order's stored unit price vs the currently-selected
+  // product's current price. Both are already in memory (the row + the cached
+  // useSheetOptions list), so this adds no queries. Note that saving already
+  // overwrites unit_price with currentPrice (see handleSubmit) — this just makes
+  // that visible and warns when the two differ.
+  const currentPrice = options?.items.find((it) => it.id === Number(form.productId))?.price ?? 0
+  const priceDiffers = currentPrice !== row.unitPrice
+
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    // When the product price has drifted from the order's saved price, saving
+    // will overwrite unit_price — confirm that explicitly before proceeding.
+    if (priceDiffers) { setConfirmPriceOpen(true); return }
+    void performSave()
+  }
+
+  async function performSave() {
+    setConfirmPriceOpen(false)
     setSaving(true); setError("")
     try {
       const pid = Number(form.productId)
@@ -755,6 +781,7 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
   }
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
       <div className="bg-white rounded-xl border border-cream-border shadow-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
@@ -786,6 +813,24 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
               options={itemOptions}
               placeholder="Search item..."
             />
+          </div>
+          <div className="rounded-lg border border-cream-border bg-gray-50/60 px-3 py-2 text-xs space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-gray-500">Order unit price</span>
+              <span className="tabular-nums font-medium text-foreground">{fmt(row.unitPrice)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-gray-500">Current product price</span>
+              <span className={`tabular-nums font-medium ${priceDiffers ? "text-amber-700" : "text-foreground"}`}>{fmt(currentPrice)}</span>
+            </div>
+            {priceDiffers && (
+              <div className="flex items-start gap-1.5 pt-1 text-amber-700">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5">
+                  <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><path d="M12 9v4" /><path d="M12 17h.01" />
+                </svg>
+                <span>Price differs — saving will update this order&rsquo;s unit price to {fmt(currentPrice)}.</span>
+              </div>
+            )}
           </div>
           <div className="flex gap-3">
             <div className="flex-1">
@@ -838,6 +883,35 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
         </form>
       </div>
     </div>
+
+    {/* Price-change confirmation — shown on save when the product price has
+        drifted from the order's saved unit price. */}
+    {confirmPriceOpen && (
+      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4" onClick={() => setConfirmPriceOpen(false)}>
+        <div className="bg-white rounded-xl border border-cream-border shadow-xl w-full max-w-xs p-5" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-start gap-2 mb-3">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-600 shrink-0 mt-0.5">
+              <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><path d="M12 9v4" /><path d="M12 17h.01" />
+            </svg>
+            <h3 className="text-sm font-semibold text-foreground">Update unit price?</h3>
+          </div>
+          <p className="text-xs text-gray-600 mb-4">
+            The current product price (<span className="font-medium text-foreground tabular-nums">{fmt(currentPrice)}</span>) differs from
+            this order&rsquo;s saved price (<span className="font-medium text-foreground tabular-nums">{fmt(row.unitPrice)}</span>).
+            Saving will update this order&rsquo;s unit price to <span className="font-medium text-amber-700 tabular-nums">{fmt(currentPrice)}</span>.
+          </p>
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => setConfirmPriceOpen(false)} disabled={saving} className="px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
+              Cancel
+            </button>
+            <button type="button" onClick={() => void performSave()} disabled={saving} className="px-4 py-1.5 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-hover disabled:opacity-50 transition-colors">
+              {saving ? "Saving…" : "Save & update price"}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   )
 }
 
