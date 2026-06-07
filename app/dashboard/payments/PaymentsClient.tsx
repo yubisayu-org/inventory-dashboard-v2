@@ -26,6 +26,9 @@ const INPUT_CLASS =
 const LABEL = "text-xs text-gray-500 mb-1 block"
 const ACCOUNT_OPTIONS = ["BCA", "JAGO", "QRIS", "TRANSFER"] as const
 
+// Checked-status filter: "" = all, "true" = checked only, "false" = unchecked.
+type CheckedFilter = "" | "true" | "false"
+
 type EditForm = {
   event: string
   customer: string
@@ -46,6 +49,31 @@ function formatDate(iso: string): string {
   return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
 }
 
+// Tri-state checked-status filter used on both desktop toolbar and mobile.
+function CheckedFilterSelect({
+  value,
+  onChange,
+  className,
+}: {
+  value: CheckedFilter
+  onChange: (v: CheckedFilter) => void
+  className: string
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value as CheckedFilter)}
+      title="Filter by checked status"
+      aria-label="Filter by checked status"
+      className={className}
+    >
+      <option value="">All status</option>
+      <option value="true">Checked</option>
+      <option value="false">Unchecked</option>
+    </select>
+  )
+}
+
 export default function PaymentsClient({ role }: { role: Role | null }) {
   const isAdmin = role === "admin"
   const options = useSheetOptions()
@@ -59,10 +87,12 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [globalFilter, setGlobalFilter] = useState("")
+  const [checkedFilter, setCheckedFilter] = useState<CheckedFilter>("")
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: PAGE_SIZE })
 
-  // Only the text columns are server-filterable; amount/date/checkbox header
-  // filters are disabled (see column defs), so we don't map them.
+  // Only the text columns are server-filterable via column headers; amount/date
+  // filters are disabled (see column defs). The checked-status filter is driven
+  // by its own toolbar control (checkedFilter), not a column header.
   const fetchFilters = useMemo<Record<string, string>>(() => {
     const f: Record<string, string> = {}
     for (const cf of columnFilters) {
@@ -74,8 +104,10 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
       else if (cf.id === "remarks") f.remarks = v
       else if (cf.id === "kind") f.kind = v
     }
+    // Sent as ?isChecked=true|false; the API maps absent → all.
+    if (checkedFilter) f.isChecked = checkedFilter
     return f
-  }, [columnFilters])
+  }, [columnFilters, checkedFilter])
 
   const fetchSort = useMemo(() => {
     if (sorting.length === 0) return null
@@ -110,6 +142,9 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
   }, [])
   const handleGlobalFilterChange = useCallback((u: string | ((p: string) => string)) => {
     setGlobalFilter(u); setPagination((p) => ({ ...p, pageIndex: 0 }))
+  }, [])
+  const handleCheckedFilterChange = useCallback((v: CheckedFilter) => {
+    setCheckedFilter(v); setPagination((p) => ({ ...p, pageIndex: 0 }))
   }, [])
 
   async function handleToggleCheck(row: PaymentRow) {
@@ -313,7 +348,16 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
           columns={columns}
           getRowId={(row) => String(row.rowNumber)}
           searchPlaceholder="Search name, amount, account..."
-          toolbarExtra={refreshButton}
+          toolbarExtra={
+            <>
+              <CheckedFilterSelect
+                value={checkedFilter}
+                onChange={handleCheckedFilterChange}
+                className="border border-cream-border rounded-lg px-2 py-1.5 text-xs text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+              />
+              {refreshButton}
+            </>
+          }
           initialVisibility={{ updatedAt: false }}
           serverSide={{
             rowCount: totalCount,
@@ -332,13 +376,20 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
 
       {/* Mobile cards */}
       <div className="md:hidden flex flex-col gap-2.5">
-        <input
-          type="text"
-          value={globalFilter}
-          onChange={(e) => handleGlobalFilterChange(e.target.value)}
-          placeholder="Cari nama, nominal, akun…"
-          className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
-        />
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={globalFilter}
+            onChange={(e) => handleGlobalFilterChange(e.target.value)}
+            placeholder="Cari nama, nominal, akun…"
+            className="flex-1 min-w-0 border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+          />
+          <CheckedFilterSelect
+            value={checkedFilter}
+            onChange={handleCheckedFilterChange}
+            className="shrink-0 border border-cream-border rounded-lg px-2 py-2 text-sm text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+          />
+        </div>
         {rows.length === 0 ? (
           <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">
             {fetchState.loading ? "Loading…" : globalFilter ? "No matches" : "No payments yet"}

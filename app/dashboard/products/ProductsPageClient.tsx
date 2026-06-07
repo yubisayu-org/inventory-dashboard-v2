@@ -196,7 +196,7 @@ export default function ProductsPageClient() {
       cell: ({ row }) => (
         <span className="inline-flex items-center gap-1">
           <span className="font-medium whitespace-nowrap">{row.original.name}</span>
-          <CopyButton value={row.original.name} label="Copy name" />
+          <CopyButton value={`${row.original.name} ${fmt(row.original.price)}`} label="Copy name & price" />
         </span>
       ),
     },
@@ -210,12 +210,7 @@ export default function ProductsPageClient() {
       header: "Price",
       filterFn: "numeric",
       enableColumnFilter: false,
-      cell: ({ row }) => (
-        <span className="inline-flex items-center justify-end gap-1">
-          <span className="tabular-nums font-medium">{fmt(row.original.price)}</span>
-          <CopyButton value={String(row.original.price)} label="Copy price" />
-        </span>
-      ),
+      cell: ({ row }) => <span className="tabular-nums font-medium">{fmt(row.original.price)}</span>,
       meta: { align: "right" },
     },
     {
@@ -436,7 +431,7 @@ export default function ProductsPageClient() {
                 <div className="min-w-0">
                   <div className="font-semibold text-foreground flex items-center gap-1">
                     <span className="min-w-0 truncate">{p.name}</span>
-                    <CopyButton value={p.name} label="Copy name" />
+                    <CopyButton value={`${p.name} ${fmt(p.price)}`} label="Copy name & price" />
                   </div>
                   <div className="text-[12.5px] text-gray-400 mt-0.5">{p.store || "—"}</div>
                 </div>
@@ -449,10 +444,7 @@ export default function ProductsPageClient() {
                   {abroad ? (p.countryName || "—") : "Domestic"}{p.gram ? ` · ${fmt(p.gram)} g` : ""}
                 </span>
                 <div className="flex items-center gap-2.5 shrink-0">
-                  <span className="inline-flex items-center gap-1">
-                    <span className="text-brand font-bold tabular-nums whitespace-nowrap">Rp {fmt(p.price)}</span>
-                    <CopyButton value={String(p.price)} label="Copy price" />
-                  </span>
+                  <span className="text-brand font-bold tabular-nums whitespace-nowrap">Rp {fmt(p.price)}</span>
                   <ProductActions
                     row={p}
                     countries={countries}
