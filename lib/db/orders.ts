@@ -183,7 +183,7 @@ export async function getDuplicateFormRowsPaginated(opts: {
 
   const SORT_COLUMNS: Record<string, string> = {
     event: "o.event", customer: "o.customer", items: "p.name",
-    unit: "o.unit", note: "o.note", createdAt: "o.created_at",
+    unit: "o.unit", unitPrice: "o.unit_price", note: "o.note", createdAt: "o.created_at",
     unitBuy: "o.unit_buy", receipt: "o.receipt",
     unitArrive: "o.unit_arrive", unitShip: "o.unit_ship", unitHold: "o.unit_hold",
     updatedAt: "o.updated_at",
