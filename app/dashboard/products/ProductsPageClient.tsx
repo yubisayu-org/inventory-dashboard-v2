@@ -441,7 +441,7 @@ export default function ProductsPageClient() {
               </div>
               <div className="flex items-center justify-between gap-3 mt-2.5 pt-2.5 border-t border-cream-border">
                 <span className="text-xs text-gray-400 min-w-0 truncate">
-                  {abroad ? (p.countryName || "—") : "Domestic"}{p.gram ? ` · ${fmt(p.gram)} g` : ""}
+                  {abroad ? (p.countryName || "—") : "Domestic"}{p.gram ? ` · ${fmt(p.gram)} g` : ""}{abroad ? ` · Valas ${fmt(p.valas)}` : ""}
                 </span>
                 <div className="flex items-center gap-2.5 shrink-0">
                   <span className="text-brand font-bold tabular-nums whitespace-nowrap">Rp {fmt(p.price)}</span>
