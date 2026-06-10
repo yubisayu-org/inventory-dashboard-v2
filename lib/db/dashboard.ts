@@ -119,7 +119,7 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
           COUNT(*)::int AS order_count,
           COUNT(DISTINCT o.customer)::int AS customer_count,
           SUM(o.unit)::int AS total_units,
-          SUM(o.unit * o.unit_price)::int AS total_subtotal,
+          SUM(o.unit * o.unit_price::bigint)::float8 AS total_subtotal,
           SUM(COALESCE(o.unit_buy, 0))::int AS total_bought,
           SUM(COALESCE(o.unit_arrive, 0))::int AS total_arrived,
           SUM(COALESCE(o.unit_ship, 0))::int AS total_shipped
@@ -127,7 +127,7 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
         GROUP BY o.event
       ),
       payment_aggregates AS (
-        SELECT event, SUM(amount)::int AS total_paid
+        SELECT event, SUM(amount)::float8 AS total_paid
         FROM payments
         WHERE is_checked = true
         GROUP BY event
@@ -142,7 +142,7 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
         oa.total_bought,
         oa.total_arrived,
         oa.total_shipped,
-        COALESCE(pa.total_paid, 0)::int AS total_paid
+        COALESCE(pa.total_paid, 0) AS total_paid
       FROM order_aggregates oa
       JOIN events e ON e.name = oa.event
       LEFT JOIN payment_aggregates pa ON pa.event = oa.event

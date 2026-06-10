@@ -1,8 +1,9 @@
 "use client"
 
-import { use } from "react"
+import { use, useState } from "react"
 import Link from "next/link"
 import type { DashboardSummary, DashboardEvent } from "@/lib/db"
+import type { EventAnalytics } from "@/app/api/dashboard/event-analytics/route"
 
 function formatRp(n: number): string {
   return `Rp ${new Intl.NumberFormat("id-ID").format(n)}`
@@ -107,6 +108,23 @@ export default function DashboardClient({
 }
 
 function EventCard({ event }: { event: DashboardEvent }) {
+  const [expanded, setExpanded] = useState(false)
+  const [analytics, setAnalytics] = useState<EventAnalytics | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  async function handleToggle() {
+    if (expanded) { setExpanded(false); return }
+    setExpanded(true)
+    if (analytics) return
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/dashboard/event-analytics?event=${encodeURIComponent(event.name)}`)
+      if (res.ok) setAnalytics(await res.json())
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const stages = [
     { label: "Bought", num: event.totalBought, denom: event.totalUnits, color: "bg-green-500" },
     { label: "Arrived", num: event.totalArrived, denom: event.totalUnits, color: "bg-blue-500" },
@@ -114,10 +132,19 @@ function EventCard({ event }: { event: DashboardEvent }) {
   ]
 
   return (
-    <div className="rounded-xl border border-cream-border bg-white p-4 flex flex-col gap-3">
-      <div className="flex items-baseline justify-between gap-2">
+    <div className="rounded-xl border border-cream-border bg-white flex flex-col">
+      <button
+        onClick={handleToggle}
+        className="p-4 flex flex-col gap-3 text-left w-full hover:bg-gray-50/60 transition-colors rounded-xl"
+      >
+      <div className="flex items-center justify-between gap-2">
         <span className="font-semibold text-foreground truncate">{event.name}</span>
-        {event.eta && <span className="text-xs text-gray-400 shrink-0">ETA: {event.eta}</span>}
+        <div className="flex items-center gap-2 shrink-0">
+          {event.eta && <span className="text-xs text-gray-400">ETA: {event.eta}</span>}
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`text-gray-400 transition-transform ${expanded ? "rotate-180" : ""}`}>
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
@@ -154,6 +181,38 @@ function EventCard({ event }: { event: DashboardEvent }) {
           </span>
         </div>
       </div>
+      </button>
+
+      {expanded && (
+        <div className="px-4 pb-4 border-t border-cream-border/60">
+          <p className="text-xs font-semibold text-gray-500 mt-3 mb-2">Top items by units ordered</p>
+          {loading ? (
+            <p className="text-xs text-gray-400">Loading…</p>
+          ) : analytics && analytics.topItems.length > 0 ? (
+            <div className="flex flex-col gap-1.5">
+              {analytics.topItems.map((item, i) => {
+                const maxUnits = analytics.topItems[0].totalUnits
+                const p = pct(item.totalUnits, maxUnits)
+                return (
+                  <div key={i} className="flex items-center gap-2 text-xs">
+                    <span className="w-4 shrink-0 text-gray-400 tabular-nums">{i + 1}.</span>
+                    <span className="min-w-0 flex-1 truncate text-gray-700">
+                      {item.productName}
+                      {item.store && <span className="text-gray-400 ml-1">· {item.store}</span>}
+                    </span>
+                    <div className="w-16 h-1.5 rounded-full bg-gray-100 overflow-hidden shrink-0">
+                      <div className="h-full bg-indigo-400 transition-all" style={{ width: `${p}%` }} />
+                    </div>
+                    <span className="w-8 shrink-0 text-right tabular-nums text-gray-600">{item.totalUnits}</span>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <p className="text-xs text-gray-400">No data.</p>
+          )}
+        </div>
+      )}
     </div>
   )
 }
