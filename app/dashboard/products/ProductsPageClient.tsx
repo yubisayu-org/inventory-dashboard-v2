@@ -429,8 +429,8 @@ export default function ProductsPageClient() {
             <div key={p.id} className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="font-semibold text-foreground flex items-center gap-1">
-                    <span className="min-w-0 truncate">{p.name}</span>
+                  <div className="font-semibold text-foreground text-sm flex items-start gap-1">
+                    <span className="min-w-0 break-words">{p.name}</span>
                     <CopyButton value={`${p.name} ${fmt(p.price)}`} label="Copy name & price" />
                   </div>
                   <div className="text-[12.5px] text-gray-400 mt-0.5">{p.store || "—"}</div>
@@ -441,7 +441,7 @@ export default function ProductsPageClient() {
               </div>
               <div className="flex items-center justify-between gap-3 mt-2.5 pt-2.5 border-t border-cream-border">
                 <span className="text-xs text-gray-400 min-w-0 truncate">
-                  {abroad ? (p.countryName || "—") : "Domestic"}{p.gram ? ` · ${fmt(p.gram)} g` : ""}
+                  {abroad ? (p.countryName || "—") : "Domestic"}{p.gram ? ` · ${fmt(p.gram)} g` : ""}{abroad ? ` · Valas ${fmt(p.valas)}` : ""}
                 </span>
                 <div className="flex items-center gap-2.5 shrink-0">
                   <span className="text-brand font-bold tabular-nums whitespace-nowrap">Rp {fmt(p.price)}</span>
