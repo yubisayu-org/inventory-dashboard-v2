@@ -169,6 +169,19 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
     ))
   }, [])
 
+  const handleNoteSave = useCallback(async (rowNumber: number, value: string) => {
+    const res = await fetch(`/api/sheets/duplicate-form/${rowNumber}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ stage: "note_cell", value }),
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      throw new Error(data.error ?? "Failed to save")
+    }
+    setRows((rs) => rs.map((r) => (r.rowNumber === rowNumber ? { ...r, note: value } : r)))
+  }, [])
+
   async function handleBulkDelete() {
     const ids = Object.keys(rowSelection).filter((k) => rowSelection[k]).map(Number)
     if (ids.length === 0) return
@@ -266,7 +279,13 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
       accessorKey: "note",
       header: "Note",
       enableColumnFilter: false,
-      cell: ({ getValue }) => <span className="text-gray-500 text-xs">{getValue<string>() || "—"}</span>,
+      size: 200,
+      cell: ({ row }) => (
+        <EditableTextCell
+          value={row.original.note}
+          onSave={(v) => handleNoteSave(row.original.rowNumber, v)}
+        />
+      ),
     },
     {
       accessorKey: "createdAt",
@@ -313,7 +332,7 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
         </div>
       ),
     },
-  ], [handleDelete, handleCellSave, isOwner])
+  ], [handleDelete, handleCellSave, handleNoteSave, isOwner])
 
   // -- Toolbar extras --
   const selectedCount = Object.keys(rowSelection).filter((k) => rowSelection[k]).length
@@ -598,6 +617,71 @@ function EditableNumberCell({ value, canEdit, onSave }: {
       placeholder="—"
       title={error ?? undefined}
       className={`w-full bg-transparent border px-2 py-0.5 text-right tabular-nums rounded transition-colors ${
+        error
+          ? "border-red-300 text-red-700"
+          : "border-transparent hover:border-cream-border focus:border-brand focus:bg-white focus:outline-none"
+      } disabled:opacity-50`}
+    />
+  )
+}
+
+// ---------------------------------------------------------------------------
+// EditableTextCell — inline note edit (available to any role) for the table
+// ---------------------------------------------------------------------------
+
+function EditableTextCell({ value, onSave }: {
+  value: string
+  onSave: (value: string) => Promise<void>
+}) {
+  // Mirrors EditableNumberCell: an internal draft so partial typing survives
+  // re-renders, resynced only when the row's canonical value actually changes.
+  const [draft, setDraft] = useState(value ?? "")
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const lastValueRef = useRef(value)
+
+  useEffect(() => {
+    if (lastValueRef.current !== value) {
+      lastValueRef.current = value
+      setDraft(value ?? "")
+    }
+  }, [value])
+
+  async function commit() {
+    const next = draft.trim()
+    if (next === (value ?? "").trim()) {
+      setError(null)
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await onSave(next)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed")
+      setDraft(value ?? "")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <input
+      type="text"
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") (e.target as HTMLInputElement).blur()
+        if (e.key === "Escape") {
+          setDraft(value ?? "")
+          ;(e.target as HTMLInputElement).blur()
+        }
+      }}
+      disabled={saving}
+      placeholder="—"
+      title={error ?? undefined}
+      className={`w-full bg-transparent border px-2 py-0.5 text-xs rounded transition-colors ${
         error
           ? "border-red-300 text-red-700"
           : "border-transparent hover:border-cream-border focus:border-brand focus:bg-white focus:outline-none"

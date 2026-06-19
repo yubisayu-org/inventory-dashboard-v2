@@ -24,6 +24,9 @@ const rowInputCls =
 
 const fmt = (n: number) => n.toLocaleString("id-ID")
 
+// Shared <datalist> id for the inline store editors in the table.
+const STORE_LIST_ID = "product-stores-edit-list"
+
 // Inline copy button. Stays subtly visible (not hover-only) so it's usable on
 // the mobile card too, where there's no hover. Stops propagation so it doesn't
 // trigger the row/card click that opens the edit modal.
@@ -179,6 +182,37 @@ export default function ProductsPageClient() {
     setPagination((p) => ({ ...p, pageIndex: 0 }))
   }, [])
 
+  // Inline store edit from the table. The products PUT is a full-row update, so
+  // we rebuild the body from the existing row (store is independent of price)
+  // and override only the store. Local data is patched so the cell reflects the
+  // new value without a refetch.
+  const handleStoreSave = useCallback(async (row: ProductRow, store: string) => {
+    const res = await fetch(`/api/sheets/products/${row.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: row.name,
+        store,
+        price: row.price,
+        gram: row.gram,
+        countryId: row.countryId,
+        valas: row.valas,
+        kurs: row.kurs,
+        cargoPerKg: row.cargoPerKg,
+        profitPct: row.profitPct,
+        operationalFee: row.operationalFee,
+        packingFee: row.packingFee,
+        cost: row.cost,
+        profitFixed: row.profitFixed,
+      }),
+    })
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}))
+      throw new Error(json.error ?? "Failed to save")
+    }
+    setData((rows) => rows.map((r) => (r.id === row.id ? { ...r, store } : r)))
+  }, [])
+
   // Mobile sort toggle reads/writes the `id` sort direction.
   const mobileIdDesc = (sorting.find((s) => s.id === "id")?.desc) ?? true
 
@@ -204,6 +238,13 @@ export default function ProductsPageClient() {
       accessorKey: "store",
       header: "Store",
       filterFn: "textContains",
+      cell: ({ row }) => (
+        <EditableStoreCell
+          row={row.original}
+          listId={STORE_LIST_ID}
+          onSave={(store) => handleStoreSave(row.original, store)}
+        />
+      ),
     },
     {
       accessorKey: "price",
@@ -332,7 +373,7 @@ export default function ProductsPageClient() {
         />
       ),
     },
-  ], [countries, stores, handleDuplicate])
+  ], [countries, stores, handleDuplicate, handleStoreSave])
 
   const refreshButton = (
     <button
@@ -366,6 +407,10 @@ export default function ProductsPageClient() {
 
       {/* Desktop table — server-side paginated */}
       <div className="hidden md:block">
+        {/* Shared autocomplete source for the inline store editors. */}
+        <datalist id={STORE_LIST_ID}>
+          {stores.map((s) => <option key={s} value={s} />)}
+        </datalist>
         <DataGrid
           data={data}
           columns={columns}
@@ -764,6 +809,78 @@ function AddProductForm({
         </div>
       </div>
     </form>
+  )
+}
+
+// ─── Inline store cell ─────────────────────────────────────────────────────
+
+// Owner/admin inline edit of a product's store directly in the table. Shows the
+// full store text (never cropped); click it to switch to an input. Saves on
+// blur/Enter, reverts on Escape or on a failed save (e.g. UNIQUE(name, store)
+// collision, whose error is surfaced via the title).
+function EditableStoreCell({ row, listId, onSave }: {
+  row: ProductRow
+  listId: string
+  onSave: (store: string) => Promise<void>
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(row.store ?? "")
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function commit() {
+    const next = draft.trim()
+    setEditing(false)
+    if (next === (row.store ?? "").trim()) {
+      setError(null)
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await onSave(next)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed")
+      setDraft(row.store ?? "")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        onClick={() => { setDraft(row.store ?? ""); setEditing(true) }}
+        title={error ?? "Click to edit"}
+        disabled={saving}
+        className={`w-full text-left rounded px-2 py-0.5 -mx-2 break-words transition-colors hover:bg-cream disabled:opacity-50 ${
+          error ? "text-red-700" : row.store ? "text-foreground" : "text-gray-300"
+        }`}
+      >
+        {saving ? "Saving…" : (row.store || "—")}
+      </button>
+    )
+  }
+
+  return (
+    <input
+      type="text"
+      list={listId}
+      autoFocus
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") (e.target as HTMLInputElement).blur()
+        if (e.key === "Escape") {
+          setDraft(row.store ?? "")
+          setEditing(false)
+        }
+      }}
+      placeholder="—"
+      className="w-full min-w-[8rem] bg-white border border-brand px-2 py-0.5 rounded focus:outline-none"
+    />
   )
 }
 

@@ -369,6 +369,23 @@ export async function updateOrderOwnerCell(
   }
 }
 
+/**
+ * Inline note edit from the List Order table. Notes carry no permission
+ * restriction (admins edit them through the modal too), so this is intentionally
+ * separate from updateOrderOwnerCell and touches only the note column.
+ */
+export async function updateOrderNote(
+  rowNumber: number,
+  note: string,
+  db: DBExecutor = sql,
+): Promise<void> {
+  await db`
+    UPDATE orders
+    SET note = ${note}, updated_at = NOW()
+    WHERE id = ${rowNumber}
+  `
+}
+
 export async function deleteFormRow(rowNumber: number, db: DBExecutor = sql): Promise<void> {
   await db`DELETE FROM orders WHERE id = ${rowNumber}`
 }

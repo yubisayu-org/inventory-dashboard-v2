@@ -102,7 +102,8 @@ export default function SearchableSelect({
     if (disabled || open) return
     positionPopup()
     setHighlightIdx(-1)
-    setInputValue("")
+    // Keep the current selection visible instead of blanking the field. Focus
+    // handling select-all's the text so typing still replaces it immediately.
     setOpen(true)
   }
 
@@ -172,6 +173,9 @@ export default function SearchableSelect({
   function handleFocus() {
     if (disabled) return
     openDropdown()
+    // Select the displayed label so the user can type to search (replacing it)
+    // without the field ever appearing empty.
+    inputRef.current?.select()
   }
 
   function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
