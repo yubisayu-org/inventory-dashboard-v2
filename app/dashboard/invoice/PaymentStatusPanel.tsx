@@ -6,6 +6,7 @@ import type { PaymentStatus, PaymentStatusRow } from "@/lib/db"
 import SearchableSelect from "@/components/SearchableSelect"
 import EventSelect from "@/components/EventSelect"
 import DataGrid, { type ColumnDef } from "@/components/DataGrid"
+import CopyInvoiceButton from "@/components/CopyInvoiceButton"
 import { AddAdjustmentFromInvoiceModal } from "./AddAdjustmentFromInvoiceModal"
 
 // ─── Payment Status Panel ────────────────────────────────────────────────────
@@ -151,23 +152,26 @@ export function PaymentStatusPanel({
       },
     },
     {
-      id: "addAdjustment",
+      id: "actions",
       header: "",
       enableSorting: false,
       enableColumnFilter: false,
-      size: 36,
+      size: 72,
       cell: ({ row }) => (
-        <button
-          type="button"
-          onClick={() => setAdjustingRow({ event: row.original.event, customer: row.original.customer })}
-          title="Add adjustment for this invoice"
-          className="text-gray-400 hover:text-brand transition-colors p-1 rounded"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-        </button>
+        <div className="flex items-center justify-end gap-1">
+          <CopyInvoiceButton customer={row.original.customer} event={row.original.event} />
+          <button
+            type="button"
+            onClick={() => setAdjustingRow({ event: row.original.event, customer: row.original.customer })}
+            title="Add adjustment for this invoice"
+            className="text-gray-400 hover:text-brand transition-colors p-1 rounded"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+          </button>
+        </div>
       ),
     },
   ], [onOpenCustomer])

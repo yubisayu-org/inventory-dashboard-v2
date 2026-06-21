@@ -2,10 +2,10 @@
 
 import TableSkeleton from "@/components/TableSkeleton"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import type { FormRow, InvoiceResult, SheetOptions } from "@/lib/db"
+import type { FormRow, SheetOptions } from "@/lib/db"
 import { usePaginatedFetch, type PageData } from "@/hooks/usePaginatedFetch"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
-import { copyToClipboard } from "@/lib/clipboard"
+import CopyInvoiceButton from "@/components/CopyInvoiceButton"
 import { fmt, displayIg } from "@/lib/format"
 import { useCopyFeedback } from "@/hooks/useCopyFeedback"
 import DataGrid, {
@@ -309,7 +309,7 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
       meta: { align: "right" },
       cell: ({ row }) => (
         <div className="flex items-center justify-end gap-1">
-          <CopyInvoiceRowButton row={row.original} />
+          <CopyInvoiceButton customer={row.original.customer} event={row.original.event} />
           <button
             onClick={() => setEditingRow(row.original)}
             title="Edit"
@@ -461,7 +461,7 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
                   {bought ? "Bought" : "Not bought"}
                 </span>
                 <div className="flex gap-0.5">
-                  <CopyInvoiceRowButton row={r} />
+                  <CopyInvoiceButton customer={r.customer} event={r.event} />
                   <button type="button" onClick={() => setEditingRow(r)} aria-label="Edit" className="p-2 rounded-lg text-gray-400 active:bg-cream active:text-brand">
                     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" /></svg>
                   </button>
@@ -687,75 +687,6 @@ function EditableTextCell({ value, onSave }: {
           : "border-transparent hover:border-cream-border focus:border-brand focus:bg-white focus:outline-none"
       } disabled:opacity-50`}
     />
-  )
-}
-
-// ---------------------------------------------------------------------------
-// CopyInvoiceRowButton — copy the invoice message for a row's customer
-// ---------------------------------------------------------------------------
-
-type InvoiceCopyState =
-  | { status: "idle" }
-  | { status: "loading" }
-  | { status: "copied" }
-  | { status: "error"; message: string }
-
-function CopyInvoiceRowButton({ row }: { row: FormRow }) {
-  const [state, setState] = useState<InvoiceCopyState>({ status: "idle" })
-
-  useEffect(() => {
-    if (state.status === "idle") return
-    const delay = state.status === "error" ? 3000 : 1500
-    const timer = setTimeout(() => setState({ status: "idle" }), delay)
-    return () => clearTimeout(timer)
-  }, [state.status])
-
-  async function handleClick() {
-    setState({ status: "loading" })
-    try {
-      const res = await fetch(`/api/sheets/invoice?customer=${encodeURIComponent(row.customer)}`, { cache: "no-store" })
-      const data: InvoiceResult = await res.json()
-      if (!res.ok) throw new Error((data as { error?: string }).error ?? "Failed")
-      // Pick the event this row belongs to — not just the latest. A customer can
-      // have several events, so blindly taking the last one copied the wrong invoice.
-      const event = data.events.find((e) => e.eventId === row.event)
-      if (!event) throw new Error(`No invoice found for ${row.customer} · ${row.event}`)
-      await copyToClipboard(event.message)
-      setState({ status: "copied" })
-    } catch (err) {
-      setState({ status: "error", message: err instanceof Error ? err.message : "Failed" })
-    }
-  }
-
-  const { status } = state
-  const label =
-    status === "loading" ? "…"
-    : status === "copied" ? "✓"
-    : status === "error" ? "!"
-    : undefined
-
-  return (
-    <button
-      onClick={handleClick}
-      disabled={status === "loading"}
-      title={status === "error" ? state.message : "Copy invoice message"}
-      className={`p-1 transition-colors rounded disabled:opacity-50 ${
-        status === "copied" ? "text-green-600"
-        : status === "error" ? "text-red-500"
-        : "text-gray-400 hover:text-brand"
-      }`}
-    >
-      {label ? (
-        <span className="text-xs font-medium w-3.5 inline-block text-center">{label}</span>
-      ) : (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
-          <path d="M14 2v6h6" />
-          <path d="M8 13h8" />
-          <path d="M8 17h5" />
-        </svg>
-      )}
-    </button>
   )
 }
 
