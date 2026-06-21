@@ -37,6 +37,7 @@ const CATEGORY_BADGE: Record<ExpenseCategory, string> = {
   Personal: "bg-pink-50 text-pink-600",
   Payroll: "bg-indigo-50 text-indigo-600",
   Dividend: "bg-green-50 text-green-600",
+  Other: "bg-gray-50 text-gray-600",
 }
 
 function todayIso(): string {

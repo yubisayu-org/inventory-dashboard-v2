@@ -405,11 +405,11 @@ export interface AdjustmentRow {
  *  fixed dropdown and the operational_expenses.category CHECK constraint. */
 export type ExpenseCategory =
   | "Flight" | "Lodging" | "Cargo" | "Meal" | "Transport" | "Shop"
-  | "Supplies" | "Delivery" | "Personal" | "Payroll" | "Dividend"
+  | "Supplies" | "Delivery" | "Personal" | "Payroll" | "Dividend" | "Other" 
 
 export const EXPENSE_CATEGORIES: ExpenseCategory[] = [
   "Flight", "Lodging", "Cargo", "Meal", "Transport", "Shop",
-  "Supplies", "Delivery", "Personal", "Payroll", "Dividend",
+  "Supplies", "Delivery", "Personal", "Payroll", "Dividend", "Other"
 ]
 
 /** One operational expense row (replaces the "Operational_2026" sheet). */
