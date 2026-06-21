@@ -50,9 +50,13 @@ function formatDate(iso: string): string {
   return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
 }
 
-/** round(foreign × rate), the default IDR amount. */
-function calcIdr(foreign: number, rate: number): number {
-  return Math.round((Number(foreign) || 0) * (Number(rate) || 0))
+/** The real exchange rate actually paid: IDR ÷ foreign, rounded to 2 dp. Returns
+ *  0 when foreign is 0 (rate is undefined until an amount is entered). Unlike the
+ *  event's country kurs (marked up for product-cost simplification), this is the
+ *  true rate implied by what was spent. */
+function calcRate(idr: number, foreign: number): number {
+  if (!foreign) return 0
+  return Math.round(((Number(idr) || 0) / foreign) * 100) / 100
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -502,32 +506,29 @@ function AddExpenseForm({
   onAdded: () => void
 }) {
   const [draft, setDraft] = useState(emptyDraft)
-  const [idrManual, setIdrManual] = useState(false)
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
 
   const selectedEvent = events.find((e) => e.name === draft.event)
   const eventCurrency = selectedEvent?.currency || ""
-  const eventKurs = selectedEvent?.kurs || 0
   const currencyOptions = eventCurrency ? [IDR, eventCurrency] : [IDR]
   const isIdr = draft.currency === IDR
-  const effectiveRate = isIdr ? 1 : Number(draft.rate)
 
-  const autoIdr = calcIdr(Number(draft.amountForeign), effectiveRate)
-  const idrShown = idrManual ? draft.amountIdr : (draft.amountForeign ? String(autoIdr) : "")
+  const foreignNum = Number(draft.amountForeign) || 0
+  // IDR rows: the single amount IS the rupiah. FX rows: the user enters the
+  // actual rupiah paid separately, and the kurs is derived from it (IDR ÷ Valas)
+  // rather than pulled from the event's marked-up country kurs.
+  const idrNum = isIdr ? foreignNum : (Number(draft.amountIdr) || 0)
+  const derivedRate = isIdr ? 1 : calcRate(idrNum, foreignNum)
 
-  // Picking an event sets the default currency (its country's, else IDR) and the
-  // starting kurs. Picking a currency flips between IDR (kurs locked at 1) and the
-  // event's foreign currency (kurs pre-filled from the country, still editable).
+  // Picking an event/currency only sets the currency now — the kurs is always
+  // derived from the amounts, never pre-filled from the country.
   function pickEvent(name: string) {
     const ev = events.find((e) => e.name === name)
-    const cur = ev?.currency || IDR
-    setIdrManual(false)
-    setDraft((d) => ({ ...d, event: name, currency: cur, rate: cur === IDR ? "1" : String(ev?.kurs || "") }))
+    setDraft((d) => ({ ...d, event: name, currency: ev?.currency || IDR }))
   }
   function pickCurrency(cur: string) {
-    setIdrManual(false)
-    setDraft((d) => ({ ...d, currency: cur, rate: cur === IDR ? "1" : String(eventKurs || d.rate || "") }))
+    setDraft((d) => ({ ...d, currency: cur }))
   }
 
   async function handleAdd(e: React.FormEvent) {
@@ -544,9 +545,9 @@ function AddExpenseForm({
           expenseDate: draft.expenseDate,
           description: draft.description.trim(),
           category: draft.category,
-          amountForeign: Number(draft.amountForeign) || 0,
-          rate: effectiveRate || 0,
-          amountIdr: Number(idrShown) || 0,
+          amountForeign: foreignNum,
+          rate: derivedRate,
+          amountIdr: idrNum,
           isSettled: draft.isSettled,
           method: draft.method.trim(),
           remarks: "",
@@ -555,7 +556,6 @@ function AddExpenseForm({
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? "Failed to add")
       setDraft(emptyDraft())
-      setIdrManual(false)
       onAdded()
     } catch (err) {
       setAddError(err instanceof Error ? err.message : "Failed to add")
@@ -600,22 +600,22 @@ function AddExpenseForm({
         <Field label={`Amount (${draft.currency})`}>
           <input value={draft.amountForeign} onChange={(e) => setDraft((d) => ({ ...d, amountForeign: e.target.value }))} type="number" step="any" min="0" placeholder="0" disabled={adding} className={formInputCls} />
         </Field>
-        <Field label="Kurs">
+        <Field label="IDR">
           <input
-            value={isIdr ? "1" : draft.rate}
-            onChange={(e) => setDraft((d) => ({ ...d, rate: e.target.value }))}
-            type="number" step="any" min="0" placeholder="1"
+            value={isIdr ? draft.amountForeign : draft.amountIdr}
+            onChange={(e) => setDraft((d) => ({ ...d, amountIdr: e.target.value }))}
+            type="number" min="0" placeholder="0"
             disabled={adding || isIdr}
-            title={isIdr ? "IDR expense — kurs is always 1" : "Pre-filled from the event's currency; adjust to the actual rate"}
+            title={isIdr ? "IDR expense — same as the amount" : "Actual rupiah paid (used to derive the kurs)"}
             className={`${formInputCls} ${isIdr ? "bg-gray-50 text-gray-400" : ""}`}
           />
         </Field>
-        <Field label="IDR">
+        <Field label="Kurs">
           <input
-            value={idrShown}
-            onChange={(e) => { setIdrManual(true); setDraft((d) => ({ ...d, amountIdr: e.target.value })) }}
-            type="number" min="0" placeholder="0" disabled={adding}
-            className={formInputCls}
+            value={isIdr ? "1" : (foreignNum > 0 && idrNum > 0 ? String(derivedRate) : "")}
+            type="number" readOnly disabled placeholder="—"
+            title={isIdr ? "IDR expense — kurs is always 1" : "Auto: IDR ÷ amount (the real rate paid)"}
+            className={`${formInputCls} bg-gray-50 text-gray-400`}
           />
         </Field>
         <Field label="Method">
@@ -740,33 +740,26 @@ function EditExpenseModal({
     isSettled: row.isSettled,
     method: row.method,
   })
-  // Track whether the IDR field has diverged from the auto-calc, so editing
-  // foreign/kurs re-derives it only while it still matches.
-  const [idrManual, setIdrManual] = useState(
-    row.amountIdr !== calcIdr(row.amountForeign, row.rate),
-  )
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
   const selectedEvent = events.find((e) => e.name === draft.event)
-  const eventKurs = selectedEvent?.kurs || 0
   const foreignCurrency = selectedEvent?.currency || (draft.currency !== IDR ? draft.currency : "")
   const currencyOptions = foreignCurrency ? [IDR, foreignCurrency] : [IDR]
   const isIdr = draft.currency === IDR
-  const effectiveRate = isIdr ? 1 : Number(draft.rate)
 
-  const autoIdr = calcIdr(Number(draft.amountForeign), effectiveRate)
-  const idrShown = idrManual ? draft.amountIdr : String(autoIdr)
+  const foreignNum = Number(draft.amountForeign) || 0
+  // IDR rows: the amount IS the rupiah. FX rows: the actual rupiah paid is its
+  // own input, and the kurs is derived (IDR ÷ Valas), not the country's kurs.
+  const idrNum = isIdr ? foreignNum : (Number(draft.amountIdr) || 0)
+  const derivedRate = isIdr ? 1 : calcRate(idrNum, foreignNum)
 
   function pickEvent(name: string) {
     const ev = events.find((e) => e.name === name)
-    const cur = ev?.currency || IDR
-    setIdrManual(false)
-    setDraft((d) => ({ ...d, event: name, currency: cur, rate: cur === IDR ? "1" : String(ev?.kurs || "") }))
+    setDraft((d) => ({ ...d, event: name, currency: ev?.currency || IDR }))
   }
   function pickCurrency(cur: string) {
-    setIdrManual(false)
-    setDraft((d) => ({ ...d, currency: cur, rate: cur === IDR ? "1" : String(eventKurs || d.rate || "") }))
+    setDraft((d) => ({ ...d, currency: cur }))
   }
 
   async function handleSave() {
@@ -782,9 +775,9 @@ function EditExpenseModal({
           expenseDate: draft.expenseDate,
           description: draft.description.trim(),
           category: draft.category,
-          amountForeign: Number(draft.amountForeign) || 0,
-          rate: effectiveRate || 0,
-          amountIdr: Number(idrShown) || 0,
+          amountForeign: foreignNum,
+          rate: derivedRate,
+          amountIdr: idrNum,
           isSettled: draft.isSettled,
           method: draft.method.trim(),
           remarks: row.remarks,
@@ -837,21 +830,22 @@ function EditExpenseModal({
           <Field label={`Amount (${draft.currency})`}>
             <input value={draft.amountForeign} onChange={(e) => setDraft((d) => ({ ...d, amountForeign: e.target.value }))} type="number" step="any" min="0" disabled={saving} className={formInputCls} />
           </Field>
-          <Field label="Kurs">
+          <Field label="IDR">
             <input
-              value={isIdr ? "1" : draft.rate}
-              onChange={(e) => setDraft((d) => ({ ...d, rate: e.target.value }))}
-              type="number" step="any" min="0"
+              value={isIdr ? draft.amountForeign : draft.amountIdr}
+              onChange={(e) => setDraft((d) => ({ ...d, amountIdr: e.target.value }))}
+              type="number" min="0"
               disabled={saving || isIdr}
-              title={isIdr ? "IDR expense — kurs is always 1" : "Pre-filled from the event's currency; adjust to the actual rate"}
+              title={isIdr ? "IDR expense — same as the amount" : "Actual rupiah paid (used to derive the kurs)"}
               className={`${formInputCls} ${isIdr ? "bg-gray-50 text-gray-400" : ""}`}
             />
           </Field>
-          <Field label="IDR">
+          <Field label="Kurs">
             <input
-              value={idrShown}
-              onChange={(e) => { setIdrManual(true); setDraft((d) => ({ ...d, amountIdr: e.target.value })) }}
-              type="number" min="0" disabled={saving} className={formInputCls}
+              value={isIdr ? "1" : (foreignNum > 0 && idrNum > 0 ? String(derivedRate) : "")}
+              type="number" readOnly disabled placeholder="—"
+              title={isIdr ? "IDR expense — kurs is always 1" : "Auto: IDR ÷ amount (the real rate paid)"}
+              className={`${formInputCls} bg-gray-50 text-gray-400`}
             />
           </Field>
           <Field label="Method">
