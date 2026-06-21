@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireOwner } from "@/lib/api"
-import { getShoppingList, markProductBought } from "@/lib/db"
+import { getShoppingList, markProductBought, markProductOutOfStock } from "@/lib/db"
 
 export async function GET(req: NextRequest) {
   const { session, error: authError } = await requireSession()
@@ -26,14 +26,27 @@ export async function POST(req: NextRequest) {
   if (roleError) return roleError
 
   try {
-    const { event, productId, productName, quantityBought, receipt } = await req.json()
+    const body = await req.json()
+
+    // Out-of-stock: FIFO-reduce pending order quantities. The dropped invoice
+    // auto-materializes an overpayment refund for anyone who already paid.
+    if (body.action === "out_of_stock") {
+      const { event, productId, quantityOutOfStock } = body
+      if (!event || !productId || typeof quantityOutOfStock !== "number" || quantityOutOfStock < 1) {
+        return NextResponse.json({ error: "event, productId and quantityOutOfStock are required" }, { status: 400 })
+      }
+      const result = await markProductOutOfStock({ event, productId: Number(productId), quantityOutOfStock }, session.user.email)
+      return NextResponse.json({ success: true, ...result })
+    }
+
+    const { event, productId, productName, quantityBought, receipt } = body
     if (!event || !productId || !productName || typeof quantityBought !== "number" || quantityBought < 1) {
       return NextResponse.json({ error: "event, productId, productName and quantityBought are required" }, { status: 400 })
     }
     const result = await markProductBought({ event, productId: Number(productId), productName, quantityBought, receipt: receipt ?? "" }, session.user.email)
     return NextResponse.json({ success: true, ...result })
   } catch (err) {
-    console.error("Failed to mark orders as bought:", err)
-    return NextResponse.json({ error: "Failed to mark as bought" }, { status: 500 })
+    console.error("Failed to process shopping-list action:", err)
+    return NextResponse.json({ error: "Failed to process request" }, { status: 500 })
   }
 }

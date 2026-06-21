@@ -287,6 +287,62 @@ export async function markOrdersAsBought(orderIds: number[], db: DBExecutor = sq
   `
 }
 
+/**
+ * Out-of-stock: the supplier can't provide some/all pending units. FIFO-reduce
+ * the earliest pending orders' quantity by `quantityOutOfStock`, only ever
+ * touching un-bought units (unit stays >= unit_buy). The lowered `unit` drops
+ * those units off both the shopping list and the customer's invoice; if they'd
+ * already paid, the existing overpayment materializer (Refunds page) turns the
+ * resulting overpayment into a refund — same mechanism as wrong-product/broken.
+ * Nothing is logged to inventory, since nothing was ever received.
+ */
+export async function markProductOutOfStock(data: {
+  event: string
+  productId: number
+  quantityOutOfStock: number
+}, actor?: string | null): Promise<{ reducedOrderIds: number[]; reducedUnits: number }> {
+  type Row = { id: number; unit: number; unitBuy: number; pending: number }
+  const orders = (await sql`
+    SELECT
+      id,
+      unit::int AS unit,
+      COALESCE(unit_buy, 0)::int AS "unitBuy",
+      (unit - COALESCE(unit_buy, 0))::int AS pending
+    FROM orders
+    WHERE event = ${data.event}
+      AND product_id = ${data.productId}
+      AND (unit_buy IS NULL OR unit_buy < unit)
+    -- Match the order the shopping-list API returns rows in (customer, id), so a
+    -- partial out-of-stock reduces exactly the orders the modal previewed.
+    ORDER BY customer ASC, id ASC
+  `) as unknown as Row[]
+
+  // Allocate the out-of-stock count across pending units in FIFO order. Each
+  // order's `allocated` is bounded by its pending qty, so newUnit never drops
+  // below unit_buy (already-bought units are never cancelled). Any leftover
+  // beyond total pending is ignored — you can't be out of stock for units no
+  // one is still waiting on.
+  const { allocations } = allocateFifo(orders, (o) => o.pending, data.quantityOutOfStock)
+  const reducedOrderIds: number[] = []
+  let reducedUnits = 0
+
+  await sql.begin(async (tx) => {
+    await tx`SELECT set_config('app.actor', ${actor ?? ""}, true)`
+    for (const { item: o, allocated } of allocations) {
+      if (allocated <= 0) continue
+      reducedOrderIds.push(o.id)
+      reducedUnits += allocated
+      await tx`
+        UPDATE orders
+        SET unit = ${o.unit - allocated}, updated_at = NOW()
+        WHERE id = ${o.id}
+      `
+    }
+  })
+
+  return { reducedOrderIds, reducedUnits }
+}
+
 export async function markProductBought(data: {
   event: string
   productId: number

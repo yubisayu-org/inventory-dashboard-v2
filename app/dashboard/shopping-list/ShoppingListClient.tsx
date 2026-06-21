@@ -126,6 +126,15 @@ const PAID_LABEL: Record<PaidStatus, string> = {
   partial: "Partial",
   unpaid:  "Unpaid",
 }
+// What marking these units out of stock means for the customer's money, keyed by
+// how much they've paid. "paid" → now overpaid, so a refund will materialize;
+// "partial" → only refunded if their payment now exceeds the lower invoice;
+// "unpaid" → no refund, the invoice just shrinks.
+const OOS_OUTCOME: Record<PaidStatus, string> = {
+  paid:    "→ refund",
+  partial: "→ refund if overpaid",
+  unpaid:  "→ owes less",
+}
 
 function CustomerBadge({ orders }: { orders: CustomerBadgeOrder[] }) {
   const [open, setOpen] = useState(false)
@@ -830,35 +839,47 @@ function BuyModal({
   onClose: () => void
   onSuccess: () => void
 }) {
+  // "buy" = normal purchase; "oos" = supplier is out of stock, so FIFO-reduce
+  // the pending order quantities (a refund auto-materializes for paid customers).
+  const [mode, setMode] = useState<"buy" | "oos">("buy")
   const [qty, setQty] = useState(String(item.totalUnits))
   const [receipt, setReceipt] = useState("")
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
-  const quantityBought = Math.max(0, Number(qty) || 0)
-  const preview = computeFill(item.orders, quantityBought)
+  const quantity = Math.max(0, Number(qty) || 0)
+  const preview = computeFill(item.orders, quantity)
+  const isOos = mode === "oos"
 
   async function handleSubmit() {
-    if (quantityBought < 1) return
+    if (quantity < 1) return
     setSaving(true)
     setSaveError(null)
     try {
+      const body = isOos
+        ? {
+            action: "out_of_stock",
+            event: item.event,
+            productId: item.productId,
+            quantityOutOfStock: quantity,
+          }
+        : {
+            event: item.event,
+            productId: item.productId,
+            productName: item.productName,
+            quantityBought: quantity,
+            receipt: receipt.trim(),
+          }
       const res = await fetch("/api/sheets/shopping-list", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          event: item.event,
-          productId: item.productId,
-          productName: item.productName,
-          quantityBought,
-          receipt: receipt.trim(),
-        }),
+        body: JSON.stringify(body),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? "Failed to mark as bought")
+      if (!res.ok) throw new Error(data.error ?? (isOos ? "Failed to mark out of stock" : "Failed to mark as bought"))
       onSuccess()
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : "Failed to mark as bought")
+      setSaveError(err instanceof Error ? err.message : (isOos ? "Failed to mark out of stock" : "Failed to mark as bought"))
     } finally {
       setSaving(false)
     }
@@ -888,15 +909,40 @@ function BuyModal({
           </button>
         </div>
 
+        {/* Availability tabs */}
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs font-medium text-gray-500">Item availability</span>
+          <div className="flex rounded-lg border border-cream-border overflow-hidden text-xs">
+            {([
+              ["buy", "In stock"],
+              ["oos", "Out of stock"],
+            ] as const).map(([m, label]) => {
+              const active = mode === m
+              const activeCls = m === "buy" ? "bg-green-600 text-white" : "bg-red-600 text-white"
+              return (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => { setMode(m); setSaveError(null) }}
+                  className={`flex-1 px-2 py-1.5 transition-colors ${active ? `${activeCls} font-medium` : "bg-white text-gray-600 hover:bg-cream"}`}
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
         {/* Qty + Receipt inputs */}
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-medium text-gray-500">
-              Units bought <span className="text-gray-400">(remaining: {item.totalUnits})</span>
+              {isOos ? "Units out of stock" : "Units bought"} <span className="text-gray-400">(remaining: {item.totalUnits})</span>
             </label>
             <input
               type="number"
               min="1"
+              max={isOos ? item.totalUnits : undefined}
               value={qty}
               onChange={(e) => setQty(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") handleSubmit(); if (e.key === "Escape") onClose() }}
@@ -904,23 +950,25 @@ function BuyModal({
               className="border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
             />
           </div>
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-gray-500">
-              Receipt <span className="text-gray-400 font-normal">(optional)</span>
-            </label>
-            <input
-              type="text"
-              value={receipt}
-              onChange={(e) => setReceipt(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") handleSubmit(); if (e.key === "Escape") onClose() }}
-              placeholder="e.g. INV-001"
-              className="border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
-            />
-          </div>
+          {!isOos && (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-gray-500">
+                Receipt <span className="text-gray-400 font-normal">(optional)</span>
+              </label>
+              <input
+                type="text"
+                value={receipt}
+                onChange={(e) => setReceipt(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleSubmit(); if (e.key === "Escape") onClose() }}
+                placeholder="e.g. INV-001"
+                className="border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+              />
+            </div>
+          )}
         </div>
 
-        {/* Live preview */}
-        {quantityBought > 0 && (
+        {/* Live preview — buy */}
+        {!isOos && quantity > 0 && (
           <div className="flex flex-col gap-2 text-xs">
             {preview.filled.length > 0 && (
               <div>
@@ -966,6 +1014,57 @@ function BuyModal({
           </div>
         )}
 
+        {/* Live preview — out of stock */}
+        {isOos && quantity > 0 && (
+          <div className="flex flex-col gap-2 text-xs">
+            {preview.filled.length > 0 && (
+              <div>
+                <div className="font-medium text-gray-500 mb-1">Will cancel ({preview.filled.reduce((s, f) => s + f.allocated, 0)} units):</div>
+                <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto pr-0.5">
+                  {preview.filled.map((f) => (
+                    <div key={f.order.id} className="flex items-center justify-between gap-2 px-2 py-1 rounded-md bg-red-50">
+                      <span className="flex items-center gap-1.5 min-w-0">
+                        <span
+                          className={`inline-block w-2 h-2 rounded-full shrink-0 ${PAID_DOT[f.order.paidStatus]}`}
+                          title={PAID_LABEL[f.order.paidStatus]}
+                        />
+                        <span className="text-red-800 truncate">{displayIg(f.order.customer)}</span>
+                      </span>
+                      <span className="flex items-center gap-2 shrink-0">
+                        <span className="text-[10px] text-gray-500">{OOS_OUTCOME[f.order.paidStatus]}</span>
+                        <span className="text-red-700 font-medium tabular-nums">
+                          {f.allocated}×
+                          {f.allocated < f.order.pending && (
+                            <span className="text-red-600/70 font-normal"> of {f.order.pending}</span>
+                          )}
+                        </span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {preview.unfilled.length > 0 && (
+              <div>
+                <div className="font-medium text-gray-500 mb-1">Stays in list ({preview.unfilled.reduce((s, o) => s + o.pending, 0)} units):</div>
+                <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto pr-0.5">
+                  {preview.unfilled.map((o) => (
+                    <div key={o.id} className="flex items-center justify-between px-2 py-1 rounded-md bg-gray-50">
+                      <span className="text-gray-500 truncate">{displayIg(o.customer)}</span>
+                      <span className="text-gray-400 font-medium ml-2 shrink-0 tabular-nums">{o.pending}×</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <p className="text-[11px] text-gray-400">
+              These units are removed from each customer&rsquo;s order and invoice. Customers who already paid are refunded only the amount they&rsquo;ve overpaid (on the Refunds page); unpaid customers simply owe less.
+            </p>
+          </div>
+        )}
+
         {/* Footer */}
         <div className="flex items-center justify-end gap-2">
           {saveError && <p className="text-xs text-red-500 mr-auto">{saveError}</p>}
@@ -980,10 +1079,10 @@ function BuyModal({
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={saving || quantityBought < 1}
-            className="px-4 py-1.5 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700 disabled:opacity-50 transition-colors"
+            disabled={saving || quantity < 1}
+            className={`px-4 py-1.5 rounded-lg text-white text-sm font-medium disabled:opacity-50 transition-colors ${isOos ? "bg-red-600 hover:bg-red-700" : "bg-green-600 hover:bg-green-700"}`}
           >
-            {saving ? "Saving…" : "Mark as Bought"}
+            {saving ? "Saving…" : isOos ? "Mark Out of Stock" : "Mark as Bought"}
           </button>
         </div>
       </div>
