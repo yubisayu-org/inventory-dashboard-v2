@@ -1,7 +1,6 @@
 "use client"
 
 import { displayIg } from "@/lib/format"
-import Link from "next/link"
 import TableSkeleton from "@/components/TableSkeleton"
 import InvoiceSummary from "@/components/InvoiceSummary"
 import { useCallback, useEffect, useMemo, useState } from "react"
@@ -9,6 +8,7 @@ import type { InvoiceEvent, InvoiceResult, RefundRow, RefundReason, RefundStatus
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import { fetchJson } from "@/lib/api-fetch"
 import EventSelect from "@/components/EventSelect"
+import { InvoiceDetailDrawer } from "@/app/dashboard/invoice/InvoiceDetailDrawer"
 
 const INPUT_CLASS =
   "border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
@@ -406,6 +406,9 @@ function RefundDetailModal({
   const [invoiceEvent, setInvoiceEvent] = useState<InvoiceEvent | null>(null)
   const [invoiceLoading, setInvoiceLoading] = useState(true)
   const [invoiceError, setInvoiceError] = useState<string | null>(null)
+  // Opens the full invoice as a drawer over this modal instead of navigating
+  // away to /dashboard/invoice, so the refund list keeps its place.
+  const [showFullInvoice, setShowFullInvoice] = useState(false)
 
   // Apply-as-credit flow: the customer's other orders are the valid targets.
   const [customerEvents, setCustomerEvents] = useState<InvoiceEvent[]>([])
@@ -547,6 +550,7 @@ function RefundDetailModal({
   }
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
       <div
         className="bg-white rounded-xl border border-cream-border shadow-xl w-full max-w-lg flex flex-col gap-0 overflow-hidden max-h-[90vh]"
@@ -578,15 +582,16 @@ function RefundDetailModal({
             <InvoiceSummary
               event={invoiceEvent}
               actions={
-                <Link
-                  href={`/dashboard/invoice?customer=${encodeURIComponent(row.customer)}`}
+                <button
+                  type="button"
+                  onClick={() => setShowFullInvoice(true)}
                   className="text-xs px-2.5 py-1 rounded-lg border border-cream-border text-gray-600 hover:border-brand hover:text-brand transition-colors inline-flex items-center gap-1"
                 >
                   Open full invoice
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M5 12h14M13 5l7 7-7 7" />
                   </svg>
-                </Link>
+                </button>
               }
             />
           ) : null}
@@ -951,5 +956,12 @@ function RefundDetailModal({
         )}
       </div>
     </div>
+    {showFullInvoice && (
+      // Wrapper raises the drawer (z-40) above this refund modal (z-50).
+      <div className="relative z-[60]">
+        <InvoiceDetailDrawer customer={row.customer} onClose={() => setShowFullInvoice(false)} />
+      </div>
+    )}
+    </>
   )
 }
