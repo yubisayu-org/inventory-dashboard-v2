@@ -5,6 +5,7 @@ import { allocateFifo } from "../fifo-fill"
 import type { DBExecutor } from "./actor"
 import type { ShipOrderLine, ShipCustomer, ShipStatus, ShipOrdersParams, ShipMergedParams, ShipMergedResult, ShippingRecord, CustomerDetail } from "./types"
 import { getPaymentStatus, type PaymentStatus } from "./finance"
+import { fetchPaidStatusMap, compareOrderPriority } from "./shopping-list"
 
 // ─── Ship Orders ────────────────────────────────────────────────────────────
 
@@ -567,7 +568,7 @@ export async function getArrivalList(event?: string): Promise<ArrivalListItem[]>
         ORDER BY MAX(e.created_at) DESC NULLS LAST, o.event, p.name, p.store
       `
 
-  return rows.map((r) => ({
+  const items: ArrivalListItem[] = rows.map((r) => ({
     event: r.event as string,
     productId: r.product_id as number,
     productName: r.product_name as string,
@@ -579,6 +580,16 @@ export async function getArrivalList(event?: string): Promise<ArrivalListItem[]>
     orderIds: r.order_ids as number[],
     orders: r.orders as ArrivalListOrder[],
   }))
+
+  // Order each product's customers by allocation priority (paid → partial →
+  // unpaid, then earliest order) so the arrive modal's fill preview matches the
+  // server-side allocation in markProductArrived.
+  const statusMap = await fetchPaidStatusMap(event ? [event] : null)
+  for (const item of items) {
+    item.orders.sort(compareOrderPriority(item.event, statusMap))
+  }
+
+  return items
 }
 
 /**
@@ -591,10 +602,11 @@ export async function markProductArrived(data: {
   productId: number
   quantityArrived: number
 }, actor?: string | null): Promise<{ filledOrderIds: number[]; unassignedUnits: number }> {
-  type Row = { id: number; unitBuy: number; unitArrive: number; pending: number }
+  type Row = { id: number; customer: string; unitBuy: number; unitArrive: number; pending: number }
   const orders = (await sql`
     SELECT
       id,
+      customer,
       unit_buy::int AS "unitBuy",
       COALESCE(unit_arrive, 0)::int AS "unitArrive",
       (unit_buy - COALESCE(unit_arrive, 0))::int AS pending
@@ -605,6 +617,11 @@ export async function markProductArrived(data: {
       AND (unit_arrive IS NULL OR unit_arrive < unit_buy)
     ORDER BY id ASC
   `) as unknown as Row[]
+
+  // Allocate arrivals to paid customers first, then partial, then unpaid
+  // (earliest order within a tier). Matches the arrive modal's preview ordering.
+  const statusMap = await fetchPaidStatusMap([data.event])
+  orders.sort(compareOrderPriority(data.event, statusMap))
 
   const { allocations, excess: unassignedUnits } = allocateFifo(orders, (o) => o.pending, data.quantityArrived)
   const filledOrderIds: number[] = []

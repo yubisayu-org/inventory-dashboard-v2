@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireOwner } from "@/lib/api"
-import { getArrivalList, markProductArrived, recordWrongProduct, recordBrokenArrival, withActor } from "@/lib/db"
+import { getArrivalList, markProductArrived, recordWrongProduct, recordBrokenArrival, recordMissingArrival, withActor } from "@/lib/db"
 
 export async function GET(req: NextRequest) {
   const { session, error: authError } = await requireSession()
@@ -69,6 +69,26 @@ export async function POST(req: NextRequest) {
         : []
       const result = await withActor(session.user.email, (tx) =>
         recordBrokenArrival({ event, productName, qty, cancelOrderIds }, tx),
+      )
+      return NextResponse.json({ success: true, ...result })
+    }
+
+    // Missing path: the expected item never arrived. Like broken, cancel the
+    // chosen customer orders (refunds auto-materialize if paid) — but nothing is
+    // logged to inventory, since there are no physical units.
+    if (body.action === "missing") {
+      const { event } = body
+      const cancelOrderIds = Array.isArray(body.cancelOrderIds)
+        ? body.cancelOrderIds.filter((n: unknown) => Number.isInteger(n)) as number[]
+        : []
+      if (!event || cancelOrderIds.length === 0) {
+        return NextResponse.json(
+          { error: "event and at least one order to cancel are required" },
+          { status: 400 },
+        )
+      }
+      const result = await withActor(session.user.email, (tx) =>
+        recordMissingArrival({ cancelOrderIds }, tx),
       )
       return NextResponse.json({ success: true, ...result })
     }

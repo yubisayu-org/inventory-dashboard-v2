@@ -6,6 +6,26 @@ import type { DBExecutor } from "./actor"
 
 export type PaidStatus = "paid" | "partial" | "unpaid"
 
+// Stock is finite, so when only some of an order line is bought/arrives we hand
+// it out to higher-priority customers first: already-paid before partially-paid
+// before unpaid (the people who've committed money get their goods first), and
+// within a tier the earliest order (smallest id) wins. Used by every FIFO
+// allocator + the on-screen previews so what you see matches what gets filled.
+export const PAID_PRIORITY_RANK: Record<PaidStatus, number> = { paid: 0, partial: 1, unpaid: 2 }
+
+/**
+ * Comparator for ordering a single event's order rows by allocation priority.
+ * `statusMap` is keyed `${event}|${customer}` (as built by fetchPaidStatusMap);
+ * a missing entry is treated as unpaid. `event` fixes the lookup key.
+ */
+export function compareOrderPriority(event: string, statusMap: Map<string, PaidStatus>) {
+  return (a: { id: number; customer: string }, b: { id: number; customer: string }) => {
+    const ra = PAID_PRIORITY_RANK[statusMap.get(`${event}|${a.customer}`) ?? "unpaid"]
+    const rb = PAID_PRIORITY_RANK[statusMap.get(`${event}|${b.customer}`) ?? "unpaid"]
+    return ra - rb || a.id - b.id
+  }
+}
+
 export interface ShoppingListOrder {
   id: number
   customer: string
@@ -134,6 +154,15 @@ export async function getShoppingList(event?: string): Promise<ShoppingListItem[
     })),
   }))
 
+  // Order each product's customers by allocation priority (paid → partial →
+  // unpaid, then earliest order) so the buy modal's fill preview — which walks
+  // this array in order — matches the server-side allocation in markProductBought.
+  for (const item of items) {
+    item.orders.sort(
+      (a, b) => PAID_PRIORITY_RANK[a.paidStatus] - PAID_PRIORITY_RANK[b.paidStatus] || a.id - b.id,
+    )
+  }
+
   return items
 }
 
@@ -153,7 +182,7 @@ export async function getShoppingList(event?: string): Promise<ShoppingListItem[
  * tables, so payments/adjustments/customers are joined on the normalized
  * handle (lower + strip @), matching how invoice.ts does it.
  */
-async function fetchPaidStatusMap(events: string[] | null): Promise<Map<string, PaidStatus>> {
+export async function fetchPaidStatusMap(events: string[] | null): Promise<Map<string, PaidStatus>> {
   const map = new Map<string, PaidStatus>()
   if (events !== null && events.length === 0) return map
 
@@ -301,10 +330,11 @@ export async function markProductOutOfStock(data: {
   productId: number
   quantityOutOfStock: number
 }, actor?: string | null): Promise<{ reducedOrderIds: number[]; reducedUnits: number }> {
-  type Row = { id: number; unit: number; unitBuy: number; pending: number }
+  type Row = { id: number; customer: string; unit: number; unitBuy: number; pending: number }
   const orders = (await sql`
     SELECT
       id,
+      customer,
       unit::int AS unit,
       COALESCE(unit_buy, 0)::int AS "unitBuy",
       (unit - COALESCE(unit_buy, 0))::int AS pending
@@ -312,10 +342,15 @@ export async function markProductOutOfStock(data: {
     WHERE event = ${data.event}
       AND product_id = ${data.productId}
       AND (unit_buy IS NULL OR unit_buy < unit)
-    -- Match the order the shopping-list API returns rows in (customer, id), so a
-    -- partial out-of-stock reduces exactly the orders the modal previewed.
-    ORDER BY customer ASC, id ASC
+    ORDER BY id ASC
   `) as unknown as Row[]
+
+  // Out of stock removes goods, so it's the mirror of buying: cancel the
+  // LOWEST-priority orders first (unpaid → partial → paid, latest order within a
+  // tier) to protect customers who've already paid. This is the buy priority
+  // order reversed, matching the modal's out-of-stock preview.
+  const statusMap = await fetchPaidStatusMap([data.event])
+  orders.sort(compareOrderPriority(data.event, statusMap)).reverse()
 
   // Allocate the out-of-stock count across pending units in FIFO order. Each
   // order's `allocated` is bounded by its pending qty, so newUnit never drops
@@ -352,10 +387,11 @@ export async function markProductBought(data: {
 }, actor?: string | null): Promise<{ filledOrderIds: number[]; excessUnits: number }> {
   // Partial allocation lets an order have unit_buy < unit, so it stays in the
   // shopping list with reduced "remaining" qty. Mirrors /api/sheets/purchasing.
-  type Row = { id: number; unit: number; unitBuy: number; receipt: string; pending: number }
+  type Row = { id: number; customer: string; unit: number; unitBuy: number; receipt: string; pending: number }
   const orders = (await sql`
     SELECT
       id,
+      customer,
       unit::int AS unit,
       COALESCE(unit_buy, 0)::int AS "unitBuy",
       COALESCE(receipt, '') AS receipt,
@@ -366,6 +402,11 @@ export async function markProductBought(data: {
       AND (unit_buy IS NULL OR unit_buy < unit)
     ORDER BY id ASC
   `) as unknown as Row[]
+
+  // Allocate to paid customers first, then partial, then unpaid (earliest order
+  // within a tier). Matches the buy modal's preview ordering in getShoppingList.
+  const statusMap = await fetchPaidStatusMap([data.event])
+  orders.sort(compareOrderPriority(data.event, statusMap))
 
   const { allocations, excess: excessUnits } = allocateFifo(orders, (o) => o.pending, data.quantityBought)
   const filledOrderIds: number[] = []

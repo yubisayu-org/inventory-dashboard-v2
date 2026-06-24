@@ -848,8 +848,11 @@ function BuyModal({
   const [saveError, setSaveError] = useState<string | null>(null)
 
   const quantity = Math.max(0, Number(qty) || 0)
-  const preview = computeFill(item.orders, quantity)
   const isOos = mode === "oos"
+  // Buying fills highest-priority customers first (item.orders is already paid →
+  // partial → unpaid). Out of stock is the mirror: cancel lowest-priority first,
+  // so walk the same list reversed. Matches markProductBought / markProductOutOfStock.
+  const preview = computeFill(isOos ? [...item.orders].reverse() : item.orders, quantity)
 
   async function handleSubmit() {
     if (quantity < 1) return

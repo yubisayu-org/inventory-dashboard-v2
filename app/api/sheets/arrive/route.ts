@@ -5,7 +5,10 @@ import {
   bulkUpdateArrive,
   appendExcessPurchase,
   withActor,
+  fetchPaidStatusMap,
+  PAID_PRIORITY_RANK,
   type ExcessReason,
+  type PaidStatus,
 } from "@/lib/db"
 
 type ItemLine = { item: string; qty: number; expectedItem?: string }
@@ -19,7 +22,11 @@ type ItemResult = {
   loggedAs?: Extract<ExcessReason, "overship" | "wrong_product">
 }
 
-function buildEligibleMap(rows: FormRows): Map<string, FormRows> {
+// Eligible rows per item, ordered by allocation priority: paid → partial →
+// unpaid (customers who've committed money receive arrivals first), then
+// earliest order within a tier. Mirrors getArrivalList / markProductArrived.
+function buildEligibleMap(rows: FormRows, event: string, statusMap: Map<string, PaidStatus>): Map<string, FormRows> {
+  const rank = (customer: string) => PAID_PRIORITY_RANK[statusMap.get(`${event}|${customer}`) ?? "unpaid"]
   const map = new Map<string, FormRows>()
   for (const r of rows) {
     const unitBuy = r.unitBuy ?? 0
@@ -29,7 +36,9 @@ function buildEligibleMap(rows: FormRows): Map<string, FormRows> {
     if (group) group.push(r)
     else map.set(r.items, [r])
   }
-  for (const group of map.values()) group.sort((a, b) => a.rowNumber - b.rowNumber)
+  for (const group of map.values()) {
+    group.sort((a, b) => rank(a.customer) - rank(b.customer) || a.rowNumber - b.rowNumber)
+  }
   return map
 }
 
@@ -90,8 +99,11 @@ export async function POST(req: NextRequest) {
       normalized.push({ item: line.item, qty: q, expectedItem })
     }
 
-    const rows = await getDuplicateFormRowsForEvent(event)
-    const eligibleMap = buildEligibleMap(rows)
+    const [rows, statusMap] = await Promise.all([
+      getDuplicateFormRowsForEvent(event),
+      fetchPaidStatusMap([event]),
+    ])
+    const eligibleMap = buildEligibleMap(rows, event, statusMap)
 
     const allUpdates: UpdatedRow[] = []
     const results: ItemResult[] = []
