@@ -621,6 +621,20 @@ export async function recordBrokenArrival(
   return { cancelledOrders, excessUnits: data.qty }
 }
 
+/**
+ * Missing on arrival: the expected item never showed up (lost in transit, short
+ * shipment, etc.). Like recordBrokenArrival, the chosen customer orders are
+ * cancelled (refunds auto-materialize if paid) — but nothing is logged to
+ * excess_purchase, because there are no physical units to track.
+ */
+export async function recordMissingArrival(
+  data: { cancelOrderIds: number[] },
+  db: DBExecutor = sql,
+): Promise<{ cancelledOrders: number }> {
+  const cancelledOrders = await cancelOrderLines(data.cancelOrderIds, db)
+  return { cancelledOrders }
+}
+
 export async function appendExcessPurchase(
   rows: {
     event: string

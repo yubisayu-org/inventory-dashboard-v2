@@ -1,13 +1,18 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireOwner } from "@/lib/api"
-import { getDuplicateFormRowsForEvent, bulkUpdatePurchase, appendExcessPurchase, withActor } from "@/lib/db"
+import { getDuplicateFormRowsForEvent, bulkUpdatePurchase, appendExcessPurchase, withActor, fetchPaidStatusMap, PAID_PRIORITY_RANK, type PaidStatus } from "@/lib/db"
 
 type ItemLine = { item: string; qty: number }
 type UpdatedRow = { rowNumber: number; customer: string; oldUnitBuy: number; unitBuy: number }
 type FormRows = Awaited<ReturnType<typeof getDuplicateFormRowsForEvent>>
 
-/** Build a map of item name → eligible rows (sorted chronologically). */
-function buildEligibleMap(rows: FormRows): Map<string, FormRows> {
+/**
+ * Build a map of item name → eligible rows, ordered by allocation priority:
+ * paid → partial → unpaid (customers who've committed money are bought first),
+ * then earliest order within a tier. Mirrors getShoppingList / markProductBought.
+ */
+function buildEligibleMap(rows: FormRows, event: string, statusMap: Map<string, PaidStatus>): Map<string, FormRows> {
+  const rank = (customer: string) => PAID_PRIORITY_RANK[statusMap.get(`${event}|${customer}`) ?? "unpaid"]
   const map = new Map<string, FormRows>()
   for (const r of rows) {
     if ((r.unitBuy ?? 0) >= r.unit) continue
@@ -15,7 +20,9 @@ function buildEligibleMap(rows: FormRows): Map<string, FormRows> {
     if (group) group.push(r)
     else map.set(r.items, [r])
   }
-  for (const group of map.values()) group.sort((a, b) => a.rowNumber - b.rowNumber)
+  for (const group of map.values()) {
+    group.sort((a, b) => rank(a.customer) - rank(b.customer) || a.rowNumber - b.rowNumber)
+  }
   return map
 }
 
@@ -86,9 +93,12 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const rows = await getDuplicateFormRowsForEvent(event)
+    const [rows, statusMap] = await Promise.all([
+      getDuplicateFormRowsForEvent(event),
+      fetchPaidStatusMap([event]),
+    ])
     const receiptStr = receipt ? String(receipt) : ""
-    const eligibleMap = buildEligibleMap(rows)
+    const eligibleMap = buildEligibleMap(rows, event, statusMap)
 
     const allUpdates: (UpdatedRow & { receipt: string })[] = []
     const results: { item: string; rows: UpdatedRow[]; excess: number }[] = []
