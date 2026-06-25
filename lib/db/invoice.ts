@@ -288,7 +288,10 @@ export async function getPublicInvoiceForCustomer(
       LEFT JOIN customer_warehouse_ongkir cwo
         ON cwo.customer_id = c.id AND cwo.warehouse_id = e.warehouse_id
       WHERE lower(replace(o.customer, '@', '')) = ${searchId}
-      ORDER BY o.event, o.id
+      -- Newest event first on the customer recap. groupRowsByEvent keeps this
+      -- row order, so events surface by creation date (desc); o.id keeps each
+      -- event's lines stable. NULLS LAST guards an orphaned event name.
+      ORDER BY e.created_at DESC NULLS LAST, o.event, o.id
     `,
     db`
       SELECT event, COALESCE(SUM(amount), 0) AS total_paid

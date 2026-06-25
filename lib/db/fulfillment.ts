@@ -592,6 +592,65 @@ export async function getArrivalList(event?: string): Promise<ArrivalListItem[]>
   return items
 }
 
+// ─── Received Report ───────────────────────────────────────────────────────
+
+export interface ReceivedReportItem {
+  event: string
+  store: string
+  productId: number
+  productName: string
+  unitsReceived: number
+}
+
+/**
+ * Per-product tally of units *received* over a local (Asia/Jakarta) date range,
+ * inclusive on both ends, for the printable receiving report. Pass the same
+ * value for `from` and `to` for a single day.
+ *
+ * Receiving is incremental — `unit_arrive` accumulates in batches and only
+ * bumps `updated_at`, which any edit also touches — so `orders` itself can't
+ * say what arrived on a date. Instead we read the append-only `audit.audit_log`
+ * (migration 029): each orders write stores old/new JSONB, so the per-row delta
+ * `new.unit_arrive − old.unit_arrive` is exactly the units booked in that
+ * transaction. Summing the positive deltas over the range gives the receipts;
+ * a product received across several days in the range is one summed row.
+ *
+ * Only increases count (gross receipts): a downward correction that fixes an
+ * over-count is intentionally excluded — this is a "what came in" log, not a
+ * net-change log. `from`/`to` are 'YYYY-MM-DD' strings compared against the
+ * audit timestamp converted to Asia/Jakarta, so day boundaries match the wall
+ * clock rather than UTC.
+ */
+export async function getReceivedReport(from: string, to: string): Promise<ReceivedReportItem[]> {
+  const rows = await sql`
+    SELECT
+      (a.new_row->>'event')                                        AS event,
+      (a.new_row->>'product_id')::int                              AS product_id,
+      p.name                                                       AS product_name,
+      p.store                                                      AS store,
+      SUM( (a.new_row->>'unit_arrive')::int
+           - COALESCE((a.old_row->>'unit_arrive')::int, 0) )::int  AS units_received
+    FROM audit.audit_log a
+    JOIN products p ON p.id = (a.new_row->>'product_id')::int
+    LEFT JOIN events e ON e.name = (a.new_row->>'event')
+    WHERE a.table_name = 'orders'
+      AND a.action IN ('INSERT', 'UPDATE')
+      AND (a.at AT TIME ZONE 'Asia/Jakarta')::date BETWEEN ${from}::date AND ${to}::date
+      AND COALESCE((a.new_row->>'unit_arrive')::int, 0)
+          > COALESCE((a.old_row->>'unit_arrive')::int, 0)
+    GROUP BY event, product_id, p.name, p.store, e.created_at
+    ORDER BY e.created_at DESC NULLS LAST, event, p.store, p.name
+  `
+
+  return rows.map((r) => ({
+    event: r.event as string,
+    store: (r.store as string) ?? "",
+    productId: r.product_id as number,
+    productName: r.product_name as string,
+    unitsReceived: r.units_received as number,
+  }))
+}
+
 /**
  * Partial allocation: shipments arrive in batches, so an order can have
  * unit_arrive < unit_buy and still appear in the arrival list with reduced
