@@ -29,6 +29,7 @@ export async function GET(req: NextRequest) {
         event: params.get("event") ?? undefined,
         category: params.get("category") ?? undefined,
         method: params.get("method") ?? undefined,
+        settled: params.get("settled") ?? undefined,
         sortKey: params.get("sortKey") ?? undefined,
         sortDir: (params.get("sortDir") as "asc" | "desc") ?? undefined,
         skipCount: params.get("skipCount") === "true",

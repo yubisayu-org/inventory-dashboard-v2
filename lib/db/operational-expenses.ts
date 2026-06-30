@@ -60,15 +60,16 @@ export async function getOperationalExpensesPaginated(opts: {
   event?: string
   category?: string
   method?: string
+  settled?: string // "true" / "false"; anything else = no filter
   sortKey?: string
   sortDir?: "asc" | "desc"
   skipCount?: boolean
 }): Promise<PaginatedOperationalExpenses> {
-  const { page, pageSize, search, event, category, method, skipCount } = opts
+  const { page, pageSize, search, event, category, method, settled, skipCount } = opts
   const offset = (page - 1) * pageSize
 
   const conditions: string[] = []
-  const params: (string | number)[] = []
+  const params: (string | number | boolean)[] = []
 
   if (search) {
     params.push(`%${search.toLowerCase()}%`)
@@ -89,6 +90,10 @@ export async function getOperationalExpensesPaginated(opts: {
   if (method) {
     params.push(`%${method.toLowerCase()}%`)
     conditions.push(`lower(e.method) LIKE $${params.length}`)
+  }
+  if (settled === "true" || settled === "false") {
+    params.push(settled === "true")
+    conditions.push(`e.is_settled = $${params.length}`)
   }
 
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""
