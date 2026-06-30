@@ -501,6 +501,12 @@ export interface ArrivalListItem {
   customers: string[]
   orderIds: number[]
   orders: ArrivalListOrder[]
+  // Purchase cost in the product's foreign currency, for the cargo document.
+  // valas = unit price in that currency; currency = its code (from the product's
+  // country); kurs = IDR per unit of valas. 0 / "" when the product has none.
+  valas: number
+  kurs: number
+  currency: string
 }
 
 /**
@@ -516,6 +522,9 @@ export async function getArrivalList(event?: string): Promise<ArrivalListItem[]>
           o.product_id,
           p.name AS product_name,
           p.store,
+          p.valas,
+          p.kurs,
+          COALESCE(c.currency, '') AS currency,
           SUM(o.unit_buy - COALESCE(o.unit_arrive, 0))::int AS total_pending,
           SUM(o.unit_buy)::int AS total_bought,
           COUNT(DISTINCT o.customer)::int AS customer_count,
@@ -530,10 +539,11 @@ export async function getArrivalList(event?: string): Promise<ArrivalListItem[]>
           ) ORDER BY o.customer, o.id) AS orders
         FROM orders o
         JOIN products p ON p.id = o.product_id
+        LEFT JOIN countries c ON c.id = p.country_id
         WHERE o.unit_buy IS NOT NULL
           AND (o.unit_arrive IS NULL OR o.unit_arrive < o.unit_buy)
           AND o.event = ${event}
-        GROUP BY o.event, o.product_id, p.name, p.store
+        GROUP BY o.event, o.product_id, p.name, p.store, p.valas, p.kurs, c.currency
         HAVING SUM(o.unit_buy - COALESCE(o.unit_arrive, 0)) > 0
         ORDER BY p.name, p.store
       `
@@ -543,6 +553,9 @@ export async function getArrivalList(event?: string): Promise<ArrivalListItem[]>
           o.product_id,
           p.name AS product_name,
           p.store,
+          p.valas,
+          p.kurs,
+          COALESCE(c.currency, '') AS currency,
           SUM(o.unit_buy - COALESCE(o.unit_arrive, 0))::int AS total_pending,
           SUM(o.unit_buy)::int AS total_bought,
           COUNT(DISTINCT o.customer)::int AS customer_count,
@@ -557,10 +570,11 @@ export async function getArrivalList(event?: string): Promise<ArrivalListItem[]>
           ) ORDER BY o.customer, o.id) AS orders
         FROM orders o
         JOIN products p ON p.id = o.product_id
+        LEFT JOIN countries c ON c.id = p.country_id
         JOIN events e ON e.name = o.event
         WHERE o.unit_buy IS NOT NULL
           AND (o.unit_arrive IS NULL OR o.unit_arrive < o.unit_buy)
-        GROUP BY o.event, o.product_id, p.name, p.store
+        GROUP BY o.event, o.product_id, p.name, p.store, p.valas, p.kurs, c.currency
         HAVING SUM(o.unit_buy - COALESCE(o.unit_arrive, 0)) > 0
         -- Most recently created event first (matches the shopping list and
         -- dashboard); product name then store within each event. MAX() because
@@ -579,6 +593,10 @@ export async function getArrivalList(event?: string): Promise<ArrivalListItem[]>
     customers: r.customers as string[],
     orderIds: r.order_ids as number[],
     orders: r.orders as ArrivalListOrder[],
+    valas: Number(r.valas) || 0,
+    // kurs is NUMERIC(12,4) — postgres-js returns it as a string, so coerce.
+    kurs: Number(r.kurs) || 0,
+    currency: (r.currency as string) ?? "",
   }))
 
   // Order each product's customers by allocation priority (paid → partial →
