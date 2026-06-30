@@ -700,6 +700,9 @@ function ConfirmPurchasePanel({
   }, [items])
 
   const anyQty = items.some((it) => (Number(qtys[selKey(it)]) || 0) > 0)
+  // Title counts units to be purchased (sum of the adjustable qtys), not the
+  // number of product lines — "2 products × 5+4 units" reads as "9 items".
+  const totalQty = items.reduce((s, it) => s + (Number(qtys[selKey(it)]) || 0), 0)
 
   async function handleSubmit() {
     if (!anyQty || submitting) return
@@ -755,7 +758,7 @@ function ConfirmPurchasePanel({
       >
         <div className="px-5 py-4 border-b border-cream-border shrink-0">
           <h3 className="text-sm font-semibold text-foreground">
-            Mark {items.length} item{items.length === 1 ? "" : "s"} purchased
+            Mark {totalQty} item{totalQty === 1 ? "" : "s"} purchased
           </h3>
           <p className="text-xs text-gray-500 mt-0.5">Adjust quantities if needed, then add one receipt for all of them.</p>
         </div>
