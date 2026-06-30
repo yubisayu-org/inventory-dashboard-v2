@@ -500,6 +500,8 @@ function NumericFilterInput<T>({ column, onClose }: { column: Column<T, unknown>
 
 function BooleanFilterInput<T>({ column, onClose }: { column: Column<T, unknown>; onClose: () => void }) {
   const current = (column.getFilterValue() as string) ?? ""
+  // Columns may override the generic True/False wording (e.g. Settled/Unsettled).
+  const labels = (column.columnDef.meta as { booleanLabels?: { true: string; false: string } } | undefined)?.booleanLabels
 
   return (
     <div className="flex flex-col gap-2">
@@ -510,8 +512,8 @@ function BooleanFilterInput<T>({ column, onClose }: { column: Column<T, unknown>
         className="border border-cream-border rounded-md px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-brand/30"
       >
         <option value="">All</option>
-        <option value="true">True</option>
-        <option value="false">False</option>
+        <option value="true">{labels?.true ?? "True"}</option>
+        <option value="false">{labels?.false ?? "False"}</option>
       </select>
     </div>
   )
@@ -535,7 +537,9 @@ function ActiveFilters<T>({ table }: { table: TanTable<T> }) {
           const opLabels: Record<string, string> = { eq: "=", gt: ">", lt: "<", gte: "≥", lte: "≤" }
           label = `${header} ${opLabels[op] ?? op} ${value}`
         } else if (f.value === "true" || f.value === "false") {
-          label = `${header}: ${f.value}`
+          const labels = (col.columnDef.meta as { booleanLabels?: { true: string; false: string } } | undefined)?.booleanLabels
+          const text = f.value === "true" ? (labels?.true ?? "true") : (labels?.false ?? "false")
+          label = `${header}: ${text}`
         } else {
           label = `${header}: "${f.value}"`
         }

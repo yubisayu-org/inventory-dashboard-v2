@@ -116,6 +116,7 @@ export default function OperationalExpensesClient() {
       if (cf.id === "event") f.event = v
       else if (cf.id === "category") f.category = v
       else if (cf.id === "method") f.method = v
+      else if (cf.id === "isSettled") f.settled = v
     }
     return f
   }, [columnFilters])
@@ -216,11 +217,11 @@ export default function OperationalExpensesClient() {
     {
       accessorKey: "isSettled",
       header: "Settle",
-      enableColumnFilter: false,
+      filterFn: "boolean",
       cell: ({ row }) => (
         <SettleToggle row={row.original} onToggled={() => refreshRef.current()} />
       ),
-      meta: { align: "center" },
+      meta: { align: "center", booleanLabels: { true: "Settled", false: "Unsettled" } },
     },
     {
       accessorKey: "method",
@@ -487,7 +488,7 @@ const emptyDraft = () => ({
   event: "",
   expenseDate: todayIso(),
   description: "",
-  category: "Flight" as ExpenseCategory,
+  category: "Shop" as ExpenseCategory,
   currency: IDR,
   amountForeign: "",
   rate: "1",
@@ -591,7 +592,7 @@ function AddExpenseForm({
         </Field>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Field label="Currency">
           <select value={draft.currency} onChange={(e) => pickCurrency(e.target.value)} disabled={adding} className={formInputCls}>
             {currencyOptions.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -608,14 +609,6 @@ function AddExpenseForm({
             disabled={adding || isIdr}
             title={isIdr ? "IDR expense — same as the amount" : "Actual rupiah paid (used to derive the kurs)"}
             className={`${formInputCls} ${isIdr ? "bg-gray-50 text-gray-400" : ""}`}
-          />
-        </Field>
-        <Field label="Kurs">
-          <input
-            value={isIdr ? "1" : (foreignNum > 0 && idrNum > 0 ? String(derivedRate) : "")}
-            type="number" readOnly disabled placeholder="—"
-            title={isIdr ? "IDR expense — kurs is always 1" : "Auto: IDR ÷ amount (the real rate paid)"}
-            className={`${formInputCls} bg-gray-50 text-gray-400`}
           />
         </Field>
         <Field label="Method">
