@@ -213,9 +213,10 @@ export default function ArrivalListClient() {
   const [bulkOpen, setBulkOpen] = useState(false)
   const [collapsedEvents, setCollapsedEvents] = useState<Set<string>>(new Set())
   const [collapsedStores, setCollapsedStores] = useState<Set<string>>(new Set())
-  // Multi-select for building a cargo document from several items at once.
+  // Multi-select for marking several items received / building a cargo document.
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [cargoOpen, setCargoOpen] = useState(false)
+  const [receiveOpen, setReceiveOpen] = useState(false)
 
   const fetchItems = useCallback((event?: string, silent = false) => {
     if (!silent) setLoading(true)
@@ -510,6 +511,12 @@ export default function ArrivalListClient() {
           >
             Create cargo document
           </button>
+          <button
+            onClick={() => setReceiveOpen(true)}
+            className="px-3 py-1.5 rounded-full bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 transition-colors"
+          >
+            Mark as received
+          </button>
           <button onClick={clearSelection} aria-label="Clear selection" className="text-white/70 hover:text-white transition-colors">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
           </button>
@@ -523,7 +530,184 @@ export default function ArrivalListClient() {
           onGenerated={() => { setCargoOpen(false); clearSelection() }}
         />
       )}
+
+      {receiveOpen && (
+        <ConfirmReceivePanel
+          items={selectedItems}
+          onClose={() => setReceiveOpen(false)}
+          onSuccess={() => { clearSelection(); setReceiveOpen(false); handleArrivedSuccess() }}
+          onPartial={(succeededKeys) => {
+            setSelected((prev) => {
+              const next = new Set(prev)
+              for (const k of succeededKeys) next.delete(k)
+              return next
+            })
+            handleArrivedSuccess()
+          }}
+        />
+      )}
     </>
+  )
+}
+
+// ─── Confirm multi-receive panel ─────────────────────────────────────────────
+
+function ConfirmReceivePanel({
+  items,
+  onClose,
+  onSuccess,
+  onPartial,
+}: {
+  items: ArrivalListItem[]
+  onClose: () => void
+  onSuccess: () => void
+  onPartial: (succeededKeys: string[]) => void
+}) {
+  // Qty per selected item, defaulting to its pending units. Keyed by selKey.
+  const [qtys, setQtys] = useState<Record<string, string>>(() => {
+    const m: Record<string, string> = {}
+    for (const it of items) m[selKey(it)] = String(it.totalPending)
+    return m
+  })
+  const [submitting, setSubmitting] = useState(false)
+  const [errors, setErrors] = useState<string[]>([])
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose() }
+    document.addEventListener("keydown", onKey)
+    return () => document.removeEventListener("keydown", onKey)
+  }, [onClose])
+
+  // Group by event for display, mirroring the shopping list's purchase panel.
+  const byEvent = useMemo(() => {
+    const m = new Map<string, ArrivalListItem[]>()
+    for (const it of items) {
+      const arr = m.get(it.event) ?? []
+      arr.push(it)
+      m.set(it.event, arr)
+    }
+    return m
+  }, [items])
+
+  const totalQty = items.reduce((s, it) => s + (Number(qtys[selKey(it)]) || 0), 0)
+  const anyQty = totalQty > 0
+
+  async function handleSubmit() {
+    if (!anyQty || submitting) return
+    setSubmitting(true)
+    setErrors([])
+
+    // The arrival API is per-product, so fire one request per selected item.
+    const targets = items
+      .map((it) => ({
+        key: selKey(it),
+        event: it.event,
+        productId: it.productId,
+        name: it.productName,
+        qty: Number(qtys[selKey(it)]) || 0,
+      }))
+      .filter((t) => t.qty > 0)
+
+    const settled = await Promise.allSettled(
+      targets.map((t) =>
+        fetch("/api/sheets/arrival-list", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ event: t.event, productId: t.productId, quantityArrived: t.qty }),
+        }).then(async (res) => {
+          const data = await res.json()
+          if (!res.ok) throw new Error(data.error ?? `Failed for ${t.name}`)
+          return t.key
+        }),
+      ),
+    )
+
+    const succeeded: string[] = []
+    const failed: string[] = []
+    settled.forEach((r, i) => {
+      if (r.status === "fulfilled") succeeded.push(targets[i].key)
+      else failed.push(`${targets[i].name}: ${r.reason instanceof Error ? r.reason.message : "failed"}`)
+    })
+
+    setSubmitting(false)
+    if (failed.length === 0) {
+      onSuccess()
+    } else {
+      setErrors(failed)
+      if (succeeded.length > 0) onPartial(succeeded)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6" onClick={onClose}>
+      <div
+        className="bg-white rounded-xl shadow-xl border border-cream-border w-full max-w-lg flex flex-col max-h-[90vh]"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
+        <div className="px-5 py-4 border-b border-cream-border shrink-0">
+          <h3 className="text-sm font-semibold text-foreground">
+            Mark {totalQty} item{totalQty === 1 ? "" : "s"} received
+          </h3>
+          <p className="text-xs text-gray-500 mt-0.5">Adjust quantities if needed. Units are assigned to waiting customers, highest-priority first.</p>
+        </div>
+
+        <div className="px-5 py-4 overflow-y-auto flex flex-col gap-4">
+          {[...byEvent.entries()].map(([event, evItems]) => (
+            <div key={event} className="flex flex-col gap-2">
+              <div className="text-xs font-semibold text-gray-500">{event}</div>
+              {evItems.map((it) => {
+                const k = selKey(it)
+                return (
+                  <div key={k} className="flex items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm text-foreground break-words">{it.productName}</div>
+                      {it.store && <div className="text-[11px] text-gray-400">{it.store}</div>}
+                    </div>
+                    <input
+                      type="number"
+                      min="1"
+                      value={qtys[k] ?? ""}
+                      onChange={(e) => setQtys((p) => ({ ...p, [k]: e.target.value }))}
+                      className="w-20 shrink-0 border border-cream-border rounded-lg px-2 py-1.5 text-sm text-right bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+                    />
+                    <span className="text-[11px] text-gray-400 w-16 shrink-0">/ {it.totalPending} pending</span>
+                  </div>
+                )
+              })}
+            </div>
+          ))}
+        </div>
+
+        <div className="px-5 py-4 border-t border-cream-border shrink-0 flex flex-col gap-3">
+          {errors.length > 0 && (
+            <div className="text-xs text-red-600">
+              <div className="font-medium">Some items failed (others were recorded):</div>
+              <ul className="list-disc pl-4">{errors.map((e, i) => <li key={i}>{e}</li>)}</ul>
+            </div>
+          )}
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={submitting}
+              className="px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={submitting || !anyQty}
+              className="px-4 py-1.5 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            >
+              {submitting ? "Saving…" : "Mark received"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }
 
