@@ -5,7 +5,7 @@ import { allocateFifo } from "../fifo-fill"
 import type { DBExecutor } from "./actor"
 import type { ShipOrderLine, ShipCustomer, ShipStatus, ShipOrdersParams, ShipMergedParams, ShipMergedResult, ShippingRecord, CustomerDetail } from "./types"
 import { getPaymentStatus, type PaymentStatus } from "./finance"
-import { fetchPaidStatusMap, compareOrderPriority } from "./shopping-list"
+import { fetchPaidStatusMap, compareOrderPriority, type PaidStatus } from "./shopping-list"
 
 // ─── Ship Orders ────────────────────────────────────────────────────────────
 
@@ -488,6 +488,7 @@ export interface ArrivalListOrder {
   unitBuy: number
   unitArrive: number
   pending: number
+  paidStatus: PaidStatus
 }
 
 export interface ArrivalListItem {
@@ -605,6 +606,9 @@ export async function getArrivalList(event?: string): Promise<ArrivalListItem[]>
   const statusMap = await fetchPaidStatusMap(event ? [event] : null)
   for (const item of items) {
     item.orders.sort(compareOrderPriority(item.event, statusMap))
+    for (const order of item.orders) {
+      order.paidStatus = statusMap.get(`${item.event}|${order.customer}`) ?? "unpaid"
+    }
   }
 
   return items
