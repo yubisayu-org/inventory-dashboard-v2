@@ -13,6 +13,7 @@ export type PageData = {
   totalCount: number
   totalPages: number
   page: number
+  filteredSum: number | null
 }
 
 type FetchState = {
@@ -44,6 +45,7 @@ export function usePaginatedFetch(opts: {
   const lastFetchedShapeRef = useRef<string | null>(null)
   const lastTotalCountRef = useRef<number>(0)
   const lastTotalPagesRef = useRef<number>(1)
+  const lastFilteredSumRef = useRef<number | null>(null)
 
   const fetchPage = useCallback(async (
     p: number,
@@ -91,8 +93,16 @@ export function usePaginatedFetch(opts: {
         lastTotalCountRef.current = totalCount
         lastTotalPagesRef.current = totalPages
       }
+      // filteredSum is null when the server skipped it (skipCount=true); reuse
+      // the cached value since the sum doesn't change across pages of the same filter.
+      let filteredSum: number | null = data.filteredSum as number | null | undefined ?? null
+      if (filteredSum === null) {
+        filteredSum = lastFilteredSumRef.current
+      } else {
+        lastFilteredSumRef.current = filteredSum
+      }
       lastFetchedShapeRef.current = shape
-      onDataRef.current({ ...data, totalCount, totalPages })
+      onDataRef.current({ ...data, totalCount, totalPages, filteredSum })
       setFetchState({ loading: false, error: "", refreshError: "" })
     } catch (err) {
       const msg =

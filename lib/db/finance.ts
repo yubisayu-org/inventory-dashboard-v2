@@ -34,6 +34,7 @@ export async function getPaymentRows(): Promise<PaymentRow[]> {
 export interface PaginatedPayments {
   rows: PaymentRow[]
   totalCount: number
+  filteredSum: number | null  // null when skipCount=true (use cached value client-side)
   page: number
   pageSize: number
   totalPages: number
@@ -128,12 +129,16 @@ export async function getPaymentsPaginated(opts: {
   const rows = dataRows.map(mapPaymentRow)
 
   if (skipCount) {
-    return { rows, totalCount: PAYMENTS_TOTAL_COUNT_UNCHANGED, page, pageSize, totalPages: PAYMENTS_TOTAL_COUNT_UNCHANGED }
+    return { rows, totalCount: PAYMENTS_TOTAL_COUNT_UNCHANGED, filteredSum: null, page, pageSize, totalPages: PAYMENTS_TOTAL_COUNT_UNCHANGED }
   }
 
-  const countRows = await sql.unsafe(`SELECT COUNT(*)::int AS c FROM payments ${where}`, params)
+  const [countRows, sumRows] = await Promise.all([
+    sql.unsafe(`SELECT COUNT(*)::int AS c FROM payments ${where}`, params),
+    sql.unsafe(`SELECT COALESCE(SUM(amount), 0)::bigint AS s FROM payments ${where}`, params),
+  ])
   const totalCount = Number((countRows as Record<string, unknown>[])[0]?.c ?? 0)
-  return { rows, totalCount, page, pageSize, totalPages: Math.max(1, Math.ceil(totalCount / pageSize)) }
+  const filteredSum = Number((sumRows as Record<string, unknown>[])[0]?.s ?? 0)
+  return { rows, totalCount, filteredSum, page, pageSize, totalPages: Math.max(1, Math.ceil(totalCount / pageSize)) }
 }
 
 export async function addPayment(data: {
