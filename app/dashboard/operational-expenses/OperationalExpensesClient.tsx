@@ -81,6 +81,7 @@ function CategoryBadge({ category }: { category: ExpenseCategory }) {
 export default function OperationalExpensesClient() {
   const [data, setData] = useState<OperationalExpenseRow[]>([])
   const [totalCount, setTotalCount] = useState(0)
+  const [filteredSum, setFilteredSum] = useState<number | null>(null)
   // Full dropdown lists (event names + distinct methods) — load once from the
   // meta endpoint (a GET with no `page` param), like products' countries/stores.
   const [events, setEvents] = useState<EventOption[]>([])
@@ -129,6 +130,7 @@ export default function OperationalExpensesClient() {
   const onData = useCallback((d: PageData) => {
     setData(d.rows as OperationalExpenseRow[])
     setTotalCount(d.totalCount)
+    setFilteredSum(d.filteredSum)
   }, [])
 
   const { fetchState, refresh } = usePaginatedFetch({
@@ -287,7 +289,16 @@ export default function OperationalExpensesClient() {
           columns={columns}
           getRowId={(row) => String(row.rowNumber)}
           searchPlaceholder="Search event, expense, method, remarks…"
-          toolbarExtra={refreshButton}
+          toolbarExtra={
+            <>
+              {filteredSum !== null && (
+                <span className="text-xs text-gray-500 whitespace-nowrap">
+                  Total: <span className="font-semibold text-foreground">Rp {fmt(filteredSum)}</span>
+                </span>
+              )}
+              {refreshButton}
+            </>
+          }
           initialVisibility={{ id: false, createdAt: false, updatedAt: false }}
           serverSide={{
             rowCount: totalCount,

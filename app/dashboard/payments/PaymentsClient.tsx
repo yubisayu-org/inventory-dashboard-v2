@@ -79,6 +79,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
   const options = useSheetOptions()
   const [rows, setRows] = useState<PaymentRow[]>([])
   const [totalCount, setTotalCount] = useState(0)
+  const [filteredSum, setFilteredSum] = useState<number | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [mobileAddOpen, setMobileAddOpen] = useState(false)
   const [editingRow, setEditingRow] = useState<PaymentRow | null>(null)
@@ -117,6 +118,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
   const onData = useCallback((d: PageData) => {
     setRows(d.rows as PaymentRow[])
     setTotalCount(d.totalCount)
+    setFilteredSum(d.filteredSum)
   }, [])
 
   const { fetchState, refresh } = usePaginatedFetch({
@@ -350,6 +352,11 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
           searchPlaceholder="Search name, amount, account..."
           toolbarExtra={
             <>
+              {filteredSum !== null && (
+                <span className="text-xs text-gray-500 whitespace-nowrap">
+                  Total: <span className="font-semibold text-foreground">Rp {formatAmount(filteredSum)}</span>
+                </span>
+              )}
               <CheckedFilterSelect
                 value={checkedFilter}
                 onChange={handleCheckedFilterChange}

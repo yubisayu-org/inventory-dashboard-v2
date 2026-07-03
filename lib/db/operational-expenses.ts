@@ -31,6 +31,7 @@ function mapExpenseRow(r: Record<string, unknown>): OperationalExpenseRow {
 export interface PaginatedOperationalExpenses {
   rows: OperationalExpenseRow[]
   totalCount: number
+  filteredSum: number | null  // null when skipCount=true (use cached value client-side)
   page: number
   pageSize: number
   totalPages: number
@@ -134,6 +135,7 @@ export async function getOperationalExpensesPaginated(opts: {
     return {
       rows: dataRows.map(mapExpenseRow),
       totalCount: OPERATIONAL_EXPENSES_TOTAL_COUNT_UNCHANGED,
+      filteredSum: null,
       page,
       pageSize,
       totalPages: OPERATIONAL_EXPENSES_TOTAL_COUNT_UNCHANGED,
@@ -144,12 +146,18 @@ export async function getOperationalExpensesPaginated(opts: {
     `SELECT COUNT(*)::int AS c FROM operational_expenses e ${where}`,
     params,
   )
+  const sumQuery = sql.unsafe(
+    `SELECT COALESCE(SUM(e.amount_idr), 0)::bigint AS s FROM operational_expenses e ${where}`,
+    params,
+  )
 
-  const [dataRows, countRows] = await Promise.all([dataQuery, countQuery])
+  const [dataRows, countRows, sumRows] = await Promise.all([dataQuery, countQuery, sumQuery])
   const totalCount = Number(countRows[0]?.c ?? 0)
+  const filteredSum = Number(sumRows[0]?.s ?? 0)
   return {
     rows: dataRows.map(mapExpenseRow),
     totalCount,
+    filteredSum,
     page,
     pageSize,
     totalPages: Math.max(1, Math.ceil(totalCount / pageSize)),
