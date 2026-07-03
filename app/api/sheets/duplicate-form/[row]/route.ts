@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { updateFormRow, updateFormRowStage2, updateFormRowStage3, updateOrderOwnerCell, updateOrderNote, deleteFormRow, returnOrderUnitsToExcess, withActor } from "@/lib/db"
+import { updateFormRow, updateFormRowStage2, updateFormRowStage3, updateOrderOwnerCell, updateOrderNote, updateOrderReceipt, deleteFormRow, returnOrderUnitsToExcess, withActor } from "@/lib/db"
 
 type Params = { params: Promise<{ row: string }> }
 
@@ -62,6 +62,14 @@ export async function PUT(req: NextRequest, { params }: Params) {
         return NextResponse.json({ error: "value must be a number or null" }, { status: 400 })
       }
       await withActor(session.user.email, (tx) => updateOrderOwnerCell(rowNumber, column, numericValue, tx))
+
+    } else if (stage === "receipt_cell") {
+      // Inline receipt edit — owner-only (receipt is set during purchasing).
+      if (session.user.role !== "owner") {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+      }
+      const receipt = body.value == null ? "" : String(body.value)
+      await withActor(session.user.email, (tx) => updateOrderReceipt(rowNumber, receipt, tx))
 
     } else if (stage === "note_cell") {
       // Inline note edit from the List Order table. Notes are not owner-only

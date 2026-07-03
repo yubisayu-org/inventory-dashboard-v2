@@ -2,8 +2,9 @@
 
 import { displayIg } from "@/lib/format"
 import TableSkeleton from "@/components/TableSkeleton"
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useMemo, useRef, useState } from "react"
 import type { FormRow } from "@/lib/db"
+import type { Role } from "@/lib/roles"
 import { usePaginatedFetch, type PageData } from "@/hooks/usePaginatedFetch"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import DataGrid, {
@@ -25,10 +26,60 @@ function fmtNum(v: number | null): string {
 }
 
 // ---------------------------------------------------------------------------
+// Inline receipt cell (owner-only)
+// ---------------------------------------------------------------------------
+
+function InlineReceipt({ row, onSave }: { row: FormRow; onSave: (row: FormRow, value: string) => void }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(row.receipt)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  function startEdit() {
+    setDraft(row.receipt)
+    setEditing(true)
+    setTimeout(() => inputRef.current?.select(), 0)
+  }
+
+  function commit() {
+    setEditing(false)
+    if (draft !== row.receipt) onSave(row, draft)
+  }
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        autoFocus
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") { e.currentTarget.blur() }
+          if (e.key === "Escape") { setDraft(row.receipt); setEditing(false) }
+        }}
+        className="w-full border border-brand rounded px-1.5 py-0.5 text-xs bg-white focus:outline-none"
+      />
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={startEdit}
+      title="Click to edit"
+      className="text-left w-full text-xs hover:text-brand transition-colors"
+    >
+      {row.receipt || <span className="text-gray-300">—</span>}
+    </button>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
-export default function FormRecordsTable() {
+export default function FormRecordsTable({ role }: { role: Role | null }) {
+  const isOwner = role === "owner"
   const options = useSheetOptions()
 
   // -- Server-side state --
@@ -70,6 +121,9 @@ export default function FormRecordsTable() {
     onData,
   })
 
+  const refreshRef = useRef(refresh)
+  refreshRef.current = refresh
+
   // -- Reset page on filter/sort change --
   const handleSortingChange = useCallback((updater: SortingState | ((prev: SortingState) => SortingState)) => {
     setSorting(updater)
@@ -84,6 +138,21 @@ export default function FormRecordsTable() {
   const handleGlobalFilterChange = useCallback((updater: string | ((prev: string) => string)) => {
     setGlobalFilter(updater)
     setPagination((p) => ({ ...p, pageIndex: 0 }))
+  }, [])
+
+  const handleSaveReceipt = useCallback(async (row: FormRow, value: string) => {
+    const previous = row.receipt
+    setRows((prev) => prev.map((r) => r.rowNumber === row.rowNumber ? { ...r, receipt: value } : r))
+    try {
+      const res = await fetch(`/api/sheets/duplicate-form/${row.rowNumber}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stage: "receipt_cell", value }),
+      })
+      if (!res.ok) throw new Error("Failed")
+    } catch {
+      setRows((prev) => prev.map((r) => r.rowNumber === row.rowNumber ? { ...r, receipt: previous } : r))
+    }
   }, [])
 
   // -- Column definitions --
@@ -127,10 +196,9 @@ export default function FormRecordsTable() {
       accessorKey: "receipt",
       header: "Receipt",
       enableColumnFilter: false,
-      cell: ({ getValue }) => {
-        const v = getValue<string>()
-        return <span className={v ? "" : "text-gray-400"}>{v || "—"}</span>
-      },
+      cell: ({ row }) => isOwner
+        ? <InlineReceipt row={row.original} onSave={handleSaveReceipt} />
+        : <span className={row.original.receipt ? "" : "text-gray-400"}>{row.original.receipt || "—"}</span>,
     },
     {
       accessorKey: "unitArrive",
@@ -183,7 +251,8 @@ export default function FormRecordsTable() {
       enableColumnFilter: false,
       cell: ({ getValue }) => <span className="text-gray-400 text-xs whitespace-nowrap">{getValue<string>() || "—"}</span>,
     },
-  ], [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [isOwner, handleSaveReceipt])
 
   // -- Toolbar extra --
   const toolbarExtra = (
@@ -217,6 +286,7 @@ export default function FormRecordsTable() {
       searchPlaceholder="Search…"
       toolbarExtra={toolbarExtra}
       initialVisibility={{
+        receipt: false,
         unitArrive: false,
         unitShip: false,
         unitHold: false,
