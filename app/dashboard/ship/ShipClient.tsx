@@ -464,6 +464,15 @@ function CustomerCard({
             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${PAYMENT_BADGE[c.paymentStatus].cls}`}>
               {PAYMENT_BADGE[c.paymentStatus].label}
             </span>
+            {/* Surfaces a hold on a card whose status badge is something else
+                (e.g. "Tiba Sebagian") — the "hold" status only wins once every
+                line has arrived, so without this a held unit on a partial event
+                would show no sign it's being held back. */}
+            {totalHold > 0 && c.status !== "hold" && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
+                Ditahan
+              </span>
+            )}
             {customerDetail?.ekspedisi && (
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
                 {customerDetail.ekspedisi}
@@ -476,42 +485,52 @@ function CustomerCard({
           )}
         </div>
         </div>
-        {c.totalToShip > 0 && (
-          <div className="shrink-0 flex flex-col items-end gap-1">
-            <div className="text-lg font-bold text-foreground leading-none">{c.totalToShip}</div>
-            <div className="text-xs text-gray-500">to ship</div>
-            <div className="mt-1 flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => postHoldAction("hold", `Hold this packing list for ${displayIg(c.customer).toUpperCase()} · ${c.event}?`)}
-                disabled={holdBusy}
-                className="px-3 py-1.5 rounded-lg border border-purple-300 text-purple-700 text-xs font-medium hover:bg-purple-50 disabled:opacity-50 transition-colors"
-              >
-                {holdBusy ? "…" : "Hold"}
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfirming(true)}
-                disabled={holdBusy}
-                className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
-              >
-                Ship
-              </button>
-            </div>
-          </div>
-        )}
-        {c.status === "hold" && totalHold > 0 && (
-          <div className="shrink-0 flex flex-col items-end gap-1">
-            <div className="text-lg font-bold text-foreground leading-none">{totalHold}</div>
-            <div className="text-xs text-gray-500">on hold</div>
-            <button
-              type="button"
-              onClick={() => postHoldAction("release", `Release this packing list for ${displayIg(c.customer).toUpperCase()} · ${c.event} back to ready?`)}
-              disabled={holdBusy}
-              className="mt-1 px-3 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-medium hover:bg-purple-700 disabled:opacity-50 transition-colors"
-            >
-              {holdBusy ? "…" : "Release"}
-            </button>
+        {/* Ship and hold are independent: a partially-arrived card can have some
+            ready units AND some held units at once, so each sub-block renders on
+            its own condition. Release is keyed on totalHold (not status === "hold")
+            so a hold on a "Tiba Sebagian" card is still releasable — otherwise a
+            held unit whose siblings haven't arrived would be stranded with no
+            checkbox, Ship, or Release control. */}
+        {(c.totalToShip > 0 || totalHold > 0) && (
+          <div className="shrink-0 flex items-start gap-3">
+            {c.totalToShip > 0 && (
+              <div className="flex flex-col items-end gap-1">
+                <div className="text-lg font-bold text-foreground leading-none">{c.totalToShip}</div>
+                <div className="text-xs text-gray-500">to ship</div>
+                <div className="mt-1 flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => postHoldAction("hold", `Hold this packing list for ${displayIg(c.customer).toUpperCase()} · ${c.event}?`)}
+                    disabled={holdBusy}
+                    className="px-3 py-1.5 rounded-lg border border-purple-300 text-purple-700 text-xs font-medium hover:bg-purple-50 disabled:opacity-50 transition-colors"
+                  >
+                    {holdBusy ? "…" : "Hold"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirming(true)}
+                    disabled={holdBusy}
+                    className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
+                  >
+                    Ship
+                  </button>
+                </div>
+              </div>
+            )}
+            {totalHold > 0 && (
+              <div className="flex flex-col items-end gap-1">
+                <div className="text-lg font-bold text-foreground leading-none">{totalHold}</div>
+                <div className="text-xs text-gray-500">on hold</div>
+                <button
+                  type="button"
+                  onClick={() => postHoldAction("release", `Release this packing list for ${displayIg(c.customer).toUpperCase()} · ${c.event} back to ready?`)}
+                  disabled={holdBusy}
+                  className="mt-1 px-3 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-medium hover:bg-purple-700 disabled:opacity-50 transition-colors"
+                >
+                  {holdBusy ? "…" : "Release"}
+                </button>
+              </div>
+            )}
           </div>
         )}
         {confirming && (
@@ -556,7 +575,14 @@ function CustomerCard({
           <tbody>
             {c.orders.map((o) => (
               <tr key={o.rowNumber} className="border-b border-cream-border/60">
-                <td className="px-4 py-2">{o.productName}</td>
+                <td className="px-4 py-2">
+                  {o.productName}
+                  {o.unitHold > 0 && (
+                    <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-purple-100 text-purple-700 align-middle">
+                      Ditahan
+                    </span>
+                  )}
+                </td>
                 <td className="px-4 py-2 text-right">{o.unit}</td>
                 <td className="px-4 py-2 text-right">{o.unitArrive}</td>
                 <td className="px-4 py-2 text-right">{o.unitShip}</td>
