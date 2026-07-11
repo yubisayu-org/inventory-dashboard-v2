@@ -690,6 +690,59 @@ export async function recordCustomerCancellation(
   return { cancelledOrders, excessUnits }
 }
 
+/**
+ * Cancel `qty` units of a single order line rather than the whole line —
+ * the invoice's per-line "Cancel Order" action, for when only part of what a
+ * customer ordered falls through. Reduces `unit` by qty; `unit_buy` drops by
+ * whichever is smaller of qty and the still-in-hand bought units
+ * (unit_buy - unit_ship), so it never falls below what's already shipped.
+ * That reclaimed portion is logged to Inventory (reason=customer_cancelled).
+ * qty === the full unit count behaves like a full-line cancel, except
+ * unit_buy lands on unit_ship instead of being force-zeroed — correct even
+ * when part of the line already shipped, unlike the bulk cancelOrderLines
+ * path the Arrival List uses (which always zeroes both fields outright).
+ */
+export async function cancelOrderUnits(
+  data: { orderId: number; qty: number; event: string; productName: string },
+  db: DBExecutor = sql,
+): Promise<{ excessUnits: number; remainingUnit: number }> {
+  const [order] = await db`
+    SELECT unit, unit_buy, unit_ship FROM orders WHERE id = ${data.orderId} FOR UPDATE
+  `
+  if (!order) throw new Error("Order not found")
+
+  const unit = order.unit as number
+  const unitBuy = (order.unit_buy as number) ?? 0
+  const unitShip = (order.unit_ship as number) ?? 0
+
+  if (!(data.qty >= 1)) throw new Error("qty must be at least 1")
+  if (data.qty > unit) throw new Error(`Cannot cancel more than the ${unit} units ordered`)
+
+  const excessUnits = Math.min(data.qty, Math.max(0, unitBuy - unitShip))
+  const remainingUnit = unit - data.qty
+  const remainingUnitBuy = unitBuy - excessUnits
+
+  if (excessUnits > 0) {
+    await appendExcessPurchase(
+      [{
+        event: data.event,
+        items: data.productName,
+        unitBuy: excessUnits,
+        receipt: "",
+        reason: "customer_cancelled",
+      }],
+      db,
+    )
+  }
+
+  await db`
+    UPDATE orders SET unit = ${remainingUnit}, unit_buy = ${remainingUnitBuy}, updated_at = NOW()
+    WHERE id = ${data.orderId}
+  `
+
+  return { excessUnits, remainingUnit }
+}
+
 export async function appendExcessPurchase(
   rows: {
     event: string

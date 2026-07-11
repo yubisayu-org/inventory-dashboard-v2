@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole, requireOwner } from "@/lib/api"
-import { appendOrders, recordCustomerCancellation, withActor } from "@/lib/db"
+import { appendOrders, cancelOrderUnits, withActor } from "@/lib/db"
 
 export async function POST(req: NextRequest) {
   const { session, error: authError } = await requireSession()
@@ -43,11 +43,12 @@ export async function POST(req: NextRequest) {
 }
 
 /**
- * Cancel a single customer order line the customer backed out of. Cancels the
- * line (drops off the invoice + packing list, auto-refunds if paid) and returns
- * its still-in-hand bought units to Inventory as ready stock. Works from the
+ * Cancel some or all units of a single customer order line the customer backed
+ * out of. Reduces the line by qty (drops it entirely off the invoice + packing
+ * list when qty covers everything ordered), auto-refunds if paid, and returns
+ * the still-in-hand bought portion to Inventory as ready stock. Works from the
  * invoice at any stage — arrived or not — unlike the Arrival List flow, which
- * only reaches not-yet-arrived items.
+ * only reaches not-yet-arrived items and only cancels whole lines.
  */
 export async function PATCH(req: NextRequest) {
   const { session, error: authError } = await requireSession()
@@ -63,19 +64,20 @@ export async function PATCH(req: NextRequest) {
     if (body.action !== "customer_cancelled") {
       return NextResponse.json({ error: "Unknown action" }, { status: 400 })
     }
-    const { event, productName, orderId } = body
-    if (!event || !productName || !Number.isInteger(orderId)) {
+    const { event, productName, orderId, qty } = body
+    if (!event || !productName || !Number.isInteger(orderId) || !Number.isInteger(qty) || qty < 1) {
       return NextResponse.json(
-        { error: "event, productName and orderId are required" },
+        { error: "event, productName, orderId and a positive integer qty are required" },
         { status: 400 },
       )
     }
     const result = await withActor(session.user.email, (tx) =>
-      recordCustomerCancellation({ event, productName, cancelOrderIds: [orderId] }, tx),
+      cancelOrderUnits({ event, productName, orderId, qty }, tx),
     )
     return NextResponse.json({ success: true, ...result })
   } catch (err) {
+    const msg = err instanceof Error ? err.message : "Failed to cancel order"
     console.error("Failed to cancel order:", err)
-    return NextResponse.json({ error: "Failed to cancel order" }, { status: 500 })
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
