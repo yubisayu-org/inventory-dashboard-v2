@@ -48,7 +48,7 @@ export interface FormRow {
   hasAddress: boolean
 }
 
-export type ExcessReason = "overbuy" | "overship" | "wrong_product" | "broken" | "customer_cancelled"
+export type ExcessReason = "overbuy" | "overship" | "wrong_product" | "broken" | "customer_cancelled" | "manual"
 
 export interface ExcessRow {
   rowNumber: number

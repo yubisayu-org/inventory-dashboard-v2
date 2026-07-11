@@ -6,6 +6,7 @@ import {
   bulkUpdatePurchase,
   deleteExcessRow,
   updateExcessRowUnitBuy,
+  appendExcessPurchase,
   withActor,
 } from "@/lib/db"
 
@@ -136,5 +137,46 @@ export async function GET() {
   } catch (err) {
     console.error("Failed to fetch excess purchase rows:", err)
     return NextResponse.json({ error: "Failed to fetch" }, { status: 500 })
+  }
+}
+
+/**
+ * Manually add a tracked inventory row — e.g. stock owned before this
+ * dashboard existed. Reason is fixed to 'manual' so it's visually distinct
+ * from auto-detected overbuy/overship on the Inventory page.
+ */
+export async function PUT(req: NextRequest) {
+  const { session, error: authError } = await requireSession()
+  if (authError) return authError
+
+  const roleError = requireOwner(session)
+  if (roleError) return roleError
+
+  try {
+    const body = await req.json()
+    const { event, items, unitBuy, receipt } = body as {
+      event?: string
+      items?: string
+      unitBuy?: number
+      receipt?: string
+    }
+
+    if (!event || !items || typeof unitBuy !== "number" || unitBuy < 1) {
+      return NextResponse.json(
+        { error: "event, items and a positive unitBuy are required" },
+        { status: 400 },
+      )
+    }
+
+    await withActor(session.user.email, (tx) => appendExcessPurchase(
+      [{ event, items, unitBuy, receipt: receipt ? String(receipt).trim() : "", reason: "manual" }],
+      tx,
+    ))
+
+    const rows = await getExcessPurchaseRows()
+    return NextResponse.json({ success: true, rows })
+  } catch (err) {
+    console.error("Failed to add inventory:", err)
+    return NextResponse.json({ error: "Failed to add inventory" }, { status: 500 })
   }
 }

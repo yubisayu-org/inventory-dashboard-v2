@@ -5,6 +5,9 @@ import { useEffect, useState, useMemo } from "react"
 import type { ExcessRow, ExcessReason } from "@/lib/db"
 import DataGrid, { numericFilter, textContainsFilter, type ColumnDef } from "@/components/DataGrid"
 import { fmt, displayIg } from "@/lib/format"
+import { useSheetOptions } from "@/hooks/useSheetOptions"
+import EventSelect from "@/components/EventSelect"
+import SearchableSelect from "@/components/SearchableSelect"
 
 const REASON_LABEL: Record<ExcessReason, string> = {
   overbuy: "Overbuy",
@@ -12,6 +15,7 @@ const REASON_LABEL: Record<ExcessReason, string> = {
   wrong_product: "Wrong product",
   broken: "Broken",
   customer_cancelled: "Customer cancelled",
+  manual: "Manual entry",
 }
 
 const REASON_CLASS: Record<ExcessReason, string> = {
@@ -20,6 +24,7 @@ const REASON_CLASS: Record<ExcessReason, string> = {
   wrong_product: "bg-yellow-50 text-yellow-700 border-yellow-200",
   broken: "bg-red-50 text-red-700 border-red-200",
   customer_cancelled: "bg-purple-50 text-purple-700 border-purple-200",
+  manual: "bg-teal-50 text-teal-700 border-teal-200",
 }
 
 function ReasonBadge({ reason }: { reason: ExcessReason }) {
@@ -36,6 +41,7 @@ type BulkItemResult = { event: string; items: string; originalUnitBuy: number; f
 type BulkResult = { results: BulkItemResult[] }
 
 export default function ExcessTable() {
+  const options = useSheetOptions()
   const [rows, setRows] = useState<ExcessRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -47,6 +53,11 @@ export default function ExcessTable() {
   const [bulkReceipt, setBulkReceipt] = useState("apply excess")
   const [bulkBusy, setBulkBusy] = useState(false)
   const [bulkResult, setBulkResult] = useState<BulkResult | null>(null)
+  const [addOpen, setAddOpen] = useState(false)
+  const [editRow, setEditRow] = useState<ExcessRow | null>(null)
+  const [deleteRow, setDeleteRow] = useState<ExcessRow | null>(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   useEffect(() => {
     fetch("/api/sheets/excess-purchase")
@@ -146,6 +157,23 @@ export default function ExcessTable() {
     }
   }
 
+  async function handleDelete() {
+    if (!deleteRow) return
+    setDeleteBusy(true)
+    setDeleteError(null)
+    try {
+      const res = await fetch(`/api/sheets/excess-purchase/${deleteRow.rowNumber}`, { method: "DELETE" })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? "Failed to delete")
+      setRows((prev) => prev.filter((r) => r.rowNumber !== deleteRow.rowNumber))
+      setDeleteRow(null)
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Failed to delete")
+    } finally {
+      setDeleteBusy(false)
+    }
+  }
+
   const columns = useMemo<ColumnDef<ExcessRow, unknown>[]>(
     () => [
       {
@@ -220,31 +248,53 @@ export default function ExcessTable() {
         enableSorting: false,
         enableColumnFilter: false,
         enableHiding: false,
-        size: 90,
+        size: 150,
         cell: ({ row }) => {
           const r = row.original
           const busy = busyRow === r.rowNumber
           const isPending = pendingRow === r.rowNumber
-          // Broken stock isn't sellable — no apply action.
-          if (r.reason === "broken") {
-            return <div className="text-right text-[11px] text-gray-400 italic">Not sellable</div>
-          }
           return (
-            <div className="text-right">
+            <div className="flex items-center justify-end gap-2">
+              {/* Broken stock isn't sellable — no apply action. */}
+              {r.reason === "broken" ? (
+                <span className="text-[11px] text-gray-400 italic">Not sellable</span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => isPending ? cancelPending() : openPending(r.rowNumber)}
+                  disabled={busy || busyRow !== null}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md bg-brand text-white hover:bg-brand-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {busy ? (
+                    <>
+                      <svg className="animate-spin" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                        <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                      </svg>
+                      Applying…
+                    </>
+                  ) : isPending ? "Cancel" : "Apply"}
+                </button>
+              )}
               <button
                 type="button"
-                onClick={() => isPending ? cancelPending() : openPending(r.rowNumber)}
-                disabled={busy || busyRow !== null}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md bg-brand text-white hover:bg-brand-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={() => setEditRow(r)}
+                title="Edit"
+                className="text-gray-400 hover:text-brand transition-colors p-1"
               >
-                {busy ? (
-                  <>
-                    <svg className="animate-spin" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                    </svg>
-                    Applying…
-                  </>
-                ) : isPending ? "Cancel" : "Apply"}
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setDeleteRow(r); setDeleteError(null) }}
+                title="Delete"
+                className="text-gray-400 hover:text-red-500 transition-colors p-1"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
+                </svg>
               </button>
             </div>
           )
@@ -323,29 +373,68 @@ export default function ExcessTable() {
         />
       )}
 
+      {/* Add / Edit inventory modal */}
+      {(addOpen || editRow) && (
+        <InventoryFormModal
+          mode={addOpen ? "add" : "edit"}
+          existing={editRow ?? undefined}
+          eventOptions={options?.events ?? []}
+          itemOptions={(options?.items ?? []).map((it) => ({ value: it.name, label: it.name, meta: it.store || undefined }))}
+          onClose={() => { setAddOpen(false); setEditRow(null) }}
+          onCreated={(newRows) => { setRows(newRows); setAddOpen(false) }}
+          onUpdated={(rowNumber, patch) => {
+            setRows((prev) => prev.map((r) => r.rowNumber === rowNumber ? { ...r, ...patch } : r))
+            setEditRow(null)
+          }}
+        />
+      )}
+
+      {/* Delete confirmation */}
+      {deleteRow && (
+        <DeleteConfirmModal
+          row={deleteRow}
+          busy={deleteBusy}
+          error={deleteError}
+          onCancel={() => { setDeleteRow(null); setDeleteError(null) }}
+          onConfirm={handleDelete}
+        />
+      )}
+
       <DataGrid
         data={rows}
         columns={columns}
         getRowId={(row) => String(row.rowNumber)}
         searchPlaceholder="Search event, item, receipt…"
         toolbarExtra={
-          rows.length > 0 ? (
+          <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
-              onClick={() => { setBulkPending((o) => !o); setBulkReceipt("apply excess"); setBulkResult(null) }}
-              disabled={bulkBusy || busyRow !== null}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-brand rounded-lg text-brand hover:bg-brand hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+              onClick={() => setAddOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-cream-border rounded-lg text-gray-600 hover:border-brand hover:text-brand transition-colors shrink-0"
             >
-              {bulkBusy ? (
-                <>
-                  <svg className="animate-spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                  </svg>
-                  Applying…
-                </>
-              ) : bulkPending ? "Cancel" : "Apply All Excess"}
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              Add Inventory
             </button>
-          ) : undefined
+            {rows.length > 0 && (
+              <button
+                type="button"
+                onClick={() => { setBulkPending((o) => !o); setBulkReceipt("apply excess"); setBulkResult(null) }}
+                disabled={bulkBusy || busyRow !== null}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-brand rounded-lg text-brand hover:bg-brand hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+              >
+                {bulkBusy ? (
+                  <>
+                    <svg className="animate-spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                    </svg>
+                    Applying…
+                  </>
+                ) : bulkPending ? "Cancel" : "Apply All Excess"}
+              </button>
+            )}
+          </div>
         }
       />
     </div>
@@ -402,6 +491,182 @@ function ApplyExcessModal({
       >
         Cancel
       </button>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Add / Edit inventory modal
+// ---------------------------------------------------------------------------
+//
+// Shared by "Add Inventory" (e.g. logging pre-dashboard stock) and "Edit" on
+// an existing row. Item is picked from the product catalog rather than typed
+// free-text — "Apply" matches purely on exact item-name equality against
+// order lines, so a typo here would silently make a row unmatchable forever.
+
+function InventoryFormModal({
+  mode,
+  existing,
+  eventOptions,
+  itemOptions,
+  onClose,
+  onCreated,
+  onUpdated,
+}: {
+  mode: "add" | "edit"
+  existing?: ExcessRow
+  eventOptions: string[]
+  itemOptions: { value: string; label: string; meta?: string }[]
+  onClose: () => void
+  onCreated: (rows: ExcessRow[]) => void
+  onUpdated: (rowNumber: number, patch: { event: string; items: string; unitBuy: number; receipt: string }) => void
+}) {
+  const [event, setEvent] = useState(existing?.event ?? "")
+  const [items, setItems] = useState(existing?.items ?? "")
+  const [unitBuy, setUnitBuy] = useState(String(existing?.unitBuy ?? ""))
+  const [receipt, setReceipt] = useState(existing?.receipt ?? "")
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const qtyNum = Math.round(Number(unitBuy)) || 0
+  const valid = event.trim() !== "" && items.trim() !== "" && qtyNum >= 1
+
+  async function handleSubmit() {
+    if (!valid) return
+    setSaving(true)
+    setError(null)
+    try {
+      if (mode === "add") {
+        const res = await fetch("/api/sheets/excess-purchase", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ event, items, unitBuy: qtyNum, receipt: receipt.trim() }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error ?? "Failed to add inventory")
+        onCreated(data.rows ?? [])
+      } else if (existing) {
+        const res = await fetch(`/api/sheets/excess-purchase/${existing.rowNumber}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ event, items, unitBuy: qtyNum, receipt: receipt.trim() }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error ?? "Failed to update")
+        onUpdated(existing.rowNumber, { event, items, unitBuy: qtyNum, receipt: receipt.trim() })
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed")
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
+      <div
+        className="bg-white rounded-xl border border-cream-border shadow-xl w-full max-w-sm flex flex-col gap-4 p-6"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="text-sm font-semibold text-foreground">
+            {mode === "add" ? "Add Inventory" : "Edit Inventory"}
+          </div>
+          <button type="button" onClick={onClose} className="text-gray-400 hover:text-brand transition-colors shrink-0">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-3">
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-gray-500">Event</span>
+            <EventSelect value={event} onChange={setEvent} events={eventOptions} placeholder="Select event…" disabled={saving} />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-gray-500">Item</span>
+            <SearchableSelect value={items} onChange={setItems} options={itemOptions} placeholder="Search item…" disabled={saving} />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-gray-500">Quantity</span>
+            <input
+              type="number"
+              min={1}
+              value={unitBuy}
+              onChange={(e) => setUnitBuy(e.target.value)}
+              disabled={saving}
+              className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-gray-500">Note <span className="text-gray-400 font-normal">(optional)</span></span>
+            <input
+              type="text"
+              value={receipt}
+              onChange={(e) => setReceipt(e.target.value)}
+              disabled={saving}
+              placeholder="e.g. pre-dashboard stock"
+              className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+            />
+          </label>
+        </div>
+
+        <p className="text-[11px] text-gray-400">
+          {mode === "add"
+            ? "Once you're ready to sell this against a future order, edit this row and point Event at the new order's event, then hit Apply."
+            : "Retarget Event to whichever order this stock is now filling, then use Apply from the list."}
+        </p>
+
+        {error && <p className="text-xs text-red-500">{error}</p>}
+
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onClose} disabled={saving} className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
+            Cancel
+          </button>
+          <button type="button" onClick={handleSubmit} disabled={saving || !valid} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-hover disabled:opacity-50 transition-colors">
+            {saving ? "Saving…" : mode === "add" ? "Add Inventory" : "Save Changes"}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Delete confirmation
+// ---------------------------------------------------------------------------
+
+function DeleteConfirmModal({
+  row,
+  busy,
+  error,
+  onCancel,
+  onConfirm,
+}: {
+  row: ExcessRow
+  busy: boolean
+  error: string | null
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onCancel}>
+      <div
+        className="bg-white rounded-xl border border-cream-border shadow-xl w-full max-w-sm flex flex-col gap-4 p-6"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="text-sm font-semibold text-foreground">Delete Inventory Row</div>
+        <p className="text-sm text-gray-600">
+          Remove <span className="font-medium">{row.items}</span> ({row.unitBuy} unit{row.unitBuy === 1 ? "" : "s"}) from {row.event}? This cannot be undone.
+        </p>
+        {error && <p className="text-xs text-red-500">{error}</p>}
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onCancel} disabled={busy} className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
+            Keep
+          </button>
+          <button type="button" onClick={onConfirm} disabled={busy} className="px-4 py-2 rounded-lg bg-red-500 text-white text-sm font-medium hover:bg-red-600 disabled:opacity-50 transition-colors">
+            {busy ? "Deleting…" : "Delete"}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

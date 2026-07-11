@@ -51,6 +51,17 @@ function formatRp(n: number) {
   return `Rp ${new Intl.NumberFormat("id-ID").format(n)}`
 }
 
+// A refund with a partial credit applied still has a real remaining amount
+// owed back — that (refundAmount) is what should be shown everywhere. Only
+// once it's fully consumed as credit (refundAmount hits 0) does the historical
+// "applied as credit" figure become the more meaningful number to display.
+function isFullyAppliedAsCredit(row: RefundRow): boolean {
+  return row.refundAmount <= 0 && row.appliedCreditAmount > 0
+}
+function displayAmount(row: RefundRow): number {
+  return isFullyAppliedAsCredit(row) ? row.appliedCreditAmount : row.refundAmount
+}
+
 // A non-null liveOverpayment means the server found this refund's stored amount
 // no longer matches the real overpayment and couldn't auto-fix it (credit was
 // already applied). Returns the human message, or null when nothing to review.
@@ -125,6 +136,11 @@ export default function RefundsClient() {
     setRows((prev) => [created, ...prev])
     setCreating(false)
     setTab("pending")
+  }
+
+  function handleDeleted(id: number) {
+    setRows((prev) => prev.filter((r) => r.id !== id))
+    setEditRow(null)
   }
 
   return (
@@ -241,7 +257,7 @@ export default function RefundsClient() {
                   <td className="px-4 py-3 text-gray-600">{row.event}</td>
                   <td className="px-4 py-3 text-gray-600">{REASON_LABELS[row.reason]}</td>
                   <td className="px-4 py-3 text-right tabular-nums font-semibold text-foreground">
-                    {formatRp(row.appliedCreditAmount > 0 ? row.appliedCreditAmount : row.refundAmount)}
+                    {formatRp(displayAmount(row))}
                   </td>
                   <td className="px-4 py-3">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${STATUS_COLORS[row.status]}`}>
@@ -279,6 +295,7 @@ export default function RefundsClient() {
         <RefundDetailModal
           row={editRow}
           onUpdated={handleUpdated}
+          onDeleted={() => handleDeleted(editRow.id)}
           onClose={() => setEditRow(null)}
         />
       )}
@@ -410,10 +427,12 @@ function CreateRefundModal({
 function RefundDetailModal({
   row,
   onUpdated,
+  onDeleted,
   onClose,
 }: {
   row: RefundRow
   onUpdated: (updated: RefundRow) => void
+  onDeleted: () => void
   onClose: () => void
 }) {
   const [bankName, setBankName] = useState(row.bankName)
@@ -545,6 +564,20 @@ function RefundDetailModal({
     if (ok) onUpdated({ ...row, note, refundAmount: Number(refundAmount) })
   }
 
+  async function handleDelete() {
+    if (!confirm("Delete this refund? This cannot be undone.")) return
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/sheets/refunds/${row.id}`, { method: "DELETE" })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "Failed to delete")
+      onDeleted()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete")
+      setSaving(false)
+    }
+  }
+
   const waMessageText = `Halo ${row.customer} 👋\n\nKami ingin menginformasikan bahwa ada barang yang tidak tersedia dari sesi *${row.event}* sehingga perlu dilakukan pengembalian dana sebesar *${formatRp(row.refundAmount)}*.\n\nMohon balas pesan ini dengan informasi rekening bank:\n- Nama Bank:\n- Nomor Rekening:\n- Nama Pemilik Rekening:\n\nTerima kasih 🙏`
   const waMessage = encodeURIComponent(waMessageText)
 
@@ -630,11 +663,11 @@ function RefundDetailModal({
           <div className="flex flex-col gap-3">
             <label className="flex flex-col gap-1">
               <span className="text-xs font-medium text-gray-500">
-                {row.appliedCreditAmount > 0 ? "Applied as Credit (Rp)" : "Refund Amount (Rp)"}
+                {isFullyAppliedAsCredit(row) ? "Applied as Credit (Rp)" : "Refund Amount (Rp)"}
               </span>
               {isReadOnly ? (
                 <div className="text-lg font-bold text-foreground">
-                  {formatRp(row.appliedCreditAmount > 0 ? row.appliedCreditAmount : row.refundAmount)}
+                  {formatRp(displayAmount(row))}
                 </div>
               ) : (
                 <input
@@ -647,6 +680,11 @@ function RefundDetailModal({
                 />
               )}
             </label>
+            {row.appliedCreditAmount > 0 && !isFullyAppliedAsCredit(row) && (
+              <p className="text-[11px] text-gray-400 -mt-2">
+                {formatRp(row.appliedCreditAmount)} already applied as credit elsewhere — the amount above is what's still left to refund.
+              </p>
+            )}
             <label className="flex flex-col gap-1">
               <span className="text-xs font-medium text-gray-500">Note</span>
               {isReadOnly ? (
@@ -961,12 +999,12 @@ function RefundDetailModal({
               Apply to Next Order
             </button>
             <button
-              onClick={() => handleStatusChange("cancelled")}
+              onClick={handleDelete}
               disabled={saving}
-              title="Takes this refund off the active pipeline. It stays on record and can be reopened later — nothing is deleted."
+              title="Permanently removes this refund. This cannot be undone."
               className="text-xs px-3 py-1.5 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 hover:border-red-400 disabled:opacity-50 transition-colors"
             >
-              Cancel Refund
+              Delete Refund
             </button>
           </div>
         )}

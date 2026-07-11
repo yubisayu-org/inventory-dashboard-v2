@@ -776,6 +776,40 @@ export async function updateExcessRowUnitBuy(rowNumber: number, unitBuy: number,
   `
 }
 
+/**
+ * Edit a manually-tracked (or any) excess row — event, item, quantity, reason,
+ * receipt/note. Mainly for retargeting a manually-added row's event when it's
+ * finally going to be applied against a real future order: "Apply" only ever
+ * matches orders in the row's own event, so old stock has to be pointed at
+ * whichever event is about to use it.
+ */
+export async function updateExcessRow(
+  rowNumber: number,
+  data: Partial<{
+    event: string
+    items: string
+    unitBuy: number
+    receipt: string
+    reason: ExcessReason
+  }>,
+  db: DBExecutor = sql,
+): Promise<void> {
+  const fields: string[] = []
+  const params: (string | number)[] = []
+  if (data.event !== undefined) { params.push(data.event); fields.push(`event = $${params.length}`) }
+  if (data.items !== undefined) { params.push(data.items); fields.push(`items = $${params.length}`) }
+  if (data.unitBuy !== undefined) { params.push(data.unitBuy); fields.push(`unit_buy = $${params.length}`) }
+  if (data.receipt !== undefined) { params.push(data.receipt); fields.push(`receipt = $${params.length}`) }
+  if (data.reason !== undefined) { params.push(data.reason); fields.push(`reason = $${params.length}`) }
+
+  if (fields.length === 0) return
+  params.push(rowNumber)
+  await db.unsafe(
+    `UPDATE excess_purchase SET ${fields.join(", ")}, updated_at = NOW() WHERE id = $${params.length}`,
+    params,
+  )
+}
+
 export async function deleteExcessRow(rowNumber: number, db: DBExecutor = sql): Promise<void> {
   await db`DELETE FROM excess_purchase WHERE id = ${rowNumber}`
 }
