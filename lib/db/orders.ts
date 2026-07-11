@@ -647,6 +647,49 @@ export async function recordMissingArrival(
   return { cancelledOrders }
 }
 
+/**
+ * Customer cancelled an order we'd already bought (misunderstanding, changed
+ * their mind, etc.) — unlike wrong/broken/missing, the item itself is correct:
+ * it's real, sellable stock that just lost its buyer. Log the still-in-hand
+ * bought units for the chosen order lines to Inventory as ready stock
+ * (reason=customer_cancelled, assignable to the next customer who wants it) and
+ * cancel those orders (refunds auto-materialize if paid).
+ *
+ * The returned quantity is `unit_buy - unit_ship` (already-shipped units are
+ * gone, so they aren't re-added to stock), read from the orders themselves
+ * rather than trusted from the client. For the arrival-list callers nothing is
+ * shipped yet, so this is simply their unit_buy.
+ */
+export async function recordCustomerCancellation(
+  data: { event: string; productName: string; cancelOrderIds: number[] },
+  db: DBExecutor = sql,
+): Promise<{ cancelledOrders: number; excessUnits: number }> {
+  if (data.cancelOrderIds.length === 0) return { cancelledOrders: 0, excessUnits: 0 }
+
+  const [{ total }] = await db`
+    SELECT COALESCE(SUM(GREATEST(0, unit_buy - COALESCE(unit_ship, 0))), 0)::int AS total
+    FROM orders
+    WHERE id = ANY(${data.cancelOrderIds})
+  `
+  const excessUnits = total as number
+
+  if (excessUnits > 0) {
+    await appendExcessPurchase(
+      [{
+        event: data.event,
+        items: data.productName,
+        unitBuy: excessUnits,
+        receipt: "",
+        reason: "customer_cancelled",
+      }],
+      db,
+    )
+  }
+
+  const cancelledOrders = await cancelOrderLines(data.cancelOrderIds, db)
+  return { cancelledOrders, excessUnits }
+}
+
 export async function appendExcessPurchase(
   rows: {
     event: string
