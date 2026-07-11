@@ -159,7 +159,11 @@ export async function getInvoiceForCustomer(instagramId: string): Promise<Invoic
       LEFT JOIN customer_warehouse_ongkir cwo
         ON cwo.customer_id = c.id AND cwo.warehouse_id = e.warehouse_id
       WHERE lower(replace(o.customer, '@', '')) = ${searchId}
-      ORDER BY o.event, o.id
+      -- Newest event first, matching the public customer recap
+      -- (getPublicInvoiceForCustomer). groupRowsByEvent keeps this row order,
+      -- so events surface by creation date (desc); o.id keeps each event's
+      -- lines stable. NULLS LAST guards an orphaned event name.
+      ORDER BY e.created_at DESC NULLS LAST, o.event, o.id
     `,
     lookupCustomerDetail(instagramId),
     sql`
@@ -203,6 +207,7 @@ export async function getInvoiceForCustomer(instagramId: string): Promise<Invoic
       orderId: r.id as number,
       productName: r.product_name as string,
       rawUnitPrice: r.unit_price as number,
+      unitBuy: (r.unit_buy as number) ?? 0,
     }))
 
     const { eta, totals, invoice } = computeEventCore(

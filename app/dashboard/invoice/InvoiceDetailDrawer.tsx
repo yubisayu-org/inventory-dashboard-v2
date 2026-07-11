@@ -106,7 +106,7 @@ export function InvoiceDetailDrawer({
 
           {result && result.events.length > 0 && (
             <div className="flex flex-col gap-4">
-              {[...result.events].reverse().map((ev) => (
+              {result.events.map((ev) => (
                 <EventCard
                   key={ev.eventId}
                   event={ev}

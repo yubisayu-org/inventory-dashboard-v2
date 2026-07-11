@@ -51,6 +51,32 @@ function formatRp(n: number) {
   return `Rp ${new Intl.NumberFormat("id-ID").format(n)}`
 }
 
+// A refund with a partial credit applied still has a real remaining amount
+// owed back — that (refundAmount) is what should be shown everywhere. Only
+// once it's fully consumed as credit (refundAmount hits 0) does the historical
+// "applied as credit" figure become the more meaningful number to display.
+function isFullyAppliedAsCredit(row: RefundRow): boolean {
+  return row.refundAmount <= 0 && row.appliedCreditAmount > 0
+}
+function displayAmount(row: RefundRow): number {
+  return isFullyAppliedAsCredit(row) ? row.appliedCreditAmount : row.refundAmount
+}
+
+// A non-null liveOverpayment means the server found this refund's stored amount
+// no longer matches the real overpayment and couldn't auto-fix it (credit was
+// already applied). Returns the human message, or null when nothing to review.
+function reviewMessage(row: RefundRow): string | null {
+  const live = row.liveOverpayment
+  if (live == null) return null
+  if (live <= 0) {
+    const owed = -live
+    return owed > 0
+      ? `No overpayment left — the customer now owes ${formatRp(owed)} on this event (items were added after credit was applied). Consider cancelling this refund.`
+      : `No overpayment left — this event is now fully settled. Consider cancelling this refund.`
+  }
+  return `Overpayment is now ${formatRp(live)}, but this refund still shows ${formatRp(row.refundAmount)} (the invoice changed after credit was applied). Review before refunding.`
+}
+
 // ─── Main component ──────────────────────────────────────────────────────────
 
 export default function RefundsClient() {
@@ -211,11 +237,27 @@ export default function RefundsClient() {
                   className="border-b border-cream-border hover:bg-gray-50/50 transition-colors cursor-pointer"
                   onClick={() => setEditRow(row)}
                 >
-                  <td className="px-4 py-3 font-medium text-foreground">{displayIg(row.customer)}</td>
+                  <td className="px-4 py-3 font-medium text-foreground">
+                    <div className="flex items-center gap-1.5">
+                      {displayIg(row.customer)}
+                      {(() => {
+                        const msg = reviewMessage(row)
+                        if (!msg) return null
+                        return (
+                          <span title={msg} className="text-amber-500 shrink-0">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                              <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+                            </svg>
+                          </span>
+                        )
+                      })()}
+                    </div>
+                  </td>
                   <td className="px-4 py-3 text-gray-600">{row.event}</td>
                   <td className="px-4 py-3 text-gray-600">{REASON_LABELS[row.reason]}</td>
                   <td className="px-4 py-3 text-right tabular-nums font-semibold text-foreground">
-                    {formatRp(row.appliedCreditAmount > 0 ? row.appliedCreditAmount : row.refundAmount)}
+                    {formatRp(displayAmount(row))}
                   </td>
                   <td className="px-4 py-3">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${STATUS_COLORS[row.status]}`}>
@@ -598,15 +640,34 @@ function RefundDetailModal({
         </div>
 
         <div className="flex-1 min-h-0 flex flex-col gap-5 px-6 py-5 overflow-y-auto">
+          {/* Stale-amount review banner — the invoice changed after credit was
+              applied, so the stored amount no longer matches the real overpayment
+              and the auto-reconcile left it for a human. */}
+          {(() => {
+            const msg = reviewMessage(row)
+            if (!msg) return null
+            return (
+              <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-50 border border-amber-200">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-600 shrink-0 mt-0.5">
+                  <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                  <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+                <div className="text-xs text-amber-800">
+                  <span className="font-semibold">Needs review.</span> {msg}
+                </div>
+              </div>
+            )
+          })()}
+
           {/* Amount + Note */}
           <div className="flex flex-col gap-3">
             <label className="flex flex-col gap-1">
               <span className="text-xs font-medium text-gray-500">
-                {row.appliedCreditAmount > 0 ? "Applied as Credit (Rp)" : "Refund Amount (Rp)"}
+                {isFullyAppliedAsCredit(row) ? "Applied as Credit (Rp)" : "Refund Amount (Rp)"}
               </span>
               {isReadOnly ? (
                 <div className="text-lg font-bold text-foreground">
-                  {formatRp(row.appliedCreditAmount > 0 ? row.appliedCreditAmount : row.refundAmount)}
+                  {formatRp(displayAmount(row))}
                 </div>
               ) : (
                 <input
@@ -619,6 +680,11 @@ function RefundDetailModal({
                 />
               )}
             </label>
+            {row.appliedCreditAmount > 0 && !isFullyAppliedAsCredit(row) && (
+              <p className="text-[11px] text-gray-400 -mt-2">
+                {formatRp(row.appliedCreditAmount)} already applied as credit elsewhere — the amount above is what's still left to refund.
+              </p>
+            )}
             <label className="flex flex-col gap-1">
               <span className="text-xs font-medium text-gray-500">Note</span>
               {isReadOnly ? (
@@ -925,32 +991,20 @@ function RefundDetailModal({
         {error && <p className="shrink-0 text-xs text-red-500 px-6 pb-2">{error}</p>}
         {!isReadOnly && (
           <div className="shrink-0 flex items-center justify-between gap-2 px-6 py-4 border-t border-cream-border">
-            <div className="flex gap-2">
-              {row.status !== "cancelled" && row.status !== "applied_to_next_order" && (
-                <>
-                  <button
-                    onClick={() => setShowCredit(true)}
-                    disabled={saving}
-                    className="text-xs px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 hover:border-purple-400 hover:text-purple-600 disabled:opacity-50 transition-colors"
-                  >
-                    Apply to Next Order
-                  </button>
-                  <button
-                    onClick={() => handleStatusChange("cancelled")}
-                    disabled={saving}
-                    className="text-xs px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 hover:border-red-400 hover:text-red-500 disabled:opacity-50 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                </>
-              )}
-            </div>
+            <button
+              onClick={() => setShowCredit(true)}
+              disabled={saving}
+              className="text-xs px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 hover:border-purple-400 hover:text-purple-600 disabled:opacity-50 transition-colors"
+            >
+              Apply to Next Order
+            </button>
             <button
               onClick={handleDelete}
               disabled={saving}
-              className="text-xs text-gray-400 hover:text-red-500 disabled:opacity-50 transition-colors"
+              title="Permanently removes this refund. This cannot be undone."
+              className="text-xs px-3 py-1.5 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 hover:border-red-400 disabled:opacity-50 transition-colors"
             >
-              Delete
+              Delete Refund
             </button>
           </div>
         )}

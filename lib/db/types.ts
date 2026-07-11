@@ -48,7 +48,7 @@ export interface FormRow {
   hasAddress: boolean
 }
 
-export type ExcessReason = "overbuy" | "overship" | "wrong_product" | "broken"
+export type ExcessReason = "overbuy" | "overship" | "wrong_product" | "broken" | "customer_cancelled" | "manual"
 
 export interface ExcessRow {
   rowNumber: number
@@ -79,10 +79,13 @@ export interface InvoiceOrderLine {
   price: string
   subtotal: string
   unitArrive: number
-  // Raw fields for pre-filling the refund modal
+  // Raw fields for pre-filling the refund / cancel modals
   orderId: number
   productName: string
   rawUnitPrice: number
+  // Units purchased for this line — how many can return to Inventory on a
+  // customer cancellation (0 when not yet bought).
+  unitBuy: number
 }
 
 export interface InvoiceShipment {
@@ -199,6 +202,12 @@ export interface RefundRow {
    *  fully-applied refund `refundAmount` is 0 (no overpayment remaining), so the
    *  UI shows this instead. */
   appliedCreditAmount: number
+  /** Current live overpayment (totalPaid − invoiceTotal) for this refund's
+   *  (customer, event), when it differs from the stored `refundAmount` and the
+   *  auto-reconcile can't fix it (credit already applied). null when in sync or
+   *  not applicable — a non-null value means "review": the invoice changed after
+   *  credit was applied, so the stored amount is stale. */
+  liveOverpayment: number | null
   createdAt: string | null
   updatedAt: string | null
 }

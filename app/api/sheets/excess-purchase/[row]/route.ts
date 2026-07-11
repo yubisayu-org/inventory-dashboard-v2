@@ -6,8 +6,12 @@ import {
   bulkUpdatePurchase,
   deleteExcessRow,
   updateExcessRowUnitBuy,
+  updateExcessRow,
   withActor,
 } from "@/lib/db"
+import type { ExcessReason } from "@/lib/db"
+
+const EXCESS_REASONS: ExcessReason[] = ["overbuy", "overship", "wrong_product", "broken", "customer_cancelled", "manual"]
 
 type Params = { params: Promise<{ row: string }> }
 type UpdatedRow = { rowNumber: number; customer: string; oldUnitBuy: number; unitBuy: number }
@@ -98,5 +102,78 @@ export async function POST(req: NextRequest, { params }: Params) {
   } catch (err) {
     console.error("Failed to apply excess:", err)
     return NextResponse.json({ error: "Failed to apply" }, { status: 500 })
+  }
+}
+
+/**
+ * Edit an inventory row's event/item/quantity/reason/receipt. Mainly for
+ * retargeting a manually-added row's event to whichever future event is
+ * finally going to use it — "Apply" only matches orders in the row's own
+ * event.
+ */
+export async function PATCH(req: NextRequest, { params }: Params) {
+  const { session, error: authError } = await requireSession()
+  if (authError) return authError
+
+  const roleError = requireOwner(session)
+  if (roleError) return roleError
+
+  const { row } = await params
+  const rowNumber = Number(row)
+  if (!Number.isInteger(rowNumber) || rowNumber < 1) {
+    return NextResponse.json({ error: "Invalid row number" }, { status: 400 })
+  }
+
+  try {
+    const body = await req.json()
+    const { event, items, unitBuy, receipt, reason } = body as {
+      event?: string
+      items?: string
+      unitBuy?: number
+      receipt?: string
+      reason?: string
+    }
+
+    if (reason !== undefined && !EXCESS_REASONS.includes(reason as ExcessReason)) {
+      return NextResponse.json({ error: "Invalid reason" }, { status: 400 })
+    }
+    if (unitBuy !== undefined && (typeof unitBuy !== "number" || unitBuy < 1)) {
+      return NextResponse.json({ error: "unitBuy must be a positive number" }, { status: 400 })
+    }
+
+    await withActor(session.user.email, (tx) => updateExcessRow(rowNumber, {
+      event,
+      items,
+      unitBuy,
+      receipt,
+      reason: reason as ExcessReason | undefined,
+    }, tx))
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    console.error("Failed to update excess row:", err)
+    return NextResponse.json({ error: "Failed to update" }, { status: 500 })
+  }
+}
+
+export async function DELETE(_req: NextRequest, { params }: Params) {
+  const { session, error: authError } = await requireSession()
+  if (authError) return authError
+
+  const roleError = requireOwner(session)
+  if (roleError) return roleError
+
+  const { row } = await params
+  const rowNumber = Number(row)
+  if (!Number.isInteger(rowNumber) || rowNumber < 1) {
+    return NextResponse.json({ error: "Invalid row number" }, { status: 400 })
+  }
+
+  try {
+    await withActor(session.user.email, (tx) => deleteExcessRow(rowNumber, tx))
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    console.error("Failed to delete excess row:", err)
+    return NextResponse.json({ error: "Failed to delete" }, { status: 500 })
   }
 }

@@ -952,9 +952,11 @@ function ArriveModal({
 }) {
   const [qty, setQty] = useState(String(item.totalPending))
   // "arrive" = normal receipt; "wrong" = different SKU sent; "broken" = arrived
-  // damaged/unsellable. Wrong & broken both cancel + refund the picked orders;
-  // only "wrong" adds the received SKU to ready stock.
-  const [mode, setMode] = useState<"arrive" | "wrong" | "broken" | "missing">("arrive")
+  // damaged/unsellable; "cancelled" = customer backed out after we already
+  // bought it (correct item, no delivery problem). Wrong, broken & cancelled
+  // all cancel + refund the picked orders; wrong and cancelled additionally
+  // log ready stock (the received SKU, or the already-bought units).
+  const [mode, setMode] = useState<"arrive" | "wrong" | "broken" | "missing" | "cancelled">("arrive")
   const [receivedItem, setReceivedItem] = useState("")
   // Which waiting customer orders to cancel on a wrong/broken delivery —
   // default all of them (the expected item won't be fulfilled).
@@ -1031,6 +1033,24 @@ function ArriveModal({
         })
         const data = await res.json()
         if (!res.ok) throw new Error(data.error ?? "Failed to record missing units")
+      } else if (mode === "cancelled") {
+        if (cancelIds.size === 0) { setSaveError("Pick at least one order to cancel."); return }
+        // Customer backed out after we already bought their item — it's
+        // correct, sellable stock, not broken or missing. Log the
+        // already-bought units to Inventory as ready stock and cancel the
+        // chosen orders (refunds auto-materialize if paid).
+        const res = await fetch("/api/sheets/arrival-list", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "customer_cancelled",
+            event: item.event,
+            productName: item.productName,
+            cancelOrderIds: [...cancelIds],
+          }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error ?? "Failed to record cancellation")
       } else {
         if (quantityArrived < 1) { setSaveError("Enter how many units arrived."); return }
         const res = await fetch("/api/sheets/arrival-list", {
@@ -1077,13 +1097,14 @@ function ArriveModal({
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <span className="text-xs font-medium text-gray-500">Problem with this delivery?</span>
+          <span className="text-xs font-medium text-gray-500">What happened?</span>
           <div className="flex rounded-lg border border-cream-border overflow-hidden text-xs">
             {([
               ["arrive", "Arrived OK"],
               ["wrong", "Wrong product"],
               ["broken", "Broken"],
               ["missing", "Missing"],
+              ["cancelled", "Cancelled"],
             ] as const).map(([m, label]) => {
               const active = mode === m
               const activeCls = m === "arrive" ? "bg-blue-600 text-white" : "bg-yellow-500 text-white"
@@ -1091,7 +1112,14 @@ function ArriveModal({
                 <button
                   key={m}
                   type="button"
-                  onClick={() => { setMode(m); setSaveError(null) }}
+                  onClick={() => {
+                    setMode(m)
+                    setSaveError(null)
+                    // "Cancelled" is almost always a single customer, not the
+                    // whole waiting list — start empty instead of defaulting
+                    // to the all-selected behavior the delivery-problem modes use.
+                    setCancelIds(m === "cancelled" ? new Set() : new Set(item.orders.map((o) => o.id)))
+                  }}
                   className={`flex-1 px-2 py-1.5 transition-colors ${active ? `${activeCls} font-medium` : "bg-white text-gray-600 hover:bg-cream"}`}
                 >
                   {label}
@@ -1101,9 +1129,9 @@ function ArriveModal({
           </div>
         </div>
 
-        {/* Missing logs nothing to inventory, so it has no unit count — the
-            cancel list below is the only input. */}
-        {mode !== "missing" && (
+        {/* Missing logs nothing to inventory, and Cancelled derives its qty
+            from the checked orders' own unit_buy — neither needs a typed count. */}
+        {mode !== "missing" && mode !== "cancelled" && (
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-medium text-gray-500">
               {mode === "wrong" ? "Units received (wrong product)" : mode === "broken" ? "Units broken" : "Units arrived"}{" "}
@@ -1137,7 +1165,9 @@ function ArriveModal({
             )}
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-yellow-700">Cancel &amp; refund affected orders</label>
+              <label className="text-xs font-medium text-yellow-700">
+                {mode === "cancelled" ? "Cancel & convert to Inventory" : "Cancel & refund affected orders"}
+              </label>
               <div className="flex flex-col gap-0.5 max-h-40 overflow-y-auto pr-0.5">
                 {item.orders.map((o) => (
                   <label key={o.id} className="flex items-center justify-between gap-2 px-2 py-1 rounded-md bg-gray-50 cursor-pointer">
@@ -1155,7 +1185,9 @@ function ArriveModal({
                       />
                       <span className="truncate text-gray-600">{displayIg(o.customer)}</span>
                     </span>
-                    <span className="text-gray-400 tabular-nums shrink-0">{o.pending}×</span>
+                    <span className="text-gray-400 tabular-nums shrink-0">
+                      {mode === "cancelled" ? o.unitBuy : o.pending}×
+                    </span>
                   </label>
                 ))}
               </div>
@@ -1164,6 +1196,8 @@ function ArriveModal({
                   ? "Broken units are logged to Inventory (flagged “broken”, not sellable). Checked orders are removed from the invoice and refunded if paid; unchecked stay pending."
                   : mode === "missing"
                   ? "The item never arrived, so nothing is logged to Inventory. Checked orders are removed from the invoice and refunded if paid; unchecked stay pending."
+                  : mode === "cancelled"
+                  ? `The units already bought for checked orders (${item.orders.filter((o) => cancelIds.has(o.id)).reduce((s, o) => s + o.unitBuy, 0)} total) are logged to Inventory as ready stock, assignable to the next customer who wants this item. Checked orders are removed from the invoice and refunded if paid.`
                   : "Checked orders are removed from the customer’s invoice; a refund appears in the Refunds page if they already paid. Unchecked orders stay pending."}
               </p>
             </div>
@@ -1231,9 +1265,9 @@ function ArriveModal({
             onClick={handleSubmit}
             disabled={
               saving ||
-              (mode !== "missing" && quantityArrived < 1) ||
+              (mode !== "missing" && mode !== "cancelled" && quantityArrived < 1) ||
               (mode === "wrong" && !wrongValid) ||
-              (mode === "missing" && cancelIds.size === 0)
+              ((mode === "missing" || mode === "cancelled") && cancelIds.size === 0)
             }
             className={`px-4 py-1.5 rounded-lg text-white text-sm font-medium disabled:opacity-50 transition-colors ${mode === "arrive" ? "bg-blue-600 hover:bg-blue-700" : "bg-yellow-600 hover:bg-yellow-700"}`}
           >
@@ -1245,7 +1279,9 @@ function ArriveModal({
                   ? "Log Broken & Cancel"
                   : mode === "missing"
                     ? "Mark Missing & Cancel"
-                    : "Mark as Arrived"}
+                    : mode === "cancelled"
+                      ? "Log to Inventory & Cancel"
+                      : "Mark as Arrived"}
           </button>
         </div>
       </div>

@@ -647,6 +647,102 @@ export async function recordMissingArrival(
   return { cancelledOrders }
 }
 
+/**
+ * Customer cancelled an order we'd already bought (misunderstanding, changed
+ * their mind, etc.) — unlike wrong/broken/missing, the item itself is correct:
+ * it's real, sellable stock that just lost its buyer. Log the still-in-hand
+ * bought units for the chosen order lines to Inventory as ready stock
+ * (reason=customer_cancelled, assignable to the next customer who wants it) and
+ * cancel those orders (refunds auto-materialize if paid).
+ *
+ * The returned quantity is `unit_buy - unit_ship` (already-shipped units are
+ * gone, so they aren't re-added to stock), read from the orders themselves
+ * rather than trusted from the client. For the arrival-list callers nothing is
+ * shipped yet, so this is simply their unit_buy.
+ */
+export async function recordCustomerCancellation(
+  data: { event: string; productName: string; cancelOrderIds: number[] },
+  db: DBExecutor = sql,
+): Promise<{ cancelledOrders: number; excessUnits: number }> {
+  if (data.cancelOrderIds.length === 0) return { cancelledOrders: 0, excessUnits: 0 }
+
+  const [{ total }] = await db`
+    SELECT COALESCE(SUM(GREATEST(0, unit_buy - COALESCE(unit_ship, 0))), 0)::int AS total
+    FROM orders
+    WHERE id = ANY(${data.cancelOrderIds})
+  `
+  const excessUnits = total as number
+
+  if (excessUnits > 0) {
+    await appendExcessPurchase(
+      [{
+        event: data.event,
+        items: data.productName,
+        unitBuy: excessUnits,
+        receipt: "",
+        reason: "customer_cancelled",
+      }],
+      db,
+    )
+  }
+
+  const cancelledOrders = await cancelOrderLines(data.cancelOrderIds, db)
+  return { cancelledOrders, excessUnits }
+}
+
+/**
+ * Cancel `qty` units of a single order line rather than the whole line —
+ * the invoice's per-line "Cancel Order" action, for when only part of what a
+ * customer ordered falls through. Reduces `unit` by qty; `unit_buy` drops by
+ * whichever is smaller of qty and the still-in-hand bought units
+ * (unit_buy - unit_ship), so it never falls below what's already shipped.
+ * That reclaimed portion is logged to Inventory (reason=customer_cancelled).
+ * qty === the full unit count behaves like a full-line cancel, except
+ * unit_buy lands on unit_ship instead of being force-zeroed — correct even
+ * when part of the line already shipped, unlike the bulk cancelOrderLines
+ * path the Arrival List uses (which always zeroes both fields outright).
+ */
+export async function cancelOrderUnits(
+  data: { orderId: number; qty: number; event: string; productName: string },
+  db: DBExecutor = sql,
+): Promise<{ excessUnits: number; remainingUnit: number }> {
+  const [order] = await db`
+    SELECT unit, unit_buy, unit_ship FROM orders WHERE id = ${data.orderId} FOR UPDATE
+  `
+  if (!order) throw new Error("Order not found")
+
+  const unit = order.unit as number
+  const unitBuy = (order.unit_buy as number) ?? 0
+  const unitShip = (order.unit_ship as number) ?? 0
+
+  if (!(data.qty >= 1)) throw new Error("qty must be at least 1")
+  if (data.qty > unit) throw new Error(`Cannot cancel more than the ${unit} units ordered`)
+
+  const excessUnits = Math.min(data.qty, Math.max(0, unitBuy - unitShip))
+  const remainingUnit = unit - data.qty
+  const remainingUnitBuy = unitBuy - excessUnits
+
+  if (excessUnits > 0) {
+    await appendExcessPurchase(
+      [{
+        event: data.event,
+        items: data.productName,
+        unitBuy: excessUnits,
+        receipt: "",
+        reason: "customer_cancelled",
+      }],
+      db,
+    )
+  }
+
+  await db`
+    UPDATE orders SET unit = ${remainingUnit}, unit_buy = ${remainingUnitBuy}, updated_at = NOW()
+    WHERE id = ${data.orderId}
+  `
+
+  return { excessUnits, remainingUnit }
+}
+
 export async function appendExcessPurchase(
   rows: {
     event: string
@@ -678,6 +774,40 @@ export async function updateExcessRowUnitBuy(rowNumber: number, unitBuy: number,
     UPDATE excess_purchase SET unit_buy = ${unitBuy}, updated_at = NOW()
     WHERE id = ${rowNumber}
   `
+}
+
+/**
+ * Edit a manually-tracked (or any) excess row — event, item, quantity, reason,
+ * receipt/note. Mainly for retargeting a manually-added row's event when it's
+ * finally going to be applied against a real future order: "Apply" only ever
+ * matches orders in the row's own event, so old stock has to be pointed at
+ * whichever event is about to use it.
+ */
+export async function updateExcessRow(
+  rowNumber: number,
+  data: Partial<{
+    event: string
+    items: string
+    unitBuy: number
+    receipt: string
+    reason: ExcessReason
+  }>,
+  db: DBExecutor = sql,
+): Promise<void> {
+  const fields: string[] = []
+  const params: (string | number)[] = []
+  if (data.event !== undefined) { params.push(data.event); fields.push(`event = $${params.length}`) }
+  if (data.items !== undefined) { params.push(data.items); fields.push(`items = $${params.length}`) }
+  if (data.unitBuy !== undefined) { params.push(data.unitBuy); fields.push(`unit_buy = $${params.length}`) }
+  if (data.receipt !== undefined) { params.push(data.receipt); fields.push(`receipt = $${params.length}`) }
+  if (data.reason !== undefined) { params.push(data.reason); fields.push(`reason = $${params.length}`) }
+
+  if (fields.length === 0) return
+  params.push(rowNumber)
+  await db.unsafe(
+    `UPDATE excess_purchase SET ${fields.join(", ")}, updated_at = NOW() WHERE id = $${params.length}`,
+    params,
+  )
 }
 
 export async function deleteExcessRow(rowNumber: number, db: DBExecutor = sql): Promise<void> {

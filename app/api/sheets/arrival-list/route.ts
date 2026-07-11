@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireOwner } from "@/lib/api"
-import { getArrivalList, markProductArrived, recordWrongProduct, recordBrokenArrival, recordMissingArrival, withActor } from "@/lib/db"
+import { getArrivalList, markProductArrived, recordWrongProduct, recordBrokenArrival, recordMissingArrival, recordCustomerCancellation, withActor } from "@/lib/db"
 
 export async function GET(req: NextRequest) {
   const { session, error: authError } = await requireSession()
@@ -89,6 +89,28 @@ export async function POST(req: NextRequest) {
       }
       const result = await withActor(session.user.email, (tx) =>
         recordMissingArrival({ cancelOrderIds }, tx),
+      )
+      return NextResponse.json({ success: true, ...result })
+    }
+
+    // Customer-cancelled path: the item is correct and already bought, but the
+    // customer backed out (misunderstanding, changed their mind). Log the
+    // already-bought units to inventory as ready stock (reason=customer_cancelled,
+    // assignable to the next order) and cancel the chosen orders (refunds
+    // auto-materialize if paid).
+    if (body.action === "customer_cancelled") {
+      const { event, productName } = body
+      const cancelOrderIds = Array.isArray(body.cancelOrderIds)
+        ? body.cancelOrderIds.filter((n: unknown) => Number.isInteger(n)) as number[]
+        : []
+      if (!event || !productName || cancelOrderIds.length === 0) {
+        return NextResponse.json(
+          { error: "event, productName and at least one order to cancel are required" },
+          { status: 400 },
+        )
+      }
+      const result = await withActor(session.user.email, (tx) =>
+        recordCustomerCancellation({ event, productName, cancelOrderIds }, tx),
       )
       return NextResponse.json({ success: true, ...result })
     }
