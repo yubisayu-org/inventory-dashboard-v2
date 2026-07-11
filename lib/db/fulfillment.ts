@@ -36,27 +36,33 @@ function buildShipGroups(
     groupMap.get(key)!.rows.push(row)
   }
 
-  return Array.from(groupMap.values()).map(({ customer, event, rows }) => {
+  return Array.from(groupMap.values()).flatMap(({ customer, event, rows }) => {
     const customerKey = normalizeId(customer)
-    const orders: ShipOrderLine[] = rows.map((r) => {
-      const unitArrive = (r.unit_arrive as number) ?? 0
-      const unitShip = (r.unit_ship as number) ?? 0
-      const unitHold = (r.unit_hold as number) ?? 0
-      return {
-        rowNumber: r.id as number,
-        event,
-        items: `${r.product_name} x ${r.unit}`,
-        productId: r.product_id as number,
-        productName: r.product_name as string,
-        gram: (r.gram as number) ?? 0,
-        unit: r.unit as number,
-        unitPrice: (r.unit_price as number) ?? 0,
-        unitArrive,
-        unitShip,
-        unitHold,
-        toShip: Math.max(0, unitArrive - unitShip - unitHold),
-      }
-    })
+    // Lines with unit === 0 are cancelled (missing/wrong-product/broken arrival,
+    // or a fully-voided order) — nothing to receive or ship, so drop them from
+    // the packing list entirely rather than let them park a card in "Belum Tiba".
+    const orders: ShipOrderLine[] = rows
+      .filter((r) => ((r.unit as number) ?? 0) > 0)
+      .map((r) => {
+        const unitArrive = (r.unit_arrive as number) ?? 0
+        const unitShip = (r.unit_ship as number) ?? 0
+        const unitHold = (r.unit_hold as number) ?? 0
+        return {
+          rowNumber: r.id as number,
+          event,
+          items: `${r.product_name} x ${r.unit}`,
+          productId: r.product_id as number,
+          productName: r.product_name as string,
+          gram: (r.gram as number) ?? 0,
+          unit: r.unit as number,
+          unitPrice: (r.unit_price as number) ?? 0,
+          unitArrive,
+          unitShip,
+          unitHold,
+          toShip: Math.max(0, unitArrive - unitShip - unitHold),
+        }
+      })
+    if (orders.length === 0) return []
     const totalToShipGram = orders.reduce((s, o) => s + o.gram * o.toShip, 0)
     const totalToShip = orders.reduce((s, o) => s + o.toShip, 0)
     const totalHold = orders.reduce((s, o) => s + o.unitHold, 0)
@@ -82,7 +88,7 @@ function buildShipGroups(
             ? (paymentClear ? "ready" : "ready_unpaid")
             : "shipped"
 
-    return {
+    return [{
       customer,
       event,
       customerDetail: detailMap.get(customerKey) ?? null,
@@ -94,7 +100,7 @@ function buildShipGroups(
       ongkirPerKg,
       status,
       paymentStatus,
-    }
+    }]
   })
 }
 
