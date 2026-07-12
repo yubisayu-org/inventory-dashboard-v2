@@ -1,13 +1,20 @@
 "use client"
 
-import TableSkeleton from "@/components/TableSkeleton"
-import { useEffect, useState, useMemo } from "react"
+import { useState, useMemo, useCallback, useRef } from "react"
 import type { ExcessRow, ExcessReason } from "@/lib/db"
-import DataGrid, { numericFilter, textContainsFilter, type ColumnDef } from "@/components/DataGrid"
+import DataGrid, {
+  type ColumnDef,
+  type SortingState,
+  type ColumnFiltersState,
+  type PaginationState,
+} from "@/components/DataGrid"
+import { usePaginatedFetch, type PageData } from "@/hooks/usePaginatedFetch"
 import { fmt, displayIg } from "@/lib/format"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import EventSelect from "@/components/EventSelect"
 import SearchableSelect from "@/components/SearchableSelect"
+
+const PAGE_SIZE = 25
 
 const REASON_LABEL: Record<ExcessReason, string> = {
   overbuy: "Overbuy",
@@ -43,8 +50,8 @@ type BulkResult = { results: BulkItemResult[] }
 export default function ExcessTable() {
   const options = useSheetOptions()
   const [rows, setRows] = useState<ExcessRow[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState("")
+  const [totalCount, setTotalCount] = useState(0)
+  const [filteredSum, setFilteredSum] = useState<number | null>(null)
   const [busyRow, setBusyRow] = useState<number | null>(null)
   const [pendingRow, setPendingRow] = useState<number | null>(null)
   const [pendingReceipt, setPendingReceipt] = useState("apply excess")
@@ -59,15 +66,57 @@ export default function ExcessTable() {
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
-  useEffect(() => {
-    fetch("/api/sheets/excess-purchase")
-      .then((r) => r.json())
-      .then((data: { rows?: ExcessRow[]; error?: string }) => {
-        if (data.error) throw new Error(data.error)
-        setRows(data.rows ?? [])
-      })
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"))
-      .finally(() => setLoading(false))
+  // Server-side table state.
+  const [sorting, setSorting] = useState<SortingState>([])
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
+  const [globalFilter, setGlobalFilter] = useState("")
+  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: PAGE_SIZE })
+
+  const fetchFilters = useMemo<Record<string, string>>(() => {
+    const f: Record<string, string> = {}
+    for (const cf of columnFilters) {
+      const v = String(cf.value ?? "").trim()
+      if (!v) continue
+      if (cf.id === "event") f.event = v
+      else if (cf.id === "items") f.items = v
+      else if (cf.id === "receipt") f.receipt = v
+      else if (cf.id === "reason") f.reason = v
+    }
+    return f
+  }, [columnFilters])
+
+  const fetchSort = useMemo(() => {
+    if (sorting.length === 0) return null
+    return { key: sorting[0].id, direction: sorting[0].desc ? ("desc" as const) : ("asc" as const) }
+  }, [sorting])
+
+  const onData = useCallback((d: PageData) => {
+    setRows(d.rows as ExcessRow[])
+    setTotalCount(d.totalCount)
+    setFilteredSum(d.filteredSum)
+  }, [])
+
+  const { fetchState, refresh } = usePaginatedFetch({
+    endpoint: "/api/sheets/excess-purchase",
+    pageSize: PAGE_SIZE,
+    page: pagination.pageIndex + 1,
+    search: globalFilter,
+    filters: fetchFilters,
+    sort: fetchSort,
+    onData,
+  })
+
+  const refreshRef = useRef(refresh)
+  refreshRef.current = refresh
+
+  const handleSortingChange = useCallback((u: SortingState | ((p: SortingState) => SortingState)) => {
+    setSorting(u); setPagination((p) => ({ ...p, pageIndex: 0 }))
+  }, [])
+  const handleColumnFiltersChange = useCallback((u: ColumnFiltersState | ((p: ColumnFiltersState) => ColumnFiltersState)) => {
+    setColumnFilters(u); setPagination((p) => ({ ...p, pageIndex: 0 }))
+  }, [])
+  const handleGlobalFilterChange = useCallback((u: string | ((p: string) => string)) => {
+    setGlobalFilter(u); setPagination((p) => ({ ...p, pageIndex: 0 }))
   }, [])
 
   function openPending(rowNumber: number) {
@@ -95,27 +144,8 @@ export default function ExcessTable() {
       if (!res.ok) throw new Error(data.error ?? "Failed to apply")
 
       setBulkResult(data)
-
-      // Sync local state: remove fully consumed, update partially consumed
-      setRows((prev) => {
-        let updated = [...prev]
-        for (const item of data.results) {
-          if (item.remainder <= 0) {
-            // We don't have the rowNumber here — reload instead
-          } else {
-            updated = updated.map((r) =>
-              r.event === item.event && r.items === item.items && r.unitBuy === item.originalUnitBuy
-                ? { ...r, unitBuy: item.remainder }
-                : r,
-            )
-          }
-        }
-        return updated
-      })
-
-      // Reload to get accurate row numbers after deletions
-      const fresh = await fetch("/api/sheets/excess-purchase").then((r) => r.json())
-      if (!fresh.error) setRows(fresh.rows ?? [])
+      // Server applied against the full set — reload the current page.
+      refreshRef.current()
     } catch (err) {
       setBulkResult({ results: [] })
     } finally {
@@ -137,16 +167,8 @@ export default function ExcessTable() {
       if (!res.ok) throw new Error(data.error ?? "Failed to apply")
 
       setApplyResult({ excessRowNumber: row.rowNumber, result: data })
-
-      if (data.remainder <= 0) {
-        // Row was fully consumed — remove from local state
-        setRows((prev) => prev.filter((r) => r.rowNumber !== row.rowNumber))
-      } else {
-        // Partially consumed — update unitBuy in local state
-        setRows((prev) =>
-          prev.map((r) => r.rowNumber === row.rowNumber ? { ...r, unitBuy: data.remainder } : r),
-        )
-      }
+      // Row was fully consumed (deleted) or partially reduced — reload the page.
+      refreshRef.current()
     } catch (err) {
       setApplyResult({
         excessRowNumber: row.rowNumber,
@@ -165,7 +187,7 @@ export default function ExcessTable() {
       const res = await fetch(`/api/sheets/excess-purchase/${deleteRow.rowNumber}`, { method: "DELETE" })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error ?? "Failed to delete")
-      setRows((prev) => prev.filter((r) => r.rowNumber !== deleteRow.rowNumber))
+      refreshRef.current()
       setDeleteRow(null)
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : "Failed to delete")
@@ -208,7 +230,7 @@ export default function ExcessTable() {
       {
         accessorKey: "unitBuy",
         header: "Unit Buy",
-        filterFn: "numeric",
+        enableColumnFilter: false,
         size: 90,
         meta: { align: "right" },
         cell: ({ getValue }) => (
@@ -307,12 +329,11 @@ export default function ExcessTable() {
   // Find the row object for the pending modal
   const pendingExcessRow = pendingRow != null ? rows.find((r) => r.rowNumber === pendingRow) : null
 
-  if (loading) return <TableSkeleton />
-
-  if (error) {
+  if (fetchState.error) {
     return (
       <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-red-500">
-        {error}
+        {fetchState.error}
+        <button onClick={() => refreshRef.current()} className="ml-2 underline hover:no-underline">Retry</button>
       </div>
     )
   }
@@ -323,7 +344,7 @@ export default function ExcessTable() {
       {bulkPending && (
         <div className="rounded-xl border border-brand/30 bg-brand/5 px-4 py-3 flex items-center gap-3 flex-wrap">
           <span className="text-xs text-gray-600 shrink-0">
-            Apply all <strong>{rows.length}</strong> excess rows to pending orders
+            Apply all <strong>{totalCount}</strong> excess rows to pending orders
           </span>
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <label className="text-xs text-gray-500 shrink-0">Receipt</label>
@@ -381,11 +402,8 @@ export default function ExcessTable() {
           eventOptions={options?.events ?? []}
           itemOptions={(options?.items ?? []).map((it) => ({ value: it.name, label: it.name, meta: it.store || undefined }))}
           onClose={() => { setAddOpen(false); setEditRow(null) }}
-          onCreated={(newRows) => { setRows(newRows); setAddOpen(false) }}
-          onUpdated={(rowNumber, patch) => {
-            setRows((prev) => prev.map((r) => r.rowNumber === rowNumber ? { ...r, ...patch } : r))
-            setEditRow(null)
-          }}
+          onCreated={() => { refreshRef.current(); setAddOpen(false) }}
+          onUpdated={() => { refreshRef.current(); setEditRow(null) }}
         />
       )}
 
@@ -405,8 +423,25 @@ export default function ExcessTable() {
         columns={columns}
         getRowId={(row) => String(row.rowNumber)}
         searchPlaceholder="Search event, item, receipt…"
+        serverSide={{
+          rowCount: totalCount,
+          loading: fetchState.loading,
+          sorting,
+          onSortingChange: handleSortingChange,
+          columnFilters,
+          onColumnFiltersChange: handleColumnFiltersChange,
+          globalFilter,
+          onGlobalFilterChange: handleGlobalFilterChange,
+          pagination,
+          onPaginationChange: setPagination,
+        }}
         toolbarExtra={
           <div className="flex items-center gap-2 shrink-0">
+            {filteredSum !== null && (
+              <span className="text-xs text-gray-500 whitespace-nowrap">
+                Total: <span className="font-semibold text-foreground">{fmt(filteredSum)}</span> units
+              </span>
+            )}
             <button
               type="button"
               onClick={() => setAddOpen(true)}
@@ -417,7 +452,7 @@ export default function ExcessTable() {
               </svg>
               Add Inventory
             </button>
-            {rows.length > 0 && (
+            {totalCount > 0 && (
               <button
                 type="button"
                 onClick={() => { setBulkPending((o) => !o); setBulkReceipt("apply excess"); setBulkResult(null) }}

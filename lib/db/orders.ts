@@ -547,6 +547,108 @@ export async function getExcessPurchaseRows(): Promise<ExcessRow[]> {
   }))
 }
 
+function mapExcessRow(r: Record<string, unknown>): ExcessRow {
+  return {
+    rowNumber: r.id as number,
+    event: r.event as string,
+    items: r.items as string,
+    unitBuy: r.unit_buy as number,
+    receipt: (r.receipt as string) ?? "",
+    reason: ((r.reason as string) ?? "overbuy") as ExcessReason,
+    expectedItem: (r.expected_item as string) ?? "",
+    createdAt: tsToString(r.created_at as Date | null),
+    updatedAt: tsToString(r.updated_at as Date | null),
+  }
+}
+
+export interface PaginatedExcess {
+  rows: ExcessRow[]
+  totalCount: number
+  filteredSum: number | null
+  page: number
+  pageSize: number
+  totalPages: number
+}
+
+/** Sentinel for totalCount/totalPages when skipCount was requested. */
+export const EXCESS_TOTAL_COUNT_UNCHANGED = -1
+
+/**
+ * One page of excess-purchase (Inventory) rows with server-side
+ * search/filter/sort. Mirrors getPaymentsPaginated. filteredSum is the summed
+ * unit_buy across the whole filtered set (units still to apply).
+ */
+export async function getExcessPurchasePaginated(opts: {
+  page: number
+  pageSize: number
+  search?: string
+  event?: string
+  items?: string
+  receipt?: string
+  reason?: string
+  sortKey?: string
+  sortDir?: "asc" | "desc"
+  skipCount?: boolean
+}): Promise<PaginatedExcess> {
+  const { page, pageSize, search, skipCount } = opts
+  const offset = (page - 1) * pageSize
+
+  const conditions: string[] = []
+  const params: (string | number)[] = []
+
+  if (search) {
+    params.push(`%${search.toLowerCase()}%`)
+    const p = `$${params.length}`
+    conditions.push(
+      `(lower(event) LIKE ${p} OR lower(items) LIKE ${p} OR lower(COALESCE(receipt,'')) LIKE ${p} OR lower(COALESCE(expected_item,'')) LIKE ${p})`,
+    )
+  }
+
+  const textFilters: [string | undefined, string][] = [
+    [opts.event, "event"],
+    [opts.items, "items"],
+    [opts.receipt, "receipt"],
+    [opts.reason, "reason"],
+  ]
+  for (const [value, col] of textFilters) {
+    if (value) {
+      params.push(`%${value.toLowerCase()}%`)
+      conditions.push(`lower(COALESCE(${col},'')) LIKE $${params.length}`)
+    }
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""
+
+  const SORT_COLUMNS: Record<string, string> = {
+    event: "event", items: "items", reason: "reason",
+    unitBuy: "unit_buy", receipt: "receipt", createdAt: "created_at", updatedAt: "updated_at",
+  }
+  const sortCol = (opts.sortKey && SORT_COLUMNS[opts.sortKey]) || "id"
+  const sortDir = opts.sortDir === "asc" ? "ASC" : "DESC"
+
+  const dataRows = await sql.unsafe(
+    `SELECT id, event, items, unit_buy, receipt, reason, expected_item, created_at, updated_at
+     FROM excess_purchase
+     ${where}
+     ORDER BY ${sortCol} ${sortDir}, id ${sortDir}
+     LIMIT ${pageSize} OFFSET ${offset}`,
+    params,
+  )
+  const rows = (dataRows as Record<string, unknown>[]).map(mapExcessRow)
+
+  if (skipCount) {
+    return { rows, totalCount: EXCESS_TOTAL_COUNT_UNCHANGED, filteredSum: null, page, pageSize, totalPages: EXCESS_TOTAL_COUNT_UNCHANGED }
+  }
+
+  const [countRows, sumRows] = await Promise.all([
+    sql.unsafe(`SELECT COUNT(*)::int AS c FROM excess_purchase ${where}`, params),
+    sql.unsafe(`SELECT COALESCE(SUM(unit_buy), 0)::bigint AS s FROM excess_purchase ${where}`, params),
+  ])
+  const totalCount = Number((countRows as Record<string, unknown>[])[0]?.c ?? 0)
+  const filteredSum = Number((sumRows as Record<string, unknown>[])[0]?.s ?? 0)
+  return { rows, totalCount, filteredSum, page, pageSize, totalPages: Math.max(1, Math.ceil(totalCount / pageSize)) }
+}
+
 /**
  * Zero the given order lines (unit + unit_buy → 0), keeping the rows for
  * history. Used when an order can't be fulfilled (wrong/broken delivery): each
