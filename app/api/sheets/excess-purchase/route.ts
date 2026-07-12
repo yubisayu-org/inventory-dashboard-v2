@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireOwner } from "@/lib/api"
 import {
   getExcessPurchaseRows,
+  getExcessPurchasePaginated,
   getDuplicateFormRowsForEvents,
   bulkUpdatePurchase,
   deleteExcessRow,
@@ -124,14 +125,36 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
 
   const roleError = requireOwner(session)
   if (roleError) return roleError
 
+  const params = req.nextUrl.searchParams
+
   try {
+    // Paginated page of rows when ?page is present (the Inventory table).
+    if (params.get("page")) {
+      const page = Math.max(1, parseInt(params.get("page")!, 10) || 1)
+      const pageSize = Math.min(100, Math.max(1, parseInt(params.get("pageSize") ?? "25", 10)))
+      const result = await getExcessPurchasePaginated({
+        page,
+        pageSize,
+        search: params.get("search") ?? undefined,
+        event: params.get("event") ?? undefined,
+        items: params.get("items") ?? undefined,
+        receipt: params.get("receipt") ?? undefined,
+        reason: params.get("reason") ?? undefined,
+        sortKey: params.get("sortKey") ?? undefined,
+        sortDir: (params.get("sortDir") as "asc" | "desc") ?? undefined,
+        skipCount: params.get("skipCount") === "true",
+      })
+      return NextResponse.json(result, { headers: { "Cache-Control": "no-store" } })
+    }
+
+    // Otherwise the full list (back-compat: the apply flow re-reads all rows).
     const rows = await getExcessPurchaseRows()
     return NextResponse.json({ rows })
   } catch (err) {

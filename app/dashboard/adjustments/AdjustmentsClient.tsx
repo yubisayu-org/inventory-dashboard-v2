@@ -1,15 +1,22 @@
 "use client"
 
 import { displayIg } from "@/lib/format"
-import TableSkeleton from "@/components/TableSkeleton"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useMemo, useRef, useState } from "react"
 import type { AdjustmentRow } from "@/lib/db"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import { useModalDismiss } from "@/hooks/useModalDismiss"
 import SearchableSelect from "@/components/SearchableSelect"
 import EventSelect from "@/components/EventSelect"
-import DataGrid, { type ColumnDef } from "@/components/DataGrid"
+import DataGrid, {
+  type ColumnDef,
+  type SortingState,
+  type ColumnFiltersState,
+  type PaginationState,
+} from "@/components/DataGrid"
+import { usePaginatedFetch, type PageData } from "@/hooks/usePaginatedFetch"
 import { descriptionOptions, AmountSignHint } from "./shared"
+
+const PAGE_SIZE = 25
 
 const INPUT_CLASS =
   "w-full border border-cream-border rounded-md px-2 py-1 text-sm text-foreground bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
@@ -29,23 +36,62 @@ function formatAmount(n: number): string {
 export default function AdjustmentsClient() {
   const options = useSheetOptions()
   const [rows, setRows] = useState<AdjustmentRow[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState("")
+  const [totalCount, setTotalCount] = useState(0)
+  const [filteredSum, setFilteredSum] = useState<number | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [editingRow, setEditingRow] = useState<AdjustmentRow | null>(null)
 
-  const fetchRows = useCallback(() => {
-    fetch("/api/sheets/adjustments")
-      .then((r) => r.json())
-      .then((data: { rows?: AdjustmentRow[]; error?: string }) => {
-        if (data.error) throw new Error(data.error)
-        setRows(data.rows ?? [])
-      })
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"))
-      .finally(() => setLoading(false))
+  // Server-side table state.
+  const [sorting, setSorting] = useState<SortingState>([])
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
+  const [globalFilter, setGlobalFilter] = useState("")
+  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: PAGE_SIZE })
+
+  const fetchFilters = useMemo<Record<string, string>>(() => {
+    const f: Record<string, string> = {}
+    for (const cf of columnFilters) {
+      const v = String(cf.value ?? "").trim()
+      if (!v) continue
+      if (cf.id === "event") f.event = v
+      else if (cf.id === "customer") f.customer = v
+      else if (cf.id === "description") f.description = v
+    }
+    return f
+  }, [columnFilters])
+
+  const fetchSort = useMemo(() => {
+    if (sorting.length === 0) return null
+    return { key: sorting[0].id, direction: sorting[0].desc ? ("desc" as const) : ("asc" as const) }
+  }, [sorting])
+
+  const onData = useCallback((d: PageData) => {
+    setRows(d.rows as AdjustmentRow[])
+    setTotalCount(d.totalCount)
+    setFilteredSum(d.filteredSum)
   }, [])
 
-  useEffect(() => { fetchRows() }, [fetchRows])
+  const { fetchState, refresh } = usePaginatedFetch({
+    endpoint: "/api/sheets/adjustments",
+    pageSize: PAGE_SIZE,
+    page: pagination.pageIndex + 1,
+    search: globalFilter,
+    filters: fetchFilters,
+    sort: fetchSort,
+    onData,
+  })
+
+  const refreshRef = useRef(refresh)
+  refreshRef.current = refresh
+
+  const handleSortingChange = useCallback((u: SortingState | ((p: SortingState) => SortingState)) => {
+    setSorting(u); setPagination((p) => ({ ...p, pageIndex: 0 }))
+  }, [])
+  const handleColumnFiltersChange = useCallback((u: ColumnFiltersState | ((p: ColumnFiltersState) => ColumnFiltersState)) => {
+    setColumnFilters(u); setPagination((p) => ({ ...p, pageIndex: 0 }))
+  }, [])
+  const handleGlobalFilterChange = useCallback((u: string | ((p: string) => string)) => {
+    setGlobalFilter(u); setPagination((p) => ({ ...p, pageIndex: 0 }))
+  }, [])
 
   const columns = useMemo<ColumnDef<AdjustmentRow, unknown>[]>(() => [
     {
@@ -71,7 +117,7 @@ export default function AdjustmentsClient() {
     {
       accessorKey: "amount",
       header: "Amount",
-      filterFn: "numeric",
+      enableColumnFilter: false,
       meta: { align: "right" },
       cell: ({ getValue }) => {
         const n = getValue<number>()
@@ -85,7 +131,7 @@ export default function AdjustmentsClient() {
     {
       accessorKey: "createdAt",
       header: "Created",
-      filterFn: "textContains",
+      enableColumnFilter: false,
       cell: ({ getValue }) => (
         <span className="text-gray-400 text-xs">{getValue<string>()}</span>
       ),
@@ -93,6 +139,7 @@ export default function AdjustmentsClient() {
     {
       accessorKey: "updatedAt",
       header: "Updated",
+      enableColumnFilter: false,
       enableHiding: true,
     },
     {
@@ -112,24 +159,11 @@ export default function AdjustmentsClient() {
     },
   ], [])
 
-  function handleEditSaved(updated: AdjustmentRow) {
-    setRows((prev) =>
-      prev.map((r) => (r.rowNumber === updated.rowNumber ? updated : r)),
-    )
-    setEditingRow(null)
-  }
-
-  function handleDeleted(rowNumber: number) {
-    setRows((prev) => prev.filter((r) => r.rowNumber !== rowNumber))
-    setEditingRow(null)
-  }
-
-  if (loading) return <TableSkeleton />
-
-  if (error) {
+  if (fetchState.error) {
     return (
       <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-red-500">
-        {error}
+        {fetchState.error}
+        <button onClick={() => refreshRef.current()} className="ml-2 underline hover:no-underline">Retry</button>
       </div>
     )
   }
@@ -140,20 +174,24 @@ export default function AdjustmentsClient() {
         <AddAdjustmentForm
           options={options}
           onClose={() => setAddOpen(false)}
-          onAdded={() => { fetchRows(); setAddOpen(false) }}
+          onAdded={() => { refreshRef.current(); setAddOpen(false) }}
         />
       )}
 
       <DataGrid
         data={rows}
         columns={columns}
-        pageSize={25}
         searchPlaceholder="Search adjustments..."
         getRowId={(row) => String(row.rowNumber)}
         initialVisibility={{ updatedAt: false }}
         toolbarExtra={
           <>
-            <button onClick={fetchRows} title="Refresh" className="p-1.5 text-gray-400 hover:text-brand transition-colors rounded">
+            {filteredSum !== null && (
+              <span className="text-xs text-gray-500 whitespace-nowrap">
+                Total: <span className="font-semibold text-foreground">Rp {formatAmount(filteredSum)}</span>
+              </span>
+            )}
+            <button onClick={() => refreshRef.current()} title="Refresh" className="p-1.5 text-gray-400 hover:text-brand transition-colors rounded">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 12a9 9 0 1 1-6.22-8.56" /><polyline points="21 3 21 9 15 9" />
               </svg>
@@ -172,6 +210,18 @@ export default function AdjustmentsClient() {
             </button>
           </>
         }
+        serverSide={{
+          rowCount: totalCount,
+          loading: fetchState.loading,
+          sorting,
+          onSortingChange: handleSortingChange,
+          columnFilters,
+          onColumnFiltersChange: handleColumnFiltersChange,
+          globalFilter,
+          onGlobalFilterChange: handleGlobalFilterChange,
+          pagination,
+          onPaginationChange: setPagination,
+        }}
       />
 
       {editingRow && (
@@ -179,8 +229,8 @@ export default function AdjustmentsClient() {
           row={editingRow}
           options={options}
           onClose={() => setEditingRow(null)}
-          onSaved={handleEditSaved}
-          onDeleted={handleDeleted}
+          onSaved={() => { setEditingRow(null); refreshRef.current() }}
+          onDeleted={() => { setEditingRow(null); refreshRef.current() }}
         />
       )}
     </div>

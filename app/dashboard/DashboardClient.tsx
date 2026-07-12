@@ -42,11 +42,9 @@ export default function DashboardClient({
   const items: ActionItem[] = ([
     { count: summary.actionQueue.overpaymentCandidates, label: "overpayments to refund", href: "/dashboard/refunds", tone: "yellow" },
     { count: summary.actionQueue.refundsReadyToTransfer, label: "refunds ready to transfer", href: "/dashboard/refunds", tone: "orange" },
-    { count: summary.actionQueue.refundsPending, label: "refunds need WhatsApp message", href: "/dashboard/refunds", tone: "yellow" },
-    { count: summary.actionQueue.refundsAwaitingBankInfo, label: "refunds awaiting bank info", href: "/dashboard/refunds", tone: "blue" },
     { count: summary.actionQueue.itemsPendingPurchase, label: "items pending purchase", href: "/dashboard/shopping-list", tone: "green" },
     { count: summary.actionQueue.itemsPendingArrival, label: "items pending arrival", href: "/dashboard/arrival-list", tone: "blue" },
-    { count: summary.actionQueue.customersReadyToShip, label: "customers ready to ship", href: "/dashboard/ship", tone: "purple" },
+    { count: summary.actionQueue.customersReadyToShip, label: "invoices ready to ship", href: "/dashboard/ship", tone: "purple" },
   ] satisfies ActionItem[]).filter((item) => item.count > 0)
 
   return (
@@ -124,10 +122,13 @@ function EventCard({ event }: { event: DashboardEvent }) {
         <span><span className="font-medium text-foreground">{event.orderCount}</span> orders</span>
         <span><span className="font-medium text-foreground">{event.customerCount}</span> customers</span>
         <span><span className="font-medium text-foreground">{event.totalUnits}</span> units</span>
-        <span className="ml-auto text-foreground font-medium tabular-nums">{formatRp(event.totalSubtotal)}</span>
+        <span className="ml-auto whitespace-nowrap tabular-nums">
+          <span className="text-foreground font-medium">{formatRp(event.totalPaid)}</span>
+          <span className="text-gray-400"> / {formatRp(event.totalSubtotal)}</span>
+        </span>
       </div>
 
-      <div className="grid grid-cols-[auto_1fr_auto] items-center gap-x-2 gap-y-1.5 text-xs">
+      <div className="grid grid-cols-[auto_1fr_6.5rem] items-center gap-x-2 gap-y-1.5 text-xs">
         {stages.map((s) => {
           const p = pct(s.num, s.denom)
           return (
@@ -143,16 +144,6 @@ function EventCard({ event }: { event: DashboardEvent }) {
             </div>
           )
         })}
-        <div className="contents">
-          <span className="text-gray-500 pt-1 mt-1 border-t border-cream-border/60">Paid</span>
-          <div className="h-2 rounded-full bg-gray-100 overflow-hidden pt-1 mt-1 border-t border-cream-border/60">
-            <div className="h-full bg-emerald-500 transition-all" style={{ width: `${pct(event.totalPaid, event.totalSubtotal)}%` }} />
-          </div>
-          <span className="whitespace-nowrap text-right tabular-nums text-gray-600 pt-1 mt-1 border-t border-cream-border/60">
-            <span className="text-foreground font-medium">{formatRp(event.totalPaid)}</span>
-            <span className="text-gray-400"> / {formatRp(event.totalSubtotal)}</span>
-          </span>
-        </div>
       </div>
     </div>
   )
