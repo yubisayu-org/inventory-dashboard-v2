@@ -1,11 +1,10 @@
 import sql from "../db-pool"
+import { getShipOrdersFiltered } from "./fulfillment"
 
 // ─── Dashboard Summary ─────────────────────────────────────────────────────
 
 export interface DashboardActionQueue {
   overpaymentCandidates: number
-  refundsPending: number
-  refundsAwaitingBankInfo: number
   refundsReadyToTransfer: number
   itemsPendingPurchase: number
   itemsPendingArrival: number
@@ -80,10 +79,9 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
         )
     `,
     sql`
-      SELECT status, COUNT(*)::int AS count
+      SELECT COUNT(*)::int AS count
       FROM refunds
-      WHERE status IN ('pending', 'awaiting_bank_info', 'ready_to_refund')
-      GROUP BY status
+      WHERE status = 'ready_to_refund'
     `,
     sql`
       SELECT COUNT(*)::int AS count FROM (
@@ -104,14 +102,12 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
         HAVING SUM(unit_buy - COALESCE(unit_arrive, 0)) > 0
       ) g
     `,
-    sql`
-      SELECT COUNT(*)::int AS count FROM (
-        SELECT 1
-        FROM orders
-        WHERE COALESCE(unit_arrive, 0) > COALESCE(unit_ship, 0)
-        GROUP BY event, customer
-      ) g
-    `,
+    // "Ready to ship" reuses the exact same per-invoice status computation as
+    // the packing list page (buildShipGroups) so the count here can never
+    // drift from "Siap Dikirim" there — a plain unit_arrive > unit_ship count
+    // used to overcount (it missed the all-lines-arrived, payment-clear, and
+    // not-on-hold requirements).
+    getShipOrdersFiltered({ segment: "ready" }).then((r) => r.counts.ready),
     sql`
       WITH order_aggregates AS (
         SELECT
@@ -151,18 +147,13 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
     `,
   ])
 
-  const refundByStatus = new Map<string, number>()
-  for (const r of refundCounts) refundByStatus.set(r.status as string, r.count as number)
-
   return {
     actionQueue: {
       overpaymentCandidates: (overpaymentCount[0]?.count as number) ?? 0,
-      refundsPending: refundByStatus.get("pending") ?? 0,
-      refundsAwaitingBankInfo: refundByStatus.get("awaiting_bank_info") ?? 0,
-      refundsReadyToTransfer: refundByStatus.get("ready_to_refund") ?? 0,
+      refundsReadyToTransfer: (refundCounts[0]?.count as number) ?? 0,
       itemsPendingPurchase: (pendingPurchaseCount[0]?.count as number) ?? 0,
       itemsPendingArrival: (pendingArrivalCount[0]?.count as number) ?? 0,
-      customersReadyToShip: (readyToShipCount[0]?.count as number) ?? 0,
+      customersReadyToShip: readyToShipCount,
     },
     events: eventRows.map((r) => ({
       name: r.name as string,

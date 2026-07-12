@@ -40,18 +40,12 @@ const STATUS_COLORS: Record<RefundStatus, string> = {
   cancelled: "bg-gray-50 text-gray-500 border-gray-200",
 }
 
-const ALL_STATUSES: RefundStatus[] = [
-  "pending",
-  "awaiting_bank_info",
-  "ready_to_refund",
-  "refunded",
-  "applied_to_next_order",
-  "cancelled",
+const ACTIVE_TABS: { key: RefundStatus | "active"; label: string }[] = [
+  { key: "pending", label: "Pending" },
+  { key: "awaiting_bank_info", label: "Awaiting Bank Info" },
+  { key: "ready_to_refund", label: "Ready to Refund" },
+  { key: "refunded", label: "Done" },
 ]
-
-// Hidden by default so the table opens on what still needs action; click a
-// chip to reveal it.
-const DEFAULT_HIDDEN_STATUSES: RefundStatus[] = ["refunded", "applied_to_next_order", "cancelled"]
 
 function formatRp(n: number) {
   return `Rp ${new Intl.NumberFormat("id-ID").format(n)}`
@@ -90,25 +84,11 @@ export default function RefundsClient() {
   const [rows, setRows] = useState<RefundRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
-  const [hiddenStatuses, setHiddenStatuses] = useState<Set<RefundStatus>>(new Set(DEFAULT_HIDDEN_STATUSES))
-  const [reasonFilter, setReasonFilter] = useState<RefundReason | "">("")
-  const [onlyReview, setOnlyReview] = useState(false)
-  const [onlyCredit, setOnlyCredit] = useState(false)
+  const [tab, setTab] = useState<RefundStatus>("pending")
   const [selectedEvent, setSelectedEvent] = useState("")
   const [search, setSearch] = useState("")
   const [creating, setCreating] = useState(false)
   const [editRow, setEditRow] = useState<RefundRow | null>(null)
-  const [filtersOpen, setFiltersOpen] = useState(false)
-  const filtersRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!filtersOpen) return
-    function onPointerDown(e: PointerEvent) {
-      if (!filtersRef.current?.contains(e.target as Node)) setFiltersOpen(false)
-    }
-    document.addEventListener("pointerdown", onPointerDown)
-    return () => document.removeEventListener("pointerdown", onPointerDown)
-  }, [filtersOpen])
 
   const fetchRows = useCallback((forceScan = false) => {
     setLoading(true)
@@ -127,39 +107,25 @@ export default function RefundsClient() {
 
   useEffect(() => { fetchRows() }, [fetchRows])
 
+  const doneStatuses: RefundStatus[] = ["refunded", "applied_to_next_order", "cancelled"]
+
   const filtered = useMemo(() => {
     const q = search.toLowerCase()
     return rows.filter((r) => {
-      const matchStatus = !hiddenStatuses.has(r.status)
-      const matchReason = !reasonFilter || r.reason === reasonFilter
-      const matchReview = !onlyReview || reviewMessage(r) !== null
-      const matchCredit = !onlyCredit || r.hasAppliedCredit
+      const matchTab = tab === "refunded" ? doneStatuses.includes(r.status) : r.status === tab
       const matchSearch = !q || r.customer.toLowerCase().includes(q) || r.event.toLowerCase().includes(q)
-      return matchStatus && matchReason && matchReview && matchCredit && matchSearch
+      return matchTab && matchSearch
     })
-  }, [rows, hiddenStatuses, reasonFilter, onlyReview, onlyCredit, search])
+  }, [rows, tab, search])
 
   const counts = useMemo(() => {
-    const c: Partial<Record<RefundStatus, number>> = {}
+    const c: Partial<Record<RefundStatus | "done", number>> = {}
     for (const r of rows) {
       c[r.status] = (c[r.status] ?? 0) + 1
     }
-    return c
+    const done = (c.refunded ?? 0) + (c.applied_to_next_order ?? 0) + (c.cancelled ?? 0)
+    return { ...c, done }
   }, [rows])
-
-  const statusIsDefault =
-    hiddenStatuses.size === DEFAULT_HIDDEN_STATUSES.length &&
-    DEFAULT_HIDDEN_STATUSES.every((s) => hiddenStatuses.has(s))
-  const activeFilterCount =
-    (statusIsDefault ? 0 : 1) + (reasonFilter ? 1 : 0) + (onlyReview ? 1 : 0) + (onlyCredit ? 1 : 0)
-
-  function toggleStatus(status: RefundStatus) {
-    setHiddenStatuses((prev) => {
-      const next = new Set(prev)
-      next.has(status) ? next.delete(status) : next.add(status)
-      return next
-    })
-  }
 
   function handleUpdated(updated: RefundRow) {
     setRows((prev) => prev.map((r) => r.id === updated.id ? updated : r))
@@ -169,7 +135,7 @@ export default function RefundsClient() {
   function handleCreated(created: RefundRow) {
     setRows((prev) => [created, ...prev])
     setCreating(false)
-    setHiddenStatuses(new Set(DEFAULT_HIDDEN_STATUSES))
+    setTab("pending")
   }
 
   function handleDeleted(id: number) {
@@ -180,7 +146,7 @@ export default function RefundsClient() {
   return (
     <>
       {/* Toolbar */}
-      <div className="flex items-center gap-3 flex-wrap mb-8">
+      <div className="flex items-center gap-2 flex-wrap">
         <input
           type="text"
           value={search}
@@ -197,102 +163,6 @@ export default function RefundsClient() {
             clearable
           />
         </div>
-
-        <div className="relative" ref={filtersRef}>
-          <button
-            type="button"
-            onClick={() => setFiltersOpen((v) => !v)}
-            className={`inline-flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border transition-colors ${
-              filtersOpen ? "border-brand text-brand" : "border-cream-border text-gray-600 hover:border-brand hover:text-brand"
-            }`}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" />
-            </svg>
-            Filters
-            {activeFilterCount > 0 && (
-              <span className="text-xs px-1.5 py-0.5 rounded-full bg-brand/10 text-brand">{activeFilterCount}</span>
-            )}
-          </button>
-
-          {filtersOpen && (
-            <div className="absolute right-0 z-50 mt-2 w-[22rem] rounded-xl border border-cream-border bg-white shadow-xl p-4 flex flex-col gap-3">
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</span>
-                  {hiddenStatuses.size > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setHiddenStatuses(new Set())}
-                      className="text-xs text-gray-400 hover:text-brand transition-colors"
-                    >
-                      Show all
-                    </button>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {ALL_STATUSES.map((status) => {
-                    const active = !hiddenStatuses.has(status)
-                    const count = counts[status] ?? 0
-                    return (
-                      <button
-                        key={status}
-                        type="button"
-                        onClick={() => toggleStatus(status)}
-                        title={active ? "Click to hide" : "Click to show"}
-                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
-                          active ? STATUS_COLORS[status] : "bg-gray-50 text-gray-400 border-gray-200 line-through decoration-1"
-                        }`}
-                      >
-                        {STATUS_LABELS[status]}
-                        <span className={active ? "opacity-70" : "opacity-60"}>{count}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-
-              <label className="flex flex-col gap-1">
-                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Reason</span>
-                <select
-                  value={reasonFilter}
-                  onChange={(e) => setReasonFilter(e.target.value as RefundReason | "")}
-                  className={`${INPUT_CLASS} w-full`}
-                >
-                  <option value="">All reasons</option>
-                  {(Object.entries(REASON_LABELS) as [RefundReason, string][]).map(([k, v]) => (
-                    <option key={k} value={k}>{v}</option>
-                  ))}
-                </select>
-              </label>
-
-              <div>
-                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Other</div>
-                <div className="flex flex-wrap gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setOnlyReview((v) => !v)}
-                    className={`text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${
-                      onlyReview ? "bg-amber-50 border-amber-300 text-amber-700" : "border-cream-border text-gray-500 hover:border-amber-300 hover:text-amber-600"
-                    }`}
-                  >
-                    ⚠ Needs review
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setOnlyCredit((v) => !v)}
-                    className={`text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${
-                      onlyCredit ? "bg-purple-50 border-purple-300 text-purple-700" : "border-cream-border text-gray-500 hover:border-purple-300 hover:text-purple-600"
-                    }`}
-                  >
-                    Has credit applied
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
         <button
           onClick={() => fetchRows(true)}
           title="Refresh (re-scan for overpayments)"
@@ -310,6 +180,32 @@ export default function RefundsClient() {
         </button>
       </div>
 
+      {/* Tabs */}
+      <div className="flex border-b border-cream-border gap-0">
+        {ACTIVE_TABS.map(({ key, label }) => {
+          const count = key === "refunded" ? counts.done : counts[key as RefundStatus]
+          const active = tab === key || (key === "refunded" && doneStatuses.includes(tab))
+          return (
+            <button
+              key={key}
+              onClick={() => setTab(key === "refunded" ? "refunded" : key as RefundStatus)}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                active
+                  ? "border-brand text-brand"
+                  : "border-transparent text-gray-500 hover:text-foreground"
+              }`}
+            >
+              {label}
+              {count ? (
+                <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${active ? "bg-brand/10 text-brand" : "bg-gray-100 text-gray-500"}`}>
+                  {count}
+                </span>
+              ) : null}
+            </button>
+          )
+        })}
+      </div>
+
       {/* Table */}
       <div className="rounded-xl border border-cream-border bg-white overflow-hidden">
         {loading ? (
@@ -325,13 +221,12 @@ export default function RefundsClient() {
                 <th className="text-left px-4 py-2.5 font-medium text-gray-500">Reason</th>
                 <th className="text-right px-4 py-2.5 font-medium text-gray-500">Amount</th>
                 <th className="text-left px-4 py-2.5 font-medium text-gray-500">Status</th>
-                <th className="px-4 py-2.5 w-16" />
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-sm text-gray-400">
+                  <td colSpan={5} className="py-12 text-center text-sm text-gray-400">
                     No refunds
                   </td>
                 </tr>
@@ -367,18 +262,6 @@ export default function RefundsClient() {
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${STATUS_COLORS[row.status]}`}>
                       {STATUS_LABELS[row.status]}
                     </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setEditRow(row) }}
-                      className="text-gray-400 hover:text-brand transition-colors"
-                      title="Open"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
-                      </svg>
-                    </button>
                   </td>
                 </tr>
               ))}
@@ -528,6 +411,46 @@ function CreateRefundModal({
 
 // ─── Refund detail modal ──────────────────────────────────────────────────────
 
+// The cash-refund pipeline as linear steps, up to the last one with an action.
+// Once transferred the refund goes read-only and shows a "Transfer Complete"
+// summary instead — no separate "Done" node needed. Terminal side-tracks
+// (cancelled, applied_to_next_order) render their own blocks instead of this.
+const FLOW_STEPS: { status: RefundStatus; label: string }[] = [
+  { status: "pending", label: "Message" },
+  { status: "awaiting_bank_info", label: "Bank Info" },
+  { status: "ready_to_refund", label: "Transfer" },
+]
+
+function StepIndicator({ status }: { status: RefundStatus }) {
+  const current = FLOW_STEPS.findIndex((s) => s.status === status)
+  if (current < 0) return null
+  return (
+    <div className="flex items-center px-6 py-3 border-b border-cream-border">
+      {FLOW_STEPS.map((step, i) => (
+        <div key={step.status} className={`flex items-center ${i > 0 ? "flex-1" : ""}`}>
+          {i > 0 && <div className={`flex-1 h-px mx-2 ${i <= current ? "bg-brand" : "bg-cream-border"}`} />}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span
+              className={`w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center border ${
+                i < current
+                  ? "bg-brand border-brand text-white"
+                  : i === current
+                    ? "border-brand text-brand bg-white"
+                    : "border-gray-300 text-gray-400 bg-white"
+              }`}
+            >
+              {i < current ? "✓" : i + 1}
+            </span>
+            <span className={`text-[11px] ${i === current ? "font-semibold text-brand" : "text-gray-400"}`}>
+              {step.label}
+            </span>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function RefundDetailModal({
   row,
   onUpdated,
@@ -552,6 +475,13 @@ function RefundDetailModal({
   const [invoiceEvent, setInvoiceEvent] = useState<InvoiceEvent | null>(null)
   const [invoiceLoading, setInvoiceLoading] = useState(true)
   const [invoiceError, setInvoiceError] = useState<string | null>(null)
+  // Collapsed-by-default sections keep the modal short enough to never scroll
+  // in the common case — the old layout hid half the workflow below the fold.
+  const [showInvoiceDetail, setShowInvoiceDetail] = useState(false)
+  const [showMessage, setShowMessage] = useState(false)
+  const [showEdit, setShowEdit] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
   // Opens the full invoice as a drawer over this modal instead of navigating
   // away to /dashboard/invoice, so the refund list keeps its place.
   const [showFullInvoice, setShowFullInvoice] = useState(false)
@@ -580,6 +510,15 @@ function RefundDetailModal({
       .finally(() => { if (!cancelled) setInvoiceLoading(false) })
     return () => { cancelled = true }
   }, [row.customer, row.event])
+
+  useEffect(() => {
+    if (!menuOpen) return
+    function onPointerDown(e: PointerEvent) {
+      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false)
+    }
+    document.addEventListener("pointerdown", onPointerDown)
+    return () => document.removeEventListener("pointerdown", onPointerDown)
+  }, [menuOpen])
 
   const isReadOnly = row.status === "refunded" || row.status === "cancelled" || row.status === "applied_to_next_order"
 
@@ -663,9 +602,12 @@ function RefundDetailModal({
     if (ok) onUpdated({ ...row, status: "refunded", transferReference: transferRef.trim() })
   }
 
-  async function handleSaveNote() {
+  async function handleSaveEdit() {
     const ok = await patch({ note, refundAmount: Number(refundAmount) })
-    if (ok) onUpdated({ ...row, note, refundAmount: Number(refundAmount) })
+    if (ok) {
+      onUpdated({ ...row, note, refundAmount: Number(refundAmount) })
+      setShowEdit(false)
+    }
   }
 
   async function handleDelete() {
@@ -682,7 +624,18 @@ function RefundDetailModal({
     }
   }
 
-  const waMessageText = `Halo ${row.customer} 👋\n\nKami ingin menginformasikan bahwa ada barang yang tidak tersedia dari sesi *${row.event}* sehingga perlu dilakukan pengembalian dana sebesar *${formatRp(row.refundAmount)}*.\n\nMohon balas pesan ini dengan informasi rekening bank:\n- Nama Bank:\n- Nomor Rekening:\n- Nama Pemilik Rekening:\n\nTerima kasih 🙏`
+  // Fully-cancelled invoice lines (unit === 0 is the canonical void marker) are
+  // the items that became unavailable — name them in the message. Lines merely
+  // reduced (e.g. 3 → 2) keep no record of the original quantity, so partial
+  // shortages can't be listed and the message falls back to the generic phrasing.
+  const unavailableItems = (invoiceEvent?.orders ?? [])
+    .filter((o) => o.unit === 0)
+    .map((o) => o.productName)
+  const unavailableBlock =
+    unavailableItems.length > 0
+      ? `barang berikut tidak tersedia dari sesi *${row.event}*:\n${unavailableItems.map((n) => `- ${n}`).join("\n")}\n\nSehingga`
+      : `ada barang yang tidak tersedia dari sesi *${row.event}* sehingga`
+  const waMessageText = `Halo ${row.customer} 👋\n\nKami ingin menginformasikan bahwa ${unavailableBlock} perlu dilakukan pengembalian dana sebesar *${formatRp(row.refundAmount)}*.\n\nMohon balas pesan ini dengan informasi rekening bank:\n- Nama Bank:\n- Nomor Rekening:\n- Nama Pemilik Rekening:\n\nTerima kasih 🙏`
   const waMessage = encodeURIComponent(waMessageText)
 
   async function handleCopyMessage() {
@@ -695,6 +648,74 @@ function RefundDetailModal({
     }
   }
 
+  // One always-visible primary action per step, pinned in the footer — the old
+  // layout buried each step's CTA inside a scroll area with no scroll affordance.
+  const primaryAction =
+    row.status === "pending" ? (
+      <button
+        onClick={() => handleStatusChange("awaiting_bank_info")}
+        disabled={saving}
+        className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
+      >
+        Mark message sent →
+      </button>
+    ) : row.status === "awaiting_bank_info" ? (
+      <button
+        onClick={handleSaveBankInfo}
+        disabled={saving || !bankName || !bankAccountNumber || !bankAccountHolder}
+        className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
+      >
+        {saving ? "Saving…" : "Save Bank Info →"}
+      </button>
+    ) : row.status === "ready_to_refund" ? (
+      <button
+        onClick={handleExecute}
+        disabled={saving || !transferRef.trim()}
+        className="px-4 py-2 rounded-lg bg-orange-600 text-white text-sm font-medium hover:bg-orange-700 disabled:opacity-50 transition-colors"
+      >
+        {saving ? "Processing…" : "Mark as Refunded"}
+      </button>
+    ) : null
+
+  const whatsAppCard = (
+    <div className="flex flex-col gap-2 p-3 rounded-lg bg-green-50 border border-green-200">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-xs font-medium text-green-800">Refund Message</div>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={handleCopyMessage}
+            title="Copy message"
+            className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-green-300 text-green-700 hover:bg-green-100 transition-colors shrink-0"
+          >
+            {copied ? "Copied ✓" : "Copy"}
+          </button>
+          <a
+            href={`https://wa.me/?text=${waMessage}`}
+            target="_blank"
+            rel="noreferrer"
+            title="Open in WhatsApp"
+            className="inline-flex items-center justify-center w-6 h-6 rounded border border-green-300 text-green-700 hover:bg-green-100 transition-colors shrink-0"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.44 1.32 4.94L2.05 22l5.29-1.38a9.9 9.9 0 0 0 4.7 1.2h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.85 9.85 0 0 0 12.04 2zm5.8 14.16c-.24.68-1.2 1.25-1.96 1.41-.52.11-1.2.2-3.5-.75-2.94-1.22-4.83-4.2-4.98-4.4-.15-.19-1.2-1.59-1.2-3.04 0-1.44.75-2.15 1.02-2.45.24-.26.55-.36.79-.36.2 0 .38.01.55.01.18.01.42-.07.65.5.24.6.82 2.06.89 2.21.07.15.12.33.02.53-.1.19-.15.31-.29.48-.15.17-.31.38-.44.51-.15.15-.3.31-.13.6.17.29.75 1.24 1.62 2.01 1.11.99 2.05 1.3 2.34 1.44.29.15.46.13.63-.08.17-.2.72-.84.92-1.13.19-.29.39-.24.65-.14.27.09 1.7.8 1.99.95.29.15.48.22.55.35.07.13.07.75-.17 1.43z" />
+            </svg>
+          </a>
+        </div>
+      </div>
+      {showMessage ? (
+        <p className="text-xs text-green-700 whitespace-pre-wrap leading-relaxed">{waMessageText}</p>
+      ) : null}
+      <button
+        type="button"
+        onClick={() => setShowMessage((v) => !v)}
+        className="self-start text-[11px] text-green-600 underline underline-offset-2 hover:text-green-800 transition-colors"
+      >
+        {showMessage ? "Hide message" : "Preview message"}
+      </button>
+    </div>
+  )
+
   return (
     <>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
@@ -702,11 +723,17 @@ function RefundDetailModal({
         className="bg-white rounded-xl border border-cream-border shadow-xl w-full max-w-lg flex flex-col gap-0 overflow-hidden max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
+        {/* Header — identity + the one number that matters */}
         <div className="shrink-0 flex items-start justify-between gap-3 px-6 py-4 border-b border-cream-border">
-          <div>
-            <div className="text-sm font-semibold text-foreground">{displayIg(row.customer)}</div>
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-foreground truncate">{displayIg(row.customer)}</div>
             <div className="text-xs text-gray-400 mt-0.5">{row.event} · {REASON_LABELS[row.reason]}</div>
+            <div className="mt-1.5 flex items-baseline gap-2">
+              <span className="text-lg font-bold text-foreground tabular-nums">{formatRp(displayAmount(row))}</span>
+              <span className="text-[11px] text-gray-400">
+                {isFullyAppliedAsCredit(row) ? "applied as credit" : "to refund"}
+              </span>
+            </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${STATUS_COLORS[row.status]}`}>
@@ -718,32 +745,55 @@ function RefundDetailModal({
           </div>
         </div>
 
-        {/* Invoice that prompted this refund — pinned, always visible */}
+        {/* Invoice — one line, expandable. Was a 6-row block eating the modal. */}
         <div className="shrink-0 border-b border-cream-border">
           {invoiceLoading ? (
-            <div className="px-6 py-3 text-xs text-gray-400">Loading invoice…</div>
+            <div className="px-6 py-2.5 text-xs text-gray-400">Loading invoice…</div>
           ) : invoiceError ? (
-            <div className="px-6 py-3 text-xs text-red-500">{invoiceError}</div>
+            <div className="px-6 py-2.5 text-xs text-red-500">{invoiceError}</div>
           ) : invoiceEvent ? (
-            <InvoiceSummary
-              event={invoiceEvent}
-              actions={
-                <button
-                  type="button"
-                  onClick={() => setShowFullInvoice(true)}
-                  className="text-xs px-2.5 py-1 rounded-lg border border-cream-border text-gray-600 hover:border-brand hover:text-brand transition-colors inline-flex items-center gap-1"
+            <>
+              <button
+                type="button"
+                onClick={() => setShowInvoiceDetail((v) => !v)}
+                className="w-full flex items-center justify-between gap-2 px-6 py-2.5 text-xs hover:bg-gray-50/60 transition-colors"
+              >
+                <span className="text-gray-500">
+                  Invoice <span className="font-semibold text-foreground tabular-nums">{formatRp(invoiceEvent.invoice.total)}</span>
+                  {" · "}Paid <span className="font-semibold text-foreground tabular-nums">{formatRp(invoiceEvent.invoice.pembayaran)}</span>
+                </span>
+                <svg
+                  width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                  className={`text-gray-400 transition-transform ${showInvoiceDetail ? "rotate-180" : ""}`}
                 >
-                  Open full invoice
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M5 12h14M13 5l7 7-7 7" />
-                  </svg>
-                </button>
-              }
-            />
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </button>
+              {showInvoiceDetail && (
+                <InvoiceSummary
+                  event={invoiceEvent}
+                  actions={
+                    <button
+                      type="button"
+                      onClick={() => setShowFullInvoice(true)}
+                      className="text-xs px-2.5 py-1 rounded-lg border border-cream-border text-gray-600 hover:border-brand hover:text-brand transition-colors inline-flex items-center gap-1"
+                    >
+                      Open full invoice
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M5 12h14M13 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  }
+                />
+              )}
+            </>
           ) : null}
         </div>
 
-        <div className="flex-1 min-h-0 flex flex-col gap-5 px-6 py-5 overflow-y-auto">
+        {/* Pipeline position (cash flow only — terminal side-tracks skip it) */}
+        {!isReadOnly && <StepIndicator status={row.status} />}
+
+        <div className="flex-1 min-h-0 flex flex-col gap-4 px-6 py-4 overflow-y-auto">
           {/* Stale-amount review banner — the invoice changed after credit was
               applied, so the stored amount no longer matches the real overpayment
               and the auto-reconcile left it for a human. */}
@@ -763,119 +813,18 @@ function RefundDetailModal({
             )
           })()}
 
-          {/* Amount + Note */}
-          <div className="flex flex-col gap-3">
-            <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-gray-500">
-                {isFullyAppliedAsCredit(row) ? "Applied as Credit (Rp)" : "Refund Amount (Rp)"}
-              </span>
-              {isReadOnly ? (
-                <div className="text-lg font-bold text-foreground">
-                  {formatRp(displayAmount(row))}
-                </div>
-              ) : (
-                <input
-                  type="number"
-                  min="1"
-                  value={refundAmount}
-                  onChange={(e) => setRefundAmount(e.target.value)}
-                  disabled={saving}
-                  className={`${INPUT_CLASS} w-full`}
-                />
-              )}
-            </label>
-            {row.appliedCreditAmount > 0 && !isFullyAppliedAsCredit(row) && (
-              <p className="text-[11px] text-gray-400 -mt-2">
-                {formatRp(row.appliedCreditAmount)} already applied as credit elsewhere — the amount above is what's still left to refund.
-              </p>
-            )}
-            <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-gray-500">Note</span>
-              {isReadOnly ? (
-                <p className="text-sm text-gray-600">{row.note || "—"}</p>
-              ) : (
-                <textarea
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  disabled={saving}
-                  rows={2}
-                  className={`${INPUT_CLASS} w-full resize-none`}
-                />
-              )}
-            </label>
-            {!isReadOnly && (
-              <div className="flex justify-end">
-                <button onClick={handleSaveNote} disabled={saving} className="text-xs px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
-                  Save
-                </button>
-              </div>
-            )}
-          </div>
+          {/* ── Current step ── */}
 
-          {/* WhatsApp message (pending / awaiting) */}
-          {(row.status === "pending" || row.status === "awaiting_bank_info") && (
-            <div className="flex flex-col gap-2 p-3 rounded-lg bg-green-50 border border-green-200">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-xs font-medium text-green-800">WhatsApp Message</div>
-                <button
-                  type="button"
-                  onClick={handleCopyMessage}
-                  title="Copy message"
-                  className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-green-300 text-green-700 hover:bg-green-100 transition-colors shrink-0"
-                >
-                  {copied ? (
-                    <>
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M20 6 9 17l-5-5" />
-                      </svg>
-                      Copied
-                    </>
-                  ) : (
-                    <>
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <rect x="9" y="9" width="13" height="13" rx="2" />
-                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                      </svg>
-                      Copy
-                    </>
-                  )}
-                </button>
-              </div>
-              <p className="text-xs text-green-700 whitespace-pre-wrap leading-relaxed">
-                {waMessageText}
-              </p>
-              <div className="flex gap-2 flex-wrap">
-                <a
-                  href={`https://wa.me/?text=${waMessage}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-xs px-3 py-1.5 rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors"
-                >
-                  Open in WhatsApp
-                </a>
-                {row.status === "pending" && (
-                  <button
-                    onClick={() => handleStatusChange("awaiting_bank_info")}
-                    disabled={saving}
-                    className="text-xs px-3 py-1.5 rounded-lg border border-green-300 text-green-700 hover:bg-green-100 disabled:opacity-50 transition-colors"
-                  >
-                    Mark message sent →
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
+          {row.status === "pending" && whatsAppCard}
 
-          {/* Bank info form (awaiting / ready) */}
-          {(row.status === "awaiting_bank_info" || row.status === "ready_to_refund") && (
+          {row.status === "awaiting_bank_info" && (
             <div className="flex flex-col gap-3">
-              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Bank Details</div>
               <label className="flex flex-col gap-1">
                 <span className="text-xs font-medium text-gray-500">Bank Name</span>
                 <input
                   value={bankName}
                   onChange={(e) => setBankName(e.target.value)}
-                  disabled={saving || row.status === "ready_to_refund"}
+                  disabled={saving}
                   placeholder="e.g. BCA, Mandiri"
                   className={`${INPUT_CLASS} w-full`}
                 />
@@ -885,7 +834,7 @@ function RefundDetailModal({
                 <input
                   value={bankAccountNumber}
                   onChange={(e) => setBankAccountNumber(e.target.value)}
-                  disabled={saving || row.status === "ready_to_refund"}
+                  disabled={saving}
                   placeholder="e.g. 1234567890"
                   className={`${INPUT_CLASS} w-full`}
                 />
@@ -895,26 +844,19 @@ function RefundDetailModal({
                 <input
                   value={bankAccountHolder}
                   onChange={(e) => setBankAccountHolder(e.target.value)}
-                  disabled={saving || row.status === "ready_to_refund"}
+                  disabled={saving}
                   placeholder="Full name on account"
                   className={`${INPUT_CLASS} w-full`}
                 />
               </label>
-              {row.status === "awaiting_bank_info" && (
-                <div className="flex justify-end">
-                  <button
-                    onClick={handleSaveBankInfo}
-                    disabled={saving || !bankName || !bankAccountNumber || !bankAccountHolder}
-                    className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
-                  >
-                    {saving ? "Saving…" : "Save Bank Info →"}
-                  </button>
-                </div>
-              )}
+              {/* Customer hasn't replied yet? Message tools stay one click away. */}
+              <details className="text-xs text-gray-400">
+                <summary className="cursor-pointer hover:text-gray-600 transition-colors">Refund message (resend)</summary>
+                <div className="mt-2">{whatsAppCard}</div>
+              </details>
             </div>
           )}
 
-          {/* Execute refund */}
           {row.status === "ready_to_refund" && (
             <div className="flex flex-col gap-3 p-3 rounded-lg bg-orange-50 border border-orange-200">
               <div className="text-xs font-semibold text-orange-800">Execute Transfer</div>
@@ -932,13 +874,6 @@ function RefundDetailModal({
                   className={`${INPUT_CLASS} w-full`}
                 />
               </label>
-              <button
-                onClick={handleExecute}
-                disabled={saving || !transferRef.trim()}
-                className="px-4 py-2 rounded-lg bg-orange-600 text-white text-sm font-medium hover:bg-orange-700 disabled:opacity-50 transition-colors"
-              >
-                {saving ? "Processing…" : "Mark as Refunded"}
-              </button>
             </div>
           )}
 
@@ -992,6 +927,57 @@ function RefundDetailModal({
                 {saving ? "Undoing…" : "↩ Undo credit"}
               </button>
             </div>
+          )}
+
+          {/* Edit amount & note — off the main path, one click away */}
+          {!isReadOnly && (
+            <div>
+              <button
+                type="button"
+                onClick={() => setShowEdit((v) => !v)}
+                className="text-[11px] text-gray-400 underline underline-offset-2 hover:text-gray-600 transition-colors"
+              >
+                {showEdit ? "Hide amount & note" : "Edit amount & note"}
+              </button>
+              {showEdit && (
+                <div className="mt-2 flex flex-col gap-3 p-3 rounded-lg border border-cream-border bg-gray-50/50">
+                  <label className="flex flex-col gap-1">
+                    <span className="text-xs font-medium text-gray-500">Refund Amount (Rp)</span>
+                    <input
+                      type="number"
+                      min="1"
+                      value={refundAmount}
+                      onChange={(e) => setRefundAmount(e.target.value)}
+                      disabled={saving}
+                      className={`${INPUT_CLASS} w-full`}
+                    />
+                  </label>
+                  {row.appliedCreditAmount > 0 && !isFullyAppliedAsCredit(row) && (
+                    <p className="text-[11px] text-gray-400 -mt-2">
+                      {formatRp(row.appliedCreditAmount)} already applied as credit elsewhere — the amount above is what's still left to refund.
+                    </p>
+                  )}
+                  <label className="flex flex-col gap-1">
+                    <span className="text-xs font-medium text-gray-500">Note</span>
+                    <textarea
+                      value={note}
+                      onChange={(e) => setNote(e.target.value)}
+                      disabled={saving}
+                      rows={2}
+                      className={`${INPUT_CLASS} w-full resize-none`}
+                    />
+                  </label>
+                  <div className="flex justify-end">
+                    <button onClick={handleSaveEdit} disabled={saving} className="text-xs px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
+                      {saving ? "Saving…" : "Save"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          {isReadOnly && row.note && (
+            <p className="text-xs text-gray-500"><span className="font-medium text-gray-400">Note:</span> {row.note}</p>
           )}
 
           {/* Apply as credit — pick which of the customer's other orders to credit */}
@@ -1091,25 +1077,42 @@ function RefundDetailModal({
           )}
         </div>
 
-        {/* Footer */}
+        {/* Footer — secondary actions behind ⋯, primary CTA always visible */}
         {error && <p className="shrink-0 text-xs text-red-500 px-6 pb-2">{error}</p>}
         {!isReadOnly && (
           <div className="shrink-0 flex items-center justify-between gap-2 px-6 py-4 border-t border-cream-border">
-            <button
-              onClick={() => setShowCredit(true)}
-              disabled={saving}
-              className="text-xs px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 hover:border-purple-400 hover:text-purple-600 disabled:opacity-50 transition-colors"
-            >
-              Apply to Next Order
-            </button>
-            <button
-              onClick={handleDelete}
-              disabled={saving}
-              title="Permanently removes this refund. This cannot be undone."
-              className="text-xs px-3 py-1.5 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 hover:border-red-400 disabled:opacity-50 transition-colors"
-            >
-              Delete Refund
-            </button>
+            <div className="relative" ref={menuRef}>
+              <button
+                type="button"
+                onClick={() => setMenuOpen((v) => !v)}
+                disabled={saving}
+                title="More actions"
+                className="p-2 rounded-lg border border-cream-border text-gray-500 hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <circle cx="5" cy="12" r="1.8" /><circle cx="12" cy="12" r="1.8" /><circle cx="19" cy="12" r="1.8" />
+                </svg>
+              </button>
+              {menuOpen && (
+                <div className="absolute bottom-full left-0 mb-2 z-10 w-48 rounded-lg border border-cream-border bg-white shadow-lg py-1">
+                  <button
+                    type="button"
+                    onClick={() => { setMenuOpen(false); setShowCredit(true) }}
+                    className="w-full text-left px-3 py-2 text-xs text-gray-600 hover:bg-purple-50 hover:text-purple-700 transition-colors"
+                  >
+                    Apply to Next Order
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setMenuOpen(false); handleDelete() }}
+                    className="w-full text-left px-3 py-2 text-xs text-red-500 hover:bg-red-50 transition-colors"
+                  >
+                    Delete Refund
+                  </button>
+                </div>
+              )}
+            </div>
+            {primaryAction}
           </div>
         )}
       </div>
