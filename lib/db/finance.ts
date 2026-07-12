@@ -1,6 +1,5 @@
 import sql from "../db-pool"
 import { normalizeId, tsToString, normalizeCustomer } from "./helpers"
-import { getInvoiceForCustomer } from "./invoice"
 import type { DBExecutor } from "./actor"
 import type { PaymentRow, AdjustmentRow, RefundRow, RefundReason, RefundStatus } from "./types"
 
@@ -290,7 +289,10 @@ function mapRefundRow(r: Record<string, unknown>): RefundRow {
     event: r.event as string,
     customer: r.customer as string,
     reason: r.reason as RefundReason,
-    refundAmount: r.refund_amount as number,
+    // getRefunds computes live_refund_amount (live balance for open overpayment
+    // rows, stored column otherwise); other call sites (RETURNING *) fall back
+    // to the stored column.
+    refundAmount: (r.live_refund_amount as number | undefined) ?? (r.refund_amount as number),
     status: r.status as RefundStatus,
     bankName: (r.bank_name as string) ?? "",
     bankAccountNumber: (r.bank_account_number as string) ?? "",
@@ -302,41 +304,13 @@ function mapRefundRow(r: Record<string, unknown>): RefundRow {
     note: (r.note as string) ?? "",
     hasAppliedCredit: Boolean(r.has_applied_credit),
     appliedCreditAmount: (r.applied_credit_amount as number) ?? 0,
-    liveOverpayment: null,
     createdAt: tsToString(r.created_at as Date | null | undefined),
     updatedAt: tsToString(r.updated_at as Date | null | undefined),
   }
 }
 
-const ACTIVE_REFUND_STATUSES: RefundStatus[] = ["pending", "awaiting_bank_info", "ready_to_refund"]
-
-/**
- * Attach `liveOverpayment` to the refunds the auto-reconcile can't keep in sync:
- * active overpayment refunds that already have credit applied. Those are frozen
- * (money moved → human review), so if the invoice later changed, their stored
- * amount is stale. We recompute the live overpayment only for that small set
- * (reusing getPaymentStatus, scoped per event) and flag rows where it differs.
- */
-async function attachStaleReview(rows: RefundRow[]): Promise<RefundRow[]> {
-  const flaggable = rows.filter(
-    (r) => r.reason === "overpayment" && r.hasAppliedCredit && ACTIVE_REFUND_STATUSES.includes(r.status),
-  )
-  if (flaggable.length === 0) return rows
-
-  const events = [...new Set(flaggable.map((r) => r.event))]
-  const statusRows = (await Promise.all(events.map((ev) => getPaymentStatus(ev)))).flat()
-  const overpayByPair = new Map<string, number>()
-  for (const s of statusRows) overpayByPair.set(`${s.customer}|${s.event}`, s.totalPaid - s.invoiceTotal)
-
-  const flagged = new Set(flaggable)
-  return rows.map((r) => {
-    if (!flagged.has(r)) return r
-    const live = overpayByPair.get(`${normalizeId(r.customer)}|${r.event}`)
-    // Only surface it when it actually differs from what's stored — an in-sync
-    // credit-applied refund needs no review.
-    return live !== undefined && live !== r.refundAmount ? { ...r, liveOverpayment: live } : r
-  })
-}
+/** Statuses in which an overpayment refund's amount is live-derived, not stored. */
+const OPEN_REFUND_STATUSES: RefundStatus[] = ["pending", "awaiting_bank_info", "ready_to_refund"]
 
 export async function getRefunds(filters?: { event?: string; status?: string; customer?: string }): Promise<RefundRow[]> {
   const conditions: string[] = []
@@ -356,15 +330,25 @@ export async function getRefunds(filters?: { event?: string; status?: string; cu
   }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""
+  // Open = live, closed = frozen: an open overpayment refund's amount is the
+  // live balance from the ledger (never stale, by construction — credit legs
+  // and cash payouts are payments, so they already reduce total_paid). Closed
+  // rows and manual-reason refunds use the stored column.
   const rows = await sql.unsafe(
     `SELECT r.*,
             EXISTS (SELECT 1 FROM payments p WHERE p.refund_id = r.id AND p.kind = 'credit') AS has_applied_credit,
             (SELECT COALESCE(SUM(p.amount), 0)::int FROM payments p
-             WHERE p.refund_id = r.id AND p.kind = 'credit' AND p.amount > 0) AS applied_credit_amount
-     FROM refunds r ${where} ORDER BY r.created_at DESC`,
+             WHERE p.refund_id = r.id AND p.kind = 'credit' AND p.amount > 0) AS applied_credit_amount,
+            CASE WHEN r.reason = 'overpayment'
+                  AND r.status IN ('pending', 'awaiting_bank_info', 'ready_to_refund')
+                 THEN GREATEST(COALESCE(lb.balance, 0), 0)
+                 ELSE r.refund_amount END AS live_refund_amount
+     FROM refunds r
+     LEFT JOIN live_balances lb ON lb.event = r.event AND lb.customer = r.customer
+     ${where} ORDER BY r.created_at DESC`,
     params,
   )
-  return attachStaleReview(rows.map(mapRefundRow))
+  return rows.map(mapRefundRow)
 }
 
 export async function createRefund(data: {
@@ -401,6 +385,21 @@ export async function updateRefund(
   }>,
   db: DBExecutor = sql,
 ): Promise<void> {
+  // Open overpayment refunds derive their amount live from the ledger — a
+  // hand-set value would be silently overridden on the next read, so drop the
+  // patch instead of storing a number that lies. Manual-reason refunds (and
+  // closed rows) keep their stored amount editable.
+  if (data.refundAmount !== undefined) {
+    const [row] = await db`SELECT reason, status FROM refunds WHERE id = ${id}`
+    if (
+      row &&
+      (row.reason as RefundReason) === "overpayment" &&
+      OPEN_REFUND_STATUSES.includes(row.status as RefundStatus)
+    ) {
+      delete data.refundAmount
+    }
+  }
+
   const fields: string[] = []
   const params: (string | number)[] = []
 
@@ -425,18 +424,34 @@ export async function executeRefund(
   transferReference: string,
   actor?: string | null,
 ): Promise<void> {
-  const [refund] = await sql`SELECT * FROM refunds WHERE id = ${refundId}`
-  if (!refund) throw new Error("Refund not found")
-  if (refund.status === "refunded") throw new Error("Refund already executed")
-
   await sql.begin(async (tx) => {
     await tx`SELECT set_config('app.actor', ${actor ?? ""}, true)`
+    const [refund] = await tx`SELECT * FROM refunds WHERE id = ${refundId} FOR UPDATE`
+    if (!refund) throw new Error("Refund not found")
+    if (refund.status === "refunded") throw new Error("Refund already executed")
+
+    // Open overpayment refunds pay out the LIVE balance at this exact moment
+    // (the stored column is ignored while open); the −payment row below then
+    // brings the balance to zero. Manual-reason refunds pay the stored amount.
+    let amount = refund.refund_amount as number
+    if (
+      (refund.reason as RefundReason) === "overpayment" &&
+      OPEN_REFUND_STATUSES.includes(refund.status as RefundStatus)
+    ) {
+      const [lb] = await tx`
+        SELECT balance FROM live_balances
+        WHERE event = ${refund.event as string} AND customer = ${refund.customer as string}
+      `
+      amount = Math.max(Number(lb?.balance ?? 0), 0)
+    }
+    if (!(amount > 0)) throw new Error("Nothing left to refund — the live balance is zero")
+
     const [payment] = await tx`
       INSERT INTO payments (event, customer, amount, account, is_checked, remarks, kind, refund_id)
       VALUES (
         ${refund.event as string},
         ${refund.customer as string},
-        ${-(refund.refund_amount as number)},
+        ${-amount},
         ${refund.bank_account_number as string},
         true,
         ${`Refund: ${refund.reason}`},
@@ -445,9 +460,12 @@ export async function executeRefund(
       )
       RETURNING id
     `
+    // Terminal transition — freeze the paid amount into refund_amount as the
+    // historical record ("open = live, closed = frozen").
     await tx`
       UPDATE refunds
       SET status             = 'refunded',
+          refund_amount      = ${amount},
           transfer_reference = ${transferReference},
           bank_name          = ${refund.bank_name as string},
           bank_account_number = ${refund.bank_account_number as string},
@@ -473,9 +491,11 @@ export async function deleteRefund(id: number, db: DBExecutor = sql): Promise<vo
  * Both are is_checked (so they count toward total_paid immediately) and linked
  * to the refund via refund_id for a precise undo.
  *
- * Partial-friendly: `amount` may be less than the overpayment. The refund row
- * tracks the REMAINING overpayment and stays `pending` until fully applied, at
- * which point it becomes `applied_to_next_order`.
+ * Partial-friendly: `amount` may be less than the overpayment. For an
+ * overpayment refund the remaining amount is live-derived (the −credit leg on
+ * the source event lowers total_paid, so the live balance drops on its own —
+ * nothing is stored while open). Fully applied → terminal
+ * `applied_to_next_order` with refund_amount frozen at 0.
  */
 export async function applyRefundAsCredit(
   refundId: number,
@@ -493,13 +513,25 @@ export async function applyRefundAsCredit(
     if (!refund) throw new Error("Refund not found")
     if (refund.status === "refunded") throw new Error("Already refunded as cash — cannot also apply as credit")
 
-    const remaining = refund.refund_amount as number
-    if (!(remaining > 0)) throw new Error("Nothing left to apply")
-    if (amount > remaining) throw new Error(`Amount exceeds the overpayment (Rp ${remaining})`)
-
     const sourceEvent = refund.event as string
     const reason = refund.reason as RefundReason
     const customer = normalizeCustomer(refund.customer as string)
+    const isLiveAmount =
+      reason === "overpayment" && OPEN_REFUND_STATUSES.includes(refund.status as RefundStatus)
+
+    // Overpayment refunds: validate against the live balance, the only number
+    // that's correct by construction. Manual-reason refunds: the stored amount.
+    let remaining = refund.refund_amount as number
+    if (isLiveAmount) {
+      const [lb] = await tx`
+        SELECT balance FROM live_balances
+        WHERE event = ${sourceEvent} AND customer = ${refund.customer as string}
+      `
+      remaining = Math.max(Number(lb?.balance ?? 0), 0)
+    }
+    if (!(remaining > 0)) throw new Error("Nothing left to apply")
+    if (amount > remaining) throw new Error(`Amount exceeds the overpayment (Rp ${remaining})`)
+
     if (target === sourceEvent) throw new Error("Pick a different order than the overpaid one")
 
     // The customer must actually have an order in the target event, or the
@@ -524,32 +556,54 @@ export async function applyRefundAsCredit(
     `
 
     const newRemaining = remaining - amount
-    await tx`
-      UPDATE refunds
-      SET refund_amount = ${newRemaining},
-          status = ${newRemaining <= 0 ? "applied_to_next_order" : "pending"},
-          note = ${newRemaining <= 0
-            ? `Applied as credit to ${target}`
-            : `Applied Rp ${amount} as credit to ${target}; Rp ${newRemaining} overpayment remaining`},
-          updated_at = NOW()
-      WHERE id = ${refundId}
-    `
+    if (newRemaining <= 0) {
+      // Terminal — freeze at 0 ("open = live, closed = frozen").
+      await tx`
+        UPDATE refunds
+        SET refund_amount = 0,
+            status = 'applied_to_next_order',
+            note = ${`Applied as credit to ${target}`},
+            updated_at = NOW()
+        WHERE id = ${refundId}
+      `
+    } else if (isLiveAmount) {
+      // Still open: the live balance already reflects the −credit leg, so only
+      // the note changes — no amount is stored.
+      await tx`
+        UPDATE refunds
+        SET note = ${`Applied Rp ${amount} as credit to ${target}; Rp ${newRemaining} overpayment remaining`},
+            updated_at = NOW()
+        WHERE id = ${refundId}
+      `
+    } else {
+      // Manual-reason refund: stored amount is the truth, keep decrementing.
+      await tx`
+        UPDATE refunds
+        SET refund_amount = ${newRemaining},
+            note = ${`Applied Rp ${amount} as credit to ${target}; Rp ${newRemaining} remaining`},
+            updated_at = NOW()
+        WHERE id = ${refundId}
+      `
+    }
   })
 }
 
 /**
  * Reverse the credit transfer(s) this refund produced — e.g. applied to the
  * wrong order. Deletes exactly the linked `credit` payments (matched by
- * refund_id), restores the overpayment amount, and reopens it as `pending`.
- * Atomic. Does not touch a cash refund's `refund` payment.
+ * refund_id) and reopens it as `pending`. For an overpayment refund the
+ * amount needs no restoring — deleting the −credit leg raises total_paid
+ * again, so the live balance recovers by construction. Manual-reason refunds
+ * get their stored amount restored. Atomic. Does not touch a cash refund's
+ * `refund` payment.
  */
 export async function undoRefundCredit(refundId: number, actor?: string | null): Promise<void> {
   await sql.begin(async (tx) => {
     await tx`SELECT set_config('app.actor', ${actor ?? ""}, true)`
-    const [refund] = await tx`SELECT refund_amount FROM refunds WHERE id = ${refundId} FOR UPDATE`
+    const [refund] = await tx`SELECT refund_amount, reason FROM refunds WHERE id = ${refundId} FOR UPDATE`
     if (!refund) throw new Error("Refund not found")
 
-    // The target (+) legs sum to how much was applied — that's what we restore.
+    // The target (+) legs sum to how much was applied.
     const [applied] = await tx`
       SELECT COALESCE(SUM(amount), 0)::int AS total
       FROM payments WHERE refund_id = ${refundId} AND kind = 'credit' AND amount > 0
@@ -557,32 +611,41 @@ export async function undoRefundCredit(refundId: number, actor?: string | null):
     if (!(applied.total > 0)) throw new Error("No applied credit to undo")
 
     await tx`DELETE FROM payments WHERE refund_id = ${refundId} AND kind = 'credit'`
-    await tx`
-      UPDATE refunds
-      SET refund_amount = ${(refund.refund_amount as number) + (applied.total as number)},
-          status = 'pending', note = '', updated_at = NOW()
-      WHERE id = ${refundId}
-    `
+    if ((refund.reason as RefundReason) === "overpayment") {
+      // Reopen; the live balance is the amount (stored column ignored while open).
+      await tx`
+        UPDATE refunds
+        SET status = 'pending', note = '', updated_at = NOW()
+        WHERE id = ${refundId}
+      `
+    } else {
+      await tx`
+        UPDATE refunds
+        SET refund_amount = ${(refund.refund_amount as number) + (applied.total as number)},
+            status = 'pending', note = '', updated_at = NOW()
+        WHERE id = ${refundId}
+      `
+    }
   })
 }
 
 /**
- * Keeps auto-detected overpayment refunds in step with the live numbers on every
- * /refunds load. In one transaction it:
- *   - inserts a fresh pending refund for each (event, customer) pair now overpaid
- *     that has no active overpayment refund yet;
- *   - reconciles the amount of every still-open overpayment refund (pending /
- *     awaiting_bank_info / ready_to_refund) when a later payment or adjustment
- *     changed what's actually owed back — so "Ready to Refund" never shows a
- *     stale figure;
- *   - cancels a still-open overpayment refund whose overpayment has been fully
- *     absorbed (live ≤ 0), dropping it off the pipeline.
+ * Keeps the set of auto-detected overpayment refund TICKETS in step with the
+ * ledger on every /refunds load. Amounts are not maintained here — open
+ * overpayment refunds derive their amount live from the live_balances view at
+ * read time ("open = live, closed = frozen"), so there is nothing to
+ * reconcile. In one transaction it:
+ *   - inserts a fresh pending refund for each (event, customer) pair now
+ *     overpaid that has no active overpayment refund yet;
+ *   - cancels any still-open overpayment refund whose live balance is no
+ *     longer positive — including ones with credit already applied (the
+ *     credit legs are real payments and stay untouched), and ones whose
+ *     orders were all deleted (pair missing from the live set counts as 0).
  * A `refunded` (Done), `cancelled`, or `applied_to_next_order` refund is frozen,
  * and only `reason = 'overpayment'` rows are touched — hand-entered refunds keep
  * their human-set amounts.
  *
- * Idempotent — safe to call on every refunds page load. Mirrors the invoice
- * math in getInvoiceForCustomer.
+ * Idempotent — safe to call on every refunds page load.
  *
  * Returns the rows that were just inserted (empty array if nothing to do).
  */
@@ -598,99 +661,40 @@ export async function materializeOverpaymentRefunds(): Promise<RefundRow[]> {
     // unique index from migration 031 is the hard backstop.)
     await tx`SELECT pg_advisory_xact_lock(${OVERPAYMENT_MATERIALIZE_LOCK})`
     return tx`
-    WITH order_aggregates AS (
-      SELECT
-        o.event,
-        o.customer,
-        SUM(o.unit_price * o.unit) AS subtotal,
-        SUM(COALESCE(p.gram, 0) * o.unit) AS total_gram
-      FROM orders o
-      JOIN products p ON p.id = o.product_id
-      GROUP BY o.event, o.customer
-    ),
-    payment_aggregates AS (
-      SELECT event, customer, SUM(amount) AS total_paid
-      FROM payments
-      WHERE is_checked = true
-      GROUP BY event, customer
-    ),
-    adjustment_aggregates AS (
-      SELECT event, customer, SUM(amount) AS total_adj
-      FROM adjustments
-      GROUP BY event, customer
-    ),
-    -- Live per-(event, customer) invoice total, amount paid, and the resulting
-    -- overpayment. Every branch below reads this one source of truth, so an
-    -- insert, a reconcile, and a cancel can never disagree on the number.
-    live AS (
-      SELECT
-        oa.event,
-        oa.customer,
-        (oa.subtotal
-          + COALESCE(cwo.ongkos_kirim, 0) * CEIL(oa.total_gram::numeric / 1000)
-          + COALESCE(adj.total_adj, 0))::int AS invoice_total,
-        COALESCE(pa.total_paid, 0)::int AS total_paid
-      FROM order_aggregates oa
-      LEFT JOIN customers c ON c.instagram_id = oa.customer
-      -- Ongkir is the rate from the event's warehouse (per-event routing).
-      LEFT JOIN events ev ON ev.name = oa.event
-      LEFT JOIN customer_warehouse_ongkir cwo
-        ON cwo.customer_id = c.id AND cwo.warehouse_id = ev.warehouse_id
-      LEFT JOIN payment_aggregates pa ON pa.event = oa.event AND pa.customer = oa.customer
-      LEFT JOIN adjustment_aggregates adj ON adj.event = oa.event AND adj.customer = oa.customer
-    ),
-    -- Reconcile still-open overpayment refunds to the live overpayment. Scope is
-    -- deliberately narrow: only PRISTINE auto-detected rows — no linked payments,
-    -- i.e. no credit applied and no transfer started. The moment a human moves
-    -- money against a refund it is theirs to manage, so this background pass
-    -- never rewrites it (see the NOT EXISTS guard). Data-modifying CTEs run even
-    -- when the primary query doesn't reference them.
-    reconciled AS (
-      UPDATE refunds r
-      SET refund_amount = (l.total_paid - l.invoice_total),
-          note = 'Auto-detected: paid Rp ' || l.total_paid || ' of Rp ' || l.invoice_total,
-          updated_at = NOW()
-      FROM live l
-      WHERE r.event = l.event AND r.customer = l.customer
-        AND r.reason = 'overpayment'
-        AND r.status IN ('pending', 'awaiting_bank_info', 'ready_to_refund')
-        AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.refund_id = r.id)
-        AND (l.total_paid - l.invoice_total) > 0
-        AND (l.total_paid - l.invoice_total) <> r.refund_amount
-      RETURNING r.id
-    ),
-    -- Overpayment fully absorbed (live ≤ 0) → nothing left to refund, so drop it
-    -- off the pipeline. Cancelling (not deleting) keeps history and lets a fresh
-    -- refund re-materialize if the overpayment ever comes back. Same pristine-only
-    -- guard: a refund with any linked payment (e.g. credit already applied) is
-    -- left for a human, never auto-cancelled. Only pairs still in the live set are
-    -- cancelled, so a pair whose orders were all deleted is left alone too.
+    WITH
+    -- Live balance is over-refundable when positive. Ticket bookkeeping only —
+    -- amounts are read live elsewhere. Data-modifying CTEs run even when the
+    -- primary query doesn't reference them.
     cancelled AS (
       UPDATE refunds r
       SET status = 'cancelled',
+          refund_amount = 0,
           note = 'Auto-cancelled: overpayment resolved',
           updated_at = NOW()
-      FROM live l
-      WHERE r.event = l.event AND r.customer = l.customer
-        AND r.reason = 'overpayment'
+      WHERE r.reason = 'overpayment'
         AND r.status IN ('pending', 'awaiting_bank_info', 'ready_to_refund')
-        AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.refund_id = r.id)
-        AND (l.total_paid - l.invoice_total) <= 0
+        AND NOT EXISTS (
+          SELECT 1 FROM live_balances lb
+          WHERE lb.event = r.event AND lb.customer = r.customer
+            AND lb.balance > 0
+        )
       RETURNING r.id
     )
-    -- Brand-new overpayments (no active refund row yet) become fresh pending rows.
+    -- Brand-new overpayments (no active refund row yet) become fresh pending
+    -- rows. The inserted refund_amount is an informational snapshot; the UI
+    -- always shows the live balance while the ticket is open.
     INSERT INTO refunds (event, customer, reason, refund_amount, note)
     SELECT
-      l.event,
-      l.customer,
+      lb.event,
+      lb.customer,
       'overpayment',
-      (l.total_paid - l.invoice_total),
-      'Auto-detected: paid Rp ' || l.total_paid || ' of Rp ' || l.invoice_total
-    FROM live l
-    LEFT JOIN refunds r ON r.event = l.event AND r.customer = l.customer
+      lb.balance,
+      'Auto-detected: paid Rp ' || lb.total_paid || ' of Rp ' || lb.invoice_total
+    FROM live_balances lb
+    LEFT JOIN refunds r ON r.event = lb.event AND r.customer = lb.customer
       AND r.reason = 'overpayment' AND r.status != 'cancelled'
     WHERE r.id IS NULL
-      AND (l.total_paid - l.invoice_total) > 0
+      AND lb.balance > 0
     RETURNING *
   `
   })

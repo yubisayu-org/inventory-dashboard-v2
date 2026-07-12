@@ -68,19 +68,14 @@ function displayAmount(row: RefundRow): number {
   return isFullyAppliedAsCredit(row) ? row.appliedCreditAmount : row.refundAmount
 }
 
-// A non-null liveOverpayment means the server found this refund's stored amount
-// no longer matches the real overpayment and couldn't auto-fix it (credit was
-// already applied). Returns the human message, or null when nothing to review.
-function reviewMessage(row: RefundRow): string | null {
-  const live = row.liveOverpayment
-  if (live == null) return null
-  if (live <= 0) {
-    const owed = -live
-    return owed > 0
-      ? `No overpayment left — the customer now owes ${formatRp(owed)} on this event (items were added after credit was applied). Consider cancelling this refund.`
-      : `No overpayment left — this event is now fully settled. Consider cancelling this refund.`
-  }
-  return `Overpayment is now ${formatRp(live)}, but this refund still shows ${formatRp(row.refundAmount)} (the invoice changed after credit was applied). Review before refunding.`
+// An open overpayment refund's amount is computed live server-side from the
+// current invoice & payments ("open = live, closed = frozen"), so it's never
+// stale and never hand-editable.
+function isLiveAmount(row: RefundRow): boolean {
+  return (
+    row.reason === "overpayment" &&
+    (row.status === "pending" || row.status === "awaiting_bank_info" || row.status === "ready_to_refund")
+  )
 }
 
 // ─── Main component ──────────────────────────────────────────────────────────
@@ -92,7 +87,6 @@ export default function RefundsClient() {
   const [error, setError] = useState("")
   const [hiddenStatuses, setHiddenStatuses] = useState<Set<RefundStatus>>(new Set(DEFAULT_HIDDEN_STATUSES))
   const [reasonFilter, setReasonFilter] = useState<RefundReason | "">("")
-  const [onlyReview, setOnlyReview] = useState(false)
   const [onlyCredit, setOnlyCredit] = useState(false)
   const [selectedEvent, setSelectedEvent] = useState("")
   const [search, setSearch] = useState("")
@@ -132,12 +126,11 @@ export default function RefundsClient() {
     return rows.filter((r) => {
       const matchStatus = !hiddenStatuses.has(r.status)
       const matchReason = !reasonFilter || r.reason === reasonFilter
-      const matchReview = !onlyReview || reviewMessage(r) !== null
       const matchCredit = !onlyCredit || r.hasAppliedCredit
       const matchSearch = !q || r.customer.toLowerCase().includes(q) || r.event.toLowerCase().includes(q)
-      return matchStatus && matchReason && matchReview && matchCredit && matchSearch
+      return matchStatus && matchReason && matchCredit && matchSearch
     })
-  }, [rows, hiddenStatuses, reasonFilter, onlyReview, onlyCredit, search])
+  }, [rows, hiddenStatuses, reasonFilter, onlyCredit, search])
 
   const counts = useMemo(() => {
     const c: Partial<Record<RefundStatus, number>> = {}
@@ -151,7 +144,7 @@ export default function RefundsClient() {
     hiddenStatuses.size === DEFAULT_HIDDEN_STATUSES.length &&
     DEFAULT_HIDDEN_STATUSES.every((s) => hiddenStatuses.has(s))
   const activeFilterCount =
-    (statusIsDefault ? 0 : 1) + (reasonFilter ? 1 : 0) + (onlyReview ? 1 : 0) + (onlyCredit ? 1 : 0)
+    (statusIsDefault ? 0 : 1) + (reasonFilter ? 1 : 0) + (onlyCredit ? 1 : 0)
 
   function toggleStatus(status: RefundStatus) {
     setHiddenStatuses((prev) => {
@@ -271,15 +264,6 @@ export default function RefundsClient() {
                 <div className="flex flex-wrap gap-1.5">
                   <button
                     type="button"
-                    onClick={() => setOnlyReview((v) => !v)}
-                    className={`text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${
-                      onlyReview ? "bg-amber-50 border-amber-300 text-amber-700" : "border-cream-border text-gray-500 hover:border-amber-300 hover:text-amber-600"
-                    }`}
-                  >
-                    ⚠ Needs review
-                  </button>
-                  <button
-                    type="button"
                     onClick={() => setOnlyCredit((v) => !v)}
                     className={`text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${
                       onlyCredit ? "bg-purple-50 border-purple-300 text-purple-700" : "border-cream-border text-gray-500 hover:border-purple-300 hover:text-purple-600"
@@ -342,21 +326,7 @@ export default function RefundsClient() {
                   onClick={() => setEditRow(row)}
                 >
                   <td className="px-4 py-3 font-medium text-foreground">
-                    <div className="flex items-center gap-1.5">
-                      {displayIg(row.customer)}
-                      {(() => {
-                        const msg = reviewMessage(row)
-                        if (!msg) return null
-                        return (
-                          <span title={msg} className="text-amber-500 shrink-0">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                              <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
-                            </svg>
-                          </span>
-                        )
-                      })()}
-                    </div>
+                    {displayIg(row.customer)}
                   </td>
                   <td className="px-4 py-3 text-gray-600">{row.event}</td>
                   <td className="px-4 py-3 text-gray-600">{REASON_LABELS[row.reason]}</td>
@@ -562,6 +532,21 @@ function RefundDetailModal({
   const [creditTarget, setCreditTarget] = useState("")
   const [creditAmount, setCreditAmount] = useState("")
 
+  // Streamline the common case: exactly one other event with outstanding debt →
+  // preselect it with the amount that settles it (capped at the overpayment).
+  useEffect(() => {
+    if (!showCredit || creditTarget) return
+    const candidates = customerEvents.filter(
+      (ev) => ev.eventId !== row.event && ev.invoice.sisaPelunasan > 0,
+    )
+    if (candidates.length === 1) {
+      const tgt = candidates[0]
+      setCreditTarget(tgt.eventId)
+      setCreditAmount(String(Math.min(row.refundAmount, tgt.invoice.sisaPelunasan) || row.refundAmount))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showCredit, customerEvents])
+
   useEffect(() => {
     let cancelled = false
     setInvoiceLoading(true)
@@ -664,8 +649,10 @@ function RefundDetailModal({
   }
 
   async function handleSaveNote() {
-    const ok = await patch({ note, refundAmount: Number(refundAmount) })
-    if (ok) onUpdated({ ...row, note, refundAmount: Number(refundAmount) })
+    // Live-amount rows derive their amount server-side — only the note is editable.
+    const body = isLiveAmount(row) ? { note } : { note, refundAmount: Number(refundAmount) }
+    const ok = await patch(body)
+    if (ok) onUpdated(isLiveAmount(row) ? { ...row, note } : { ...row, note, refundAmount: Number(refundAmount) })
   }
 
   async function handleDelete() {
@@ -744,32 +731,13 @@ function RefundDetailModal({
         </div>
 
         <div className="flex-1 min-h-0 flex flex-col gap-5 px-6 py-5 overflow-y-auto">
-          {/* Stale-amount review banner — the invoice changed after credit was
-              applied, so the stored amount no longer matches the real overpayment
-              and the auto-reconcile left it for a human. */}
-          {(() => {
-            const msg = reviewMessage(row)
-            if (!msg) return null
-            return (
-              <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-50 border border-amber-200">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-600 shrink-0 mt-0.5">
-                  <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                  <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
-                </svg>
-                <div className="text-xs text-amber-800">
-                  <span className="font-semibold">Needs review.</span> {msg}
-                </div>
-              </div>
-            )
-          })()}
-
           {/* Amount + Note */}
           <div className="flex flex-col gap-3">
             <label className="flex flex-col gap-1">
               <span className="text-xs font-medium text-gray-500">
                 {isFullyAppliedAsCredit(row) ? "Applied as Credit (Rp)" : "Refund Amount (Rp)"}
               </span>
-              {isReadOnly ? (
+              {isReadOnly || isLiveAmount(row) ? (
                 <div className="text-lg font-bold text-foreground">
                   {formatRp(displayAmount(row))}
                 </div>
@@ -784,6 +752,11 @@ function RefundDetailModal({
                 />
               )}
             </label>
+            {isLiveAmount(row) && (
+              <p className="text-[11px] text-gray-400 -mt-2">
+                Computed live from the current invoice &amp; payments — updates automatically if either changes.
+              </p>
+            )}
             {row.appliedCreditAmount > 0 && !isFullyAppliedAsCredit(row) && (
               <p className="text-[11px] text-gray-400 -mt-2">
                 {formatRp(row.appliedCreditAmount)} already applied as credit elsewhere — the amount above is what's still left to refund.
@@ -1052,20 +1025,31 @@ function RefundDetailModal({
                     />
                   </label>
                   {(() => {
-                    // Warn (but don't block) when the chosen amount exceeds what
-                    // the target owes: the excess resurfaces as a fresh
-                    // overpayment on that order rather than fully clearing.
                     const tgt = customerEvents.find((ev) => ev.eventId === creditTarget)
                     const amt = Math.round(Number(creditAmount)) || 0
                     if (!tgt || amt <= 0) return null
                     const owed = Math.max(0, tgt.invoice.sisaPelunasan)
-                    if (amt <= owed) return null
-                    const excess = amt - owed
+                    if (amt > owed) {
+                      // Warn (but don't block) when the chosen amount exceeds what
+                      // the target owes: the excess resurfaces as a fresh
+                      // overpayment on that order rather than fully clearing.
+                      const excess = amt - owed
+                      return (
+                        <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2">
+                          ⚠ {formatRp(amt)} is more than {tgt.eventId} owes ({formatRp(owed)}). The extra{" "}
+                          <span className="font-semibold">{formatRp(excess)}</span> will resurface as a new overpayment
+                          on {tgt.eventId} — no money is lost, but it won't fully clear there.
+                        </p>
+                      )
+                    }
+                    // One-line preview of the outcome so the numbers are obvious
+                    // before committing.
+                    const leftHere = Math.max(0, row.refundAmount - amt)
                     return (
-                      <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2">
-                        ⚠ {formatRp(amt)} is more than {tgt.eventId} owes ({formatRp(owed)}). The extra{" "}
-                        <span className="font-semibold">{formatRp(excess)}</span> will resurface as a new overpayment
-                        on {tgt.eventId} — no money is lost, but it won't fully clear there.
+                      <p className="text-xs text-purple-700">
+                        {tgt.eventId} owes {formatRp(owed)} — applying {formatRp(amt)}{" "}
+                        {amt === owed ? "settles it fully" : `leaves ${formatRp(owed - amt)} still owed there`}
+                        {" · "}{leftHere > 0 ? `${formatRp(leftHere)} overpayment stays here` : "nothing left here"}
                       </p>
                     )
                   })()}
