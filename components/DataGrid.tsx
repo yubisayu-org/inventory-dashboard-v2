@@ -110,6 +110,9 @@ interface DataGridProps<T> {
   rowSelection?: RowSelectionState
   /** Callback when row selection changes */
   onRowSelectionChange?: (selection: RowSelectionState) => void
+  /** Make rows clickable (e.g. open a detail modal). Controls inside a row
+   *  should call e.stopPropagation() to avoid also triggering this. */
+  onRowClick?: (row: T) => void
   /** Server-side mode configuration */
   serverSide?: ServerSideConfig
 }
@@ -128,6 +131,7 @@ export default function DataGrid<T>({
   enableRowSelection,
   rowSelection: controlledRowSelection,
   onRowSelectionChange,
+  onRowClick,
   serverSide,
 }: DataGridProps<T>) {
   // Client-side state (ignored when serverSide is provided)
@@ -296,13 +300,18 @@ export default function DataGrid<T>({
                 </tr>
               ) : (
                 table.getRowModel().rows.map((row) => (
-                  <tr key={row.id} className={`border-b border-cream-border/60 transition-colors ${enableRowSelection && row.getIsSelected() ? "bg-brand-light/20" : "hover:bg-cream/30"}`}>
+                  <tr
+                    key={row.id}
+                    onClick={onRowClick ? () => onRowClick(row.original) : undefined}
+                    className={`border-b border-cream-border/60 transition-colors ${enableRowSelection && row.getIsSelected() ? "bg-brand-light/20" : "hover:bg-cream/30"} ${onRowClick ? "cursor-pointer" : ""}`}
+                  >
                     {enableRowSelection && (
                       <td className="pl-4 pr-2 py-3">
                         <input
                           type="checkbox"
                           checked={row.getIsSelected()}
                           onChange={row.getToggleSelectedHandler()}
+                          onClick={(e) => e.stopPropagation()}
                           className="rounded border-gray-300 text-brand focus:ring-brand/30 cursor-pointer"
                         />
                       </td>

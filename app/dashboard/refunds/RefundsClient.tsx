@@ -3,6 +3,7 @@
 import { displayIg } from "@/lib/format"
 import TableSkeleton from "@/components/TableSkeleton"
 import InvoiceSummary from "@/components/InvoiceSummary"
+import DataGrid, { type ColumnDef } from "@/components/DataGrid"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { InvoiceEvent, InvoiceResult, RefundRow, RefundReason, RefundStatus } from "@/lib/db"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
@@ -85,8 +86,6 @@ export default function RefundsClient() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [tab, setTab] = useState<RefundStatus>("pending")
-  const [selectedEvent, setSelectedEvent] = useState("")
-  const [search, setSearch] = useState("")
   const [creating, setCreating] = useState(false)
   const [editRow, setEditRow] = useState<RefundRow | null>(null)
 
@@ -94,29 +93,29 @@ export default function RefundsClient() {
     setLoading(true)
     setError("")
     const params = new URLSearchParams()
-    if (selectedEvent) params.set("event", selectedEvent)
     // GET /refunds auto-materializes overpayment refunds server-side (throttled).
     // Refresh passes forceScan=1 to run the detection immediately regardless of
-    // the throttle window; normal opens/filters reuse the throttled result.
+    // the throttle window; normal opens reuse the throttled result. Event/search
+    // filtering is done client-side by the DataGrid, so we always load all rows.
     if (forceScan) params.set("forceScan", "1")
     fetchJson<{ rows: RefundRow[] }>(`/api/sheets/refunds?${params}`)
       .then((data) => setRows(data.rows ?? []))
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"))
       .finally(() => setLoading(false))
-  }, [selectedEvent])
+  }, [])
 
   useEffect(() => { fetchRows() }, [fetchRows])
 
   const doneStatuses: RefundStatus[] = ["refunded", "applied_to_next_order", "cancelled"]
 
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase()
-    return rows.filter((r) => {
-      const matchTab = tab === "refunded" ? doneStatuses.includes(r.status) : r.status === tab
-      const matchSearch = !q || r.customer.toLowerCase().includes(q) || r.event.toLowerCase().includes(q)
-      return matchTab && matchSearch
-    })
-  }, [rows, tab, search])
+  // Tabs pre-filter by status stage; the DataGrid then does search / per-column
+  // sort & filter over the resulting set.
+  const tabFiltered = useMemo(() => {
+    return rows.filter((r) =>
+      tab === "refunded" ? doneStatuses.includes(r.status) : r.status === tab,
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, tab])
 
   const counts = useMemo(() => {
     const c: Partial<Record<RefundStatus | "done", number>> = {}
@@ -126,6 +125,65 @@ export default function RefundsClient() {
     const done = (c.refunded ?? 0) + (c.applied_to_next_order ?? 0) + (c.cancelled ?? 0)
     return { ...c, done }
   }, [rows])
+
+  const columns = useMemo<ColumnDef<RefundRow, unknown>[]>(() => [
+    {
+      accessorKey: "customer",
+      header: "Customer",
+      filterFn: "textContains",
+      cell: ({ row }) => {
+        const r = row.original
+        const msg = reviewMessage(r)
+        return (
+          <div className="flex items-center gap-1.5 font-medium text-foreground">
+            {displayIg(r.customer)}
+            {msg && (
+              <span title={msg} className="text-amber-500 shrink-0">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                  <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+              </span>
+            )}
+          </div>
+        )
+      },
+    },
+    {
+      accessorKey: "event",
+      header: "Event",
+      filterFn: "textContains",
+      cell: ({ getValue }) => <span className="text-gray-600">{getValue<string>()}</span>,
+    },
+    {
+      id: "reason",
+      accessorFn: (r) => REASON_LABELS[r.reason],
+      header: "Reason",
+      filterFn: "textContains",
+      cell: ({ getValue }) => <span className="text-gray-600">{getValue<string>()}</span>,
+    },
+    {
+      id: "amount",
+      accessorFn: (r) => displayAmount(r),
+      header: "Amount",
+      filterFn: "numeric",
+      meta: { align: "right" },
+      cell: ({ getValue }) => (
+        <span className="tabular-nums font-semibold text-foreground">{formatRp(getValue<number>())}</span>
+      ),
+    },
+    {
+      id: "status",
+      accessorFn: (r) => STATUS_LABELS[r.status],
+      header: "Status",
+      filterFn: "textContains",
+      cell: ({ row }) => (
+        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${STATUS_COLORS[row.original.status]}`}>
+          {STATUS_LABELS[row.original.status]}
+        </span>
+      ),
+    },
+  ], [])
 
   function handleUpdated(updated: RefundRow) {
     setRows((prev) => prev.map((r) => r.id === updated.id ? updated : r))
@@ -143,43 +201,17 @@ export default function RefundsClient() {
     setEditRow(null)
   }
 
+  if (loading) return <TableSkeleton />
+  if (error) {
+    return (
+      <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-red-500">
+        {error}
+      </div>
+    )
+  }
+
   return (
     <>
-      {/* Toolbar */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search customer or event…"
-          className={`${INPUT_CLASS} flex-1 min-w-[180px]`}
-        />
-        <div style={{ width: "12rem" }}>
-          <EventSelect
-            value={selectedEvent}
-            onChange={setSelectedEvent}
-            events={options?.events ?? []}
-            placeholder="All Events"
-            clearable
-          />
-        </div>
-        <button
-          onClick={() => fetchRows(true)}
-          title="Refresh (re-scan for overpayments)"
-          className="p-1.5 text-gray-400 hover:text-brand transition-colors rounded"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 12a9 9 0 1 1-6.22-8.56" /><polyline points="21 3 21 9 15 9" />
-          </svg>
-        </button>
-        <button
-          onClick={() => setCreating(true)}
-          className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 transition-colors"
-        >
-          + New Refund
-        </button>
-      </div>
-
       {/* Tabs */}
       <div className="flex border-b border-cream-border gap-0">
         {ACTIVE_TABS.map(({ key, label }) => {
@@ -206,68 +238,37 @@ export default function RefundsClient() {
         })}
       </div>
 
-      {/* Table */}
-      <div className="rounded-xl border border-cream-border bg-white overflow-hidden">
-        {loading ? (
-          <TableSkeleton />
-        ) : error ? (
-          <div className="py-8 px-4 text-sm text-red-500">{error}</div>
-        ) : (
-          <table className="w-full text-sm border-collapse">
-            <thead>
-              <tr className="border-b border-cream-border bg-gray-50/80">
-                <th className="text-left px-4 py-2.5 font-medium text-gray-500">Customer</th>
-                <th className="text-left px-4 py-2.5 font-medium text-gray-500">Event</th>
-                <th className="text-left px-4 py-2.5 font-medium text-gray-500">Reason</th>
-                <th className="text-right px-4 py-2.5 font-medium text-gray-500">Amount</th>
-                <th className="text-left px-4 py-2.5 font-medium text-gray-500">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="py-12 text-center text-sm text-gray-400">
-                    No refunds
-                  </td>
-                </tr>
-              ) : filtered.map((row) => (
-                <tr
-                  key={row.id}
-                  className="border-b border-cream-border hover:bg-gray-50/50 transition-colors cursor-pointer"
-                  onClick={() => setEditRow(row)}
-                >
-                  <td className="px-4 py-3 font-medium text-foreground">
-                    <div className="flex items-center gap-1.5">
-                      {displayIg(row.customer)}
-                      {(() => {
-                        const msg = reviewMessage(row)
-                        if (!msg) return null
-                        return (
-                          <span title={msg} className="text-amber-500 shrink-0">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                              <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
-                            </svg>
-                          </span>
-                        )
-                      })()}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-gray-600">{row.event}</td>
-                  <td className="px-4 py-3 text-gray-600">{REASON_LABELS[row.reason]}</td>
-                  <td className="px-4 py-3 text-right tabular-nums font-semibold text-foreground">
-                    {formatRp(displayAmount(row))}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${STATUS_COLORS[row.status]}`}>
-                      {STATUS_LABELS[row.status]}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+      <div className="mt-3">
+        <DataGrid
+          data={tabFiltered}
+          columns={columns}
+          pageSize={25}
+          searchPlaceholder="Search customer or event…"
+          getRowId={(row) => String(row.id)}
+          onRowClick={(row) => setEditRow(row)}
+          toolbarExtra={
+            <>
+              <button
+                onClick={() => fetchRows(true)}
+                title="Refresh (re-scan for overpayments)"
+                className="p-1.5 text-gray-400 hover:text-brand transition-colors rounded"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 12a9 9 0 1 1-6.22-8.56" /><polyline points="21 3 21 9 15 9" />
+                </svg>
+              </button>
+              <button
+                onClick={() => setCreating(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+                New Refund
+              </button>
+            </>
+          }
+        />
       </div>
 
       {creating && (
