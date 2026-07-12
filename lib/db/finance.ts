@@ -235,6 +235,107 @@ export async function getAdjustmentRows(): Promise<AdjustmentRow[]> {
   }))
 }
 
+export interface PaginatedAdjustments {
+  rows: AdjustmentRow[]
+  totalCount: number
+  filteredSum: number | null
+  page: number
+  pageSize: number
+  totalPages: number
+}
+
+/** Sentinel for totalCount/totalPages when skipCount was requested. */
+export const ADJUSTMENTS_TOTAL_COUNT_UNCHANGED = -1
+
+/**
+ * One page of adjustments with server-side search/filter/sort. Mirrors
+ * getPaymentsPaginated so the Adjustments table matches the Payments table.
+ */
+export async function getAdjustmentsPaginated(opts: {
+  page: number
+  pageSize: number
+  search?: string
+  event?: string
+  customer?: string
+  description?: string
+  sortKey?: string
+  sortDir?: "asc" | "desc"
+  skipCount?: boolean
+}): Promise<PaginatedAdjustments> {
+  const { page, pageSize, search, skipCount } = opts
+  const offset = (page - 1) * pageSize
+
+  const conditions: string[] = []
+  const params: (string | number)[] = []
+
+  if (search) {
+    params.push(`%${search.toLowerCase()}%`)
+    const p = `$${params.length}`
+    const ors = [
+      `lower(event) LIKE ${p}`,
+      `lower(customer) LIKE ${p}`,
+      `lower(COALESCE(description,'')) LIKE ${p}`,
+    ]
+    const digits = search.replace(/[.,\s-]/g, "")
+    if (/^\d+$/.test(digits)) {
+      params.push(`%${digits}%`)
+      ors.push(`CAST(amount AS BIGINT)::text LIKE $${params.length}`)
+    }
+    conditions.push(`(${ors.join(" OR ")})`)
+  }
+
+  const textFilters: [string | undefined, string][] = [
+    [opts.event, "event"],
+    [opts.customer, "customer"],
+    [opts.description, "description"],
+  ]
+  for (const [value, col] of textFilters) {
+    if (value) {
+      params.push(`%${value.toLowerCase()}%`)
+      conditions.push(`lower(COALESCE(${col},'')) LIKE $${params.length}`)
+    }
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""
+
+  const SORT_COLUMNS: Record<string, string> = {
+    event: "event", customer: "customer", description: "description",
+    amount: "amount", createdAt: "created_at", updatedAt: "updated_at",
+  }
+  const sortCol = (opts.sortKey && SORT_COLUMNS[opts.sortKey]) || "id"
+  const sortDir = opts.sortDir === "asc" ? "ASC" : "DESC"
+
+  const dataRows = await sql.unsafe(
+    `SELECT id, event, customer, description, amount, created_at, updated_at
+     FROM adjustments
+     ${where}
+     ORDER BY ${sortCol} ${sortDir}, id ${sortDir}
+     LIMIT ${pageSize} OFFSET ${offset}`,
+    params,
+  )
+  const rows: AdjustmentRow[] = (dataRows as Record<string, unknown>[]).map((r) => ({
+    rowNumber: r.id as number,
+    event: r.event as string,
+    customer: r.customer as string,
+    description: (r.description as string) ?? "",
+    amount: (r.amount as number) ?? 0,
+    createdAt: tsToString(r.created_at as Date | null),
+    updatedAt: tsToString(r.updated_at as Date | null),
+  }))
+
+  if (skipCount) {
+    return { rows, totalCount: ADJUSTMENTS_TOTAL_COUNT_UNCHANGED, filteredSum: null, page, pageSize, totalPages: ADJUSTMENTS_TOTAL_COUNT_UNCHANGED }
+  }
+
+  const [countRows, sumRows] = await Promise.all([
+    sql.unsafe(`SELECT COUNT(*)::int AS c FROM adjustments ${where}`, params),
+    sql.unsafe(`SELECT COALESCE(SUM(amount), 0)::bigint AS s FROM adjustments ${where}`, params),
+  ])
+  const totalCount = Number((countRows as Record<string, unknown>[])[0]?.c ?? 0)
+  const filteredSum = Number((sumRows as Record<string, unknown>[])[0]?.s ?? 0)
+  return { rows, totalCount, filteredSum, page, pageSize, totalPages: Math.max(1, Math.ceil(totalCount / pageSize)) }
+}
+
 export async function addAdjustment(data: {
   event: string
   customer: string
