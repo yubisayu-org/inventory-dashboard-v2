@@ -2,7 +2,7 @@
 
 import { use } from "react"
 import Link from "next/link"
-import type { DashboardSummary, DashboardEvent } from "@/lib/db"
+import type { DashboardSummary, DashboardEvent, DashboardTotals } from "@/lib/db"
 
 function formatRp(n: number): string {
   return `Rp ${new Intl.NumberFormat("id-ID").format(n)}`
@@ -49,6 +49,9 @@ export default function DashboardClient({
 
   return (
     <div className="flex flex-col gap-6">
+      {/* At-a-glance totals */}
+      <StatCards totals={summary.totals} />
+
       {/* Action queue */}
       {items.length === 0 ? (
         <div className="rounded-xl border border-cream-border bg-white p-8 text-center">
@@ -100,6 +103,67 @@ export default function DashboardClient({
           </div>
         )}
       </section>
+    </div>
+  )
+}
+
+function StatCards({ totals }: { totals: DashboardTotals }) {
+  const cards = [
+    {
+      label: "Total orders",
+      value: new Intl.NumberFormat("id-ID").format(totals.totalOrders),
+      tone: "bg-blue-100 text-blue-600",
+      icon: (
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M8 13h8 M8 17h8 M8 9h2" />
+      ),
+    },
+    {
+      label: "Total revenue",
+      value: formatRp(totals.revenue),
+      tone: "bg-indigo-100 text-indigo-600",
+      icon: (
+        <>
+          <path d="M23 6l-9.5 9.5-5-5L1 18" />
+          <path d="M17 6h6v6" />
+        </>
+      ),
+    },
+    {
+      label: "Collected",
+      value: formatRp(totals.collected),
+      tone: "bg-green-100 text-green-600",
+      icon: (
+        <path d="M12 1v22 M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+      ),
+    },
+    {
+      label: "Operational costs",
+      value: formatRp(totals.operationalCosts),
+      tone: "bg-rose-100 text-rose-600",
+      icon: (
+        <>
+          <path d="M23 18l-9.5-9.5-5 5L1 6" />
+          <path d="M17 18h6v-6" />
+        </>
+      ),
+    },
+  ]
+
+  return (
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      {cards.map((c) => (
+        <div key={c.label} className="rounded-xl border border-cream-border bg-white p-4 flex flex-col gap-3">
+          <span className={`inline-flex h-9 w-9 items-center justify-center rounded-lg ${c.tone}`}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              {c.icon}
+            </svg>
+          </span>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xl font-bold text-foreground tabular-nums leading-tight truncate">{c.value}</span>
+            <span className="text-xs text-gray-500">{c.label}</span>
+          </div>
+        </div>
+      ))}
     </div>
   )
 }

@@ -24,8 +24,16 @@ export interface DashboardEvent {
   totalPaid: number
 }
 
+export interface DashboardTotals {
+  totalOrders: number
+  revenue: number
+  collected: number
+  operationalCosts: number
+}
+
 export interface DashboardSummary {
   actionQueue: DashboardActionQueue
+  totals: DashboardTotals
   events: DashboardEvent[]
 }
 
@@ -36,6 +44,8 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
     pendingPurchaseCount,
     pendingArrivalCount,
     readyToShipCount,
+    totalsRow,
+    opsCostRow,
     eventRows,
   ] = await Promise.all([
     sql`
@@ -108,6 +118,67 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
     // used to overcount (it missed the all-lines-arrived, payment-clear, and
     // not-on-hold requirements).
     getShipOrdersFiltered({ segment: "ready" }).then((r) => r.counts.ready),
+    // Headline totals across active (unshipped) events — same event set as the
+    // cards below. Revenue is the full invoice value billed (subtotal + ongkir
+    // + adjustments); collected is confirmed payments received against it.
+    sql`
+      WITH order_aggregates AS (
+        SELECT
+          o.event,
+          o.customer,
+          COUNT(*)::int AS order_count,
+          SUM(o.unit_price * o.unit) AS subtotal,
+          SUM(COALESCE(p.gram, 0) * o.unit) AS total_gram
+        FROM orders o
+        JOIN products p ON p.id = o.product_id
+        GROUP BY o.event, o.customer
+      ),
+      active_events AS (
+        SELECT event
+        FROM orders
+        GROUP BY event
+        HAVING SUM(unit) > SUM(COALESCE(unit_ship, 0))
+      ),
+      payment_aggregates AS (
+        SELECT event, customer, SUM(amount) AS total_paid
+        FROM payments
+        WHERE is_checked = true
+        GROUP BY event, customer
+      ),
+      adjustment_aggregates AS (
+        SELECT event, customer, SUM(amount) AS total_adj
+        FROM adjustments
+        GROUP BY event, customer
+      )
+      SELECT
+        COALESCE(SUM(oa.order_count), 0)::int AS total_orders,
+        COALESCE(SUM(
+          oa.subtotal
+          + COALESCE(cwo.ongkos_kirim, 0) * CEIL(oa.total_gram::numeric / 1000)
+          + COALESCE(adj.total_adj, 0)
+        ), 0)::bigint AS revenue,
+        COALESCE(SUM(pa.total_paid), 0)::bigint AS collected
+      FROM order_aggregates oa
+      JOIN active_events ae ON ae.event = oa.event
+      LEFT JOIN customers c ON c.instagram_id = oa.customer
+      LEFT JOIN events ev ON ev.name = oa.event
+      LEFT JOIN customer_warehouse_ongkir cwo
+        ON cwo.customer_id = c.id AND cwo.warehouse_id = ev.warehouse_id
+      LEFT JOIN payment_aggregates pa ON pa.event = oa.event AND pa.customer = oa.customer
+      LEFT JOIN adjustment_aggregates adj ON adj.event = oa.event AND adj.customer = oa.customer
+    `,
+    // Operational costs across the same active-event set — the trip/operating
+    // expense ledger (033), summed in rupiah (amount_idr is the IDR source col).
+    sql`
+      SELECT COALESCE(SUM(oe.amount_idr), 0)::bigint AS operational_costs
+      FROM operational_expenses oe
+      JOIN (
+        SELECT event
+        FROM orders
+        GROUP BY event
+        HAVING SUM(unit) > SUM(COALESCE(unit_ship, 0))
+      ) ae ON ae.event = oe.event
+    `,
     sql`
       WITH order_aggregates AS (
         SELECT
@@ -154,6 +225,12 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
       itemsPendingPurchase: (pendingPurchaseCount[0]?.count as number) ?? 0,
       itemsPendingArrival: (pendingArrivalCount[0]?.count as number) ?? 0,
       customersReadyToShip: readyToShipCount,
+    },
+    totals: {
+      totalOrders: Number(totalsRow[0]?.total_orders ?? 0),
+      revenue: Number(totalsRow[0]?.revenue ?? 0),
+      collected: Number(totalsRow[0]?.collected ?? 0),
+      operationalCosts: Number(opsCostRow[0]?.operational_costs ?? 0),
     },
     events: eventRows.map((r) => ({
       name: r.name as string,
