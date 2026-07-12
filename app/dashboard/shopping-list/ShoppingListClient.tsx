@@ -370,7 +370,7 @@ export default function ShoppingListClient() {
   return (
     <>
       {/* Toolbar */}
-      <div className="flex items-center gap-2 flex-wrap">
+      <div className="flex items-center gap-2 flex-wrap mb-3">
         <input
           type="text"
           value={search}

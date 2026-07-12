@@ -3,7 +3,7 @@
 import { displayIg } from "@/lib/format"
 import TableSkeleton from "@/components/TableSkeleton"
 import InvoiceSummary from "@/components/InvoiceSummary"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { InvoiceEvent, InvoiceResult, RefundRow, RefundReason, RefundStatus } from "@/lib/db"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import { fetchJson } from "@/lib/api-fetch"
@@ -40,12 +40,18 @@ const STATUS_COLORS: Record<RefundStatus, string> = {
   cancelled: "bg-gray-50 text-gray-500 border-gray-200",
 }
 
-const ACTIVE_TABS: { key: RefundStatus | "active"; label: string }[] = [
-  { key: "pending", label: "Pending" },
-  { key: "awaiting_bank_info", label: "Awaiting Bank Info" },
-  { key: "ready_to_refund", label: "Ready to Refund" },
-  { key: "refunded", label: "Done" },
+const ALL_STATUSES: RefundStatus[] = [
+  "pending",
+  "awaiting_bank_info",
+  "ready_to_refund",
+  "refunded",
+  "applied_to_next_order",
+  "cancelled",
 ]
+
+// Hidden by default so the table opens on what still needs action; click a
+// chip to reveal it.
+const DEFAULT_HIDDEN_STATUSES: RefundStatus[] = ["refunded", "applied_to_next_order", "cancelled"]
 
 function formatRp(n: number) {
   return `Rp ${new Intl.NumberFormat("id-ID").format(n)}`
@@ -84,11 +90,25 @@ export default function RefundsClient() {
   const [rows, setRows] = useState<RefundRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
-  const [tab, setTab] = useState<RefundStatus>("pending")
+  const [hiddenStatuses, setHiddenStatuses] = useState<Set<RefundStatus>>(new Set(DEFAULT_HIDDEN_STATUSES))
+  const [reasonFilter, setReasonFilter] = useState<RefundReason | "">("")
+  const [onlyReview, setOnlyReview] = useState(false)
+  const [onlyCredit, setOnlyCredit] = useState(false)
   const [selectedEvent, setSelectedEvent] = useState("")
   const [search, setSearch] = useState("")
   const [creating, setCreating] = useState(false)
   const [editRow, setEditRow] = useState<RefundRow | null>(null)
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const filtersRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!filtersOpen) return
+    function onPointerDown(e: PointerEvent) {
+      if (!filtersRef.current?.contains(e.target as Node)) setFiltersOpen(false)
+    }
+    document.addEventListener("pointerdown", onPointerDown)
+    return () => document.removeEventListener("pointerdown", onPointerDown)
+  }, [filtersOpen])
 
   const fetchRows = useCallback((forceScan = false) => {
     setLoading(true)
@@ -107,25 +127,39 @@ export default function RefundsClient() {
 
   useEffect(() => { fetchRows() }, [fetchRows])
 
-  const doneStatuses: RefundStatus[] = ["refunded", "applied_to_next_order", "cancelled"]
-
   const filtered = useMemo(() => {
     const q = search.toLowerCase()
     return rows.filter((r) => {
-      const matchTab = tab === "refunded" ? doneStatuses.includes(r.status) : r.status === tab
+      const matchStatus = !hiddenStatuses.has(r.status)
+      const matchReason = !reasonFilter || r.reason === reasonFilter
+      const matchReview = !onlyReview || reviewMessage(r) !== null
+      const matchCredit = !onlyCredit || r.hasAppliedCredit
       const matchSearch = !q || r.customer.toLowerCase().includes(q) || r.event.toLowerCase().includes(q)
-      return matchTab && matchSearch
+      return matchStatus && matchReason && matchReview && matchCredit && matchSearch
     })
-  }, [rows, tab, search])
+  }, [rows, hiddenStatuses, reasonFilter, onlyReview, onlyCredit, search])
 
   const counts = useMemo(() => {
-    const c: Partial<Record<RefundStatus | "done", number>> = {}
+    const c: Partial<Record<RefundStatus, number>> = {}
     for (const r of rows) {
       c[r.status] = (c[r.status] ?? 0) + 1
     }
-    const done = (c.refunded ?? 0) + (c.applied_to_next_order ?? 0) + (c.cancelled ?? 0)
-    return { ...c, done }
+    return c
   }, [rows])
+
+  const statusIsDefault =
+    hiddenStatuses.size === DEFAULT_HIDDEN_STATUSES.length &&
+    DEFAULT_HIDDEN_STATUSES.every((s) => hiddenStatuses.has(s))
+  const activeFilterCount =
+    (statusIsDefault ? 0 : 1) + (reasonFilter ? 1 : 0) + (onlyReview ? 1 : 0) + (onlyCredit ? 1 : 0)
+
+  function toggleStatus(status: RefundStatus) {
+    setHiddenStatuses((prev) => {
+      const next = new Set(prev)
+      next.has(status) ? next.delete(status) : next.add(status)
+      return next
+    })
+  }
 
   function handleUpdated(updated: RefundRow) {
     setRows((prev) => prev.map((r) => r.id === updated.id ? updated : r))
@@ -135,7 +169,7 @@ export default function RefundsClient() {
   function handleCreated(created: RefundRow) {
     setRows((prev) => [created, ...prev])
     setCreating(false)
-    setTab("pending")
+    setHiddenStatuses(new Set(DEFAULT_HIDDEN_STATUSES))
   }
 
   function handleDeleted(id: number) {
@@ -146,7 +180,7 @@ export default function RefundsClient() {
   return (
     <>
       {/* Toolbar */}
-      <div className="flex items-center gap-2 flex-wrap">
+      <div className="flex items-center gap-3 flex-wrap mb-8">
         <input
           type="text"
           value={search}
@@ -163,6 +197,102 @@ export default function RefundsClient() {
             clearable
           />
         </div>
+
+        <div className="relative" ref={filtersRef}>
+          <button
+            type="button"
+            onClick={() => setFiltersOpen((v) => !v)}
+            className={`inline-flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border transition-colors ${
+              filtersOpen ? "border-brand text-brand" : "border-cream-border text-gray-600 hover:border-brand hover:text-brand"
+            }`}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" />
+            </svg>
+            Filters
+            {activeFilterCount > 0 && (
+              <span className="text-xs px-1.5 py-0.5 rounded-full bg-brand/10 text-brand">{activeFilterCount}</span>
+            )}
+          </button>
+
+          {filtersOpen && (
+            <div className="absolute right-0 z-50 mt-2 w-[22rem] rounded-xl border border-cream-border bg-white shadow-xl p-4 flex flex-col gap-3">
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</span>
+                  {hiddenStatuses.size > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setHiddenStatuses(new Set())}
+                      className="text-xs text-gray-400 hover:text-brand transition-colors"
+                    >
+                      Show all
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {ALL_STATUSES.map((status) => {
+                    const active = !hiddenStatuses.has(status)
+                    const count = counts[status] ?? 0
+                    return (
+                      <button
+                        key={status}
+                        type="button"
+                        onClick={() => toggleStatus(status)}
+                        title={active ? "Click to hide" : "Click to show"}
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                          active ? STATUS_COLORS[status] : "bg-gray-50 text-gray-400 border-gray-200 line-through decoration-1"
+                        }`}
+                      >
+                        {STATUS_LABELS[status]}
+                        <span className={active ? "opacity-70" : "opacity-60"}>{count}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Reason</span>
+                <select
+                  value={reasonFilter}
+                  onChange={(e) => setReasonFilter(e.target.value as RefundReason | "")}
+                  className={`${INPUT_CLASS} w-full`}
+                >
+                  <option value="">All reasons</option>
+                  {(Object.entries(REASON_LABELS) as [RefundReason, string][]).map(([k, v]) => (
+                    <option key={k} value={k}>{v}</option>
+                  ))}
+                </select>
+              </label>
+
+              <div>
+                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Other</div>
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setOnlyReview((v) => !v)}
+                    className={`text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${
+                      onlyReview ? "bg-amber-50 border-amber-300 text-amber-700" : "border-cream-border text-gray-500 hover:border-amber-300 hover:text-amber-600"
+                    }`}
+                  >
+                    ⚠ Needs review
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOnlyCredit((v) => !v)}
+                    className={`text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${
+                      onlyCredit ? "bg-purple-50 border-purple-300 text-purple-700" : "border-cream-border text-gray-500 hover:border-purple-300 hover:text-purple-600"
+                    }`}
+                  >
+                    Has credit applied
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
         <button
           onClick={() => fetchRows(true)}
           title="Refresh (re-scan for overpayments)"
@@ -178,32 +308,6 @@ export default function RefundsClient() {
         >
           + New Refund
         </button>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex border-b border-cream-border gap-0">
-        {ACTIVE_TABS.map(({ key, label }) => {
-          const count = key === "refunded" ? counts.done : counts[key as RefundStatus]
-          const active = tab === key || (key === "refunded" && doneStatuses.includes(tab))
-          return (
-            <button
-              key={key}
-              onClick={() => setTab(key === "refunded" ? "refunded" : key as RefundStatus)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                active
-                  ? "border-brand text-brand"
-                  : "border-transparent text-gray-500 hover:text-foreground"
-              }`}
-            >
-              {label}
-              {count ? (
-                <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${active ? "bg-brand/10 text-brand" : "bg-gray-100 text-gray-500"}`}>
-                  {count}
-                </span>
-              ) : null}
-            </button>
-          )
-        })}
       </div>
 
       {/* Table */}
