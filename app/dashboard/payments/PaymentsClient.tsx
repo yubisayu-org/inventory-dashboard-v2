@@ -29,6 +29,15 @@ const ACCOUNT_OPTIONS = ["BCA", "JAGO", "QRIS", "TRANSFER"] as const
 // Checked-status filter: "" = all, "true" = checked only, "false" = unchecked.
 type CheckedFilter = "" | "true" | "false"
 
+// Payment kind filter, driven by the type tabs. "" = all.
+type KindFilter = "" | "deposit" | "credit" | "refund"
+const KIND_TABS: { key: KindFilter; label: string }[] = [
+  { key: "", label: "All" },
+  { key: "deposit", label: "Deposit" },
+  { key: "credit", label: "Credit" },
+  { key: "refund", label: "Refund" },
+]
+
 type EditForm = {
   event: string
   customer: string
@@ -79,7 +88,6 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
   const options = useSheetOptions()
   const [rows, setRows] = useState<PaymentRow[]>([])
   const [totalCount, setTotalCount] = useState(0)
-  const [filteredSum, setFilteredSum] = useState<number | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [mobileAddOpen, setMobileAddOpen] = useState(false)
   const [editingRow, setEditingRow] = useState<PaymentRow | null>(null)
@@ -89,6 +97,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [globalFilter, setGlobalFilter] = useState("")
   const [checkedFilter, setCheckedFilter] = useState<CheckedFilter>("")
+  const [kindFilter, setKindFilter] = useState<KindFilter>("")
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: PAGE_SIZE })
 
   // Only the text columns are server-filterable via column headers; amount/date
@@ -103,12 +112,13 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
       else if (cf.id === "customer") f.customer = v
       else if (cf.id === "account") f.account = v
       else if (cf.id === "remarks") f.remarks = v
-      else if (cf.id === "kind") f.kind = v
     }
     // Sent as ?isChecked=true|false; the API maps absent → all.
     if (checkedFilter) f.isChecked = checkedFilter
+    // Type is driven by the tabs, not a column filter.
+    if (kindFilter) f.kind = kindFilter
     return f
-  }, [columnFilters, checkedFilter])
+  }, [columnFilters, checkedFilter, kindFilter])
 
   const fetchSort = useMemo(() => {
     if (sorting.length === 0) return null
@@ -118,7 +128,6 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
   const onData = useCallback((d: PageData) => {
     setRows(d.rows as PaymentRow[])
     setTotalCount(d.totalCount)
-    setFilteredSum(d.filteredSum)
   }, [])
 
   const { fetchState, refresh } = usePaginatedFetch({
@@ -147,6 +156,9 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
   }, [])
   const handleCheckedFilterChange = useCallback((v: CheckedFilter) => {
     setCheckedFilter(v); setPagination((p) => ({ ...p, pageIndex: 0 }))
+  }, [])
+  const handleKindFilterChange = useCallback((v: KindFilter) => {
+    setKindFilter(v); setPagination((p) => ({ ...p, pageIndex: 0 }))
   }, [])
 
   async function handleToggleCheck(row: PaymentRow) {
@@ -213,7 +225,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
     {
       accessorKey: "kind",
       header: "Type",
-      filterFn: "textContains",
+      enableColumnFilter: false,
       cell: ({ getValue }) => {
         const k = getValue<PaymentRow["kind"]>()
         // Deposit = real money in; refund = cash out; credit = internal
@@ -343,6 +355,24 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
         </div>
       )}
 
+      {/* Type filter tabs */}
+      <div className="hidden md:flex border-b border-cream-border gap-0">
+        {KIND_TABS.map(({ key, label }) => {
+          const active = kindFilter === key
+          return (
+            <button
+              key={key || "all"}
+              onClick={() => handleKindFilterChange(key)}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                active ? "border-brand text-brand" : "border-transparent text-gray-500 hover:text-foreground"
+              }`}
+            >
+              {label}
+            </button>
+          )
+        })}
+      </div>
+
       {/* Desktop table */}
       <div className="hidden md:block">
         <DataGrid
@@ -352,11 +382,6 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
           searchPlaceholder="Search name, amount, account..."
           toolbarExtra={
             <>
-              {filteredSum !== null && (
-                <span className="text-xs text-gray-500 whitespace-nowrap">
-                  Total: <span className="font-semibold text-foreground">Rp {formatAmount(filteredSum)}</span>
-                </span>
-              )}
               <CheckedFilterSelect
                 value={checkedFilter}
                 onChange={handleCheckedFilterChange}
@@ -396,6 +421,16 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
             onChange={handleCheckedFilterChange}
             className="shrink-0 border border-cream-border rounded-lg px-2 py-2 text-sm text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
           />
+          <select
+            value={kindFilter}
+            onChange={(e) => handleKindFilterChange(e.target.value as KindFilter)}
+            aria-label="Filter by type"
+            className="shrink-0 border border-cream-border rounded-lg px-2 py-2 text-sm text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+          >
+            {KIND_TABS.map(({ key, label }) => (
+              <option key={key || "all"} value={key}>{key ? label : "All types"}</option>
+            ))}
+          </select>
         </div>
         {rows.length === 0 ? (
           <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">
