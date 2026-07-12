@@ -117,7 +117,7 @@ function EventCard({ event }: { event: DashboardEvent }) {
     <div className="rounded-xl border border-cream-border bg-white p-4 flex flex-col gap-3">
       <div className="flex items-baseline justify-between gap-2">
         <span className="font-semibold text-foreground truncate">{event.name}</span>
-        {event.eta && <span className="text-xs text-gray-400 shrink-0">ETA: {event.eta}</span>}
+        {event.eta && <span className="text-xs text-gray-400 shrink-0">{event.eta}</span>}
       </div>
 
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
@@ -127,28 +127,28 @@ function EventCard({ event }: { event: DashboardEvent }) {
         <span className="ml-auto text-foreground font-medium tabular-nums">{formatRp(event.totalSubtotal)}</span>
       </div>
 
-      <div className="flex flex-col gap-1.5">
+      <div className="grid grid-cols-[auto_1fr_auto] items-center gap-x-2 gap-y-1.5 text-xs">
         {stages.map((s) => {
           const p = pct(s.num, s.denom)
           return (
-            <div key={s.label} className="flex items-center gap-2 text-xs">
-              <span className="w-16 shrink-0 text-gray-500">{s.label}</span>
-              <div className="flex-1 h-2 rounded-full bg-gray-100 overflow-hidden">
+            <div key={s.label} className="contents">
+              <span className="text-gray-500">{s.label}</span>
+              <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
                 <div className={`h-full ${s.color} transition-all`} style={{ width: `${p}%` }} />
               </div>
-              <span className="w-20 shrink-0 text-right tabular-nums text-gray-600">
+              <span className="whitespace-nowrap text-right tabular-nums text-gray-600">
                 {s.num}<span className="text-gray-400">/{s.denom}</span>
                 <span className="text-gray-400 ml-1">({p}%)</span>
               </span>
             </div>
           )
         })}
-        <div className="flex items-center gap-2 text-xs pt-1 mt-1 border-t border-cream-border/60">
-          <span className="w-16 shrink-0 text-gray-500">Paid</span>
-          <div className="flex-1 h-2 rounded-full bg-gray-100 overflow-hidden">
+        <div className="contents">
+          <span className="text-gray-500 pt-1 mt-1 border-t border-cream-border/60">Paid</span>
+          <div className="h-2 rounded-full bg-gray-100 overflow-hidden pt-1 mt-1 border-t border-cream-border/60">
             <div className="h-full bg-emerald-500 transition-all" style={{ width: `${pct(event.totalPaid, event.totalSubtotal)}%` }} />
           </div>
-          <span className="w-auto shrink-0 text-right tabular-nums text-gray-600">
+          <span className="whitespace-nowrap text-right tabular-nums text-gray-600 pt-1 mt-1 border-t border-cream-border/60">
             <span className="text-foreground font-medium">{formatRp(event.totalPaid)}</span>
             <span className="text-gray-400"> / {formatRp(event.totalSubtotal)}</span>
           </span>
