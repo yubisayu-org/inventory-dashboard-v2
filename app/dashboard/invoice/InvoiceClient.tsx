@@ -28,7 +28,7 @@ export default function InvoiceClient() {
   }
 
   return (
-    <div className="max-w-6xl">
+    <div>
       <PaymentStatusPanel
         events={options?.events ?? []}
         customers={options?.customers ?? []}

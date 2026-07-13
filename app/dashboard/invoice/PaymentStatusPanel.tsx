@@ -79,9 +79,15 @@ export function PaymentStatusPanel({
   }, [eventRows])
 
   const totals = useMemo(() => {
-    const invoiceTotal = eventRows.reduce((s, r) => s + r.invoiceTotal, 0)
-    const paidTotal = eventRows.reduce((s, r) => s + r.totalPaid, 0)
-    return { invoiceTotal, paidTotal, outstanding: invoiceTotal - paidTotal }
+    // Outstanding = money customers still owe (positive balances); overpaid =
+    // money owed back to customers (negative balances), shown as a magnitude.
+    let outstanding = 0
+    let overpaid = 0
+    for (const r of eventRows) {
+      if (r.outstanding > 0) outstanding += r.outstanding
+      else if (r.outstanding < 0) overpaid += -r.outstanding
+    }
+    return { outstanding, overpaid }
   }, [eventRows])
 
   // The status chips pre-filter the rows fed to the grid; the grid then handles
@@ -263,18 +269,12 @@ export function PaymentStatusPanel({
       {eventRows.length > 0 && (
         <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-xs text-gray-500 px-1">
           <div>
-            <span className="text-gray-400">Invoice total:</span>{" "}
-            <span className="text-foreground font-medium tabular-nums">Rp {fmt(totals.invoiceTotal)}</span>
-          </div>
-          <div>
-            <span className="text-gray-400">Paid:</span>{" "}
-            <span className="text-foreground font-medium tabular-nums">Rp {fmt(totals.paidTotal)}</span>
-          </div>
-          <div>
             <span className="text-gray-400">Outstanding:</span>{" "}
-            <span className={`font-medium tabular-nums ${totals.outstanding > 0 ? "text-red-600" : totals.outstanding < 0 ? "text-purple-600" : "text-green-600"}`}>
-              Rp {fmt(totals.outstanding)}
-            </span>
+            <span className="font-medium tabular-nums text-red-600">Rp {fmt(totals.outstanding)}</span>
+          </div>
+          <div>
+            <span className="text-gray-400">Overpaid:</span>{" "}
+            <span className="font-medium tabular-nums text-purple-600">Rp {fmt(totals.overpaid)}</span>
           </div>
         </div>
       )}
