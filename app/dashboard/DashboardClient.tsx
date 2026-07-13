@@ -8,6 +8,20 @@ function formatRp(n: number): string {
   return `Rp ${new Intl.NumberFormat("id-ID").format(n)}`
 }
 
+// Compact magnitude for small screens: K (thousands), M (millions), B (billions).
+function abbreviate(n: number): string {
+  const abs = Math.abs(n)
+  const one = (v: number) => v.toLocaleString("id-ID", { maximumFractionDigits: 1 })
+  if (abs >= 1e9) return `${one(n / 1e9)}B`
+  if (abs >= 1e6) return `${one(n / 1e6)}M`
+  if (abs >= 1e3) return `${one(n / 1e3)}K`
+  return `${n}`
+}
+
+function formatRpShort(n: number): string {
+  return `Rp ${abbreviate(n)}`
+}
+
 function pct(num: number, denom: number): number {
   if (denom <= 0) return 0
   return Math.min(100, Math.round((num / denom) * 100))
@@ -108,42 +122,51 @@ export default function DashboardClient({
 }
 
 function StatCards({ totals }: { totals: DashboardTotals }) {
+  const invoiceSub = (n: number) => `from ${n} ${n === 1 ? "invoice" : "invoices"}`
   const cards = [
     {
-      label: "Total orders",
-      value: new Intl.NumberFormat("id-ID").format(totals.totalOrders),
+      label: "Items sold",
+      amount: totals.itemsSold,
+      money: false,
+      sub: `across ${totals.eventCount} ${totals.eventCount === 1 ? "event" : "events"}`,
       tone: "bg-blue-100 text-blue-600",
       icon: (
         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M8 13h8 M8 17h8 M8 9h2" />
       ),
     },
     {
-      label: "Total revenue",
-      value: formatRp(totals.revenue),
-      tone: "bg-indigo-100 text-indigo-600",
-      icon: (
-        <>
-          <path d="M23 6l-9.5 9.5-5-5L1 18" />
-          <path d="M17 6h6v6" />
-        </>
-      ),
-    },
-    {
-      label: "Collected",
-      value: formatRp(totals.collected),
+      label: "Omzet",
+      amount: totals.omzet,
+      money: true,
+      sub: invoiceSub(totals.invoiceCount),
       tone: "bg-green-100 text-green-600",
       icon: (
         <path d="M12 1v22 M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
       ),
     },
     {
-      label: "Operational costs",
-      value: formatRp(totals.operationalCosts),
+      label: "Outstanding",
+      amount: totals.outstanding,
+      money: true,
+      sub: invoiceSub(totals.outstandingCount),
+      tone: "bg-orange-100 text-orange-600",
+      icon: (
+        <>
+          <circle cx="12" cy="12" r="10" />
+          <path d="M12 6v6l4 2" />
+        </>
+      ),
+    },
+    {
+      label: "Due refund",
+      amount: totals.refundNeeded,
+      money: true,
+      sub: invoiceSub(totals.refundCount),
       tone: "bg-rose-100 text-rose-600",
       icon: (
         <>
-          <path d="M23 18l-9.5-9.5-5 5L1 6" />
-          <path d="M17 18h6v-6" />
+          <polyline points="1 4 1 10 7 10" />
+          <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
         </>
       ),
     },
@@ -151,19 +174,29 @@ function StatCards({ totals }: { totals: DashboardTotals }) {
 
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-      {cards.map((c) => (
-        <div key={c.label} className="rounded-xl border border-cream-border bg-white p-4 flex flex-col gap-3">
-          <span className={`inline-flex h-9 w-9 items-center justify-center rounded-lg ${c.tone}`}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              {c.icon}
-            </svg>
-          </span>
-          <div className="flex flex-col gap-0.5">
-            <span className="text-xl font-bold text-foreground tabular-nums leading-tight truncate">{c.value}</span>
-            <span className="text-xs text-gray-500">{c.label}</span>
+      {cards.map((c) => {
+        const full = c.money ? formatRp(c.amount) : new Intl.NumberFormat("id-ID").format(c.amount)
+        const short = c.money ? formatRpShort(c.amount) : abbreviate(c.amount)
+        return (
+          <div key={c.label} className="rounded-xl border border-cream-border bg-white p-4 flex flex-col gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${c.tone}`}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  {c.icon}
+                </svg>
+              </span>
+              <span className="text-sm font-bold text-foreground truncate">{c.label}</span>
+            </div>
+            <span className="text-2xl font-bold text-foreground tabular-nums leading-tight truncate">
+              <span className="sm:hidden">{short}</span>
+              <span className="hidden sm:inline">{full}</span>
+            </span>
+            {"sub" in c && c.sub && (
+              <span className="text-xs text-gray-400 tabular-nums truncate">{c.sub}</span>
+            )}
           </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }

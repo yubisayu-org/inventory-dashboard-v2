@@ -25,10 +25,15 @@ export interface DashboardEvent {
 }
 
 export interface DashboardTotals {
-  totalOrders: number
-  revenue: number
-  collected: number
-  operationalCosts: number
+  itemsSold: number
+  eventCount: number
+  omzet: number
+  invoiceCount: number
+  profit: number
+  outstanding: number
+  outstandingCount: number
+  refundNeeded: number
+  refundCount: number
 }
 
 export interface DashboardSummary {
@@ -46,6 +51,8 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
     readyToShipCount,
     totalsRow,
     opsCostRow,
+    refundNeededRow,
+    itemsRow,
     eventRows,
   ] = await Promise.all([
     sql`
@@ -118,26 +125,20 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
     // used to overcount (it missed the all-lines-arrived, payment-clear, and
     // not-on-hold requirements).
     getShipOrdersFiltered({ segment: "ready" }).then((r) => r.counts.ready),
-    // Headline totals across active (unshipped) events — same event set as the
-    // cards below. Revenue is the full invoice value billed (subtotal + ongkir
-    // + adjustments); collected is confirmed payments received against it.
+    // Headline money totals across all events, all-time. Omzet = full invoice
+    // value billed (subtotal + ongkir + adjustments); invoice_count = number of
+    // customer-event invoices; outstanding = per-customer unpaid balance floored
+    // at 0. The payments join stays for the outstanding subtraction.
     sql`
       WITH order_aggregates AS (
         SELECT
           o.event,
           o.customer,
-          COUNT(*)::int AS order_count,
           SUM(o.unit_price * o.unit) AS subtotal,
           SUM(COALESCE(p.gram, 0) * o.unit) AS total_gram
         FROM orders o
         JOIN products p ON p.id = o.product_id
         GROUP BY o.event, o.customer
-      ),
-      active_events AS (
-        SELECT event
-        FROM orders
-        GROUP BY event
-        HAVING SUM(unit) > SUM(COALESCE(unit_ship, 0))
       ),
       payment_aggregates AS (
         SELECT event, customer, SUM(amount) AS total_paid
@@ -151,15 +152,25 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
         GROUP BY event, customer
       )
       SELECT
-        COALESCE(SUM(oa.order_count), 0)::int AS total_orders,
+        COUNT(*)::int AS invoice_count,
         COALESCE(SUM(
           oa.subtotal
           + COALESCE(cwo.ongkos_kirim, 0) * CEIL(oa.total_gram::numeric / 1000)
           + COALESCE(adj.total_adj, 0)
-        ), 0)::bigint AS revenue,
-        COALESCE(SUM(pa.total_paid), 0)::bigint AS collected
+        ), 0)::bigint AS omzet,
+        COALESCE(SUM(GREATEST(
+          oa.subtotal
+          + COALESCE(cwo.ongkos_kirim, 0) * CEIL(oa.total_gram::numeric / 1000)
+          + COALESCE(adj.total_adj, 0)
+          - COALESCE(pa.total_paid, 0)
+        , 0)), 0)::bigint AS outstanding,
+        COUNT(*) FILTER (WHERE
+          oa.subtotal
+          + COALESCE(cwo.ongkos_kirim, 0) * CEIL(oa.total_gram::numeric / 1000)
+          + COALESCE(adj.total_adj, 0)
+          - COALESCE(pa.total_paid, 0) > 0
+        )::int AS outstanding_count
       FROM order_aggregates oa
-      JOIN active_events ae ON ae.event = oa.event
       LEFT JOIN customers c ON c.instagram_id = oa.customer
       LEFT JOIN events ev ON ev.name = oa.event
       LEFT JOIN customer_warehouse_ongkir cwo
@@ -178,6 +189,23 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
         GROUP BY event
         HAVING SUM(unit) > SUM(COALESCE(unit_ship, 0))
       ) ae ON ae.event = oe.event
+    `,
+    // Money owed back to customers — open refund tickets (any reason), across
+    // all events (a refund on a closed event still has to be paid out).
+    sql`
+      SELECT
+        COALESCE(SUM(refund_amount), 0)::bigint AS refund_needed,
+        COUNT(*)::int AS refund_count
+      FROM refunds
+      WHERE status IN ('pending', 'awaiting_bank_info', 'ready_to_refund')
+    `,
+    // Items sold all-time — every order across every event (not just the active
+    // set the money cards use), with the total event count for the subline.
+    sql`
+      SELECT
+        COALESCE(SUM(unit), 0)::int AS items_sold,
+        COUNT(DISTINCT event)::int AS event_count
+      FROM orders
     `,
     sql`
       WITH order_aggregates AS (
@@ -227,10 +255,15 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
       customersReadyToShip: readyToShipCount,
     },
     totals: {
-      totalOrders: Number(totalsRow[0]?.total_orders ?? 0),
-      revenue: Number(totalsRow[0]?.revenue ?? 0),
-      collected: Number(totalsRow[0]?.collected ?? 0),
-      operationalCosts: Number(opsCostRow[0]?.operational_costs ?? 0),
+      itemsSold: Number(itemsRow[0]?.items_sold ?? 0),
+      eventCount: Number(itemsRow[0]?.event_count ?? 0),
+      omzet: Number(totalsRow[0]?.omzet ?? 0),
+      invoiceCount: Number(totalsRow[0]?.invoice_count ?? 0),
+      profit: Number(totalsRow[0]?.omzet ?? 0) - Number(opsCostRow[0]?.operational_costs ?? 0),
+      outstanding: Number(totalsRow[0]?.outstanding ?? 0),
+      outstandingCount: Number(totalsRow[0]?.outstanding_count ?? 0),
+      refundNeeded: Number(refundNeededRow[0]?.refund_needed ?? 0),
+      refundCount: Number(refundNeededRow[0]?.refund_count ?? 0),
     },
     events: eventRows.map((r) => ({
       name: r.name as string,
