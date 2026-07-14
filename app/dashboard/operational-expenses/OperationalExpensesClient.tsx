@@ -40,6 +40,13 @@ const CATEGORY_BADGE: Record<ExpenseCategory, string> = {
   Other: "bg-gray-50 text-gray-600",
 }
 
+/** Parses an amount typed with optional thousands commas ("1,500,000" → 1500000).
+ *  Dots stay decimal points ("10.50" → 10.5), matching what type="number" accepted. */
+function parseAmount(s: string): number {
+  const n = Number(s.replace(/,/g, "").trim())
+  return Number.isFinite(n) ? n : 0
+}
+
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10)
 }
@@ -526,11 +533,11 @@ function AddExpenseForm({
   const currencyOptions = eventCurrency ? [IDR, eventCurrency] : [IDR]
   const isIdr = draft.currency === IDR
 
-  const foreignNum = Number(draft.amountForeign) || 0
+  const foreignNum = parseAmount(draft.amountForeign)
   // IDR rows: the single amount IS the rupiah. FX rows: the user enters the
   // actual rupiah paid separately, and the kurs is derived from it (IDR ÷ Valas)
   // rather than pulled from the event's marked-up country kurs.
-  const idrNum = isIdr ? foreignNum : (Number(draft.amountIdr) || 0)
+  const idrNum = isIdr ? foreignNum : parseAmount(draft.amountIdr)
   const derivedRate = isIdr ? 1 : calcRate(idrNum, foreignNum)
 
   // Picking an event/currency only sets the currency now — the kurs is always
@@ -610,13 +617,13 @@ function AddExpenseForm({
           </select>
         </Field>
         <Field label={`Amount (${draft.currency})`}>
-          <input value={draft.amountForeign} onChange={(e) => setDraft((d) => ({ ...d, amountForeign: e.target.value }))} type="number" step="any" min="0" placeholder="0" disabled={adding} className={formInputCls} />
+          <input value={draft.amountForeign} onChange={(e) => setDraft((d) => ({ ...d, amountForeign: e.target.value }))} type="text" inputMode="decimal" placeholder="0" disabled={adding} className={formInputCls} />
         </Field>
         <Field label="IDR">
           <input
             value={isIdr ? draft.amountForeign : draft.amountIdr}
             onChange={(e) => setDraft((d) => ({ ...d, amountIdr: e.target.value }))}
-            type="number" min="0" placeholder="0"
+            type="text" inputMode="decimal" placeholder="0"
             disabled={adding || isIdr}
             title={isIdr ? "IDR expense — same as the amount" : "Actual rupiah paid (used to derive the kurs)"}
             className={`${formInputCls} ${isIdr ? "bg-gray-50 text-gray-400" : ""}`}
@@ -752,10 +759,10 @@ function EditExpenseModal({
   const currencyOptions = foreignCurrency ? [IDR, foreignCurrency] : [IDR]
   const isIdr = draft.currency === IDR
 
-  const foreignNum = Number(draft.amountForeign) || 0
+  const foreignNum = parseAmount(draft.amountForeign)
   // IDR rows: the amount IS the rupiah. FX rows: the actual rupiah paid is its
   // own input, and the kurs is derived (IDR ÷ Valas), not the country's kurs.
-  const idrNum = isIdr ? foreignNum : (Number(draft.amountIdr) || 0)
+  const idrNum = isIdr ? foreignNum : parseAmount(draft.amountIdr)
   const derivedRate = isIdr ? 1 : calcRate(idrNum, foreignNum)
 
   function pickEvent(name: string) {
@@ -832,13 +839,13 @@ function EditExpenseModal({
             </select>
           </Field>
           <Field label={`Amount (${draft.currency})`}>
-            <input value={draft.amountForeign} onChange={(e) => setDraft((d) => ({ ...d, amountForeign: e.target.value }))} type="number" step="any" min="0" disabled={saving} className={formInputCls} />
+            <input value={draft.amountForeign} onChange={(e) => setDraft((d) => ({ ...d, amountForeign: e.target.value }))} type="text" inputMode="decimal" disabled={saving} className={formInputCls} />
           </Field>
           <Field label="IDR">
             <input
               value={isIdr ? draft.amountForeign : draft.amountIdr}
               onChange={(e) => setDraft((d) => ({ ...d, amountIdr: e.target.value }))}
-              type="number" min="0"
+              type="text" inputMode="decimal"
               disabled={saving || isIdr}
               title={isIdr ? "IDR expense — same as the amount" : "Actual rupiah paid (used to derive the kurs)"}
               className={`${formInputCls} ${isIdr ? "bg-gray-50 text-gray-400" : ""}`}
