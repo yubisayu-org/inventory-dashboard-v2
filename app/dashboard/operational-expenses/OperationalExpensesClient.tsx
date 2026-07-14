@@ -40,6 +40,13 @@ const CATEGORY_BADGE: Record<ExpenseCategory, string> = {
   Other: "bg-gray-50 text-gray-600",
 }
 
+/** Parses an amount typed with optional thousands commas ("1,500,000" → 1500000).
+ *  Dots stay decimal points ("10.50" → 10.5), matching what type="number" accepted. */
+function parseAmount(s: string): number {
+  const n = Number(s.replace(/,/g, "").trim())
+  return Number.isFinite(n) ? n : 0
+}
+
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10)
 }
@@ -57,6 +64,13 @@ function formatDate(iso: string): string {
 function calcRate(idr: number, foreign: number): number {
   if (!foreign) return 0
   return Math.round(((Number(idr) || 0) / foreign) * 100) / 100
+}
+
+/** Infers a row's currency from its stored kurs: 1 = paid in IDR, otherwise the
+ *  event's foreign currency (or "FX" if the event has no country recorded). */
+function inferCurrency(row: OperationalExpenseRow, events: EventOption[]): string {
+  if (Number(row.rate) === 1) return IDR
+  return events.find((e) => e.name === row.event)?.currency || "FX"
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -94,6 +108,10 @@ export default function OperationalExpensesClient() {
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: PAGE_SIZE })
 
   const [mobileAddOpen, setMobileAddOpen] = useState(false)
+  // Set when "Duplicate" is clicked on a row — seeds the Add form with that
+  // row's fields (fresh date, unsettled) so a similar entry can be added fast.
+  const [duplicateSeed, setDuplicateSeed] = useState<{ row: OperationalExpenseRow; version: number } | null>(null)
+  const addFormRef = useRef<HTMLDivElement>(null)
 
   const loadMeta = useCallback(async () => {
     try {
@@ -165,6 +183,13 @@ export default function OperationalExpensesClient() {
   }, [])
 
   const mobileIdDesc = (sorting.find((s) => s.id === "id")?.desc) ?? true
+
+  // Seed the Add form (desktop: scroll to it; mobile: open the add sheet).
+  const handleDuplicate = useCallback((row: OperationalExpenseRow) => {
+    setDuplicateSeed({ row, version: Date.now() })
+    setMobileAddOpen(true)
+    addFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+  }, [])
 
   const columns = useMemo<ColumnDef<OperationalExpenseRow, unknown>[]>(() => [
     { accessorKey: "id", header: "ID", enableColumnFilter: false, size: 60 },
@@ -253,10 +278,11 @@ export default function OperationalExpensesClient() {
           methods={methods}
           onUpdated={() => refreshRef.current()}
           onDeleted={() => refreshRef.current()}
+          onDuplicate={handleDuplicate}
         />
       ),
     },
-  ], [events, methods])
+  ], [events, methods, handleDuplicate])
 
   const refreshButton = (
     <button
@@ -274,8 +300,8 @@ export default function OperationalExpensesClient() {
   return (
     <div className="flex flex-col gap-6">
       {/* Add form (desktop) */}
-      <div className="hidden md:block">
-        <AddExpenseForm events={events} methods={methods} onAdded={reloadAll} />
+      <div className="hidden md:block" ref={addFormRef}>
+        <AddExpenseForm events={events} methods={methods} onAdded={reloadAll} seed={duplicateSeed} />
       </div>
 
       {errorMsg && (
@@ -364,6 +390,7 @@ export default function OperationalExpensesClient() {
                   methods={methods}
                   onUpdated={() => refreshRef.current()}
                   onDeleted={() => refreshRef.current()}
+                  onDuplicate={handleDuplicate}
                 />
               </div>
             </div>
@@ -399,7 +426,7 @@ export default function OperationalExpensesClient() {
               </button>
             </div>
             <div className="px-3 pb-8">
-              <AddExpenseForm events={events} methods={methods} onAdded={() => { setMobileAddOpen(false); reloadAll() }} />
+              <AddExpenseForm events={events} methods={methods} onAdded={() => { setMobileAddOpen(false); reloadAll() }} seed={duplicateSeed} />
             </div>
           </div>
         </div>
@@ -512,25 +539,48 @@ function AddExpenseForm({
   events,
   methods,
   onAdded,
+  seed,
 }: {
   events: EventOption[]
   methods: string[]
   onAdded: () => void
+  seed?: { row: OperationalExpenseRow; version: number } | null
 }) {
   const [draft, setDraft] = useState(emptyDraft)
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
+
+  // Duplicate: refill from the source row, but with a fresh date and unsettled
+  // — it's a new expense, not the same payment recorded twice.
+  useEffect(() => {
+    if (!seed) return
+    const r = seed.row
+    setDraft({
+      event: r.event,
+      expenseDate: todayIso(),
+      description: r.description,
+      category: r.category,
+      currency: inferCurrency(r, events),
+      amountForeign: String(r.amountForeign),
+      rate: String(r.rate),
+      amountIdr: String(r.amountIdr),
+      isSettled: false,
+      method: r.method,
+    })
+    setAddError(null)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seed?.version])
 
   const selectedEvent = events.find((e) => e.name === draft.event)
   const eventCurrency = selectedEvent?.currency || ""
   const currencyOptions = eventCurrency ? [IDR, eventCurrency] : [IDR]
   const isIdr = draft.currency === IDR
 
-  const foreignNum = Number(draft.amountForeign) || 0
+  const foreignNum = parseAmount(draft.amountForeign)
   // IDR rows: the single amount IS the rupiah. FX rows: the user enters the
   // actual rupiah paid separately, and the kurs is derived from it (IDR ÷ Valas)
   // rather than pulled from the event's marked-up country kurs.
-  const idrNum = isIdr ? foreignNum : (Number(draft.amountIdr) || 0)
+  const idrNum = isIdr ? foreignNum : parseAmount(draft.amountIdr)
   const derivedRate = isIdr ? 1 : calcRate(idrNum, foreignNum)
 
   // Picking an event/currency only sets the currency now — the kurs is always
@@ -610,13 +660,13 @@ function AddExpenseForm({
           </select>
         </Field>
         <Field label={`Amount (${draft.currency})`}>
-          <input value={draft.amountForeign} onChange={(e) => setDraft((d) => ({ ...d, amountForeign: e.target.value }))} type="number" step="any" min="0" placeholder="0" disabled={adding} className={formInputCls} />
+          <input value={draft.amountForeign} onChange={(e) => setDraft((d) => ({ ...d, amountForeign: e.target.value }))} type="text" inputMode="decimal" placeholder="0" disabled={adding} className={formInputCls} />
         </Field>
         <Field label="IDR">
           <input
             value={isIdr ? draft.amountForeign : draft.amountIdr}
             onChange={(e) => setDraft((d) => ({ ...d, amountIdr: e.target.value }))}
-            type="number" min="0" placeholder="0"
+            type="text" inputMode="decimal" placeholder="0"
             disabled={adding || isIdr}
             title={isIdr ? "IDR expense — same as the amount" : "Actual rupiah paid (used to derive the kurs)"}
             className={`${formInputCls} ${isIdr ? "bg-gray-50 text-gray-400" : ""}`}
@@ -658,12 +708,14 @@ function ExpenseActions({
   methods,
   onUpdated,
   onDeleted,
+  onDuplicate,
 }: {
   row: OperationalExpenseRow
   events: EventOption[]
   methods: string[]
   onUpdated: () => void
   onDeleted: () => void
+  onDuplicate: (row: OperationalExpenseRow) => void
 }) {
   const [editing, setEditing] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -704,6 +756,12 @@ function ExpenseActions({
           <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
         </svg>
       </button>
+      <button type="button" onClick={() => onDuplicate(row)} title="Duplicate — prefill the Add form with this row" className="text-gray-400 hover:text-brand transition-colors">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="9" y="9" width="13" height="13" rx="2" />
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+        </svg>
+      </button>
       <button type="button" onClick={handleDelete} disabled={deleting} title="Delete" className="text-gray-400 hover:text-red-500 disabled:opacity-50 transition-colors">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
@@ -729,15 +787,12 @@ function EditExpenseModal({
   onSave: () => void
   onCancel: () => void
 }) {
-  // Infer the row's currency from its stored kurs: 1 = paid in IDR, otherwise the
-  // event's foreign currency (or "FX" if the event has no country recorded).
-  const rowForeign = events.find((e) => e.name === row.event)?.currency || (Number(row.rate) !== 1 ? "FX" : "")
   const [draft, setDraft] = useState({
     event: row.event,
     expenseDate: row.expenseDate,
     description: row.description,
     category: row.category,
-    currency: Number(row.rate) === 1 ? IDR : (rowForeign || "FX"),
+    currency: inferCurrency(row, events),
     amountForeign: String(row.amountForeign),
     rate: String(row.rate),
     amountIdr: String(row.amountIdr),
@@ -752,10 +807,10 @@ function EditExpenseModal({
   const currencyOptions = foreignCurrency ? [IDR, foreignCurrency] : [IDR]
   const isIdr = draft.currency === IDR
 
-  const foreignNum = Number(draft.amountForeign) || 0
+  const foreignNum = parseAmount(draft.amountForeign)
   // IDR rows: the amount IS the rupiah. FX rows: the actual rupiah paid is its
   // own input, and the kurs is derived (IDR ÷ Valas), not the country's kurs.
-  const idrNum = isIdr ? foreignNum : (Number(draft.amountIdr) || 0)
+  const idrNum = isIdr ? foreignNum : parseAmount(draft.amountIdr)
   const derivedRate = isIdr ? 1 : calcRate(idrNum, foreignNum)
 
   function pickEvent(name: string) {
@@ -832,13 +887,13 @@ function EditExpenseModal({
             </select>
           </Field>
           <Field label={`Amount (${draft.currency})`}>
-            <input value={draft.amountForeign} onChange={(e) => setDraft((d) => ({ ...d, amountForeign: e.target.value }))} type="number" step="any" min="0" disabled={saving} className={formInputCls} />
+            <input value={draft.amountForeign} onChange={(e) => setDraft((d) => ({ ...d, amountForeign: e.target.value }))} type="text" inputMode="decimal" disabled={saving} className={formInputCls} />
           </Field>
           <Field label="IDR">
             <input
               value={isIdr ? draft.amountForeign : draft.amountIdr}
               onChange={(e) => setDraft((d) => ({ ...d, amountIdr: e.target.value }))}
-              type="number" min="0"
+              type="text" inputMode="decimal"
               disabled={saving || isIdr}
               title={isIdr ? "IDR expense — same as the amount" : "Actual rupiah paid (used to derive the kurs)"}
               className={`${formInputCls} ${isIdr ? "bg-gray-50 text-gray-400" : ""}`}

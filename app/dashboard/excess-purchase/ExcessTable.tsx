@@ -326,6 +326,53 @@ export default function ExcessTable() {
     [busyRow, pendingRow],
   )
 
+  const renderMobileCard = useCallback((r: ExcessRow) => {
+    const busy = busyRow === r.rowNumber
+    const isPending = pendingRow === r.rowNumber
+    return (
+      <div className="rounded-xl border border-cream-border bg-white p-3.5 flex flex-col gap-2">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-sm text-foreground truncate">{r.items}</div>
+            {r.expectedItem && (
+              <div className="text-[11px] text-yellow-700 truncate">expected: {r.expectedItem}</div>
+            )}
+            <div className="text-xs text-gray-400 mt-0.5">{r.event}{r.receipt ? ` · ${r.receipt}` : ""}</div>
+          </div>
+          <div className="flex flex-col items-end gap-1 shrink-0">
+            <ReasonBadge reason={r.reason} />
+            <span className="text-sm font-semibold tabular-nums text-foreground">{fmt(r.unitBuy)}</span>
+          </div>
+        </div>
+        <div className="flex items-center justify-end gap-3 pt-1 border-t border-cream-border/60">
+          {r.reason === "broken" ? (
+            <span className="text-[11px] text-gray-400 italic mr-auto">Not sellable</span>
+          ) : (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); isPending ? cancelPending() : openPending(r.rowNumber) }}
+              disabled={busy || busyRow !== null}
+              className="mr-auto inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md bg-brand text-white hover:bg-brand-hover transition-colors disabled:opacity-50"
+            >
+              {busy ? "Applying…" : isPending ? "Cancel" : "Apply"}
+            </button>
+          )}
+          <button type="button" onClick={(e) => { e.stopPropagation(); setEditRow(r) }} title="Edit" className="text-gray-400 hover:text-brand transition-colors p-1">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
+            </svg>
+          </button>
+          <button type="button" onClick={(e) => { e.stopPropagation(); setDeleteRow(r); setDeleteError(null) }} title="Delete" className="text-gray-400 hover:text-red-500 transition-colors p-1">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    )
+  }, [busyRow, pendingRow])
+
   // Find the row object for the pending modal
   const pendingExcessRow = pendingRow != null ? rows.find((r) => r.rowNumber === pendingRow) : null
 
@@ -423,6 +470,7 @@ export default function ExcessTable() {
         columns={columns}
         getRowId={(row) => String(row.rowNumber)}
         searchPlaceholder="Search event, item, receipt…"
+        renderMobileCard={renderMobileCard}
         serverSide={{
           rowCount: totalCount,
           loading: fetchState.loading,
@@ -750,28 +798,30 @@ function ApplyResultBanner({
 
       {/* Filled rows */}
       {filled.length > 0 && (
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="border-b border-inherit text-left">
-              <th className="px-4 py-2 font-medium text-gray-500 w-8">#</th>
-              <th className="px-4 py-2 font-medium text-gray-500">Customer</th>
-              <th className="px-4 py-2 font-medium text-gray-500 text-right">Unit Buy</th>
-              <th className="px-4 py-2 w-20"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {filled.map((row, i) => (
-              <tr key={row.rowNumber} className="border-b border-inherit last:border-0">
-                <td className="px-4 py-2 text-gray-400">{i + 1}</td>
-                <td className="px-4 py-2 text-foreground">{displayIg(row.customer)}</td>
-                <td className="px-4 py-2 text-foreground text-right font-semibold tabular-nums">{row.unitBuy}</td>
-                <td className="px-4 py-2 text-right text-gray-400">
-                  {row.oldUnitBuy > 0 && `(was ${row.oldUnitBuy})`}
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs min-w-[420px]">
+            <thead>
+              <tr className="border-b border-inherit text-left">
+                <th className="px-4 py-2 font-medium text-gray-500 w-8">#</th>
+                <th className="px-4 py-2 font-medium text-gray-500">Customer</th>
+                <th className="px-4 py-2 font-medium text-gray-500 text-right">Unit Buy</th>
+                <th className="px-4 py-2 w-20"></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {filled.map((row, i) => (
+                <tr key={row.rowNumber} className="border-b border-inherit last:border-0">
+                  <td className="px-4 py-2 text-gray-400">{i + 1}</td>
+                  <td className="px-4 py-2 text-foreground">{displayIg(row.customer)}</td>
+                  <td className="px-4 py-2 text-foreground text-right font-semibold tabular-nums">{row.unitBuy}</td>
+                  <td className="px-4 py-2 text-right text-gray-400">
+                    {row.oldUnitBuy > 0 && `(was ${row.oldUnitBuy})`}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   )
@@ -837,20 +887,22 @@ function BulkResultBanner({
                   )}
                 </div>
               </div>
-              <table className="w-full text-xs">
-                <tbody>
-                  {item.filled.map((row, i) => (
-                    <tr key={row.rowNumber} className="border-t border-inherit">
-                      <td className="px-4 py-2 text-gray-400 w-8">{i + 1}</td>
-                      <td className="px-4 py-2 text-foreground">{displayIg(row.customer)}</td>
-                      <td className="px-4 py-2 text-foreground text-right font-semibold tabular-nums">{row.unitBuy}</td>
-                      <td className="px-4 py-2 text-right text-gray-400 w-20">
-                        {row.oldUnitBuy > 0 && `(was ${row.oldUnitBuy})`}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs min-w-[420px]">
+                  <tbody>
+                    {item.filled.map((row, i) => (
+                      <tr key={row.rowNumber} className="border-t border-inherit">
+                        <td className="px-4 py-2 text-gray-400 w-8">{i + 1}</td>
+                        <td className="px-4 py-2 text-foreground">{displayIg(row.customer)}</td>
+                        <td className="px-4 py-2 text-foreground text-right font-semibold tabular-nums">{row.unitBuy}</td>
+                        <td className="px-4 py-2 text-right text-gray-400 w-20">
+                          {row.oldUnitBuy > 0 && `(was ${row.oldUnitBuy})`}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           ))}
         </div>

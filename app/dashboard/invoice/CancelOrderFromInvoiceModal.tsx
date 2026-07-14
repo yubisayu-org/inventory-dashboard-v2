@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import type { InvoiceOrderLine } from "@/lib/db"
+import { useModalDismiss } from "@/hooks/useModalDismiss"
 
 // ─── Cancel order from invoice modal ─────────────────────────────────────────
 //
@@ -25,6 +26,8 @@ export function CancelOrderFromInvoiceModal({
   onClose: () => void
   onCancelled: () => void
 }) {
+  useModalDismiss(onClose)
+
   const [qty, setQty] = useState(String(line.unit))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)

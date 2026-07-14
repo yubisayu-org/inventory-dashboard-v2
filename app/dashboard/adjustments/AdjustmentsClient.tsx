@@ -159,6 +159,26 @@ export default function AdjustmentsClient() {
     },
   ], [])
 
+  const renderMobileCard = useCallback((row: AdjustmentRow) => (
+    <div className="rounded-xl border border-cream-border bg-white p-3.5 flex items-center justify-between gap-3">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-semibold text-foreground">{displayIg(row.customer)}</span>
+          <span className="text-xs text-gray-400">{row.event}</span>
+        </div>
+        <div className="text-xs text-gray-500 mt-0.5 truncate">{row.description || "—"}</div>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <span className={`text-sm font-semibold tabular-nums ${row.amount < 0 ? "text-red-500" : "text-foreground"}`}>
+          {row.amount < 0 ? `−${formatAmount(Math.abs(row.amount))}` : formatAmount(row.amount)}
+        </span>
+        <button onClick={(e) => { e.stopPropagation(); setEditingRow(row) }} className="text-xs text-brand font-medium hover:underline shrink-0">
+          Edit
+        </button>
+      </div>
+    </div>
+  ), [])
+
   if (fetchState.error) {
     return (
       <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-red-500">
@@ -184,6 +204,7 @@ export default function AdjustmentsClient() {
         searchPlaceholder="Search adjustments..."
         getRowId={(row) => String(row.rowNumber)}
         initialVisibility={{ updatedAt: false }}
+        renderMobileCard={renderMobileCard}
         toolbarExtra={
           <>
             {filteredSum !== null && (

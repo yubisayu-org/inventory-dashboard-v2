@@ -19,7 +19,7 @@ const TABS: Tab[] = [
     ),
   },
   {
-    href: "/dashboard/duplicate-form",
+    href: "/dashboard/list-order",
     label: "List Order",
     roles: ["admin", "owner"],
     icon: (

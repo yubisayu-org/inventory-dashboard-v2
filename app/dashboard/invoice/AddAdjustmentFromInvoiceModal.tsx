@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react"
 import { displayIg } from "@/lib/format"
 import SearchableSelect from "@/components/SearchableSelect"
+import { useModalDismiss } from "@/hooks/useModalDismiss"
 import { descriptionOptions, AmountSignHint } from "../adjustments/shared"
 
 const INPUT_CLASS =
@@ -19,6 +20,8 @@ export function AddAdjustmentFromInvoiceModal({
   onClose: () => void
   onSaved: () => void
 }) {
+  useModalDismiss(onClose)
+
   const [description, setDescription] = useState("")
   const [amount, setAmount] = useState("")
   const [saving, setSaving] = useState(false)

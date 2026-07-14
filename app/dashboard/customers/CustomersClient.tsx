@@ -302,6 +302,43 @@ export default function CustomersClient() {
     },
   ], [warehouses])
 
+  const renderMobileCard = useCallback((row: CustomerRow) => {
+    const hasAddress = Boolean(row.dataDiri && row.dataDiri.trim())
+    return (
+      <div className="rounded-xl border border-cream-border bg-white p-3.5 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5">
+            <span className="text-sm font-semibold text-foreground tabular-nums">{displayIg(row.instagramId)}</span>
+            {!hasAddress && (
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-500 shrink-0" aria-label="No address filled">
+                <title>No address filled</title>
+                <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+            )}
+          </div>
+          <div className="text-xs text-gray-500 mt-0.5 truncate">{row.name || "—"}{row.whatsapp ? ` · ${row.whatsapp}` : ""}</div>
+        </div>
+        <div className="flex items-center gap-3 shrink-0">
+          <button type="button" onClick={(e) => { e.stopPropagation(); setEditRow(row) }} title="Edit" className="text-gray-400 hover:text-brand transition-colors">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
+            </svg>
+          </button>
+          <button type="button" onClick={(e) => { e.stopPropagation(); handleDelete(row) }} title="Delete" className="text-gray-400 hover:text-red-500 transition-colors">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 6h18" />
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+              <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    )
+  }, [])
+
   const toolbarExtra = (
     <>
       <button
@@ -315,7 +352,7 @@ export default function CustomersClient() {
       <button
         type="button"
         onClick={() => setCreating(true)}
-        className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 transition-colors"
+        className="hidden md:inline-flex px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 transition-colors"
       >
         + Add Customer
       </button>
@@ -337,6 +374,7 @@ export default function CustomersClient() {
         searchPlaceholder="Search customers…"
         toolbarExtra={toolbarExtra}
         initialVisibility={{ updatedAt: false }}
+        renderMobileCard={renderMobileCard}
         serverSide={{
           rowCount: totalCount,
           loading: fetchState.loading,
@@ -350,6 +388,16 @@ export default function CustomersClient() {
           onPaginationChange: setPagination,
         }}
       />
+
+      {/* Mobile add FAB */}
+      <button
+        type="button"
+        onClick={() => setCreating(true)}
+        aria-label="Add customer"
+        className="md:hidden fixed right-4 bottom-20 z-30 w-14 h-14 rounded-full bg-brand text-white text-3xl leading-none shadow-lg flex items-center justify-center active:bg-brand/90"
+      >
+        +
+      </button>
 
       {creating && (
         <CustomerModal

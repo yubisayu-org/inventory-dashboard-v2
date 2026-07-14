@@ -6,7 +6,7 @@ import type { Role } from "./roles"
  * protection) and the sidebar (link visibility), so the two cannot drift apart.
  */
 export const ADMIN_ROUTES = [
-  "/dashboard/duplicate-form", // List Order
+  "/dashboard/list-order",
   "/dashboard/invoice",
   "/dashboard/payments",
   "/dashboard/adjustments",
@@ -18,7 +18,7 @@ export const ADMIN_ROUTES = [
 ] as const
 
 /** Where an admin lands after login and when redirected off a blocked route. */
-export const ADMIN_HOME = "/dashboard/duplicate-form"
+export const ADMIN_HOME = "/dashboard/list-order"
 
 export function canAccessRoute(role: Role, pathname: string): boolean {
   if (role === "owner") return true

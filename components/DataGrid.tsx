@@ -19,7 +19,7 @@ import {
   type PaginationState,
   type OnChangeFn,
 } from "@tanstack/react-table"
-import { useState, useRef, useEffect, useCallback, useMemo } from "react"
+import { Fragment, useState, useRef, useEffect, useCallback, useMemo } from "react"
 
 // Register our custom filter keys with the table types so a column can say
 // `filterFn: "numeric"` (etc.) directly — no `as unknown as undefined` cast.
@@ -68,7 +68,7 @@ export { numericFilter, textContainsFilter, booleanFilter }
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
-export type { ColumnDef, Row, RowSelectionState, SortingState, ColumnFiltersState, PaginationState }
+export type { ColumnDef, Row, RowSelectionState, SortingState, ColumnFiltersState, PaginationState, VisibilityState }
 
 /** Server-side mode — data is already filtered/sorted/paginated by the server */
 export interface ServerSideConfig {
@@ -96,12 +96,40 @@ interface DataGridProps<T> {
   pageSize?: number
   /** Global search placeholder */
   searchPlaceholder?: string
+  /** Hide the built-in search box — use when the caller renders its own
+   *  search input elsewhere and drives filtering externally (via `data`). */
+  hideSearch?: boolean
+  /** Hide the entire toolbar row (search, active-filter chips, toolbarExtra,
+   *  row count, column visibility). Per-column filter buttons in the header
+   *  still work — their popover clears the value even without the toolbar's
+   *  "clear all" chip. Use when the caller renders equivalent controls
+   *  elsewhere and an empty leftover toolbar row would look disconnected. */
+  hideToolbar?: boolean
   /** Extra toolbar content rendered before the column visibility button */
   toolbarExtra?: React.ReactNode
+  /** Content rendered as its own full-width row between the toolbar and the
+   *  table — e.g. filter chips or a summary line that should sit under the
+   *  search/column-visibility row rather than inline with it. */
+  belowToolbar?: React.ReactNode
   /** Row key accessor — defaults to (row) => row.id */
   getRowId?: (row: T) => string
   /** Optional initial column visibility */
   initialVisibility?: VisibilityState
+  /** Controlled column visibility — pair with onColumnVisibilityChange to own
+   *  the state externally (e.g. to render the Columns menu elsewhere). */
+  columnVisibility?: VisibilityState
+  /** Callback when column visibility changes (controlled mode) */
+  onColumnVisibilityChange?: (visibility: VisibilityState) => void
+  /** Hide the built-in Columns button — use when the caller renders its own
+   *  via the exported <ColumnVisibilityMenu> elsewhere (needs controlled
+   *  columnVisibility/onColumnVisibilityChange above to stay in sync). */
+  hideColumnVisibility?: boolean
+  /** Hide the built-in "N rows" count — use when the caller renders it
+   *  elsewhere via onFilteredRowCountChange below. */
+  hideRowCount?: boolean
+  /** Fires whenever the filtered (post-search) row count changes, so the
+   *  caller can mirror "N rows" outside the toolbar (e.g. with hideRowCount). */
+  onFilteredRowCountChange?: (count: number) => void
   /** Optional initial sorting */
   initialSorting?: SortingState
   /** Enable row selection with checkboxes */
@@ -115,6 +143,14 @@ interface DataGridProps<T> {
   onRowClick?: (row: T) => void
   /** Server-side mode configuration */
   serverSide?: ServerSideConfig
+  /** Optional per-row mobile card renderer. When provided, the table becomes
+   *  desktop-only (`hidden md:block`) and this renders a `md:hidden` stacked
+   *  card list instead, using the same filtered/sorted/paginated row set. */
+  renderMobileCard?: (row: T) => React.ReactNode
+  /** Optional expanded-row renderer. Adds a chevron column; clicking it
+   *  toggles a full-width detail row below. Desktop table only — mobile
+   *  cards ignore it (pair with onRowClick/renderMobileCard for mobile). */
+  renderExpandedRow?: (row: T) => React.ReactNode
 }
 
 // ─── Component ─────────────────────────────────────────────────────────────
@@ -124,22 +160,40 @@ export default function DataGrid<T>({
   columns,
   pageSize = 25,
   searchPlaceholder = "Search…",
+  hideSearch,
+  hideToolbar,
   toolbarExtra,
+  belowToolbar,
   getRowId,
   initialVisibility,
+  columnVisibility: controlledColumnVisibility,
+  onColumnVisibilityChange,
+  hideColumnVisibility,
+  hideRowCount,
+  onFilteredRowCountChange,
   initialSorting,
   enableRowSelection,
   rowSelection: controlledRowSelection,
   onRowSelectionChange,
   onRowClick,
   serverSide,
+  renderMobileCard,
+  renderExpandedRow,
 }: DataGridProps<T>) {
   // Client-side state (ignored when serverSide is provided)
   const [sorting, setSorting] = useState<SortingState>(initialSorting ?? [])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(initialVisibility ?? {})
+  const [internalColumnVisibility, setInternalColumnVisibility] = useState<VisibilityState>(initialVisibility ?? {})
+  const columnVisibility = controlledColumnVisibility ?? internalColumnVisibility
+  const setColumnVisibility = useCallback((updater: VisibilityState | ((old: VisibilityState) => VisibilityState)) => {
+    const next = typeof updater === "function" ? updater(controlledColumnVisibility ?? internalColumnVisibility) : updater
+    if (onColumnVisibilityChange) onColumnVisibilityChange(next)
+    else setInternalColumnVisibility(next)
+  }, [controlledColumnVisibility, internalColumnVisibility, onColumnVisibilityChange])
   const [globalFilter, setGlobalFilter] = useState("")
   const [internalRowSelection, setInternalRowSelection] = useState<RowSelectionState>({})
+  // Expanded detail rows, keyed by row id (stable via getRowId).
+  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({})
 
   const rowSelection = controlledRowSelection ?? internalRowSelection
   const setRowSelection = useCallback((updater: RowSelectionState | ((old: RowSelectionState) => RowSelectionState)) => {
@@ -192,6 +246,11 @@ export default function DataGrid<T>({
   const pageCount = table.getPageCount()
   const currentPage = table.getState().pagination.pageIndex + 1
 
+  useEffect(() => {
+    onFilteredRowCountChange?.(totalRows)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [totalRows])
+
   // Client-side mode: with autoResetPageIndex off (so edits keep the current
   // page), still jump to page 1 when the filter/search/sort changes...
   useEffect(() => {
@@ -212,37 +271,47 @@ export default function DataGrid<T>({
   return (
     <div className="flex flex-col gap-4">
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-3">
-        {/* Global search */}
-        <div className="relative">
-          <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="11" cy="11" r="8" />
-            <path d="m21 21-4.35-4.35" />
-          </svg>
-          <input
-            type="text"
-            value={table.getState().globalFilter ?? ""}
-            onChange={(e) => table.setGlobalFilter(e.target.value)}
-            placeholder={searchPlaceholder}
-            className="border border-cream-border rounded-lg pl-8 pr-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors w-56"
-          />
+      {!hideToolbar && (
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Global search */}
+          {!hideSearch && (
+            <div className="relative">
+              <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8" />
+                <path d="m21 21-4.35-4.35" />
+              </svg>
+              <input
+                type="text"
+                value={table.getState().globalFilter ?? ""}
+                onChange={(e) => table.setGlobalFilter(e.target.value)}
+                placeholder={searchPlaceholder}
+                className="border border-cream-border rounded-lg pl-8 pr-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors w-56"
+              />
+            </div>
+          )}
+
+          {/* Active filters */}
+          <ActiveFilters table={table} />
+
+          {toolbarExtra}
+
+          <div className="flex-1" />
+
+          {!hideRowCount && (
+            <span className="text-xs text-gray-400">{totalRows} rows</span>
+          )}
+
+          {/* Column visibility */}
+          {!hideColumnVisibility && (
+            <ColumnVisibilityMenu columns={columns} columnVisibility={columnVisibility} onColumnVisibilityChange={setColumnVisibility} />
+          )}
         </div>
+      )}
 
-        {/* Active filters */}
-        <ActiveFilters table={table} />
+      {belowToolbar}
 
-        {toolbarExtra}
-
-        <div className="flex-1" />
-
-        <span className="text-xs text-gray-400">{totalRows} rows</span>
-
-        {/* Column visibility */}
-        <ColumnVisibilityMenu table={table} />
-      </div>
-
-      {/* Table */}
-      <div className="rounded-xl border border-cream-border bg-white overflow-hidden">
+      {/* Table (desktop-only when a mobile card renderer is supplied) */}
+      <div className={`rounded-xl border border-cream-border bg-white overflow-hidden ${renderMobileCard ? "hidden md:block" : ""}`}>
         <div className="overflow-x-auto relative">
           {ss?.loading && data.length > 0 && (
             <div className="absolute inset-0 bg-white/60 z-10 flex items-center justify-center">
@@ -256,6 +325,7 @@ export default function DataGrid<T>({
             <thead>
               {table.getHeaderGroups().map((hg) => (
                 <tr key={hg.id} className="text-left text-xs text-gray-500 border-b border-cream-border bg-cream">
+                  {renderExpandedRow && <th className="pl-3 pr-0 py-3 w-8" />}
                   {enableRowSelection && (
                     <th className="pl-4 pr-2 py-3 w-10">
                       <input
@@ -294,17 +364,34 @@ export default function DataGrid<T>({
             <tbody>
               {table.getRowModel().rows.length === 0 ? (
                 <tr>
-                  <td colSpan={table.getVisibleLeafColumns().length + (enableRowSelection ? 1 : 0)} className="px-4 py-12 text-center text-gray-400 text-sm">
+                  <td colSpan={table.getVisibleLeafColumns().length + (enableRowSelection ? 1 : 0) + (renderExpandedRow ? 1 : 0)} className="px-4 py-12 text-center text-gray-400 text-sm">
                     No data found.
                   </td>
                 </tr>
               ) : (
-                table.getRowModel().rows.map((row) => (
+                table.getRowModel().rows.map((row) => {
+                  const isExpanded = Boolean(renderExpandedRow && expandedRows[row.id])
+                  return (
+                  <Fragment key={row.id}>
                   <tr
-                    key={row.id}
                     onClick={onRowClick ? () => onRowClick(row.original) : undefined}
-                    className={`border-b border-cream-border/60 transition-colors ${enableRowSelection && row.getIsSelected() ? "bg-brand-light/20" : "hover:bg-cream/30"} ${onRowClick ? "cursor-pointer" : ""}`}
+                    className={`border-b border-cream-border/60 transition-colors ${enableRowSelection && row.getIsSelected() ? "bg-brand-light/20" : "hover:bg-cream/30"} ${onRowClick ? "cursor-pointer" : ""} ${isExpanded ? "bg-cream/30" : ""}`}
                   >
+                    {renderExpandedRow && (
+                      <td className="pl-3 pr-0 py-3">
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setExpandedRows((prev) => ({ ...prev, [row.id]: !prev[row.id] })) }}
+                          aria-label={isExpanded ? "Collapse row" : "Expand row"}
+                          aria-expanded={isExpanded}
+                          className="p-1 text-gray-400 hover:text-brand transition-colors rounded"
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform ${isExpanded ? "rotate-90" : ""}`}>
+                            <path d="m9 18 6-6-6-6" />
+                          </svg>
+                        </button>
+                      </td>
+                    )}
                     {enableRowSelection && (
                       <td className="pl-4 pr-2 py-3">
                         <input
@@ -325,12 +412,49 @@ export default function DataGrid<T>({
                       )
                     })}
                   </tr>
-                ))
+                  {isExpanded && renderExpandedRow && (
+                    <tr className="border-b border-cream-border/60">
+                      <td colSpan={table.getVisibleLeafColumns().length + 1 + (enableRowSelection ? 1 : 0)} className="p-0">
+                        {renderExpandedRow(row.original)}
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
+                  )
+                })
               )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {/* Cards (mobile-only) */}
+      {renderMobileCard && (
+        <div className="md:hidden flex flex-col gap-2.5">
+          {table.getRowModel().rows.length === 0 ? (
+            <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">No data found.</div>
+          ) : (
+            table.getRowModel().rows.map((row) => (
+              <div key={row.id} className="flex items-start gap-2">
+                {enableRowSelection && (
+                  <input
+                    type="checkbox"
+                    checked={row.getIsSelected()}
+                    onChange={row.getToggleSelectedHandler()}
+                    className="mt-4 shrink-0 rounded border-gray-300 text-brand focus:ring-brand/30 cursor-pointer"
+                  />
+                )}
+                <div
+                  onClick={onRowClick ? () => onRowClick(row.original) : undefined}
+                  className={`flex-1 min-w-0 ${onRowClick ? "cursor-pointer" : ""}`}
+                >
+                  {renderMobileCard(row.original)}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
 
       {/* Pagination */}
       {pageCount > 1 && (
@@ -580,7 +704,19 @@ function ActiveFilters<T>({ table }: { table: TanTable<T> }) {
 
 // ─── Column visibility ─────────────────────────────────────────────────────
 
-function ColumnVisibilityMenu<T>({ table }: { table: TanTable<T> }) {
+/** Standalone — needs only the column defs and a visibility map, not a live
+ *  table instance, so it can be rendered by DataGrid itself or, in controlled
+ *  mode (columnVisibility/onColumnVisibilityChange on DataGrid), by the
+ *  caller anywhere else in the page. */
+export function ColumnVisibilityMenu<T>({
+  columns,
+  columnVisibility,
+  onColumnVisibilityChange,
+}: {
+  columns: ColumnDef<T, unknown>[]
+  columnVisibility: VisibilityState
+  onColumnVisibilityChange: (visibility: VisibilityState) => void
+}) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const btnRef = useRef<HTMLButtonElement>(null)
@@ -596,9 +732,15 @@ function ColumnVisibilityMenu<T>({ table }: { table: TanTable<T> }) {
     return () => document.removeEventListener("mousedown", handleClick)
   }, [open])
 
-  const allColumns = table.getAllLeafColumns().filter((c) => c.getCanHide())
+  const hideableColumns = columns
+    .filter((c) => c.enableHiding !== false)
+    .map((c) => ({
+      id: (c.id ?? (c as { accessorKey?: string }).accessorKey) as string | undefined,
+      header: typeof c.header === "string" ? c.header : (c.id ?? (c as { accessorKey?: string }).accessorKey),
+    }))
+    .filter((c): c is { id: string; header: string } => Boolean(c.id))
 
-  if (allColumns.length === 0) return null
+  if (hideableColumns.length === 0) return null
 
   return (
     <div className="relative">
@@ -617,17 +759,17 @@ function ColumnVisibilityMenu<T>({ table }: { table: TanTable<T> }) {
 
       {open && (
         <div ref={ref} className="absolute right-0 top-full mt-1 z-50 bg-white border border-cream-border rounded-lg shadow-lg p-2 min-w-[180px] max-h-80 overflow-y-auto">
-          {allColumns.map((col) => {
-            const header = typeof col.columnDef.header === "string" ? col.columnDef.header : col.id
+          {hideableColumns.map((col) => {
+            const isVisible = columnVisibility[col.id] !== false
             return (
               <label key={col.id} className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-cream cursor-pointer text-sm text-gray-600">
                 <input
                   type="checkbox"
-                  checked={col.getIsVisible()}
-                  onChange={col.getToggleVisibilityHandler()}
+                  checked={isVisible}
+                  onChange={() => onColumnVisibilityChange({ ...columnVisibility, [col.id]: !isVisible })}
                   className="rounded border-cream-border text-brand focus:ring-brand/30"
                 />
-                {header}
+                {col.header}
               </label>
             )
           })}

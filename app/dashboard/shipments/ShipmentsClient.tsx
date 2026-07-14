@@ -2,7 +2,7 @@
 
 import { displayIg } from "@/lib/format"
 import TableSkeleton from "@/components/TableSkeleton"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { ShippingRecord } from "@/lib/db"
 import { generateShippingLabel, generateMultipleShippingLabels } from "@/lib/shipping-label"
 import type { ShippingLabelParams } from "@/lib/shipping-label"
@@ -787,6 +787,51 @@ export default function ShipmentsClient() {
     []
   )
 
+  const renderMobileCard = useCallback((r: DisplayShipment) => (
+    <div className="rounded-xl border border-cream-border bg-white p-3.5 flex flex-col gap-2">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-sm font-semibold text-foreground truncate">{displayIg(r.customer)}</span>
+            {r.mergedCount > 1 && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700">Gabung</span>
+            )}
+            {r.isLastShipment && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-green-100 text-green-700">Terakhir</span>
+            )}
+          </div>
+          <div className="text-xs text-gray-400 mt-0.5">{r.event} · <span className="font-mono">{r.shippingId}</span></div>
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          <CopyShipmentMessageButton record={r} />
+          <button type="button" onClick={(e) => { e.stopPropagation(); setLabelRecord(r) }} title="Lihat label pengiriman" className="p-1 text-gray-400 hover:text-brand transition-colors rounded">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div className="text-xs text-gray-500 tabular-nums">
+        {fmt(r.weightEstimation)} kg · Rp {fmt(r.ongkirTotal)}
+      </div>
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); setEditResiRecord(r) }}
+        className="group flex items-center gap-1.5 text-left pt-1.5 border-t border-cream-border/60"
+      >
+        <span className={`text-xs ${r.trackingNumber ? "text-foreground font-mono" : "text-gray-400 italic"}`}>
+          {r.trackingNumber || "Resi belum diisi"}
+        </span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400 group-hover:text-brand transition-colors shrink-0">
+          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
+        </svg>
+      </button>
+    </div>
+  ), [])
+
   const toolbarExtra = (
     <div className="flex items-center gap-2">
       <select
@@ -876,6 +921,7 @@ export default function ShipmentsClient() {
           onRowSelectionChange={setRowSelection}
           initialVisibility={{ updatedAt: false, isLastShipment: false }}
           initialSorting={[{ id: "createdAt", desc: true }]}
+          renderMobileCard={renderMobileCard}
         />
       )}
 

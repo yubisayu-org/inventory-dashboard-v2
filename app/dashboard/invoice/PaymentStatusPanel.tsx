@@ -1,13 +1,13 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react"
 import { displayIg, fmt } from "@/lib/format"
-import type { PaymentStatus, PaymentStatusRow } from "@/lib/db"
-import SearchableSelect from "@/components/SearchableSelect"
-import EventSelect from "@/components/EventSelect"
+import type { InvoiceResult, PaymentStatus, PaymentStatusRow } from "@/lib/db"
 import DataGrid, { type ColumnDef } from "@/components/DataGrid"
 import CopyInvoiceButton from "@/components/CopyInvoiceButton"
+import InvoiceSummary from "@/components/InvoiceSummary"
 import { AddAdjustmentFromInvoiceModal } from "./AddAdjustmentFromInvoiceModal"
+import { InvoiceMessageActions } from "./InvoiceMessageActions"
 
 // ─── Payment Status Panel ────────────────────────────────────────────────────
 
@@ -30,27 +30,24 @@ const STATUS_COLORS: Record<PaymentStatus, string> = {
 type StatusFilter = "all" | PaymentStatus
 
 export function PaymentStatusPanel({
-  events,
-  customers,
   onOpenCustomer,
 }: {
-  events: string[]
-  customers: string[]
   onOpenCustomer: (customer: string) => void
 }) {
-  const [event, setEvent] = useState<string>("")
   const [rows, setRows] = useState<PaymentStatusRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<StatusFilter>("all")
   const [adjustingRow, setAdjustingRow] = useState<{ event: string; customer: string } | null>(null)
-  // Mobile gets its own search box; the desktop DataGrid has a built-in one.
-  const [mobileSearch, setMobileSearch] = useState("")
+  // Per-customer invoice cache for expanded rows — one fetch covers every
+  // event row of that customer; cleared on refresh so amounts stay current.
+  const invoiceCache = useRef(new Map<string, InvoiceResult>())
 
   // Fetch every event's payment status once; the event picker filters client-side.
   const fetchRows = useCallback(async () => {
     setLoading(true)
     setError(null)
+    invoiceCache.current.clear()
     try {
       const res = await fetch(`/api/sheets/invoice/payment-status`, { cache: "no-store" })
       const data = await res.json()
@@ -66,49 +63,30 @@ export function PaymentStatusPanel({
 
   useEffect(() => { fetchRows() }, [fetchRows])
 
-  // Rows scoped to the selected event (or all events when none is picked).
-  const eventRows = useMemo(
-    () => (event ? rows.filter((r) => r.event === event) : rows),
-    [rows, event],
-  )
-
   const counts = useMemo(() => {
     const c: Record<PaymentStatus, number> = { void: 0, unpaid: 0, partial: 0, paid: 0, overpaid: 0 }
-    for (const r of eventRows) c[r.status]++
+    for (const r of rows) c[r.status]++
     return c
-  }, [eventRows])
+  }, [rows])
 
   const totals = useMemo(() => {
     // Outstanding = money customers still owe (positive balances); overpaid =
     // money owed back to customers (negative balances), shown as a magnitude.
     let outstanding = 0
     let overpaid = 0
-    for (const r of eventRows) {
+    for (const r of rows) {
       if (r.outstanding > 0) outstanding += r.outstanding
       else if (r.outstanding < 0) overpaid += -r.outstanding
     }
     return { outstanding, overpaid }
-  }, [eventRows])
+  }, [rows])
 
-  // The status chips pre-filter the rows fed to the grid; the grid then handles
-  // search, per-column filters, sorting and pagination — same as other tables.
+  // The status chips pre-filter the rows fed to the grid; the grid's own
+  // search box then narrows what's visible without affecting these totals.
   const gridRows = useMemo(
-    () => (filter === "all" ? eventRows : eventRows.filter((r) => r.status === filter)),
-    [eventRows, filter],
+    () => (filter === "all" ? rows : rows.filter((r) => r.status === filter)),
+    [rows, filter],
   )
-
-  // Mobile card list: same status/event scope as the grid, narrowed by the
-  // mobile search box (customer or event).
-  const mobileRows = useMemo(() => {
-    const q = mobileSearch.trim().toLowerCase()
-    if (!q) return gridRows
-    return gridRows.filter(
-      (r) =>
-        displayIg(r.customer).toLowerCase().includes(q) ||
-        r.customer.toLowerCase().includes(q) ||
-        r.event.toLowerCase().includes(q),
-    )
-  }, [gridRows, mobileSearch])
 
   const columns = useMemo<ColumnDef<PaymentStatusRow, unknown>[]>(() => [
     {
@@ -197,8 +175,8 @@ export function PaymentStatusPanel({
     },
   ], [onOpenCustomer])
 
-  const filters: { key: StatusFilter; label: string; count: number }[] = [
-    { key: "all", label: "All", count: eventRows.length },
+  const tabs: { key: StatusFilter; label: string; count: number }[] = [
+    { key: "all", label: "All", count: rows.length },
     { key: "unpaid", label: "Unpaid", count: counts.unpaid },
     { key: "partial", label: "Partial", count: counts.partial },
     { key: "paid", label: "Paid", count: counts.paid },
@@ -206,166 +184,121 @@ export function PaymentStatusPanel({
     { key: "void", label: "Void", count: counts.void },
   ]
 
-  const customerLookupOptions = useMemo(
-    () => customers.map((c) => ({ value: c, label: displayIg(c) })),
-    [customers],
-  )
+  const renderExpandedRow = useCallback((r: PaymentStatusRow) => (
+    <ExpandedInvoice event={r.event} customer={r.customer} cache={invoiceCache} />
+  ), [])
 
-  return (
-    <div className="flex flex-col gap-3">
-      {/* Toolbar: event filter + customer lookup + refresh */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="w-full sm:w-48">
-          <EventSelect value={event} onChange={setEvent} events={events} placeholder="All events" clearable />
-        </div>
-        <div className="w-full sm:w-56">
-          <SearchableSelect
-            value=""
-            onChange={(v) => { if (v.trim()) onOpenCustomer(v.trim()) }}
-            options={customerLookupOptions}
-            placeholder="Look up any customer…"
-            allowNewValue
-          />
-        </div>
+  const renderMobileCard = useCallback((r: PaymentStatusRow) => (
+    <div className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+      <div className="flex items-start justify-between gap-3">
         <button
           type="button"
-          onClick={fetchRows}
-          title="Refresh"
-          className="p-1.5 text-gray-400 hover:text-brand transition-colors rounded"
+          onClick={() => onOpenCustomer(r.customer)}
+          className="font-semibold text-sm text-foreground hover:text-brand transition-colors text-left min-w-0 truncate"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 12a9 9 0 1 1-6.22-8.56" /><polyline points="21 3 21 9 15 9" />
+          {displayIg(r.customer)}
+        </button>
+        <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${STATUS_COLORS[r.status]}`}>
+          {STATUS_LABELS[r.status]}
+        </span>
+      </div>
+      <div className="text-xs text-gray-400 mt-0.5">{r.event}</div>
+
+      <div className="mt-2.5 pt-2.5 border-t border-cream-border flex flex-col gap-1 text-xs">
+        <div className="flex items-center justify-between">
+          <span className="text-gray-400">Invoice</span>
+          <span className="tabular-nums text-foreground">Rp {fmt(r.invoiceTotal)}</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-gray-400">Paid</span>
+          <span className="tabular-nums text-foreground">Rp {fmt(r.totalPaid)}</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-gray-400">Outstanding</span>
+          <span className={`tabular-nums font-medium ${r.outstanding > 0 ? "text-red-600" : r.outstanding < 0 ? "text-purple-600" : "text-green-600"}`}>
+            {r.outstanding > 0 ? "Rp " + fmt(r.outstanding) : r.outstanding < 0 ? "−Rp " + fmt(Math.abs(r.outstanding)) : "—"}
+          </span>
+        </div>
+      </div>
+
+      <div className="mt-2 flex items-center justify-end gap-1">
+        <CopyInvoiceButton customer={r.customer} event={r.event} />
+        <button
+          type="button"
+          onClick={() => setAdjustingRow({ event: r.event, customer: r.customer })}
+          title="Add adjustment for this invoice"
+          className="text-gray-400 hover:text-brand transition-colors p-1 rounded"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
           </svg>
         </button>
       </div>
+    </div>
+  ), [onOpenCustomer])
 
-      {/* Status filter chips */}
-      <div className="flex items-center gap-1.5 flex-wrap">
-        {filters.map((f) => {
-          const active = filter === f.key
+  if (loading) {
+    return <div className="rounded-xl border border-cream-border bg-white py-12 text-center text-sm text-gray-400">Loading…</div>
+  }
+  if (error) {
+    return <div className="rounded-xl border border-red-200 bg-red-50 py-8 px-4 text-sm text-red-500">{error}</div>
+  }
+
+  return (
+    <>
+      {/* Tabs */}
+      <div className="flex border-b border-cream-border gap-0 overflow-x-auto">
+        {tabs.map(({ key, label, count }) => {
+          const active = filter === key
           return (
             <button
-              key={f.key}
-              type="button"
-              onClick={() => setFilter(f.key)}
-              className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
+              key={key}
+              onClick={() => setFilter(key)}
+              className={`shrink-0 px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 active
-                  ? "bg-brand text-white border-brand"
-                  : "bg-white text-gray-600 border-cream-border hover:border-brand hover:text-brand"
+                  ? "border-brand text-brand"
+                  : "border-transparent text-gray-500 hover:text-foreground"
               }`}
             >
-              {f.label}
-              {f.count > 0 && (
-                <span className={`ml-1.5 text-[10px] ${active ? "text-white/80" : "text-gray-400"}`}>
-                  {f.count}
+              {label}
+              {count ? (
+                <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${active ? "bg-brand/10 text-brand" : "bg-gray-100 text-gray-500"}`}>
+                  {count}
                 </span>
-              )}
+              ) : null}
             </button>
           )
         })}
       </div>
 
-      {/* Summary */}
-      {eventRows.length > 0 && (
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-xs text-gray-500 px-1">
-          <div>
-            <span className="text-gray-400">Outstanding:</span>{" "}
-            <span className="font-medium tabular-nums text-red-600">Rp {fmt(totals.outstanding)}</span>
-          </div>
-          <div>
-            <span className="text-gray-400">Overpaid:</span>{" "}
-            <span className="font-medium tabular-nums text-purple-600">Rp {fmt(totals.overpaid)}</span>
-          </div>
-        </div>
-      )}
-
-      {/* Table (desktop) / cards (mobile) */}
-      {loading ? (
-        <div className="rounded-xl border border-cream-border bg-white py-12 text-center text-sm text-gray-400">Loading…</div>
-      ) : error ? (
-        <div className="rounded-xl border border-red-200 bg-red-50 py-8 px-4 text-sm text-red-500">{error}</div>
-      ) : (
-        <>
-          <div className="hidden md:block">
-            <DataGrid
-              key={`${event}-${filter}`}
-              data={gridRows}
-              columns={columns}
-              getRowId={(r) => `${r.event}-${r.customer}`}
-              searchPlaceholder="Search customers, events…"
-              pageSize={50}
-              initialSorting={[{ id: "outstanding", desc: true }]}
-            />
-          </div>
-
-          {/* Mobile cards */}
-          <div className="md:hidden flex flex-col gap-2.5">
-            <div className="relative">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
-              <input
-                value={mobileSearch}
-                onChange={(e) => setMobileSearch(e.target.value)}
-                placeholder="Search customers, events…"
-                className="w-full border border-cream-border rounded-xl pl-9 pr-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
-              />
-            </div>
-
-            {mobileRows.length === 0 ? (
-              <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">No invoices</div>
-            ) : (
-              mobileRows.map((r) => (
-                <div key={`${r.event}-${r.customer}`} className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-                  <div className="flex items-start justify-between gap-3">
-                    <button
-                      type="button"
-                      onClick={() => onOpenCustomer(r.customer)}
-                      className="font-semibold text-sm text-foreground hover:text-brand transition-colors text-left min-w-0 truncate"
-                    >
-                      {displayIg(r.customer)}
-                    </button>
-                    <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${STATUS_COLORS[r.status]}`}>
-                      {STATUS_LABELS[r.status]}
-                    </span>
-                  </div>
-                  <div className="text-xs text-gray-400 mt-0.5">{r.event}</div>
-
-                  <div className="mt-2.5 pt-2.5 border-t border-cream-border flex flex-col gap-1 text-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-400">Invoice</span>
-                      <span className="tabular-nums text-foreground">Rp {fmt(r.invoiceTotal)}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-400">Paid</span>
-                      <span className="tabular-nums text-foreground">Rp {fmt(r.totalPaid)}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-400">Outstanding</span>
-                      <span className={`tabular-nums font-medium ${r.outstanding > 0 ? "text-red-600" : r.outstanding < 0 ? "text-purple-600" : "text-green-600"}`}>
-                        {r.outstanding > 0 ? "Rp " + fmt(r.outstanding) : r.outstanding < 0 ? "−Rp " + fmt(Math.abs(r.outstanding)) : "—"}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="mt-2 flex items-center justify-end gap-1">
-                    <CopyInvoiceButton customer={r.customer} event={r.event} />
-                    <button
-                      type="button"
-                      onClick={() => setAdjustingRow({ event: r.event, customer: r.customer })}
-                      title="Add adjustment for this invoice"
-                      className="text-gray-400 hover:text-brand transition-colors p-1 rounded"
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <line x1="12" y1="5" x2="12" y2="19" />
-                        <line x1="5" y1="12" x2="19" y2="12" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </>
-      )}
+      <div className="mt-3">
+        <DataGrid
+          key={filter}
+          data={gridRows}
+          columns={columns}
+          getRowId={(r) => `${r.event}-${r.customer}`}
+          searchPlaceholder="Search customers, events…"
+          pageSize={50}
+          initialSorting={[{ id: "outstanding", desc: true }]}
+          renderMobileCard={renderMobileCard}
+          renderExpandedRow={renderExpandedRow}
+          toolbarExtra={
+            rows.length > 0 ? (
+              <>
+                <span className="text-xs text-gray-500 whitespace-nowrap">
+                  <span className="text-gray-400">Outstanding:</span>{" "}
+                  <span className="font-semibold text-red-600">Rp {fmt(totals.outstanding)}</span>
+                </span>
+                <span className="text-xs text-gray-500 whitespace-nowrap">
+                  <span className="text-gray-400">Overpaid:</span>{" "}
+                  <span className="font-semibold text-purple-600">Rp {fmt(totals.overpaid)}</span>
+                </span>
+              </>
+            ) : null
+          }
+        />
+      </div>
 
       {adjustingRow && (
         <AddAdjustmentFromInvoiceModal
@@ -375,6 +308,91 @@ export function PaymentStatusPanel({
           onSaved={fetchRows}
         />
       )}
+    </>
+  )
+}
+
+// ─── Expanded row: inline invoice detail ─────────────────────────────────────
+//
+// Read-only quick view of one (event, customer) invoice — order lines plus the
+// summary block. Actions (refund, cancel, adjustments) live in the drawer,
+// opened by clicking the customer name. The fetch covers all of the customer's
+// events, so it's cached per customer and shared across their rows.
+
+function ExpandedInvoice({
+  event,
+  customer,
+  cache,
+}: {
+  event: string
+  customer: string
+  cache: MutableRefObject<Map<string, InvoiceResult>>
+}) {
+  const [result, setResult] = useState<InvoiceResult | null>(cache.current.get(customer) ?? null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const cached = cache.current.get(customer)
+    if (cached) { setResult(cached); return }
+    let cancelled = false
+    setResult(null)
+    setError(null)
+    fetch(`/api/sheets/invoice?customer=${encodeURIComponent(customer)}`, { cache: "no-store" })
+      .then(async (res) => {
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error ?? "Failed to load")
+        return data as InvoiceResult
+      })
+      .then((data) => {
+        cache.current.set(customer, data)
+        if (!cancelled) setResult(data)
+      })
+      .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load") })
+    return () => { cancelled = true }
+  }, [customer, cache])
+
+  if (error) {
+    return <div className="px-6 py-4 bg-cream/40 text-sm text-red-500">{error}</div>
+  }
+  if (!result) {
+    return <div className="px-6 py-4 bg-cream/40 text-sm text-gray-400">Loading invoice…</div>
+  }
+
+  const ev = result.events.find((e) => e.eventId === event)
+  if (!ev) {
+    return <div className="px-6 py-4 bg-cream/40 text-sm text-gray-400">No invoice found for {event}.</div>
+  }
+
+  return (
+    <div className="bg-cream/40">
+      {/* Order lines */}
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-left text-xs text-gray-500 border-b border-cream-border">
+            <th className="pl-10 pr-4 py-2 font-medium">Order</th>
+            <th className="px-4 py-2 font-medium text-right w-20">Unit</th>
+            <th className="px-4 py-2 font-medium text-right w-28">Price</th>
+            <th className="px-4 py-2 font-medium text-right w-28">Subtotal</th>
+            <th className="px-4 py-2 font-medium text-right w-20">Ready</th>
+          </tr>
+        </thead>
+        <tbody>
+          {[...ev.orders].reverse().map((r, i) => (
+            <tr key={i} className="border-b border-cream-border/60">
+              <td className="pl-10 pr-4 py-2">{r.productName || r.order}</td>
+              <td className="px-4 py-2 text-right tabular-nums">{r.unit}</td>
+              <td className="px-4 py-2 text-right tabular-nums">{r.price}</td>
+              <td className="px-4 py-2 text-right tabular-nums">{r.subtotal}</td>
+              <td className="px-4 py-2 text-right tabular-nums">{r.unitArrive}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {/* Summary + message actions */}
+      <div className="pl-5">
+        <InvoiceSummary event={ev} actions={<InvoiceMessageActions event={ev} />} />
+      </div>
     </div>
   )
 }

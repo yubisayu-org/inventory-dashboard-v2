@@ -396,7 +396,8 @@ export default function ArrivalListClient() {
         </button>
       </div>
 
-      <div className="rounded-xl border border-cream-border bg-white overflow-hidden">
+      {/* Grouped table (desktop) */}
+      <div className="hidden md:block rounded-xl border border-cream-border bg-white overflow-hidden">
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="border-b border-cream-border bg-gray-50/80">
@@ -518,6 +519,73 @@ export default function ArrivalListClient() {
             })}
           </tbody>
         </table>
+      </div>
+
+      {/* Grouped cards (mobile) */}
+      <div className="md:hidden flex flex-col gap-2.5">
+        {grouped.size === 0 && (
+          <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">No items pending arrival</div>
+        )}
+        {[...grouped.entries()].map(([event, storeMap]) => {
+          const allItems = [...storeMap.values()].flat()
+          const eventCollapsed = collapsedEvents.has(event)
+          return (
+            <div key={event} className="rounded-xl border border-cream-border bg-white overflow-hidden">
+              <button type="button" onClick={() => toggleEvent(event)} className="w-full flex items-center gap-2.5 px-4 py-3 border-l-[3px] border-brand text-left">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`text-gray-400 transition-transform ${eventCollapsed ? "-rotate-90" : ""}`}><path d="m6 9 6 6 6-6" /></svg>
+                <span className="font-bold text-sm text-foreground">{event}</span>
+                <span className="ml-auto text-xs text-gray-400">{allItems.length} items</span>
+              </button>
+              {!eventCollapsed && [...storeMap.entries()].map(([store, storeItems]) => {
+                const storeKey = `${event}|${store}`
+                const storeCollapsed = collapsedStores.has(storeKey)
+                return (
+                  <div key={storeKey}>
+                    <button type="button" onClick={() => toggleStore(event, store)} className="w-full flex items-center gap-2 px-4 py-2.5 bg-gray-50/60 border-t border-cream-border text-left">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`text-gray-400 transition-transform ${storeCollapsed ? "-rotate-90" : ""}`}><path d="m6 9 6 6 6-6" /></svg>
+                      <span className="text-xs font-bold text-gray-600">{store}</span>
+                      <span className="ml-auto text-[11px] text-gray-400">{storeItems.length}</span>
+                    </button>
+                    {!storeCollapsed && storeItems.map((item) => (
+                      <div key={item.productId} className="flex items-center gap-3 px-4 py-2.5 border-t border-cream-border">
+                        {item.totalPending > 0 && (
+                          <input
+                            type="checkbox"
+                            checked={selected.has(selKey(item))}
+                            onChange={() => toggleSelect(item)}
+                            className="w-5 h-5 shrink-0 accent-brand"
+                            aria-label={`Select ${item.productName}`}
+                          />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm text-foreground">{item.productName}</div>
+                          <div className="mt-0.5">
+                            <CustomerBadge
+                              orders={item.orders.map((o) => ({ customer: o.customer, qty: o.pending, paidStatus: o.paidStatus }))}
+                            />
+                          </div>
+                        </div>
+                        <div className="text-sm font-bold tabular-nums whitespace-nowrap text-foreground">
+                          {item.totalPending}
+                          {item.totalPending < item.totalBought && (
+                            <span className="text-xs text-gray-400 font-normal" title="Partially arrived"> / {item.totalBought}</span>
+                          )}
+                        </div>
+                        <button type="button" onClick={() => setArrivingItem(item)} aria-label="Mark as arrived" className="w-9 h-9 rounded-lg border border-cream-border text-brand flex items-center justify-center shrink-0 active:bg-blue-50 active:text-blue-700 active:border-blue-200">
+                          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
+                            <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+                            <line x1="12" y1="22.08" x2="12" y2="12" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )
+              })}
+            </div>
+          )
+        })}
       </div>
 
       {arrivingItem && (

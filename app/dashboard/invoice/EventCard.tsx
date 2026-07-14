@@ -77,8 +77,8 @@ export function EventCard({
         </div>
       </div>
 
-      {/* Orders table */}
-      <div className="overflow-x-auto">
+      {/* Orders table (desktop) */}
+      <div className="hidden md:block overflow-x-auto">
         <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
           <thead>
             <tr className="text-left text-xs text-gray-500 border-b border-cream-border">
@@ -108,7 +108,7 @@ export function EventCard({
           <tbody>
             {[...orders].reverse().map((r, i) => (
               <tr key={i} className="border-b border-cream-border/60 group">
-                <td className="px-4 py-2">{r.order}</td>
+                <td className="px-4 py-2">{r.productName || r.order}</td>
                 <td className="px-4 py-2 text-right">{r.unit}</td>
                 <td className="px-4 py-2 text-right">{r.price}</td>
                 <td className="px-4 py-2 text-right">{r.subtotal}</td>
@@ -163,6 +163,62 @@ export function EventCard({
             </tr>
           </tbody>
         </table>
+      </div>
+
+      {/* Orders list (mobile) */}
+      <div className="md:hidden divide-y divide-cream-border/60">
+        {[...orders].reverse().map((r, i) => (
+          <div key={i} className="px-4 py-3 flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-sm text-foreground truncate">{r.productName || r.order}</div>
+              <div className="text-xs text-gray-500 tabular-nums mt-0.5">
+                {r.unit} × {r.price} = <span className="font-medium text-foreground">{r.subtotal}</span>
+              </div>
+              <div className="text-xs text-gray-400 tabular-nums mt-0.5">Ready {r.unitArrive}</div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setRefundLine(r)}
+                title="Create refund for this line (money only — keeps the order)"
+                className="text-gray-400 hover:text-red-500 transition-colors"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                  <path d="M3 3v5h5" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={() => setCancelLine(r)}
+                title="Cancel this order (customer backed out) — removes the line, refunds if paid, returns stock to Inventory"
+                className="text-gray-400 hover:text-red-500 transition-colors"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="m4.9 4.9 14.2 14.2" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        ))}
+        <div className="px-4 py-3 flex items-center justify-between gap-3 bg-cream/40 font-semibold">
+          <span className="text-sm text-foreground">Total</span>
+          <div className="flex items-center gap-3">
+            <span className="text-sm tabular-nums text-foreground">{totals.unit} units · {fmt(totals.subtotal)}</span>
+            <button
+              type="button"
+              onClick={() => setAddAdjOpen(true)}
+              title="Add adjustment for this invoice"
+              className="text-gray-400 hover:text-brand transition-colors"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Invoice summary */}

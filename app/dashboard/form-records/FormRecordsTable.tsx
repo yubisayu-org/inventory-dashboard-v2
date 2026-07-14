@@ -254,6 +254,30 @@ export default function FormRecordsTable({ role }: { role: Role | null }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   ], [isOwner, handleSaveReceipt])
 
+  const renderMobileCard = useCallback((row: FormRow) => (
+    <div className="rounded-xl border border-cream-border bg-white p-3.5 flex flex-col gap-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm font-semibold text-foreground truncate">{displayIg(row.customer)}</span>
+        <span className="text-xs text-gray-400 shrink-0">{row.event}</span>
+      </div>
+      <div className="text-xs text-gray-600 truncate">{row.items}</div>
+      <div className="flex items-center justify-between gap-3 text-xs text-gray-500 tabular-nums">
+        <span>Qty <span className="font-medium text-foreground">{row.unit}</span></span>
+        <span>Buy <span className="font-medium text-foreground">{fmtNum(row.unitBuy)}</span></span>
+        <span>Arrive <span className="font-medium text-foreground">{fmtNum(row.unitArrive)}</span></span>
+        <span>Ship <span className="font-medium text-foreground">{fmtNum(row.unitShip)}</span></span>
+      </div>
+      {isOwner ? (
+        <div className="pt-1 border-t border-cream-border/60 mt-1">
+          <InlineReceipt row={row} onSave={handleSaveReceipt} />
+        </div>
+      ) : row.receipt ? (
+        <div className="text-xs text-gray-500 pt-1 border-t border-cream-border/60 mt-1">{row.receipt}</div>
+      ) : null}
+    </div>
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ), [isOwner, handleSaveReceipt])
+
   // -- Toolbar extra --
   const toolbarExtra = (
     <button onClick={refresh} title="Reload" className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs border border-cream-border rounded-lg hover:bg-cream transition-colors text-gray-600">
@@ -285,6 +309,7 @@ export default function FormRecordsTable({ role }: { role: Role | null }) {
       getRowId={(row) => String(row.rowNumber)}
       searchPlaceholder="Search…"
       toolbarExtra={toolbarExtra}
+      renderMobileCard={renderMobileCard}
       initialVisibility={{
         receipt: false,
         unitArrive: false,

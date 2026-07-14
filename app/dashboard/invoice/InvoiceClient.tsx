@@ -2,12 +2,10 @@
 
 import { useEffect, useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { useSheetOptions } from "@/hooks/useSheetOptions"
 import { PaymentStatusPanel } from "./PaymentStatusPanel"
 import { InvoiceDetailDrawer } from "./InvoiceDetailDrawer"
 
 export default function InvoiceClient() {
-  const options = useSheetOptions()
   const searchParams = useSearchParams()
   const pathname = usePathname()
   const router = useRouter()
@@ -29,11 +27,7 @@ export default function InvoiceClient() {
 
   return (
     <div>
-      <PaymentStatusPanel
-        events={options?.events ?? []}
-        customers={options?.customers ?? []}
-        onOpenCustomer={setSelectedCustomer}
-      />
+      <PaymentStatusPanel onOpenCustomer={setSelectedCustomer} />
       {selectedCustomer && (
         <InvoiceDetailDrawer
           customer={selectedCustomer}

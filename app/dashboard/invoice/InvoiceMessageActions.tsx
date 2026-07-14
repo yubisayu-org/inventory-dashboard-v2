@@ -1,8 +1,9 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import type { InvoiceEvent } from "@/lib/db"
 import { useCopyFeedback } from "@/hooks/useCopyFeedback"
+import { useModalDismiss } from "@/hooks/useModalDismiss"
 
 export function InvoiceMessageActions({ event }: { event: InvoiceEvent }) {
   const [open, setOpen] = useState(false)
@@ -44,18 +45,7 @@ function InvoiceMessageModal({
 }) {
   const { copied, copy } = useCopyFeedback()
 
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose()
-    }
-    document.addEventListener("keydown", onKey)
-    const prev = document.body.style.overflow
-    document.body.style.overflow = "hidden"
-    return () => {
-      document.removeEventListener("keydown", onKey)
-      document.body.style.overflow = prev
-    }
-  }, [onClose])
+  useModalDismiss(onClose)
 
   return (
     <div
