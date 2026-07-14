@@ -115,6 +115,10 @@ interface DataGridProps<T> {
   onRowClick?: (row: T) => void
   /** Server-side mode configuration */
   serverSide?: ServerSideConfig
+  /** Optional per-row mobile card renderer. When provided, the table becomes
+   *  desktop-only (`hidden md:block`) and this renders a `md:hidden` stacked
+   *  card list instead, using the same filtered/sorted/paginated row set. */
+  renderMobileCard?: (row: T) => React.ReactNode
 }
 
 // ─── Component ─────────────────────────────────────────────────────────────
@@ -133,6 +137,7 @@ export default function DataGrid<T>({
   onRowSelectionChange,
   onRowClick,
   serverSide,
+  renderMobileCard,
 }: DataGridProps<T>) {
   // Client-side state (ignored when serverSide is provided)
   const [sorting, setSorting] = useState<SortingState>(initialSorting ?? [])
@@ -241,8 +246,8 @@ export default function DataGrid<T>({
         <ColumnVisibilityMenu table={table} />
       </div>
 
-      {/* Table */}
-      <div className="rounded-xl border border-cream-border bg-white overflow-hidden">
+      {/* Table (desktop-only when a mobile card renderer is supplied) */}
+      <div className={`rounded-xl border border-cream-border bg-white overflow-hidden ${renderMobileCard ? "hidden md:block" : ""}`}>
         <div className="overflow-x-auto relative">
           {ss?.loading && data.length > 0 && (
             <div className="absolute inset-0 bg-white/60 z-10 flex items-center justify-center">
@@ -331,6 +336,34 @@ export default function DataGrid<T>({
           </table>
         </div>
       </div>
+
+      {/* Cards (mobile-only) */}
+      {renderMobileCard && (
+        <div className="md:hidden flex flex-col gap-2.5">
+          {table.getRowModel().rows.length === 0 ? (
+            <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">No data found.</div>
+          ) : (
+            table.getRowModel().rows.map((row) => (
+              <div key={row.id} className="flex items-start gap-2">
+                {enableRowSelection && (
+                  <input
+                    type="checkbox"
+                    checked={row.getIsSelected()}
+                    onChange={row.getToggleSelectedHandler()}
+                    className="mt-4 shrink-0 rounded border-gray-300 text-brand focus:ring-brand/30 cursor-pointer"
+                  />
+                )}
+                <div
+                  onClick={onRowClick ? () => onRowClick(row.original) : undefined}
+                  className={`flex-1 min-w-0 ${onRowClick ? "cursor-pointer" : ""}`}
+                >
+                  {renderMobileCard(row.original)}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
 
       {/* Pagination */}
       {pageCount > 1 && (

@@ -177,13 +177,13 @@ export default function ShipClient() {
   return (
     <div className="flex flex-col gap-4">
       {/* Segment control */}
-      <div className="flex items-center gap-1 rounded-xl border border-cream-border bg-white p-1">
+      <div className="flex items-center gap-1 rounded-xl border border-cream-border bg-white p-1 overflow-x-auto md:flex-wrap">
         {SEGMENTS.map((s) => (
           <button
             key={s.id}
             type="button"
             onClick={() => { setSegment(s.id); setSelected(new Set()) }}
-            className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+            className={`md:flex-1 shrink-0 flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
               segment === s.id
                 ? "bg-brand text-white"
                 : "text-gray-500 hover:text-foreground"
@@ -204,13 +204,13 @@ export default function ShipClient() {
       </div>
 
       {/* Search + event filter + refresh */}
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap">
         <input
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Cari customer…"
-          className="flex-1 min-w-0 border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+          className="flex-1 min-w-[160px] border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
         />
         <div className="w-48">
           <EventSelect
@@ -545,8 +545,8 @@ function CustomerCard({
         <div className="px-5 py-2 text-xs text-red-700 bg-red-50 border-b border-cream-border">{holdError}</div>
       )}
 
-      {/* Orders table */}
-      <div className="overflow-x-auto">
+      {/* Orders table (desktop) */}
+      <div className="hidden md:block overflow-x-auto">
         <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
           <thead>
             <tr className="text-left text-xs text-gray-500 border-b border-cream-border">
@@ -593,6 +593,30 @@ function CustomerCard({
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* Orders list (mobile) */}
+      <div className="md:hidden flex flex-col divide-y divide-cream-border/60">
+        {c.orders.map((o) => (
+          <div key={o.rowNumber} className="px-4 py-2.5 flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-sm text-foreground truncate">
+                {o.productName}
+                {o.unitHold > 0 && (
+                  <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-purple-100 text-purple-700 align-middle">
+                    Ditahan
+                  </span>
+                )}
+              </div>
+              <div className="text-xs text-gray-400 tabular-nums mt-0.5">
+                Order {o.unit} · Tiba {o.unitArrive} · Kirim {o.unitShip}
+              </div>
+            </div>
+            <div className={`shrink-0 text-sm font-semibold tabular-nums ${o.toShip > 0 ? "text-brand" : "text-gray-400"}`}>
+              {o.toShip}
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* Collapsible address */}
