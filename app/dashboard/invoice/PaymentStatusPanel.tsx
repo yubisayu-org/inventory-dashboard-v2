@@ -1,12 +1,14 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react"
 import { displayIg, fmt } from "@/lib/format"
-import type { PaymentStatus, PaymentStatusRow } from "@/lib/db"
+import type { InvoiceResult, PaymentStatus, PaymentStatusRow } from "@/lib/db"
 import EventSelect from "@/components/EventSelect"
 import DataGrid, { type ColumnDef } from "@/components/DataGrid"
 import CopyInvoiceButton from "@/components/CopyInvoiceButton"
+import InvoiceSummary from "@/components/InvoiceSummary"
 import { AddAdjustmentFromInvoiceModal } from "./AddAdjustmentFromInvoiceModal"
+import { InvoiceMessageActions } from "./InvoiceMessageActions"
 
 // ─── Payment Status Panel ────────────────────────────────────────────────────
 
@@ -41,11 +43,15 @@ export function PaymentStatusPanel({
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<StatusFilter>("all")
   const [adjustingRow, setAdjustingRow] = useState<{ event: string; customer: string } | null>(null)
+  // Per-customer invoice cache for expanded rows — one fetch covers every
+  // event row of that customer; cleared on refresh so amounts stay current.
+  const invoiceCache = useRef(new Map<string, InvoiceResult>())
 
   // Fetch every event's payment status once; the event picker filters client-side.
   const fetchRows = useCallback(async () => {
     setLoading(true)
     setError(null)
+    invoiceCache.current.clear()
     try {
       const res = await fetch(`/api/sheets/invoice/payment-status`, { cache: "no-store" })
       const data = await res.json()
@@ -188,6 +194,10 @@ export function PaymentStatusPanel({
     { key: "void", label: "Void", count: counts.void },
   ]
 
+  const renderExpandedRow = useCallback((r: PaymentStatusRow) => (
+    <ExpandedInvoice event={r.event} customer={r.customer} cache={invoiceCache} />
+  ), [])
+
   const renderMobileCard = useCallback((r: PaymentStatusRow) => (
     <div className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
       <div className="flex items-start justify-between gap-3">
@@ -312,6 +322,7 @@ export function PaymentStatusPanel({
           pageSize={50}
           initialSorting={[{ id: "outstanding", desc: true }]}
           renderMobileCard={renderMobileCard}
+          renderExpandedRow={renderExpandedRow}
         />
       )}
 
@@ -323,6 +334,91 @@ export function PaymentStatusPanel({
           onSaved={fetchRows}
         />
       )}
+    </div>
+  )
+}
+
+// ─── Expanded row: inline invoice detail ─────────────────────────────────────
+//
+// Read-only quick view of one (event, customer) invoice — order lines plus the
+// summary block. Actions (refund, cancel, adjustments) live in the drawer,
+// opened by clicking the customer name. The fetch covers all of the customer's
+// events, so it's cached per customer and shared across their rows.
+
+function ExpandedInvoice({
+  event,
+  customer,
+  cache,
+}: {
+  event: string
+  customer: string
+  cache: MutableRefObject<Map<string, InvoiceResult>>
+}) {
+  const [result, setResult] = useState<InvoiceResult | null>(cache.current.get(customer) ?? null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const cached = cache.current.get(customer)
+    if (cached) { setResult(cached); return }
+    let cancelled = false
+    setResult(null)
+    setError(null)
+    fetch(`/api/sheets/invoice?customer=${encodeURIComponent(customer)}`, { cache: "no-store" })
+      .then(async (res) => {
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error ?? "Failed to load")
+        return data as InvoiceResult
+      })
+      .then((data) => {
+        cache.current.set(customer, data)
+        if (!cancelled) setResult(data)
+      })
+      .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load") })
+    return () => { cancelled = true }
+  }, [customer, cache])
+
+  if (error) {
+    return <div className="px-6 py-4 bg-cream/40 text-sm text-red-500">{error}</div>
+  }
+  if (!result) {
+    return <div className="px-6 py-4 bg-cream/40 text-sm text-gray-400">Loading invoice…</div>
+  }
+
+  const ev = result.events.find((e) => e.eventId === event)
+  if (!ev) {
+    return <div className="px-6 py-4 bg-cream/40 text-sm text-gray-400">No invoice found for {event}.</div>
+  }
+
+  return (
+    <div className="bg-cream/40">
+      {/* Order lines */}
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-left text-xs text-gray-500 border-b border-cream-border">
+            <th className="pl-10 pr-4 py-2 font-medium">Order</th>
+            <th className="px-4 py-2 font-medium text-right w-20">Unit</th>
+            <th className="px-4 py-2 font-medium text-right w-28">Price</th>
+            <th className="px-4 py-2 font-medium text-right w-28">Subtotal</th>
+            <th className="px-4 py-2 font-medium text-right w-20">Ready</th>
+          </tr>
+        </thead>
+        <tbody>
+          {[...ev.orders].reverse().map((r, i) => (
+            <tr key={i} className="border-b border-cream-border/60">
+              <td className="pl-10 pr-4 py-2">{r.order}</td>
+              <td className="px-4 py-2 text-right tabular-nums">{r.unit}</td>
+              <td className="px-4 py-2 text-right tabular-nums">{r.price}</td>
+              <td className="px-4 py-2 text-right tabular-nums">{r.subtotal}</td>
+              <td className="px-4 py-2 text-right tabular-nums">{r.unitArrive}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {/* Summary + message actions */}
+      <div className="pl-5">
+        <InvoiceSummary event={ev} actions={<InvoiceMessageActions event={ev} />} />
+      </div>
     </div>
   )
 }

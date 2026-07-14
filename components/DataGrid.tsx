@@ -19,7 +19,7 @@ import {
   type PaginationState,
   type OnChangeFn,
 } from "@tanstack/react-table"
-import { useState, useRef, useEffect, useCallback, useMemo } from "react"
+import { Fragment, useState, useRef, useEffect, useCallback, useMemo } from "react"
 
 // Register our custom filter keys with the table types so a column can say
 // `filterFn: "numeric"` (etc.) directly — no `as unknown as undefined` cast.
@@ -119,6 +119,10 @@ interface DataGridProps<T> {
    *  desktop-only (`hidden md:block`) and this renders a `md:hidden` stacked
    *  card list instead, using the same filtered/sorted/paginated row set. */
   renderMobileCard?: (row: T) => React.ReactNode
+  /** Optional expanded-row renderer. Adds a chevron column; clicking it
+   *  toggles a full-width detail row below. Desktop table only — mobile
+   *  cards ignore it (pair with onRowClick/renderMobileCard for mobile). */
+  renderExpandedRow?: (row: T) => React.ReactNode
 }
 
 // ─── Component ─────────────────────────────────────────────────────────────
@@ -138,6 +142,7 @@ export default function DataGrid<T>({
   onRowClick,
   serverSide,
   renderMobileCard,
+  renderExpandedRow,
 }: DataGridProps<T>) {
   // Client-side state (ignored when serverSide is provided)
   const [sorting, setSorting] = useState<SortingState>(initialSorting ?? [])
@@ -145,6 +150,8 @@ export default function DataGrid<T>({
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(initialVisibility ?? {})
   const [globalFilter, setGlobalFilter] = useState("")
   const [internalRowSelection, setInternalRowSelection] = useState<RowSelectionState>({})
+  // Expanded detail rows, keyed by row id (stable via getRowId).
+  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({})
 
   const rowSelection = controlledRowSelection ?? internalRowSelection
   const setRowSelection = useCallback((updater: RowSelectionState | ((old: RowSelectionState) => RowSelectionState)) => {
@@ -261,6 +268,7 @@ export default function DataGrid<T>({
             <thead>
               {table.getHeaderGroups().map((hg) => (
                 <tr key={hg.id} className="text-left text-xs text-gray-500 border-b border-cream-border bg-cream">
+                  {renderExpandedRow && <th className="pl-3 pr-0 py-3 w-8" />}
                   {enableRowSelection && (
                     <th className="pl-4 pr-2 py-3 w-10">
                       <input
@@ -299,17 +307,34 @@ export default function DataGrid<T>({
             <tbody>
               {table.getRowModel().rows.length === 0 ? (
                 <tr>
-                  <td colSpan={table.getVisibleLeafColumns().length + (enableRowSelection ? 1 : 0)} className="px-4 py-12 text-center text-gray-400 text-sm">
+                  <td colSpan={table.getVisibleLeafColumns().length + (enableRowSelection ? 1 : 0) + (renderExpandedRow ? 1 : 0)} className="px-4 py-12 text-center text-gray-400 text-sm">
                     No data found.
                   </td>
                 </tr>
               ) : (
-                table.getRowModel().rows.map((row) => (
+                table.getRowModel().rows.map((row) => {
+                  const isExpanded = Boolean(renderExpandedRow && expandedRows[row.id])
+                  return (
+                  <Fragment key={row.id}>
                   <tr
-                    key={row.id}
                     onClick={onRowClick ? () => onRowClick(row.original) : undefined}
-                    className={`border-b border-cream-border/60 transition-colors ${enableRowSelection && row.getIsSelected() ? "bg-brand-light/20" : "hover:bg-cream/30"} ${onRowClick ? "cursor-pointer" : ""}`}
+                    className={`border-b border-cream-border/60 transition-colors ${enableRowSelection && row.getIsSelected() ? "bg-brand-light/20" : "hover:bg-cream/30"} ${onRowClick ? "cursor-pointer" : ""} ${isExpanded ? "bg-cream/30" : ""}`}
                   >
+                    {renderExpandedRow && (
+                      <td className="pl-3 pr-0 py-3">
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setExpandedRows((prev) => ({ ...prev, [row.id]: !prev[row.id] })) }}
+                          aria-label={isExpanded ? "Collapse row" : "Expand row"}
+                          aria-expanded={isExpanded}
+                          className="p-1 text-gray-400 hover:text-brand transition-colors rounded"
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform ${isExpanded ? "rotate-90" : ""}`}>
+                            <path d="m9 18 6-6-6-6" />
+                          </svg>
+                        </button>
+                      </td>
+                    )}
                     {enableRowSelection && (
                       <td className="pl-4 pr-2 py-3">
                         <input
@@ -330,7 +355,16 @@ export default function DataGrid<T>({
                       )
                     })}
                   </tr>
-                ))
+                  {isExpanded && renderExpandedRow && (
+                    <tr className="border-b border-cream-border/60">
+                      <td colSpan={table.getVisibleLeafColumns().length + 1 + (enableRowSelection ? 1 : 0)} className="p-0">
+                        {renderExpandedRow(row.original)}
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
+                  )
+                })
               )}
             </tbody>
           </table>
