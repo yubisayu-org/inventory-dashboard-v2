@@ -31,7 +31,6 @@ export default function InvoiceClient() {
     <div>
       <PaymentStatusPanel
         events={options?.events ?? []}
-        customers={options?.customers ?? []}
         onOpenCustomer={setSelectedCustomer}
       />
       {selectedCustomer && (

@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { fmt } from "@/lib/format"
 import type { InvoiceOrderLine, RefundReason } from "@/lib/db"
+import { useModalDismiss } from "@/hooks/useModalDismiss"
 
 // ─── Refund from invoice modal ───────────────────────────────────────────────
 
@@ -29,6 +30,8 @@ export function RefundFromInvoiceModal({
   customer: string
   onClose: () => void
 }) {
+  useModalDismiss(onClose)
+
   // Resolve unit price: use raw if valid, otherwise parse the formatted string ("390.000" → 390000)
   const unitPrice =
     Number(line.rawUnitPrice) > 0

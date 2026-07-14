@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { displayIg } from "@/lib/format"
 import type { InvoiceResult } from "@/lib/db"
+import { useModalDismiss } from "@/hooks/useModalDismiss"
 import { EventCard } from "./EventCard"
 
 // ─── Invoice Detail Drawer ───────────────────────────────────────────────────
@@ -21,18 +22,7 @@ export function InvoiceDetailDrawer({
   // Adjustment modal) reports a server-side mutation we need to reflect.
   const [reloadKey, setReloadKey] = useState(0)
 
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose()
-    }
-    document.addEventListener("keydown", onKey)
-    const prev = document.body.style.overflow
-    document.body.style.overflow = "hidden"
-    return () => {
-      document.removeEventListener("keydown", onKey)
-      document.body.style.overflow = prev
-    }
-  }, [onClose])
+  useModalDismiss(onClose)
 
   useEffect(() => {
     let cancelled = false
