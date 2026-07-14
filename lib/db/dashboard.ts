@@ -7,7 +7,7 @@ export interface DashboardActionQueue {
   overpaymentCandidates: number
   refundsReadyToTransfer: number
   itemsPendingPurchase: number
-  itemsPendingArrival: number
+  paymentsUnverified: number
   customersReadyToShip: number
 }
 
@@ -47,7 +47,7 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
     overpaymentCount,
     refundCounts,
     pendingPurchaseCount,
-    pendingArrivalCount,
+    unverifiedPaymentCount,
     readyToShipCount,
     totalsRow,
     opsCostRow,
@@ -110,14 +110,9 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
       ) g
     `,
     sql`
-      SELECT COUNT(*)::int AS count FROM (
-        SELECT 1
-        FROM orders
-        WHERE unit_buy IS NOT NULL
-          AND (unit_arrive IS NULL OR unit_arrive < unit_buy)
-        GROUP BY event, product_id
-        HAVING SUM(unit_buy - COALESCE(unit_arrive, 0)) > 0
-      ) g
+      SELECT COUNT(*)::int AS count
+      FROM payments
+      WHERE kind = 'deposit' AND is_checked = false
     `,
     // "Ready to ship" reuses the exact same per-invoice status computation as
     // the packing list page (buildShipGroups) so the count here can never
@@ -251,7 +246,7 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
       overpaymentCandidates: (overpaymentCount[0]?.count as number) ?? 0,
       refundsReadyToTransfer: (refundCounts[0]?.count as number) ?? 0,
       itemsPendingPurchase: (pendingPurchaseCount[0]?.count as number) ?? 0,
-      itemsPendingArrival: (pendingArrivalCount[0]?.count as number) ?? 0,
+      paymentsUnverified: (unverifiedPaymentCount[0]?.count as number) ?? 0,
       customersReadyToShip: readyToShipCount,
     },
     totals: {
