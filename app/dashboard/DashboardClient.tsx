@@ -57,7 +57,7 @@ export default function DashboardClient({
     { count: summary.actionQueue.overpaymentCandidates, label: "overpayments to refund", href: "/dashboard/refunds", tone: "yellow" },
     { count: summary.actionQueue.refundsReadyToTransfer, label: "refunds ready to transfer", href: "/dashboard/refunds", tone: "orange" },
     { count: summary.actionQueue.itemsPendingPurchase, label: "items pending purchase", href: "/dashboard/shopping-list", tone: "green" },
-    { count: summary.actionQueue.itemsPendingArrival, label: "items pending arrival", href: "/dashboard/arrival-list", tone: "blue" },
+    { count: summary.actionQueue.paymentsUnverified, label: "payment deposits unverified", href: "/dashboard/payments", tone: "blue" },
     { count: summary.actionQueue.customersReadyToShip, label: "invoices ready to ship", href: "/dashboard/ship", tone: "purple" },
   ] satisfies ActionItem[]).filter((item) => item.count > 0)
 
