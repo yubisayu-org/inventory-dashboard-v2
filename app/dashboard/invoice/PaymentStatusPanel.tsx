@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react"
 import { displayIg, fmt } from "@/lib/format"
 import type { InvoiceResult, PaymentStatus, PaymentStatusRow } from "@/lib/db"
-import DataGrid, { ColumnVisibilityMenu, type ColumnDef, type VisibilityState } from "@/components/DataGrid"
+import DataGrid, { type ColumnDef } from "@/components/DataGrid"
 import CopyInvoiceButton from "@/components/CopyInvoiceButton"
 import InvoiceSummary from "@/components/InvoiceSummary"
 import { AddAdjustmentFromInvoiceModal } from "./AddAdjustmentFromInvoiceModal"
@@ -39,10 +39,6 @@ export function PaymentStatusPanel({
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<StatusFilter>("all")
   const [adjustingRow, setAdjustingRow] = useState<{ event: string; customer: string } | null>(null)
-  // Lifted so the Columns button and row count can be rendered in the
-  // summary row instead of DataGrid's own toolbar.
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
-  const [filteredCount, setFilteredCount] = useState(0)
   // Per-customer invoice cache for expanded rows — one fetch covers every
   // event row of that customer; cleared on refresh so amounts stay current.
   const invoiceCache = useRef(new Map<string, InvoiceResult>())
@@ -179,7 +175,7 @@ export function PaymentStatusPanel({
     },
   ], [onOpenCustomer])
 
-  const filters: { key: StatusFilter; label: string; count: number }[] = [
+  const tabs: { key: StatusFilter; label: string; count: number }[] = [
     { key: "all", label: "All", count: rows.length },
     { key: "unpaid", label: "Unpaid", count: counts.unpaid },
     { key: "partial", label: "Partial", count: counts.partial },
@@ -242,84 +238,67 @@ export function PaymentStatusPanel({
     </div>
   ), [onOpenCustomer])
 
-  // Rendered as its own row below the toolbar (search + rows + Columns), so
-  // the layout reads: search/columns row, then chips, then totals, then table.
-  const belowToolbar = (
-    <div className="flex flex-col gap-3">
-      {/* Status filter chips */}
-      <div className="flex items-center gap-1.5 flex-wrap">
-        {filters.map((f) => {
-          const active = filter === f.key
+  if (loading) {
+    return <div className="rounded-xl border border-cream-border bg-white py-12 text-center text-sm text-gray-400">Loading…</div>
+  }
+  if (error) {
+    return <div className="rounded-xl border border-red-200 bg-red-50 py-8 px-4 text-sm text-red-500">{error}</div>
+  }
+
+  return (
+    <>
+      {/* Tabs */}
+      <div className="flex border-b border-cream-border gap-0 overflow-x-auto">
+        {tabs.map(({ key, label, count }) => {
+          const active = filter === key
           return (
             <button
-              key={f.key}
-              type="button"
-              onClick={() => setFilter(f.key)}
-              className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
+              key={key}
+              onClick={() => setFilter(key)}
+              className={`shrink-0 px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 active
-                  ? "bg-brand text-white border-brand"
-                  : "bg-white text-gray-600 border-cream-border hover:border-brand hover:text-brand"
+                  ? "border-brand text-brand"
+                  : "border-transparent text-gray-500 hover:text-foreground"
               }`}
             >
-              {f.label}
-              {f.count > 0 && (
-                <span className={`ml-1.5 text-[10px] ${active ? "text-white/80" : "text-gray-400"}`}>
-                  {f.count}
+              {label}
+              {count ? (
+                <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${active ? "bg-brand/10 text-brand" : "bg-gray-100 text-gray-500"}`}>
+                  {count}
                 </span>
-              )}
+              ) : null}
             </button>
           )
         })}
       </div>
 
-      {/* Summary + column visibility */}
-      {rows.length > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1 px-1">
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-xs text-gray-500">
-            <div>
-              <span className="text-gray-400">Outstanding:</span>{" "}
-              <span className="font-medium tabular-nums text-red-600">Rp {fmt(totals.outstanding)}</span>
-            </div>
-            <div>
-              <span className="text-gray-400">Overpaid:</span>{" "}
-              <span className="font-medium tabular-nums text-purple-600">Rp {fmt(totals.overpaid)}</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-gray-400">{filteredCount} rows</span>
-            <ColumnVisibilityMenu columns={columns} columnVisibility={columnVisibility} onColumnVisibilityChange={setColumnVisibility} />
-          </div>
-        </div>
-      )}
-    </div>
-  )
-
-  return (
-    <div className="flex flex-col gap-3">
-      {/* Table (desktop) / cards (mobile) */}
-      {loading ? (
-        <div className="rounded-xl border border-cream-border bg-white py-12 text-center text-sm text-gray-400">Loading…</div>
-      ) : error ? (
-        <div className="rounded-xl border border-red-200 bg-red-50 py-8 px-4 text-sm text-red-500">{error}</div>
-      ) : (
+      <div className="mt-3">
         <DataGrid
           key={filter}
           data={gridRows}
           columns={columns}
           getRowId={(r) => `${r.event}-${r.customer}`}
           searchPlaceholder="Search customers, events…"
-          belowToolbar={belowToolbar}
-          columnVisibility={columnVisibility}
-          onColumnVisibilityChange={setColumnVisibility}
-          hideColumnVisibility
-          hideRowCount
-          onFilteredRowCountChange={setFilteredCount}
           pageSize={50}
           initialSorting={[{ id: "outstanding", desc: true }]}
           renderMobileCard={renderMobileCard}
           renderExpandedRow={renderExpandedRow}
+          toolbarExtra={
+            rows.length > 0 ? (
+              <>
+                <span className="text-xs text-gray-500 whitespace-nowrap">
+                  <span className="text-gray-400">Outstanding:</span>{" "}
+                  <span className="font-semibold text-red-600">Rp {fmt(totals.outstanding)}</span>
+                </span>
+                <span className="text-xs text-gray-500 whitespace-nowrap">
+                  <span className="text-gray-400">Overpaid:</span>{" "}
+                  <span className="font-semibold text-purple-600">Rp {fmt(totals.overpaid)}</span>
+                </span>
+              </>
+            ) : null
+          }
         />
-      )}
+      </div>
 
       {adjustingRow && (
         <AddAdjustmentFromInvoiceModal
@@ -329,7 +308,7 @@ export function PaymentStatusPanel({
           onSaved={fetchRows}
         />
       )}
-    </div>
+    </>
   )
 }
 
