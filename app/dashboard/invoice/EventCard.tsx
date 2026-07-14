@@ -108,7 +108,7 @@ export function EventCard({
           <tbody>
             {[...orders].reverse().map((r, i) => (
               <tr key={i} className="border-b border-cream-border/60 group">
-                <td className="px-4 py-2">{r.order}</td>
+                <td className="px-4 py-2">{r.productName || r.order}</td>
                 <td className="px-4 py-2 text-right">{r.unit}</td>
                 <td className="px-4 py-2 text-right">{r.price}</td>
                 <td className="px-4 py-2 text-right">{r.subtotal}</td>
@@ -170,7 +170,7 @@ export function EventCard({
         {[...orders].reverse().map((r, i) => (
           <div key={i} className="px-4 py-3 flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <div className="text-sm text-foreground truncate">{r.order}</div>
+              <div className="text-sm text-foreground truncate">{r.productName || r.order}</div>
               <div className="text-xs text-gray-500 tabular-nums mt-0.5">
                 {r.unit} × {r.price} = <span className="font-medium text-foreground">{r.subtotal}</span>
               </div>

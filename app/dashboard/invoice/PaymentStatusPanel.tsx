@@ -3,8 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react"
 import { displayIg, fmt } from "@/lib/format"
 import type { InvoiceResult, PaymentStatus, PaymentStatusRow } from "@/lib/db"
-import EventSelect from "@/components/EventSelect"
-import DataGrid, { type ColumnDef } from "@/components/DataGrid"
+import DataGrid, { ColumnVisibilityMenu, type ColumnDef, type VisibilityState } from "@/components/DataGrid"
 import CopyInvoiceButton from "@/components/CopyInvoiceButton"
 import InvoiceSummary from "@/components/InvoiceSummary"
 import { AddAdjustmentFromInvoiceModal } from "./AddAdjustmentFromInvoiceModal"
@@ -31,18 +30,19 @@ const STATUS_COLORS: Record<PaymentStatus, string> = {
 type StatusFilter = "all" | PaymentStatus
 
 export function PaymentStatusPanel({
-  events,
   onOpenCustomer,
 }: {
-  events: string[]
   onOpenCustomer: (customer: string) => void
 }) {
-  const [event, setEvent] = useState<string>("")
   const [rows, setRows] = useState<PaymentStatusRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<StatusFilter>("all")
   const [adjustingRow, setAdjustingRow] = useState<{ event: string; customer: string } | null>(null)
+  // Lifted so the Columns button and row count can be rendered in the
+  // summary row instead of DataGrid's own toolbar.
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
+  const [filteredCount, setFilteredCount] = useState(0)
   // Per-customer invoice cache for expanded rows — one fetch covers every
   // event row of that customer; cleared on refresh so amounts stay current.
   const invoiceCache = useRef(new Map<string, InvoiceResult>())
@@ -67,35 +67,29 @@ export function PaymentStatusPanel({
 
   useEffect(() => { fetchRows() }, [fetchRows])
 
-  // Rows scoped to the selected event (or all events when none is picked).
-  const eventRows = useMemo(
-    () => (event ? rows.filter((r) => r.event === event) : rows),
-    [rows, event],
-  )
-
   const counts = useMemo(() => {
     const c: Record<PaymentStatus, number> = { void: 0, unpaid: 0, partial: 0, paid: 0, overpaid: 0 }
-    for (const r of eventRows) c[r.status]++
+    for (const r of rows) c[r.status]++
     return c
-  }, [eventRows])
+  }, [rows])
 
   const totals = useMemo(() => {
     // Outstanding = money customers still owe (positive balances); overpaid =
     // money owed back to customers (negative balances), shown as a magnitude.
     let outstanding = 0
     let overpaid = 0
-    for (const r of eventRows) {
+    for (const r of rows) {
       if (r.outstanding > 0) outstanding += r.outstanding
       else if (r.outstanding < 0) overpaid += -r.outstanding
     }
     return { outstanding, overpaid }
-  }, [eventRows])
+  }, [rows])
 
-  // The status chips pre-filter the rows fed to the grid; the grid then handles
-  // search, per-column filters, sorting and pagination — same as other tables.
+  // The status chips pre-filter the rows fed to the grid; the grid's own
+  // search box then narrows what's visible without affecting these totals.
   const gridRows = useMemo(
-    () => (filter === "all" ? eventRows : eventRows.filter((r) => r.status === filter)),
-    [eventRows, filter],
+    () => (filter === "all" ? rows : rows.filter((r) => r.status === filter)),
+    [rows, filter],
   )
 
   const columns = useMemo<ColumnDef<PaymentStatusRow, unknown>[]>(() => [
@@ -186,7 +180,7 @@ export function PaymentStatusPanel({
   ], [onOpenCustomer])
 
   const filters: { key: StatusFilter; label: string; count: number }[] = [
-    { key: "all", label: "All", count: eventRows.length },
+    { key: "all", label: "All", count: rows.length },
     { key: "unpaid", label: "Unpaid", count: counts.unpaid },
     { key: "partial", label: "Partial", count: counts.partial },
     { key: "paid", label: "Paid", count: counts.paid },
@@ -248,25 +242,10 @@ export function PaymentStatusPanel({
     </div>
   ), [onOpenCustomer])
 
-  return (
+  // Rendered as its own row below the toolbar (search + rows + Columns), so
+  // the layout reads: search/columns row, then chips, then totals, then table.
+  const belowToolbar = (
     <div className="flex flex-col gap-3">
-      {/* Toolbar: event filter + refresh */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="w-full sm:w-48">
-          <EventSelect value={event} onChange={setEvent} events={events} placeholder="All events" clearable />
-        </div>
-        <button
-          type="button"
-          onClick={fetchRows}
-          title="Refresh"
-          className="p-1.5 text-gray-400 hover:text-brand transition-colors rounded"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 12a9 9 0 1 1-6.22-8.56" /><polyline points="21 3 21 9 15 9" />
-          </svg>
-        </button>
-      </div>
-
       {/* Status filter chips */}
       <div className="flex items-center gap-1.5 flex-wrap">
         {filters.map((f) => {
@@ -293,20 +272,30 @@ export function PaymentStatusPanel({
         })}
       </div>
 
-      {/* Summary */}
-      {eventRows.length > 0 && (
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-xs text-gray-500 px-1">
-          <div>
-            <span className="text-gray-400">Outstanding:</span>{" "}
-            <span className="font-medium tabular-nums text-red-600">Rp {fmt(totals.outstanding)}</span>
+      {/* Summary + column visibility */}
+      {rows.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1 px-1">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-xs text-gray-500">
+            <div>
+              <span className="text-gray-400">Outstanding:</span>{" "}
+              <span className="font-medium tabular-nums text-red-600">Rp {fmt(totals.outstanding)}</span>
+            </div>
+            <div>
+              <span className="text-gray-400">Overpaid:</span>{" "}
+              <span className="font-medium tabular-nums text-purple-600">Rp {fmt(totals.overpaid)}</span>
+            </div>
           </div>
-          <div>
-            <span className="text-gray-400">Overpaid:</span>{" "}
-            <span className="font-medium tabular-nums text-purple-600">Rp {fmt(totals.overpaid)}</span>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-gray-400">{filteredCount} rows</span>
+            <ColumnVisibilityMenu columns={columns} columnVisibility={columnVisibility} onColumnVisibilityChange={setColumnVisibility} />
           </div>
         </div>
       )}
+    </div>
+  )
 
+  return (
+    <div className="flex flex-col gap-3">
       {/* Table (desktop) / cards (mobile) */}
       {loading ? (
         <div className="rounded-xl border border-cream-border bg-white py-12 text-center text-sm text-gray-400">Loading…</div>
@@ -314,11 +303,17 @@ export function PaymentStatusPanel({
         <div className="rounded-xl border border-red-200 bg-red-50 py-8 px-4 text-sm text-red-500">{error}</div>
       ) : (
         <DataGrid
-          key={`${event}-${filter}`}
+          key={filter}
           data={gridRows}
           columns={columns}
           getRowId={(r) => `${r.event}-${r.customer}`}
           searchPlaceholder="Search customers, events…"
+          belowToolbar={belowToolbar}
+          columnVisibility={columnVisibility}
+          onColumnVisibilityChange={setColumnVisibility}
+          hideColumnVisibility
+          hideRowCount
+          onFilteredRowCountChange={setFilteredCount}
           pageSize={50}
           initialSorting={[{ id: "outstanding", desc: true }]}
           renderMobileCard={renderMobileCard}
@@ -405,7 +400,7 @@ function ExpandedInvoice({
         <tbody>
           {[...ev.orders].reverse().map((r, i) => (
             <tr key={i} className="border-b border-cream-border/60">
-              <td className="pl-10 pr-4 py-2">{r.order}</td>
+              <td className="pl-10 pr-4 py-2">{r.productName || r.order}</td>
               <td className="px-4 py-2 text-right tabular-nums">{r.unit}</td>
               <td className="px-4 py-2 text-right tabular-nums">{r.price}</td>
               <td className="px-4 py-2 text-right tabular-nums">{r.subtotal}</td>
