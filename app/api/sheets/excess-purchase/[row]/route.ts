@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { requireSession, requireOwner } from "@/lib/api"
+import { requireSession, requireRole } from "@/lib/api"
 import {
   getExcessPurchaseRows,
   getDuplicateFormRowsForEvent,
@@ -20,7 +20,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
 
-  const roleError = requireOwner(session)
+  const roleError = requireRole(session)
   if (roleError) return roleError
 
   const { row } = await params
@@ -115,7 +115,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
 
-  const roleError = requireOwner(session)
+  const roleError = requireRole(session)
   if (roleError) return roleError
 
   const { row } = await params
@@ -160,7 +160,7 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
 
-  const roleError = requireOwner(session)
+  const roleError = requireRole(session)
   if (roleError) return roleError
 
   const { row } = await params

@@ -130,6 +130,10 @@ interface DataGridProps<T> {
   /** Fires whenever the filtered (post-search) row count changes, so the
    *  caller can mirror "N rows" outside the toolbar (e.g. with hideRowCount). */
   onFilteredRowCountChange?: (count: number) => void
+  /** Fires with the filtered (post-search/-filter, pre-pagination) original
+   *  rows, so the caller can derive summaries that respect the search box —
+   *  e.g. totals that update as the user types. Client-side mode only. */
+  onFilteredRowsChange?: (rows: T[]) => void
   /** Optional initial sorting */
   initialSorting?: SortingState
   /** Enable row selection with checkboxes */
@@ -171,6 +175,7 @@ export default function DataGrid<T>({
   hideColumnVisibility,
   hideRowCount,
   onFilteredRowCountChange,
+  onFilteredRowsChange,
   initialSorting,
   enableRowSelection,
   rowSelection: controlledRowSelection,
@@ -251,6 +256,12 @@ export default function DataGrid<T>({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [totalRows])
 
+  useEffect(() => {
+    if (ss) return
+    onFilteredRowsChange?.(table.getFilteredRowModel().rows.map((r) => r.original))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, globalFilter, columnFilters])
+
   // Client-side mode: with autoResetPageIndex off (so edits keep the current
   // page), still jump to page 1 when the filter/search/sort changes...
   useEffect(() => {
@@ -301,9 +312,11 @@ export default function DataGrid<T>({
             <span className="text-xs text-gray-400">{totalRows} rows</span>
           )}
 
-          {/* Column visibility */}
+          {/* Column visibility (desktop only — mobile uses cards, not columns) */}
           {!hideColumnVisibility && (
-            <ColumnVisibilityMenu columns={columns} columnVisibility={columnVisibility} onColumnVisibilityChange={setColumnVisibility} />
+            <div className="hidden md:block">
+              <ColumnVisibilityMenu columns={columns} columnVisibility={columnVisibility} onColumnVisibilityChange={setColumnVisibility} />
+            </div>
           )}
         </div>
       )}

@@ -351,12 +351,6 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
           {bulkDeleting ? "Deleting…" : `Delete ${selectedCount}`}
         </button>
       )}
-
-      <button onClick={refresh} title="Refresh" className="p-1.5 text-gray-400 hover:text-brand transition-colors rounded">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M21 12a9 9 0 1 1-6.22-8.56" /><polyline points="21 3 21 9 15 9" />
-        </svg>
-      </button>
     </>
   )
 
@@ -446,7 +440,7 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
             <div key={r.rowNumber} className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-1.5 min-w-0">
-                  <div className="font-semibold text-sm text-foreground truncate"><span className="text-gray-300">@</span>{r.customer.replace(/^@/, "")}</div>
+                  <div className="font-semibold text-sm text-foreground truncate">{displayIg(r.customer)}</div>
                   {!r.hasAddress && <NoAddressIcon />}
                 </div>
                 <span className="shrink-0 text-[11px] text-gray-600 bg-cream border border-cream-border rounded-md px-2 py-0.5 font-semibold">{r.event}</span>
@@ -722,7 +716,7 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
     [options],
   )
   const itemOptions = useMemo(
-    () => (options?.items ?? []).map((it) => ({ value: String(it.id), label: it.name, meta: it.store || undefined })),
+    () => (options?.items ?? []).map((it) => ({ value: String(it.id), label: it.name })),
     [options],
   )
 
@@ -1057,7 +1051,7 @@ function AddOrderForm({ options, onOrderAdded }: {
     [options],
   )
   const itemOptions = useMemo(
-    () => (options?.items ?? []).map((it) => ({ value: String(it.id), label: it.name, meta: it.store || undefined })),
+    () => (options?.items ?? []).map((it) => ({ value: String(it.id), label: it.name })),
     [options],
   )
 

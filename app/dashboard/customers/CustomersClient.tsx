@@ -10,6 +10,7 @@ import DataGrid, {
 } from "@/components/DataGrid"
 import { usePaginatedFetch, type PageData } from "@/hooks/usePaginatedFetch"
 import { fmt, displayIg } from "@/lib/format"
+import { CustomerDetailDrawer } from "./CustomerDetailDrawer"
 
 const PAGE_SIZE = 25
 
@@ -69,6 +70,7 @@ export default function CustomersClient() {
 
   const [creating, setCreating] = useState(false)
   const [editRow, setEditRow] = useState<CustomerRow | null>(null)
+  const [detailCustomer, setDetailCustomer] = useState<string | null>(null)
 
   // Server-side table state.
   const [sorting, setSorting] = useState<SortingState>([{ id: "instagramId", desc: false }])
@@ -375,6 +377,7 @@ export default function CustomersClient() {
         toolbarExtra={toolbarExtra}
         initialVisibility={{ updatedAt: false }}
         renderMobileCard={renderMobileCard}
+        onRowClick={(row) => setDetailCustomer(row.instagramId)}
         serverSide={{
           rowCount: totalCount,
           loading: fetchState.loading,
@@ -418,6 +421,10 @@ export default function CustomersClient() {
           onSaved={() => { setEditRow(null); refreshRef.current() }}
           onCancel={() => setEditRow(null)}
         />
+      )}
+
+      {detailCustomer && (
+        <CustomerDetailDrawer customer={detailCustomer} onClose={() => setDetailCustomer(null)} />
       )}
     </div>
   )

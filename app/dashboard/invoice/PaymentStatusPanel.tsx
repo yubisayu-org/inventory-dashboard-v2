@@ -38,6 +38,10 @@ export function PaymentStatusPanel({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<StatusFilter>("all")
+  // Rows currently visible in the grid after the search box narrows them, so
+  // the Outstanding/Overpaid totals track what the user is looking at. null
+  // until the grid first reports (falls back to the full filtered set).
+  const [searchedRows, setSearchedRows] = useState<PaymentStatusRow[] | null>(null)
   const [adjustingRow, setAdjustingRow] = useState<{ event: string; customer: string } | null>(null)
   // Per-customer invoice cache for expanded rows — one fetch covers every
   // event row of that customer; cleared on refresh so amounts stay current.
@@ -69,24 +73,27 @@ export function PaymentStatusPanel({
     return c
   }, [rows])
 
-  const totals = useMemo(() => {
-    // Outstanding = money customers still owe (positive balances); overpaid =
-    // money owed back to customers (negative balances), shown as a magnitude.
-    let outstanding = 0
-    let overpaid = 0
-    for (const r of rows) {
-      if (r.outstanding > 0) outstanding += r.outstanding
-      else if (r.outstanding < 0) overpaid += -r.outstanding
-    }
-    return { outstanding, overpaid }
-  }, [rows])
-
   // The status chips pre-filter the rows fed to the grid; the grid's own
-  // search box then narrows what's visible without affecting these totals.
+  // search box then narrows further and reports back via onFilteredRowsChange.
   const gridRows = useMemo(
     () => (filter === "all" ? rows : rows.filter((r) => r.status === filter)),
     [rows, filter],
   )
+
+  const totals = useMemo(() => {
+    // Outstanding = money customers still owe (positive balances); overpaid =
+    // money owed back to customers (negative balances), shown as a magnitude.
+    // Summed over the searched rows so the figures match what's on screen; fall
+    // back to the full status-filtered set until the grid first reports.
+    const source = searchedRows ?? gridRows
+    let outstanding = 0
+    let overpaid = 0
+    for (const r of source) {
+      if (r.outstanding > 0) outstanding += r.outstanding
+      else if (r.outstanding < 0) overpaid += -r.outstanding
+    }
+    return { outstanding, overpaid }
+  }, [searchedRows, gridRows])
 
   const columns = useMemo<ColumnDef<PaymentStatusRow, unknown>[]>(() => [
     {
@@ -279,6 +286,7 @@ export function PaymentStatusPanel({
           columns={columns}
           getRowId={(r) => `${r.event}-${r.customer}`}
           searchPlaceholder="Search customers, events…"
+          onFilteredRowsChange={setSearchedRows}
           pageSize={50}
           initialSorting={[{ id: "outstanding", desc: true }]}
           renderMobileCard={renderMobileCard}

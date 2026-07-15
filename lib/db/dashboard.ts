@@ -274,3 +274,152 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
     })),
   }
 }
+
+// ─── Per-Event Performance ─────────────────────────────────────────────────
+
+/** One event's mini-dashboard stats, powering the expandable Events-page panel.
+ *  Unlike getDashboardSummary's event list (active events only), this covers
+ *  EVERY event — an event with no orders yet comes back with zeroed fields and
+ *  hasActivity = false so the UI can render an empty state. */
+export interface EventPerformance {
+  name: string
+  hasActivity: boolean
+  // Sales
+  orderCount: number
+  customerCount: number
+  totalUnits: number
+  revenue: number
+  // Payments
+  totalPaid: number
+  outstanding: number
+  unpaidCount: number
+  // Fulfillment
+  totalBought: number
+  totalArrived: number
+  totalShipped: number
+  // Profit — simple cash view: paid in minus operational expenses out.
+  opsExpenses: number
+  netProfit: number
+}
+
+export async function getEventPerformance(): Promise<EventPerformance[]> {
+  const rows = await sql`
+    WITH order_inv AS (
+      -- Per (event, customer) invoice line-item aggregate.
+      SELECT
+        o.event,
+        o.customer,
+        SUM(o.unit_price * o.unit) AS subtotal,
+        SUM(COALESCE(p.gram, 0) * o.unit) AS total_gram
+      FROM orders o
+      JOIN products p ON p.id = o.product_id
+      GROUP BY o.event, o.customer
+    ),
+    pay_inv AS (
+      SELECT event, customer, SUM(amount) AS total_paid
+      FROM payments
+      WHERE is_checked = true
+      GROUP BY event, customer
+    ),
+    adj_inv AS (
+      SELECT event, customer, SUM(amount) AS total_adj
+      FROM adjustments
+      GROUP BY event, customer
+    ),
+    invoice AS (
+      -- Per (event, customer) invoice total + paid, ongkir routed via the
+      -- event's warehouse (mirrors getDashboardSummary's omzet formula).
+      SELECT
+        oi.event,
+        oi.subtotal
+          + COALESCE(cwo.ongkos_kirim, 0) * CEIL(oi.total_gram::numeric / 1000)
+          + COALESCE(aj.total_adj, 0) AS invoice_total,
+        COALESCE(pi.total_paid, 0) AS paid
+      FROM order_inv oi
+      LEFT JOIN customers c ON c.instagram_id = oi.customer
+      LEFT JOIN events ev ON ev.name = oi.event
+      LEFT JOIN customer_warehouse_ongkir cwo
+        ON cwo.customer_id = c.id AND cwo.warehouse_id = ev.warehouse_id
+      LEFT JOIN pay_inv pi ON pi.event = oi.event AND pi.customer = oi.customer
+      LEFT JOIN adj_inv aj ON aj.event = oi.event AND aj.customer = oi.customer
+    ),
+    sales AS (
+      -- Revenue and outstanding are invoice-driven: only (event, customer)
+      -- pairs that have orders have an invoice. Total-paid is deliberately NOT
+      -- summed here — see pay_event below.
+      SELECT
+        event,
+        COALESCE(SUM(invoice_total), 0)::bigint AS revenue,
+        COALESCE(SUM(GREATEST(invoice_total - paid, 0)), 0)::bigint AS outstanding,
+        COUNT(*) FILTER (WHERE invoice_total - paid > 0)::int AS unpaid_count
+      FROM invoice
+      GROUP BY event
+    ),
+    pay_event AS (
+      -- Headline "paid" = every checked payment for the event, including any
+      -- from customers with no order rows (mistagged/overpayment). This matches
+      -- the payments page total; invoice.paid above stays per-customer so the
+      -- outstanding maths is unaffected.
+      SELECT event, SUM(amount)::bigint AS total_paid
+      FROM payments
+      WHERE is_checked = true
+      GROUP BY event
+    ),
+    order_agg AS (
+      SELECT
+        o.event,
+        COUNT(*)::int AS order_count,
+        COUNT(DISTINCT o.customer)::int AS customer_count,
+        SUM(o.unit)::int AS total_units,
+        SUM(COALESCE(o.unit_buy, 0))::int AS total_bought,
+        SUM(COALESCE(o.unit_arrive, 0))::int AS total_arrived,
+        SUM(COALESCE(o.unit_ship, 0))::int AS total_shipped
+      FROM orders o
+      GROUP BY o.event
+    ),
+    ops AS (
+      SELECT event, SUM(amount_idr)::bigint AS ops_expenses
+      FROM operational_expenses
+      GROUP BY event
+    )
+    SELECT
+      e.name,
+      COALESCE(oa.order_count, 0)::int AS order_count,
+      COALESCE(oa.customer_count, 0)::int AS customer_count,
+      COALESCE(oa.total_units, 0)::int AS total_units,
+      COALESCE(oa.total_bought, 0)::int AS total_bought,
+      COALESCE(oa.total_arrived, 0)::int AS total_arrived,
+      COALESCE(oa.total_shipped, 0)::int AS total_shipped,
+      COALESCE(s.revenue, 0)::bigint AS revenue,
+      COALESCE(pe.total_paid, 0)::bigint AS total_paid,
+      COALESCE(s.outstanding, 0)::bigint AS outstanding,
+      COALESCE(s.unpaid_count, 0)::int AS unpaid_count,
+      COALESCE(op.ops_expenses, 0)::bigint AS ops_expenses
+    FROM events e
+    LEFT JOIN order_agg oa ON oa.event = e.name
+    LEFT JOIN sales s ON s.event = e.name
+    LEFT JOIN pay_event pe ON pe.event = e.name
+    LEFT JOIN ops op ON op.event = e.name
+  `
+
+  return rows.map((r) => {
+    const totalPaid = Number(r.total_paid ?? 0)
+    const opsExpenses = Number(r.ops_expenses ?? 0)
+    return {
+      name: r.name as string,
+      hasActivity: Number(r.order_count ?? 0) > 0,
+      orderCount: Number(r.order_count ?? 0),
+      customerCount: Number(r.customer_count ?? 0),
+      totalUnits: Number(r.total_units ?? 0),
+      revenue: Number(r.revenue ?? 0),
+      totalPaid,
+      outstanding: Number(r.outstanding ?? 0),
+      unpaidCount: Number(r.unpaid_count ?? 0),
+      totalBought: Number(r.total_bought ?? 0),
+      totalArrived: Number(r.total_arrived ?? 0),
+      totalShipped: Number(r.total_shipped ?? 0),
+      opsExpenses,
+      netProfit: totalPaid - opsExpenses,
+    }
+  })
+}

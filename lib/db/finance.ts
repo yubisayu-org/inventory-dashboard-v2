@@ -235,6 +235,45 @@ export async function getAdjustmentRows(): Promise<AdjustmentRow[]> {
   }))
 }
 
+/** Every payment, adjustment and refund for one customer — the ledger half of
+ *  the customer detail drawer (invoices come from getInvoiceForCustomer). Row
+ *  counts per customer are small, so these are unpaginated. */
+export interface CustomerLedger {
+  payments: PaymentRow[]
+  adjustments: AdjustmentRow[]
+  refunds: RefundRow[]
+}
+
+export async function getCustomerLedger(instagramId: string): Promise<CustomerLedger> {
+  const [payments, adjustments, refunds] = await Promise.all([
+    sql`
+      SELECT id, event, customer, amount, account, is_checked,
+             pay_date, remarks, kind, created_at, updated_at
+      FROM payments
+      WHERE lower(customer) = lower(${instagramId})
+      ORDER BY id DESC
+    `.then((rows) => rows.map(mapPaymentRow)),
+    sql`
+      SELECT id, event, customer, description, amount, created_at, updated_at
+      FROM adjustments
+      WHERE lower(customer) = lower(${instagramId})
+      ORDER BY id DESC
+    `.then((rows) =>
+      rows.map((r) => ({
+        rowNumber: r.id as number,
+        event: r.event as string,
+        customer: r.customer as string,
+        description: (r.description ?? "") as string,
+        amount: (r.amount ?? 0) as number,
+        createdAt: tsToString(r.created_at),
+        updatedAt: tsToString(r.updated_at),
+      })),
+    ),
+    getRefunds({ customer: instagramId }),
+  ])
+  return { payments, adjustments, refunds }
+}
+
 export interface PaginatedAdjustments {
   rows: AdjustmentRow[]
   totalCount: number

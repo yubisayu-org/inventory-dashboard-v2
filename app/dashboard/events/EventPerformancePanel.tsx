@@ -1,0 +1,94 @@
+import type { EventPerformance } from "@/lib/db"
+import { fmt } from "@/lib/format"
+
+const rp = (n: number) => `Rp ${fmt(n)}`
+
+/** Read-only mini-dashboard for a single event. Rendered inside the expandable
+ *  row (desktop) and expandable card (mobile) on the Events page. Pure
+ *  presentation — data comes from getEventPerformance() upstream. */
+export default function EventPerformancePanel({ perf }: { perf: EventPerformance | undefined }) {
+  if (!perf || !perf.hasActivity) {
+    return (
+      <div className="px-4 py-6 text-center text-sm text-gray-400">No activity yet</div>
+    )
+  }
+
+  const { totalUnits } = perf
+  const pct = (n: number) => (totalUnits > 0 ? Math.round((n / totalUnits) * 100) : 0)
+  const profitPositive = perf.netProfit >= 0
+
+  return (
+    <div className="flex flex-col gap-4 p-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {/* Sales */}
+        <StatGroup title="Sales">
+          <Stat label="Orders" value={fmt(perf.orderCount)} />
+          <Stat label="Buyers" value={fmt(perf.customerCount)} />
+          <Stat label="Units" value={fmt(perf.totalUnits)} />
+          <Stat label="Revenue" value={rp(perf.revenue)} strong />
+        </StatGroup>
+
+        {/* Payments */}
+        <StatGroup title="Payments">
+          <Stat label="Paid" value={rp(perf.totalPaid)} />
+          <Stat label="Owed" value={rp(perf.outstanding)} className={perf.outstanding > 0 ? "text-red-600" : undefined} />
+          <Stat label="Unpaid invoices" value={fmt(perf.unpaidCount)} />
+        </StatGroup>
+
+        {/* Fulfillment */}
+        <StatGroup title="Fulfillment">
+          <Bar label="Bought" value={perf.totalBought} pct={pct(perf.totalBought)} />
+          <Bar label="Arrived" value={perf.totalArrived} pct={pct(perf.totalArrived)} />
+          <Bar label="Shipped" value={perf.totalShipped} pct={pct(perf.totalShipped)} />
+        </StatGroup>
+      </div>
+
+      {/* Net profit */}
+      <div className="flex flex-wrap items-baseline justify-between gap-2 border-t border-cream-border pt-3">
+        <span className="text-xs font-medium text-gray-500">Net profit</span>
+        <span className="flex items-baseline gap-2">
+          <span className={`text-base font-semibold tabular-nums ${profitPositive ? "text-emerald-600" : "text-red-600"}`}>
+            {rp(perf.netProfit)}
+          </span>
+          <span className="text-[11px] text-gray-400">
+            paid {rp(perf.totalPaid)} − ops {rp(perf.opsExpenses)}
+          </span>
+        </span>
+      </div>
+    </div>
+  )
+}
+
+function StatGroup({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">{title}</div>
+      <div className="flex flex-col gap-1.5">{children}</div>
+    </div>
+  )
+}
+
+function Stat({ label, value, strong, className }: { label: string; value: string; strong?: boolean; className?: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-2">
+      <span className="text-xs text-gray-500">{label}</span>
+      <span className={`tabular-nums ${strong ? "text-sm font-semibold text-foreground" : "text-sm text-foreground"} ${className ?? ""}`}>
+        {value}
+      </span>
+    </div>
+  )
+}
+
+function Bar({ label, value, pct }: { label: string; value: number; pct: number }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-xs text-gray-500">{label}</span>
+        <span className="text-xs tabular-nums text-gray-500">{fmt(value)} · {pct}%</span>
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-cream">
+        <div className="h-full rounded-full bg-brand transition-all" style={{ width: `${Math.min(pct, 100)}%` }} />
+      </div>
+    </div>
+  )
+}
