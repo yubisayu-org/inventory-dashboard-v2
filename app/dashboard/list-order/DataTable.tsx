@@ -716,7 +716,7 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
     [options],
   )
   const itemOptions = useMemo(
-    () => (options?.items ?? []).map((it) => ({ value: String(it.id), label: it.name, meta: it.store || undefined })),
+    () => (options?.items ?? []).map((it) => ({ value: String(it.id), label: it.name })),
     [options],
   )
 
@@ -1051,7 +1051,7 @@ function AddOrderForm({ options, onOrderAdded }: {
     [options],
   )
   const itemOptions = useMemo(
-    () => (options?.items ?? []).map((it) => ({ value: String(it.id), label: it.name, meta: it.store || undefined })),
+    () => (options?.items ?? []).map((it) => ({ value: String(it.id), label: it.name })),
     [options],
   )
 
