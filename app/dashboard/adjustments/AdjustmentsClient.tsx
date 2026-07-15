@@ -207,17 +207,6 @@ export default function AdjustmentsClient() {
         renderMobileCard={renderMobileCard}
         toolbarExtra={
           <>
-            {filteredSum !== null && (
-              <span className="text-xs text-gray-500 whitespace-nowrap">
-                Total: <span className="font-semibold text-foreground">Rp {formatAmount(filteredSum)}</span>
-              </span>
-            )}
-            <button onClick={() => refreshRef.current()} title="Refresh" className="p-1.5 text-gray-400 hover:text-brand transition-colors rounded">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 12a9 9 0 1 1-6.22-8.56" /><polyline points="21 3 21 9 15 9" />
-              </svg>
-            </button>
-
             <button
               onClick={() => { setAddOpen((o) => !o); setEditingRow(null) }}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg transition-colors ${

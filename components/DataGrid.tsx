@@ -301,9 +301,11 @@ export default function DataGrid<T>({
             <span className="text-xs text-gray-400">{totalRows} rows</span>
           )}
 
-          {/* Column visibility */}
+          {/* Column visibility (desktop only — mobile uses cards, not columns) */}
           {!hideColumnVisibility && (
-            <ColumnVisibilityMenu columns={columns} columnVisibility={columnVisibility} onColumnVisibilityChange={setColumnVisibility} />
+            <div className="hidden md:block">
+              <ColumnVisibilityMenu columns={columns} columnVisibility={columnVisibility} onColumnVisibilityChange={setColumnVisibility} />
+            </div>
           )}
         </div>
       )}
