@@ -31,13 +31,14 @@ Matches the dashboard convention:
 
 ### Profit
 
-`netProfit = grossMargin - opsExpenses`
+Simple cash view: `netProfit = totalPaid - opsExpenses`.
 
-- grossMargin = `SUM(o.unit * (o.unit_price - p.cost))` (products.cost = per-unit landed
-  COGS; matches `abroadProfit` = price − COGS convention in lib/pricing.ts).
-- opsExpenses = `SUM(operational_expenses.amount_idr)` for that event.
-- Ongkir is treated as pass-through (excluded from profit) — customer-paid shipping ≈
-  cargo cost, roughly nets out.
+- totalPaid = all checked payments for the event (see above).
+- opsExpenses = `SUM(operational_expenses.amount_idr)` for that event — every category,
+  including `Shop` (goods purchases). Because profit is cash-in minus cash-out, goods
+  cost enters via the ops ledger, NOT via products.cost. There is no separate gross-margin
+  term (an earlier draft used `SUM(unit * (unit_price - product.cost))`, which
+  double-counted COGS against the `Shop` expenses and drove events falsely negative).
 
 ## Data loading — batch (chosen)
 
@@ -65,7 +66,7 @@ Note: the existing `getDashboardSummary` per-event aggregate filters to active e
    `app/dashboard/events/`). Props: one `EventPerformance` (+ currency for formatting).
    Renders three stat groups (Sales / Payments / Fulfillment) as tiles, a fulfillment
    progress bar (bought/arrived/shipped), and a net-profit line
-   (`gross − ops`). No data fetching inside. Reused by desktop and mobile.
+   (`paid − ops`). No data fetching inside. Reused by desktop and mobile.
 
 4. **`EventsClient` wiring** —
    - Fetch performance alongside events in `load()` (add to the `Promise.all`); store a
@@ -84,7 +85,7 @@ Note: the existing `getDashboardSummary` per-event aggregate filters to active e
 │ 210 units   │ 3 unpaid     │ Shipped 40%  │
 │ Rev 14.5jt  │              │              │
 └─────────────┴──────────────┴──────────────┘
-        Net profit: 3.8jt (gross 5.9jt − ops 2.1jt)
+        Net profit: 1.7jt (paid 3.8jt − ops 2.1jt)
 ```
 
 ## Out of scope
