@@ -15,6 +15,7 @@ export const ADMIN_ROUTES = [
   "/dashboard/shipments",
   "/dashboard/custom-label",
   "/dashboard/customers",
+  "/dashboard/excess-purchase", // Inventory (ready stock)
 ] as const
 
 /** Where an admin lands after login and when redirected off a blocked route. */

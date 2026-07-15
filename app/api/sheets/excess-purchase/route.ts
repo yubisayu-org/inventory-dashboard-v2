@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { requireSession, requireOwner } from "@/lib/api"
+import { requireSession, requireRole } from "@/lib/api"
 import {
   getExcessPurchaseRows,
   getExcessPurchasePaginated,
@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
 
-  const roleError = requireOwner(session)
+  const roleError = requireRole(session)
   if (roleError) return roleError
 
   try {
@@ -129,7 +129,7 @@ export async function GET(req: NextRequest) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
 
-  const roleError = requireOwner(session)
+  const roleError = requireRole(session)
   if (roleError) return roleError
 
   const params = req.nextUrl.searchParams
@@ -172,7 +172,7 @@ export async function PUT(req: NextRequest) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
 
-  const roleError = requireOwner(session)
+  const roleError = requireRole(session)
   if (roleError) return roleError
 
   try {
