@@ -440,7 +440,7 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
             <div key={r.rowNumber} className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-1.5 min-w-0">
-                  <div className="font-semibold text-sm text-foreground truncate"><span className="text-gray-300">@</span>{r.customer.replace(/^@/, "")}</div>
+                  <div className="font-semibold text-sm text-foreground truncate">{displayIg(r.customer)}</div>
                   {!r.hasAddress && <NoAddressIcon />}
                 </div>
                 <span className="shrink-0 text-[11px] text-gray-600 bg-cream border border-cream-border rounded-md px-2 py-0.5 font-semibold">{r.event}</span>
