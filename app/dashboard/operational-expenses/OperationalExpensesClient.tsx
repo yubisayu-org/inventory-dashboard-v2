@@ -684,17 +684,15 @@ function AddExpenseForm({
         </Field>
       </div>
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-end gap-3">
+        {addError && <p className="text-xs text-red-500">{addError}</p>}
         <label className="flex items-center gap-2 text-sm text-gray-600">
           <input type="checkbox" checked={draft.isSettled} onChange={(e) => setDraft((d) => ({ ...d, isSettled: e.target.checked }))} disabled={adding} className="h-4 w-4 rounded border-cream-border accent-brand" />
           Settled
         </label>
-        <div className="flex items-center gap-3">
-          {addError && <p className="text-xs text-red-500">{addError}</p>}
-          <button type="submit" disabled={adding} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors">
-            {adding ? "Saving…" : "Add"}
-          </button>
-        </div>
+        <button type="submit" disabled={adding} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors">
+          {adding ? "Saving…" : "Add"}
+        </button>
       </div>
     </form>
   )
