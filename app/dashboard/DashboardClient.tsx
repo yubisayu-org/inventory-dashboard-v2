@@ -176,7 +176,9 @@ function StatCards({ totals }: { totals: DashboardTotals }) {
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
       {cards.map((c) => {
         const full = c.money ? formatRp(c.amount) : new Intl.NumberFormat("id-ID").format(c.amount)
-        const short = c.money ? formatRpShort(c.amount) : abbreviate(c.amount)
+        // Only money cards abbreviate on small screens; item counts are small
+        // enough to always show in full.
+        const short = c.money ? formatRpShort(c.amount) : full
         return (
           <div key={c.label} className="rounded-xl border border-cream-border bg-white p-4 flex flex-col gap-2">
             <div className="flex items-center gap-2 min-w-0">
