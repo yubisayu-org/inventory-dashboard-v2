@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
 import {
   getExcessPurchaseRows,
-  getDuplicateFormRowsForEvent,
+  getDuplicateFormRowsForItems,
   bulkUpdatePurchase,
   deleteExcessRow,
   updateExcessRowUnitBuy,
@@ -14,7 +14,7 @@ import type { ExcessReason } from "@/lib/db"
 const EXCESS_REASONS: ExcessReason[] = ["overbuy", "overship", "wrong_product", "broken", "customer_cancelled", "manual"]
 
 type Params = { params: Promise<{ row: string }> }
-type UpdatedRow = { rowNumber: number; customer: string; oldUnitBuy: number; unitBuy: number }
+type UpdatedRow = { rowNumber: number; event: string; customer: string; oldUnitBuy: number; unitBuy: number }
 
 export async function POST(req: NextRequest, { params }: Params) {
   const { session, error: authError } = await requireSession()
@@ -43,19 +43,24 @@ export async function POST(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "Broken inventory can't be applied to orders" }, { status: 400 })
     }
 
-    // Only this excess row's event is matched below, so scope the read to it
-    // rather than fetching every order in the table.
-    const formRows = await getDuplicateFormRowsForEvent(excessRow.event)
+    // Matched by item name across all events (scoped to this item), so an
+    // excess row can spill into other events' orders when its own event is
+    // already covered.
+    const formRows = await getDuplicateFormRowsForItems([excessRow.items])
 
-    // Eligible: same event + item, unitBuy not yet fully filled, sorted chronologically
+    // Eligible: same item, unitBuy not yet fully filled. Fill the excess row's
+    // own event first, then spill to other events, oldest-first within each.
     const eligible = formRows
       .filter(
         (r) =>
-          r.event === excessRow.event &&
           r.items === excessRow.items &&
           (r.unitBuy ?? 0) < r.unit,
       )
-      .sort((a, b) => a.rowNumber - b.rowNumber)
+      .sort(
+        (a, b) =>
+          (Number(b.event === excessRow.event) - Number(a.event === excessRow.event)) ||
+          (a.rowNumber - b.rowNumber),
+      )
 
     if (eligible.length === 0) {
       return NextResponse.json({ filled: [], remainder: excessRow.unitBuy })
@@ -76,6 +81,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         : existingReceipt
       updates.push({
         rowNumber: r.rowNumber,
+        event: r.event,
         customer: r.customer,
         oldUnitBuy: current,
         unitBuy: current + allocate,
@@ -106,10 +112,9 @@ export async function POST(req: NextRequest, { params }: Params) {
 }
 
 /**
- * Edit an inventory row's event/item/quantity/reason/receipt. Mainly for
- * retargeting a manually-added row's event to whichever future event is
- * finally going to use it — "Apply" only matches orders in the row's own
- * event.
+ * Edit an inventory row's event/item/quantity/reason/receipt. "Apply" fills the
+ * row's own event first and then spills to matching orders in other events, so
+ * retargeting the event only changes fill priority, not what's reachable.
  */
 export async function PATCH(req: NextRequest, { params }: Params) {
   const { session, error: authError } = await requireSession()
