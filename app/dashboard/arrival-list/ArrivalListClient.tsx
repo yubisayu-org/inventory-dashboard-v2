@@ -378,7 +378,7 @@ export default function ArrivalListClient() {
         </div>
         <button
           onClick={() => setBulkOpen(true)}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors"
+          className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors"
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <path d="M12 5v14M5 12h14" />
@@ -386,6 +386,16 @@ export default function ArrivalListClient() {
           Add Bulk Arrival
         </button>
       </div>
+
+      {/* Mobile add FAB */}
+      <button
+        type="button"
+        onClick={() => setBulkOpen(true)}
+        aria-label="Add bulk arrival"
+        className="md:hidden fixed right-4 bottom-20 z-30 w-14 h-14 rounded-full bg-brand text-white text-3xl leading-none shadow-lg flex items-center justify-center active:bg-brand/90"
+      >
+        +
+      </button>
 
       {/* Grouped table (desktop) */}
       <div className="hidden md:block rounded-xl border border-cream-border bg-white overflow-hidden">

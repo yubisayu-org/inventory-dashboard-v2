@@ -190,12 +190,15 @@ export default function AdjustmentsClient() {
 
   return (
     <div className="space-y-3">
+      {/* Desktop: inline add form above the table */}
       {addOpen && (
-        <AddAdjustmentForm
-          options={options}
-          onClose={() => setAddOpen(false)}
-          onAdded={() => { refreshRef.current(); setAddOpen(false) }}
-        />
+        <div className="hidden md:block">
+          <AddAdjustmentForm
+            options={options}
+            onClose={() => setAddOpen(false)}
+            onAdded={() => { refreshRef.current(); setAddOpen(false) }}
+          />
+        </div>
       )}
 
       <DataGrid
@@ -209,7 +212,7 @@ export default function AdjustmentsClient() {
           <>
             <button
               onClick={() => { setAddOpen((o) => !o); setEditingRow(null) }}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg transition-colors ${
+              className={`hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg transition-colors ${
                 addOpen ? "bg-brand-light text-brand border border-brand/30" : "bg-brand text-white hover:bg-brand-hover"
               }`}
             >
@@ -242,6 +245,29 @@ export default function AdjustmentsClient() {
           onSaved={() => { setEditingRow(null); refreshRef.current() }}
           onDeleted={() => { setEditingRow(null); refreshRef.current() }}
         />
+      )}
+
+      {/* Mobile add FAB */}
+      <button
+        type="button"
+        onClick={() => { setAddOpen(true); setEditingRow(null) }}
+        aria-label="Add adjustment"
+        className="md:hidden fixed right-4 bottom-20 z-30 w-14 h-14 rounded-full bg-brand text-white text-3xl leading-none shadow-lg flex items-center justify-center active:bg-brand/90"
+      >
+        +
+      </button>
+
+      {/* Mobile add sheet */}
+      {addOpen && (
+        <div className="md:hidden fixed inset-0 z-40 bg-black/40 flex flex-col justify-end" onClick={() => setAddOpen(false)}>
+          <div className="max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <AddAdjustmentForm
+              options={options}
+              onClose={() => setAddOpen(false)}
+              onAdded={() => { refreshRef.current(); setAddOpen(false) }}
+            />
+          </div>
+        </div>
       )}
     </div>
   )

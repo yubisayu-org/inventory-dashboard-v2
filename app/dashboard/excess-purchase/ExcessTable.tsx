@@ -441,6 +441,16 @@ export default function ExcessTable() {
         />
       )}
 
+      {/* Mobile add FAB */}
+      <button
+        type="button"
+        onClick={() => setAddOpen(true)}
+        aria-label="Add inventory"
+        className="md:hidden fixed right-4 bottom-20 z-30 w-14 h-14 rounded-full bg-brand text-white text-3xl leading-none shadow-lg flex items-center justify-center active:bg-brand/90"
+      >
+        +
+      </button>
+
       {/* Add / Edit inventory modal */}
       {(addOpen || editRow) && (
         <InventoryFormModal
@@ -493,7 +503,7 @@ export default function ExcessTable() {
             <button
               type="button"
               onClick={() => setAddOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-cream-border rounded-lg text-gray-600 hover:border-brand hover:text-brand transition-colors shrink-0"
+              className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-cream-border rounded-lg text-gray-600 hover:border-brand hover:text-brand transition-colors shrink-0"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />

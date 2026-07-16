@@ -20,6 +20,7 @@ export default function CountriesClient() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
+  const [mobileAddOpen, setMobileAddOpen] = useState(false)
 
   const [editRow, setEditRow] = useState<CountryRow | null>(null)
 
@@ -58,6 +59,7 @@ export default function CountriesClient() {
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? "Failed to add")
       setForm(EMPTY_FORM)
+      setMobileAddOpen(false)
       load()
     } catch (err) {
       setAddError(err instanceof Error ? err.message : "Failed to add")
@@ -216,8 +218,8 @@ export default function CountriesClient() {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Add form */}
-      <form onSubmit={handleAdd} className="rounded-xl border border-cream-border bg-white p-5 flex flex-col gap-4">
+      {/* Add form (desktop only) */}
+      <form onSubmit={handleAdd} className="hidden md:flex rounded-xl border border-cream-border bg-white p-5 flex-col gap-4">
         <div className="text-sm font-semibold text-foreground">Add Country</div>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <input
@@ -295,6 +297,38 @@ export default function CountriesClient() {
           }}
           onCancel={() => setEditRow(null)}
         />
+      )}
+
+      {/* Mobile add FAB */}
+      <button
+        type="button"
+        onClick={() => setMobileAddOpen(true)}
+        aria-label="Add country"
+        className="md:hidden fixed right-4 bottom-20 z-30 w-14 h-14 rounded-full bg-brand text-white text-3xl leading-none shadow-lg flex items-center justify-center active:bg-brand/90"
+      >
+        +
+      </button>
+
+      {/* Mobile add sheet */}
+      {mobileAddOpen && (
+        <div className="md:hidden fixed inset-0 z-40 flex items-end bg-black/40" onClick={() => setMobileAddOpen(false)}>
+          <form onSubmit={handleAdd} onClick={(e) => e.stopPropagation()} className="w-full bg-white rounded-t-2xl p-5 pb-8 flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <span className="text-base font-semibold text-foreground">Add Country</span>
+              <button type="button" onClick={() => setMobileAddOpen(false)} aria-label="Close" className="text-gray-400 p-1">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <input {...field("name")} placeholder="Country name" required disabled={adding} className={modalInputCls} />
+            <input {...field("currency")} placeholder="Currency (e.g. CNY)" disabled={adding} className={modalInputCls} />
+            <input {...field("kurs")} type="number" min="0" step="any" placeholder="Kurs (IDR)" disabled={adding} className={modalInputCls} />
+            <input {...field("cargoPerKg")} type="number" min="0" placeholder="Cargo / kg (IDR)" disabled={adding} className={modalInputCls} />
+            {addError && <p className="text-xs text-red-500">{addError}</p>}
+            <button type="submit" disabled={adding} className="px-4 py-3 rounded-xl bg-brand text-white text-sm font-semibold disabled:opacity-50">
+              {adding ? "Saving…" : "Save Country"}
+            </button>
+          </form>
+        </div>
       )}
     </div>
   )
