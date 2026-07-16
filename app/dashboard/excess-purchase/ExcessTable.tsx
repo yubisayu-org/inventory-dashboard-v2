@@ -42,7 +42,7 @@ function ReasonBadge({ reason }: { reason: ExcessReason }) {
   )
 }
 
-type UpdatedRow = { rowNumber: number; customer: string; oldUnitBuy: number; unitBuy: number }
+type UpdatedRow = { rowNumber: number; event: string; customer: string; oldUnitBuy: number; unitBuy: number }
 type ApplyResult = { filled: UpdatedRow[]; remainder: number }
 type BulkItemResult = { event: string; items: string; originalUnitBuy: number; filled: UpdatedRow[]; remainder: number }
 type BulkResult = { results: BulkItemResult[] }
@@ -441,6 +441,16 @@ export default function ExcessTable() {
         />
       )}
 
+      {/* Mobile add FAB */}
+      <button
+        type="button"
+        onClick={() => setAddOpen(true)}
+        aria-label="Add inventory"
+        className="md:hidden fixed right-4 bottom-20 z-30 w-14 h-14 rounded-full bg-brand text-white text-3xl leading-none shadow-lg flex items-center justify-center active:bg-brand/90"
+      >
+        +
+      </button>
+
       {/* Add / Edit inventory modal */}
       {(addOpen || editRow) && (
         <InventoryFormModal
@@ -493,7 +503,7 @@ export default function ExcessTable() {
             <button
               type="button"
               onClick={() => setAddOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-cream-border rounded-lg text-gray-600 hover:border-brand hover:text-brand transition-colors shrink-0"
+              className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-cream-border rounded-lg text-gray-600 hover:border-brand hover:text-brand transition-colors shrink-0"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
@@ -693,9 +703,8 @@ function InventoryFormModal({
         </div>
 
         <p className="text-[11px] text-gray-400">
-          {mode === "add"
-            ? "Once you're ready to sell this against a future order, edit this row and point Event at the new order's event, then hit Apply."
-            : "Retarget Event to whichever order this stock is now filling, then use Apply from the list."}
+          Apply fills this row&apos;s own event first, then spills to matching orders
+          in other events — so Event just sets fill priority.
         </p>
 
         {error && <p className="text-xs text-red-500">{error}</p>}
@@ -774,7 +783,7 @@ function ApplyResultBanner({
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-inherit">
         <span className={`text-xs font-medium ${noOrders ? "text-gray-500" : "text-green-700"}`}>
           {noOrders
-            ? "No pending orders found for this item and event."
+            ? "No pending orders found for this item."
             : `${filled.length} order${filled.length === 1 ? "" : "s"} filled`}
         </span>
         <div className="flex items-center gap-3">
@@ -803,6 +812,7 @@ function ApplyResultBanner({
             <thead>
               <tr className="border-b border-inherit text-left">
                 <th className="px-4 py-2 font-medium text-gray-500 w-8">#</th>
+                <th className="px-4 py-2 font-medium text-gray-500">Event</th>
                 <th className="px-4 py-2 font-medium text-gray-500">Customer</th>
                 <th className="px-4 py-2 font-medium text-gray-500 text-right">Unit Buy</th>
                 <th className="px-4 py-2 w-20"></th>
@@ -812,6 +822,7 @@ function ApplyResultBanner({
               {filled.map((row, i) => (
                 <tr key={row.rowNumber} className="border-b border-inherit last:border-0">
                   <td className="px-4 py-2 text-gray-400">{i + 1}</td>
+                  <td className="px-4 py-2 text-gray-500 whitespace-nowrap">{row.event}</td>
                   <td className="px-4 py-2 text-foreground">{displayIg(row.customer)}</td>
                   <td className="px-4 py-2 text-foreground text-right font-semibold tabular-nums">{row.unitBuy}</td>
                   <td className="px-4 py-2 text-right text-gray-400">
@@ -893,7 +904,12 @@ function BulkResultBanner({
                     {item.filled.map((row, i) => (
                       <tr key={row.rowNumber} className="border-t border-inherit">
                         <td className="px-4 py-2 text-gray-400 w-8">{i + 1}</td>
-                        <td className="px-4 py-2 text-foreground">{displayIg(row.customer)}</td>
+                        <td className="px-4 py-2 text-foreground">
+                          {displayIg(row.customer)}
+                          {row.event !== item.event && (
+                            <span className="ml-1.5 text-[10px] text-brand">→ {row.event}</span>
+                          )}
+                        </td>
                         <td className="px-4 py-2 text-foreground text-right font-semibold tabular-nums">{row.unitBuy}</td>
                         <td className="px-4 py-2 text-right text-gray-400 w-20">
                           {row.oldUnitBuy > 0 && `(was ${row.oldUnitBuy})`}

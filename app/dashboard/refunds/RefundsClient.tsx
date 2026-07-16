@@ -2,7 +2,6 @@
 
 import { displayIg } from "@/lib/format"
 import TableSkeleton from "@/components/TableSkeleton"
-import InvoiceSummary from "@/components/InvoiceSummary"
 import DataGrid, { type ColumnDef } from "@/components/DataGrid"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { InvoiceEvent, InvoiceResult, RefundRow, RefundReason, RefundStatus } from "@/lib/db"
@@ -286,7 +285,7 @@ export default function RefundsClient() {
               </button>
               <button
                 onClick={() => setCreating(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors"
+                className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors"
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                   <path d="M12 5v14M5 12h14" />
@@ -297,6 +296,16 @@ export default function RefundsClient() {
           }
         />
       </div>
+
+      {/* Mobile add FAB */}
+      <button
+        type="button"
+        onClick={() => setCreating(true)}
+        aria-label="New refund"
+        className="md:hidden fixed right-4 bottom-20 z-30 w-14 h-14 rounded-full bg-brand text-white text-3xl leading-none shadow-lg flex items-center justify-center active:bg-brand/90"
+      >
+        +
+      </button>
 
       {creating && (
         <CreateRefundModal
@@ -505,7 +514,6 @@ function RefundDetailModal({
   const [invoiceError, setInvoiceError] = useState<string | null>(null)
   // Collapsed-by-default sections keep the modal short enough to never scroll
   // in the common case — the old layout hid half the workflow below the fold.
-  const [showInvoiceDetail, setShowInvoiceDetail] = useState(false)
   const [showMessage, setShowMessage] = useState(false)
   const [showEdit, setShowEdit] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -780,41 +788,22 @@ function RefundDetailModal({
           ) : invoiceError ? (
             <div className="px-6 py-2.5 text-xs text-red-500">{invoiceError}</div>
           ) : invoiceEvent ? (
-            <>
-              <button
-                type="button"
-                onClick={() => setShowInvoiceDetail((v) => !v)}
-                className="w-full flex items-center justify-between gap-2 px-6 py-2.5 text-xs hover:bg-gray-50/60 transition-colors"
-              >
-                <span className="text-gray-500">
-                  Invoice <span className="font-semibold text-foreground tabular-nums">{formatRp(invoiceEvent.invoice.total)}</span>
-                  {" · "}Paid <span className="font-semibold text-foreground tabular-nums">{formatRp(invoiceEvent.invoice.pembayaran)}</span>
-                </span>
-                <svg
-                  width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-                  className={`text-gray-400 transition-transform ${showInvoiceDetail ? "rotate-180" : ""}`}
-                >
-                  <path d="m6 9 6 6 6-6" />
+            <button
+              type="button"
+              onClick={() => setShowFullInvoice(true)}
+              className="w-full flex items-center justify-between gap-2 px-6 py-2.5 text-xs hover:bg-gray-50/60 transition-colors"
+            >
+              <span className="text-gray-500">
+                Invoice <span className="font-semibold text-foreground tabular-nums">{formatRp(invoiceEvent.invoice.total)}</span>
+                {" · "}Paid <span className="font-semibold text-foreground tabular-nums">{formatRp(invoiceEvent.invoice.pembayaran)}</span>
+              </span>
+              <span className="text-gray-500 inline-flex items-center gap-1 shrink-0">
+                Open full invoice
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M5 12h14M13 5l7 7-7 7" />
                 </svg>
-              </button>
-              {showInvoiceDetail && (
-                <InvoiceSummary
-                  event={invoiceEvent}
-                  actions={
-                    <button
-                      type="button"
-                      onClick={() => setShowFullInvoice(true)}
-                      className="text-xs px-2.5 py-1 rounded-lg border border-cream-border text-gray-600 hover:border-brand hover:text-brand transition-colors inline-flex items-center gap-1"
-                    >
-                      Open full invoice
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M5 12h14M13 5l7 7-7 7" />
-                      </svg>
-                    </button>
-                  }
-                />
-              )}
-            </>
+              </span>
+            </button>
           ) : null}
         </div>
 

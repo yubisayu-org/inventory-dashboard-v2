@@ -3,7 +3,7 @@ import { requireSession, requireRole } from "@/lib/api"
 import {
   getExcessPurchaseRows,
   getExcessPurchasePaginated,
-  getDuplicateFormRowsForEvents,
+  getDuplicateFormRowsForItems,
   bulkUpdatePurchase,
   deleteExcessRow,
   updateExcessRowUnitBuy,
@@ -11,7 +11,7 @@ import {
   withActor,
 } from "@/lib/db"
 
-type UpdatedRow = { rowNumber: number; customer: string; oldUnitBuy: number; unitBuy: number }
+type UpdatedRow = { rowNumber: number; event: string; customer: string; oldUnitBuy: number; unitBuy: number }
 type ItemResult = { event: string; items: string; originalUnitBuy: number; filled: UpdatedRow[]; remainder: number }
 
 export async function POST(req: NextRequest) {
@@ -33,11 +33,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ results: [] })
     }
 
-    // Each excess row is only ever matched against form rows of its own event
-    // (see the r.event === excessRow.event filter below), so fetch orders for
-    // just those events instead of the whole orders table.
-    const events = [...new Set(excessRows.map((r) => r.event))]
-    const formRows = await getDuplicateFormRowsForEvents(events)
+    // Excess rows match orders by item name across all events, so fetch orders
+    // for just the item names being applied (still bounded — not the whole
+    // orders table). Each row fills its own event first, then spills to others.
+    const items = [...new Set(excessRows.map((r) => r.items))]
+    const formRows = await getDuplicateFormRowsForItems(items)
 
     // Working copy of unitBuy so sequential excess rows see each other's allocations
     const workingUnitBuy = new Map<number, number>()
@@ -54,11 +54,14 @@ export async function POST(req: NextRequest) {
       const eligible = formRows
         .filter(
           (r) =>
-            r.event === excessRow.event &&
             r.items === excessRow.items &&
             (workingUnitBuy.get(r.rowNumber) ?? 0) < r.unit,
         )
-        .sort((a, b) => a.rowNumber - b.rowNumber)
+        .sort(
+          (a, b) =>
+            (Number(b.event === excessRow.event) - Number(a.event === excessRow.event)) ||
+            (a.rowNumber - b.rowNumber),
+        )
 
       let remaining = excessRow.unitBuy
       const filled: UpdatedRow[] = []
@@ -85,7 +88,7 @@ export async function POST(req: NextRequest) {
           receipt: combinedReceipt,
         })
         workingUnitBuy.set(r.rowNumber, newUnitBuy)
-        filled.push({ rowNumber: r.rowNumber, customer: r.customer, oldUnitBuy: current, unitBuy: newUnitBuy })
+        filled.push({ rowNumber: r.rowNumber, event: r.event, customer: r.customer, oldUnitBuy: current, unitBuy: newUnitBuy })
         remaining -= allocate
       }
 

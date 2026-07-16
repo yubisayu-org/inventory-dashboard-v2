@@ -118,6 +118,32 @@ export async function getDuplicateFormRowsForEvents(events: string[]): Promise<F
   return rows.map(mapFormRow)
 }
 
+/**
+ * Like getDuplicateFormRowsForEvent but scoped by product name across ALL
+ * events. Used by the excess-purchase allocators so an excess row can spill
+ * into matching orders in other events (fill same event first, then oldest
+ * elsewhere). Scoping to the handful of item names being applied keeps the read
+ * bounded — we still don't transfer the whole orders table. Returns [] for an
+ * empty item list so callers can skip the query.
+ */
+export async function getDuplicateFormRowsForItems(items: string[]): Promise<FormRow[]> {
+  if (items.length === 0) return []
+  const rows = await sql`
+    SELECT o.id, o.event, o.customer, o.product_id, o.unit_price,
+           p.name AS product_name, o.unit, o.note,
+           o.created_at, o.updated_at, o.unit_buy, o.receipt,
+           o.unit_arrive, o.unit_ship, o.unit_hold,
+           c.data_diri AS customer_data_diri
+    FROM orders o
+    JOIN products p ON p.id = o.product_id
+    LEFT JOIN customers c
+      ON lower(replace(c.instagram_id, '@', '')) = lower(replace(o.customer, '@', ''))
+    WHERE p.name = ANY(${items})
+    ORDER BY o.id ASC
+  `
+  return rows.map(mapFormRow)
+}
+
 export interface PaginatedFormRows {
   rows: FormRow[]
   totalCount: number
