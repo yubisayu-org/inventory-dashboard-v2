@@ -222,7 +222,7 @@ export function EventCard({
       </div>
 
       {/* Invoice summary */}
-      <InvoiceSummary event={event} actions={<InvoiceMessageActions event={event} />} />
+      <InvoiceSummary event={event} actions={<InvoiceMessageActions event={event} whatsapp={customerDetail?.whatsapp} />} />
 
       {/* Refund modal — triggered per order line */}
       {refundLine && (

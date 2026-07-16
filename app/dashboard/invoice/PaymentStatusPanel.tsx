@@ -399,7 +399,7 @@ function ExpandedInvoice({
 
       {/* Summary + message actions */}
       <div className="pl-5">
-        <InvoiceSummary event={ev} actions={<InvoiceMessageActions event={ev} />} />
+        <InvoiceSummary event={ev} actions={<InvoiceMessageActions event={ev} whatsapp={result.customerDetail?.whatsapp} />} />
       </div>
     </div>
   )
