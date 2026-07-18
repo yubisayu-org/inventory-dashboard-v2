@@ -872,14 +872,6 @@ export default function ShipmentsClient() {
             : `Print ${selectedCount} Label${selectedCount === 1 ? "" : "s"}`}
         </button>
       )}
-      <button
-        type="button"
-        onClick={() => load()}
-        disabled={loading}
-        className="text-xs text-gray-500 hover:text-brand disabled:opacity-50 transition-colors px-3 py-1.5 rounded-lg border border-cream-border hover:border-brand"
-      >
-        {loading ? "…" : "Refresh"}
-      </button>
     </div>
   )
 
@@ -915,6 +907,10 @@ export default function ShipmentsClient() {
           columns={columns}
           getRowId={(row) => String(row.rowNumber)}
           searchPlaceholder="Cari shipment…"
+          fullWidthSearch
+          tightToolbar
+          boldUppercaseHeader
+          hideRowCount
           toolbarExtra={toolbarExtra}
           enableRowSelection
           rowSelection={rowSelection}

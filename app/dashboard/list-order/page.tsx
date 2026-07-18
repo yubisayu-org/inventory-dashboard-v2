@@ -9,7 +9,7 @@ export default async function ListOrderPage() {
   return (
     <PageShell>
       <PageHeader
-        title="List Order"
+        title="Order"
         subtitle="View, edit, and delete orders"
       />
       <DataTable isOwner={isOwner} />

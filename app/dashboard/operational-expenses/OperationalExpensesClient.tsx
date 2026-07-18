@@ -449,7 +449,7 @@ export default function OperationalExpensesClient() {
                   events={events}
                   methods={methods}
                   categories={categoryOptions}
-                  onAdded={() => { reloadAll(); setAddOpen(false) }}
+                  onAdded={() => reloadAll()}
                   seed={duplicateSeed}
                 />
               </div>

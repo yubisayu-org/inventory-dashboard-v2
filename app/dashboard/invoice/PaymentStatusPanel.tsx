@@ -255,22 +255,22 @@ export function PaymentStatusPanel({
   return (
     <>
       {/* Tabs */}
-      <div className="flex border-b border-cream-border gap-0 overflow-x-auto">
+      <div className="flex items-center gap-1 w-full rounded-xl border border-cream-border bg-white p-1 overflow-x-auto">
         {tabs.map(({ key, label, count }) => {
           const active = filter === key
           return (
             <button
               key={key}
               onClick={() => setFilter(key)}
-              className={`shrink-0 px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+              className={`flex-1 shrink-0 flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
                 active
-                  ? "border-brand text-brand"
-                  : "border-transparent text-gray-500 hover:text-foreground"
+                  ? "bg-brand text-white"
+                  : "text-gray-500 hover:text-foreground"
               }`}
             >
               {label}
               {count ? (
-                <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${active ? "bg-brand/10 text-brand" : "bg-gray-100 text-gray-500"}`}>
+                <span className={`text-xs rounded-full px-1.5 py-0.5 tabular-nums ${active ? "bg-white/20 text-white" : "bg-gray-100 text-gray-500"}`}>
                   {count}
                 </span>
               ) : null}
@@ -286,6 +286,11 @@ export function PaymentStatusPanel({
           columns={columns}
           getRowId={(r) => `${r.event}-${r.customer}`}
           searchPlaceholder="Search customers, events…"
+          fullWidthSearch
+          tightToolbar
+          boldUppercaseHeader
+          toolbarExtraAfterColumns
+          hideRowCount
           onFilteredRowsChange={setSearchedRows}
           pageSize={50}
           initialSorting={[{ id: "outstanding", desc: true }]}

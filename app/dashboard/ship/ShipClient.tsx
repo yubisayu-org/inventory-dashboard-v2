@@ -11,6 +11,7 @@ import { useModalDismiss } from "@/hooks/useModalDismiss"
 import { useResizableColumns } from "@/hooks/useResizableColumns"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import EventSelect from "@/components/EventSelect"
+import SearchInput from "@/components/SearchInput"
 import { InvoiceDetailDrawer } from "@/app/dashboard/invoice/InvoiceDetailDrawer"
 import { copyToClipboard } from "@/lib/clipboard"
 import { buildShipmentConfirmMessage } from "@/lib/shipment-message"
@@ -177,13 +178,13 @@ export default function ShipClient() {
   return (
     <div className="flex flex-col gap-4">
       {/* Segment control */}
-      <div className="flex items-center gap-1 rounded-xl border border-cream-border bg-white p-1 overflow-x-auto md:flex-wrap">
+      <div className="flex items-center gap-1 w-full rounded-xl border border-cream-border bg-white p-1 overflow-x-auto">
         {SEGMENTS.map((s) => (
           <button
             key={s.id}
             type="button"
             onClick={() => { setSegment(s.id); setSelected(new Set()) }}
-            className={`md:flex-1 shrink-0 flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+            className={`flex-1 shrink-0 flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
               segment === s.id
                 ? "bg-brand text-white"
                 : "text-gray-500 hover:text-foreground"
@@ -203,14 +204,13 @@ export default function ShipClient() {
         ))}
       </div>
 
-      {/* Search + event filter + refresh */}
+      {/* Search + event filter */}
       <div className="flex gap-2 flex-wrap">
-        <input
-          type="text"
+        <SearchInput
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={setSearch}
           placeholder="Cari customer…"
-          className="flex-1 min-w-[160px] border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+          className="flex-1 min-w-[160px]"
         />
         <div className="w-48">
           <EventSelect
@@ -221,14 +221,6 @@ export default function ShipClient() {
             clearable
           />
         </div>
-        <button
-          type="button"
-          onClick={refresh}
-          disabled={loading}
-          className="shrink-0 text-xs text-gray-500 hover:text-brand disabled:opacity-50 transition-colors px-3 py-2 rounded-lg border border-cream-border hover:border-brand"
-        >
-          {loading ? "…" : "Refresh"}
-        </button>
       </div>
 
       {/* States */}

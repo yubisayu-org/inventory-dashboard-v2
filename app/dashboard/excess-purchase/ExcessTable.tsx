@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useCallback, useRef } from "react"
+import { useState, useMemo, useCallback, useRef, useEffect } from "react"
 import type { ExcessRow, ExcessReason } from "@/lib/db"
 import DataGrid, {
   type ColumnDef,
@@ -44,23 +44,19 @@ function ReasonBadge({ reason }: { reason: ExcessReason }) {
 
 type UpdatedRow = { rowNumber: number; event: string; customer: string; oldUnitBuy: number; unitBuy: number }
 type ApplyResult = { filled: UpdatedRow[]; remainder: number }
-type BulkItemResult = { event: string; items: string; originalUnitBuy: number; filled: UpdatedRow[]; remainder: number }
-type BulkResult = { results: BulkItemResult[] }
 
 export default function ExcessTable() {
   const options = useSheetOptions()
   const [rows, setRows] = useState<ExcessRow[]>([])
   const [totalCount, setTotalCount] = useState(0)
   const [filteredSum, setFilteredSum] = useState<number | null>(null)
+  const [filteredValue, setFilteredValue] = useState<number | null>(null)
   const [busyRow, setBusyRow] = useState<number | null>(null)
   const [pendingRow, setPendingRow] = useState<number | null>(null)
   const [pendingReceipt, setPendingReceipt] = useState("apply excess")
   const [applyResult, setApplyResult] = useState<{ excessRowNumber: number; result: ApplyResult } | null>(null)
-  const [bulkPending, setBulkPending] = useState(false)
-  const [bulkReceipt, setBulkReceipt] = useState("apply excess")
-  const [bulkBusy, setBulkBusy] = useState(false)
-  const [bulkResult, setBulkResult] = useState<BulkResult | null>(null)
   const [addOpen, setAddOpen] = useState(false)
+  const [mobileAddOpen, setMobileAddOpen] = useState(false)
   const [editRow, setEditRow] = useState<ExcessRow | null>(null)
   const [deleteRow, setDeleteRow] = useState<ExcessRow | null>(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
@@ -90,10 +86,11 @@ export default function ExcessTable() {
     return { key: sorting[0].id, direction: sorting[0].desc ? ("desc" as const) : ("asc" as const) }
   }, [sorting])
 
-  const onData = useCallback((d: PageData) => {
+  const onData = useCallback((d: PageData & { filteredValue?: number | null }) => {
     setRows(d.rows as ExcessRow[])
     setTotalCount(d.totalCount)
     setFilteredSum(d.filteredSum)
+    if (d.filteredValue !== undefined) setFilteredValue(d.filteredValue)
   }, [])
 
   const { fetchState, refresh } = usePaginatedFetch({
@@ -129,31 +126,7 @@ export default function ExcessTable() {
     setPendingRow(null)
   }
 
-  async function handleBulkApply() {
-    setBulkBusy(true)
-    setBulkPending(false)
-    setBulkResult(null)
-    setApplyResult(null)
-    try {
-      const res = await fetch("/api/sheets/excess-purchase", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ receipt: bulkReceipt }),
-      })
-      const data: BulkResult & { error?: string } = await res.json()
-      if (!res.ok) throw new Error(data.error ?? "Failed to apply")
-
-      setBulkResult(data)
-      // Server applied against the full set — reload the current page.
-      refreshRef.current()
-    } catch (err) {
-      setBulkResult({ results: [] })
-    } finally {
-      setBulkBusy(false)
-    }
-  }
-
-  async function handleApply(row: ExcessRow) {
+  async function handleApply(row: ExcessRow, allocations: { rowNumber: number; allocate: number }[]) {
     setBusyRow(row.rowNumber)
     setPendingRow(null)
     setApplyResult(null)
@@ -161,7 +134,7 @@ export default function ExcessTable() {
       const res = await fetch(`/api/sheets/excess-purchase/${row.rowNumber}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ receipt: pendingReceipt }),
+        body: JSON.stringify({ receipt: pendingReceipt, allocations }),
       })
       const data: ApplyResult & { error?: string } = await res.json()
       if (!res.ok) throw new Error(data.error ?? "Failed to apply")
@@ -285,16 +258,26 @@ export default function ExcessTable() {
                   type="button"
                   onClick={() => isPending ? cancelPending() : openPending(r.rowNumber)}
                   disabled={busy || busyRow !== null}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md bg-brand text-white hover:bg-brand-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  title={busy ? "Applying…" : isPending ? "Cancel" : "Apply"}
+                  className={`transition-colors p-1 disabled:opacity-50 disabled:cursor-not-allowed ${
+                    isPending ? "text-gray-400 hover:text-red-500" : "text-gray-400 hover:text-brand"
+                  }`}
                 >
                   {busy ? (
-                    <>
-                      <svg className="animate-spin" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                        <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                      </svg>
-                      Applying…
-                    </>
-                  ) : isPending ? "Cancel" : "Apply"}
+                    <svg className="animate-spin" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                    </svg>
+                  ) : isPending ? (
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                  ) : (
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M22 14a8 8 0 0 1-8 8" />
+                      <path d="M18 11v-1a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0" />
+                      <path d="M14 10V9a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v1" />
+                      <path d="M10 9.5V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v10" />
+                      <path d="M18 11a2 2 0 1 1 4 0v3a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" />
+                    </svg>
+                  )}
                 </button>
               )}
               <button
@@ -387,40 +370,21 @@ export default function ExcessTable() {
 
   return (
     <div className="space-y-3">
-      {/* Bulk pending form */}
-      {bulkPending && (
-        <div className="rounded-xl border border-brand/30 bg-brand/5 px-4 py-3 flex items-center gap-3 flex-wrap">
-          <span className="text-xs text-gray-600 shrink-0">
-            Apply all <strong>{totalCount}</strong> excess rows to pending orders
-          </span>
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <label className="text-xs text-gray-500 shrink-0">Receipt</label>
-            <input
-              type="text"
-              value={bulkReceipt}
-              onChange={(e) => setBulkReceipt(e.target.value)}
-              autoFocus
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleBulkApply()
-                if (e.key === "Escape") setBulkPending(false)
-              }}
-              className="flex-1 max-w-xs border border-cream-border rounded-md px-2.5 py-1 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
-            />
+      {/* Stat cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="rounded-xl border border-cream-border border-l-4 border-l-brand bg-white px-5 py-4">
+          <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Total Value</div>
+          <div className="text-2xl font-bold text-foreground mt-1 tabular-nums">
+            {filteredValue !== null ? `Rp ${fmt(filteredValue)}` : "—"}
           </div>
-          <button
-            type="button"
-            onClick={handleBulkApply}
-            className="px-3 py-1 text-xs font-medium rounded-md bg-brand text-white hover:bg-brand-hover transition-colors shrink-0"
-          >
-            Confirm
-          </button>
         </div>
-      )}
-
-      {/* Bulk result banner */}
-      {bulkResult && (
-        <BulkResultBanner results={bulkResult.results} onDismiss={() => setBulkResult(null)} />
-      )}
+        <div className="rounded-xl border border-cream-border border-l-4 border-l-amber-500 bg-white px-5 py-4">
+          <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Total Units</div>
+          <div className="text-2xl font-bold text-foreground mt-1 tabular-nums">
+            {filteredSum !== null ? fmt(filteredSum) : "—"}
+          </div>
+        </div>
+      </div>
 
       {/* Apply result banner */}
       {applyResult && (
@@ -436,7 +400,7 @@ export default function ExcessTable() {
           row={pendingExcessRow}
           receipt={pendingReceipt}
           onReceiptChange={setPendingReceipt}
-          onConfirm={() => handleApply(pendingExcessRow)}
+          onConfirm={(allocations) => { handleApply(pendingExcessRow, allocations) }}
           onCancel={cancelPending}
         />
       )}
@@ -444,22 +408,34 @@ export default function ExcessTable() {
       {/* Mobile add FAB */}
       <button
         type="button"
-        onClick={() => setAddOpen(true)}
+        onClick={() => setMobileAddOpen(true)}
         aria-label="Add inventory"
         className="md:hidden fixed right-4 bottom-20 z-30 w-14 h-14 rounded-full bg-brand text-white text-3xl leading-none shadow-lg flex items-center justify-center active:bg-brand/90"
       >
         +
       </button>
 
-      {/* Add / Edit inventory modal */}
-      {(addOpen || editRow) && (
-        <InventoryFormModal
-          mode={addOpen ? "add" : "edit"}
-          existing={editRow ?? undefined}
+      {/* Mobile add sheet */}
+      {mobileAddOpen && (
+        <div className="md:hidden fixed inset-0 z-40 bg-black/40 flex flex-col justify-end" onClick={() => setMobileAddOpen(false)}>
+          <div className="max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <AddInventoryCard
+              eventOptions={options?.events ?? []}
+              itemOptions={(options?.items ?? []).map((it) => ({ value: it.name, label: it.name, meta: `Rp ${fmt(it.price)}` }))}
+              onClose={() => setMobileAddOpen(false)}
+              onCreated={() => { refreshRef.current(); setMobileAddOpen(false) }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Edit inventory modal */}
+      {editRow && (
+        <EditInventoryModal
+          existing={editRow}
           eventOptions={options?.events ?? []}
           itemOptions={(options?.items ?? []).map((it) => ({ value: it.name, label: it.name, meta: it.store || undefined }))}
-          onClose={() => { setAddOpen(false); setEditRow(null) }}
-          onCreated={() => { refreshRef.current(); setAddOpen(false) }}
+          onClose={() => setEditRow(null)}
           onUpdated={() => { refreshRef.current(); setEditRow(null) }}
         />
       )}
@@ -480,7 +456,23 @@ export default function ExcessTable() {
         columns={columns}
         getRowId={(row) => String(row.rowNumber)}
         searchPlaceholder="Search event, item, receipt…"
+        fullWidthSearch
+        tightToolbar
+        boldUppercaseHeader
+        hideRowCount
         renderMobileCard={renderMobileCard}
+        belowToolbar={
+          addOpen ? (
+            <div className="hidden md:block">
+              <AddInventoryCard
+                eventOptions={options?.events ?? []}
+                itemOptions={(options?.items ?? []).map((it) => ({ value: it.name, label: it.name, meta: `Rp ${fmt(it.price)}` }))}
+                onClose={() => setAddOpen(false)}
+                onCreated={() => refreshRef.current()}
+              />
+            </div>
+          ) : undefined
+        }
         serverSide={{
           rowCount: totalCount,
           loading: fetchState.loading,
@@ -493,41 +485,19 @@ export default function ExcessTable() {
           pagination,
           onPaginationChange: setPagination,
         }}
-        toolbarExtra={
-          <div className="flex items-center gap-2 shrink-0">
-            {filteredSum !== null && (
-              <span className="text-xs text-gray-500 whitespace-nowrap">
-                Total: <span className="font-semibold text-foreground">{fmt(filteredSum)}</span> units
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={() => setAddOpen(true)}
-              className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-cream-border rounded-lg text-gray-600 hover:border-brand hover:text-brand transition-colors shrink-0"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
-              Add Inventory
-            </button>
-            {totalCount > 0 && (
-              <button
-                type="button"
-                onClick={() => { setBulkPending((o) => !o); setBulkReceipt("apply excess"); setBulkResult(null) }}
-                disabled={bulkBusy || busyRow !== null}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-brand rounded-lg text-brand hover:bg-brand hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-              >
-                {bulkBusy ? (
-                  <>
-                    <svg className="animate-spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                    </svg>
-                    Applying…
-                  </>
-                ) : bulkPending ? "Cancel" : "Apply All Excess"}
-              </button>
-            )}
-          </div>
+        toolbarExtraEnd={
+          <button
+            type="button"
+            onClick={() => setAddOpen((o) => !o)}
+            className={`hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors shrink-0 ${
+              addOpen ? "bg-brand-light text-brand border border-brand/30" : "bg-brand text-white hover:bg-brand-hover"
+            }`}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            Add Inventory
+          </button>
         }
       />
     </div>
@@ -537,6 +507,9 @@ export default function ExcessTable() {
 // ---------------------------------------------------------------------------
 // Apply excess modal
 // ---------------------------------------------------------------------------
+
+type EligibleOrder = { rowNumber: number; event: string; customer: string; needed: number }
+type Allocation = { rowNumber: number; allocate: number }
 
 function ApplyExcessModal({
   row,
@@ -548,42 +521,115 @@ function ApplyExcessModal({
   row: ExcessRow
   receipt: string
   onReceiptChange: (v: string) => void
-  onConfirm: () => void
+  onConfirm: (allocations: Allocation[]) => void
   onCancel: () => void
 }) {
+  const [orders, setOrders] = useState<EligibleOrder[] | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [inputs, setInputs] = useState<Record<number, string>>({})
+
+  useEffect(() => {
+    let cancelled = false
+    setOrders(null)
+    setLoadError(null)
+    fetch(`/api/sheets/excess-purchase/${row.rowNumber}`)
+      .then(async (res) => {
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error ?? "Failed to load")
+        if (!cancelled) setOrders(data.orders as EligibleOrder[])
+      })
+      .catch((err) => {
+        if (!cancelled) setLoadError(err instanceof Error ? err.message : "Failed to load")
+      })
+    return () => { cancelled = true }
+  }, [row.rowNumber])
+
+  const totalAllocated = Object.values(inputs).reduce((sum, v) => sum + (Number(v) || 0), 0)
+  const overAllocated = totalAllocated > row.unitBuy
+  const canConfirm = totalAllocated > 0 && !overAllocated
+
+  function handleConfirm() {
+    if (!canConfirm) return
+    const allocations: Allocation[] = Object.entries(inputs)
+      .map(([rowNumber, v]) => ({ rowNumber: Number(rowNumber), allocate: Number(v) || 0 }))
+      .filter((a) => a.allocate > 0)
+    onConfirm(allocations)
+  }
+
   return (
-    <div className="rounded-xl border border-brand/30 bg-brand/5 px-4 py-3 flex items-center gap-3 flex-wrap">
-      <span className="text-xs text-gray-600 shrink-0">
-        Apply excess: <strong>{row.items}</strong> ({row.unitBuy} units)
-      </span>
-      <div className="flex items-center gap-2 flex-1 min-w-0">
-        <label className="text-xs text-gray-500 shrink-0">Receipt</label>
-        <input
-          type="text"
-          value={receipt}
-          onChange={(e) => onReceiptChange(e.target.value)}
-          autoFocus
-          onKeyDown={(e) => {
-            if (e.key === "Enter") onConfirm()
-            if (e.key === "Escape") onCancel()
-          }}
-          className="flex-1 max-w-xs border border-cream-border rounded-md px-2.5 py-1 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
-        />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={onCancel}>
+      <div
+        className="bg-white rounded-xl border border-cream-border shadow-xl w-full max-w-md flex flex-col gap-4 p-6"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="text-sm font-semibold text-foreground">Apply Excess</div>
+        <p className="text-sm text-gray-600">
+          <span className="font-medium">{row.items}</span> — {row.unitBuy} unit{row.unitBuy === 1 ? "" : "s"} available. Choose which order(s) to apply to.
+        </p>
+
+        {loadError && <p className="text-xs text-red-500">{loadError}</p>}
+        {!orders && !loadError && <p className="text-xs text-gray-400">Loading eligible orders…</p>}
+        {orders && orders.length === 0 && (
+          <p className="text-xs text-gray-400">No pending orders found for this item.</p>
+        )}
+        {orders && orders.length > 0 && (
+          <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
+            {orders.map((o) => (
+              <div key={o.rowNumber} className="flex items-center gap-3 border border-cream-border rounded-lg px-3 py-2">
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm text-foreground truncate">{displayIg(o.customer)}</div>
+                  <div className="text-xs text-gray-400">{o.event} · needs {o.needed}</div>
+                </div>
+                <input
+                  type="number"
+                  min={0}
+                  max={o.needed}
+                  value={inputs[o.rowNumber] ?? ""}
+                  onChange={(e) => setInputs((prev) => ({ ...prev, [o.rowNumber]: e.target.value }))}
+                  placeholder="0"
+                  className="w-20 border border-cream-border rounded-md px-2 py-1 text-sm text-right bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+                />
+              </div>
+            ))}
+          </div>
+        )}
+
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-gray-500">Receipt</span>
+          <input
+            type="text"
+            value={receipt}
+            onChange={(e) => onReceiptChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleConfirm()
+              if (e.key === "Escape") onCancel()
+            }}
+            className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+          />
+        </label>
+
+        <div className={`text-xs ${overAllocated ? "text-red-500" : "text-gray-400"}`}>
+          {totalAllocated} / {row.unitBuy} units allocated{overAllocated ? " — exceeds available" : ""}
+        </div>
+
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirm}
+            disabled={!canConfirm}
+            className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            Confirm
+          </button>
+        </div>
       </div>
-      <button
-        type="button"
-        onClick={onConfirm}
-        className="px-3 py-1 text-xs font-medium rounded-md bg-brand text-white hover:bg-brand-hover transition-colors shrink-0"
-      >
-        Confirm
-      </button>
-      <button
-        type="button"
-        onClick={onCancel}
-        className="px-3 py-1 text-xs font-medium rounded-md border border-cream-border text-gray-500 hover:bg-cream transition-colors shrink-0"
-      >
-        Cancel
-      </button>
     </div>
   )
 }
@@ -597,27 +643,152 @@ function ApplyExcessModal({
 // free-text — "Apply" matches purely on exact item-name equality against
 // order lines, so a typo here would silently make a row unmatchable forever.
 
-function InventoryFormModal({
-  mode,
-  existing,
+// Shared field set for the Add card and the Edit modal below.
+function InventoryFields({
+  event, setEvent, items, setItems, unitBuy, setUnitBuy, receipt, setReceipt,
+  eventOptions, itemOptions, saving,
+}: {
+  event: string; setEvent: (v: string) => void
+  items: string; setItems: (v: string) => void
+  unitBuy: string; setUnitBuy: (v: string) => void
+  receipt: string; setReceipt: (v: string) => void
+  eventOptions: string[]
+  itemOptions: { value: string; label: string; meta?: string }[]
+  saving: boolean
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <label className="flex flex-col gap-1">
+        <span className="text-xs font-medium text-gray-500">Event</span>
+        <EventSelect value={event} onChange={setEvent} events={eventOptions} placeholder="Select event…" disabled={saving} />
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="text-xs font-medium text-gray-500">Item</span>
+        <SearchableSelect value={items} onChange={setItems} options={itemOptions} placeholder="Search item…" disabled={saving} />
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="text-xs font-medium text-gray-500">Quantity</span>
+        <input
+          type="number"
+          min={1}
+          value={unitBuy}
+          onChange={(e) => setUnitBuy(e.target.value)}
+          disabled={saving}
+          className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+        />
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="text-xs font-medium text-gray-500">Note <span className="text-gray-400 font-normal">(optional)</span></span>
+        <input
+          type="text"
+          value={receipt}
+          onChange={(e) => setReceipt(e.target.value)}
+          disabled={saving}
+          placeholder="e.g. pre-dashboard stock"
+          className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+        />
+      </label>
+    </div>
+  )
+}
+
+function AddInventoryCard({
   eventOptions,
   itemOptions,
   onClose,
   onCreated,
-  onUpdated,
 }: {
-  mode: "add" | "edit"
-  existing?: ExcessRow
   eventOptions: string[]
   itemOptions: { value: string; label: string; meta?: string }[]
   onClose: () => void
   onCreated: (rows: ExcessRow[]) => void
+}) {
+  const [event, setEvent] = useState("")
+  const [items, setItems] = useState("")
+  const [unitBuy, setUnitBuy] = useState("")
+  const [receipt, setReceipt] = useState("")
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const qtyNum = Math.round(Number(unitBuy)) || 0
+  const valid = event.trim() !== "" && items.trim() !== "" && qtyNum >= 1
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!valid) return
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await fetch("/api/sheets/excess-purchase", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event, items, unitBuy: qtyNum, receipt: receipt.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "Failed to add inventory")
+      setItems("")
+      setUnitBuy("")
+      setReceipt("")
+      onCreated(data.rows ?? [])
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed")
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="rounded-xl border border-cream-border bg-white p-5 flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-semibold text-foreground">Add Inventory</span>
+        <button type="button" onClick={onClose} className="text-gray-400 hover:text-brand transition-colors">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+        </button>
+      </div>
+
+      <InventoryFields
+        event={event} setEvent={setEvent}
+        items={items} setItems={setItems}
+        unitBuy={unitBuy} setUnitBuy={setUnitBuy}
+        receipt={receipt} setReceipt={setReceipt}
+        eventOptions={eventOptions} itemOptions={itemOptions} saving={saving}
+      />
+
+      <p className="text-[11px] text-gray-400">
+        Apply fills this row&apos;s own event first, then spills to matching orders
+        in other events — so Event just sets fill priority.
+      </p>
+
+      {error && <p className="text-xs text-red-500">{error}</p>}
+
+      <div className="flex justify-end gap-2">
+        <button type="button" onClick={onClose} disabled={saving} className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
+          Cancel
+        </button>
+        <button type="submit" disabled={saving || !valid} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-hover disabled:opacity-50 transition-colors">
+          {saving ? "Saving…" : "Add Inventory"}
+        </button>
+      </div>
+    </form>
+  )
+}
+
+function EditInventoryModal({
+  existing,
+  eventOptions,
+  itemOptions,
+  onClose,
+  onUpdated,
+}: {
+  existing: ExcessRow
+  eventOptions: string[]
+  itemOptions: { value: string; label: string; meta?: string }[]
+  onClose: () => void
   onUpdated: (rowNumber: number, patch: { event: string; items: string; unitBuy: number; receipt: string }) => void
 }) {
-  const [event, setEvent] = useState(existing?.event ?? "")
-  const [items, setItems] = useState(existing?.items ?? "")
-  const [unitBuy, setUnitBuy] = useState(String(existing?.unitBuy ?? ""))
-  const [receipt, setReceipt] = useState(existing?.receipt ?? "")
+  const [event, setEvent] = useState(existing.event)
+  const [items, setItems] = useState(existing.items)
+  const [unitBuy, setUnitBuy] = useState(String(existing.unitBuy))
+  const [receipt, setReceipt] = useState(existing.receipt)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -629,25 +800,14 @@ function InventoryFormModal({
     setSaving(true)
     setError(null)
     try {
-      if (mode === "add") {
-        const res = await fetch("/api/sheets/excess-purchase", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ event, items, unitBuy: qtyNum, receipt: receipt.trim() }),
-        })
-        const data = await res.json()
-        if (!res.ok) throw new Error(data.error ?? "Failed to add inventory")
-        onCreated(data.rows ?? [])
-      } else if (existing) {
-        const res = await fetch(`/api/sheets/excess-purchase/${existing.rowNumber}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ event, items, unitBuy: qtyNum, receipt: receipt.trim() }),
-        })
-        const data = await res.json()
-        if (!res.ok) throw new Error(data.error ?? "Failed to update")
-        onUpdated(existing.rowNumber, { event, items, unitBuy: qtyNum, receipt: receipt.trim() })
-      }
+      const res = await fetch(`/api/sheets/excess-purchase/${existing.rowNumber}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event, items, unitBuy: qtyNum, receipt: receipt.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "Failed to update")
+      onUpdated(existing.rowNumber, { event, items, unitBuy: qtyNum, receipt: receipt.trim() })
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed")
       setSaving(false)
@@ -661,46 +821,19 @@ function InventoryFormModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3">
-          <div className="text-sm font-semibold text-foreground">
-            {mode === "add" ? "Add Inventory" : "Edit Inventory"}
-          </div>
+          <div className="text-sm font-semibold text-foreground">Edit Inventory</div>
           <button type="button" onClick={onClose} className="text-gray-400 hover:text-brand transition-colors shrink-0">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
           </button>
         </div>
 
-        <div className="flex flex-col gap-3">
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-500">Event</span>
-            <EventSelect value={event} onChange={setEvent} events={eventOptions} placeholder="Select event…" disabled={saving} />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-500">Item</span>
-            <SearchableSelect value={items} onChange={setItems} options={itemOptions} placeholder="Search item…" disabled={saving} />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-500">Quantity</span>
-            <input
-              type="number"
-              min={1}
-              value={unitBuy}
-              onChange={(e) => setUnitBuy(e.target.value)}
-              disabled={saving}
-              className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-500">Note <span className="text-gray-400 font-normal">(optional)</span></span>
-            <input
-              type="text"
-              value={receipt}
-              onChange={(e) => setReceipt(e.target.value)}
-              disabled={saving}
-              placeholder="e.g. pre-dashboard stock"
-              className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
-            />
-          </label>
-        </div>
+        <InventoryFields
+          event={event} setEvent={setEvent}
+          items={items} setItems={setItems}
+          unitBuy={unitBuy} setUnitBuy={setUnitBuy}
+          receipt={receipt} setReceipt={setReceipt}
+          eventOptions={eventOptions} itemOptions={itemOptions} saving={saving}
+        />
 
         <p className="text-[11px] text-gray-400">
           Apply fills this row&apos;s own event first, then spills to matching orders
@@ -714,7 +847,7 @@ function InventoryFormModal({
             Cancel
           </button>
           <button type="button" onClick={handleSubmit} disabled={saving || !valid} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-hover disabled:opacity-50 transition-colors">
-            {saving ? "Saving…" : mode === "add" ? "Add Inventory" : "Save Changes"}
+            {saving ? "Saving…" : "Save Changes"}
           </button>
         </div>
       </div>
@@ -842,87 +975,3 @@ function ApplyResultBanner({
 // Bulk result banner
 // ---------------------------------------------------------------------------
 
-function BulkResultBanner({
-  results,
-  onDismiss,
-}: {
-  results: BulkItemResult[]
-  onDismiss: () => void
-}) {
-  const totalFilled = results.reduce((n, r) => n + r.filled.length, 0)
-  const anyFilled = totalFilled > 0
-  const anyRemainder = results.some((r) => r.remainder > 0)
-  const noneFound = results.every((r) => r.filled.length === 0)
-
-  return (
-    <div className={`rounded-xl border overflow-hidden ${noneFound ? "border-gray-200 bg-gray-50" : "border-green-200 bg-green-50"}`}>
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-inherit">
-        <span className={`text-xs font-medium ${noneFound ? "text-gray-500" : "text-green-700"}`}>
-          {noneFound
-            ? "No pending orders found for any excess item."
-            : `${totalFilled} order${totalFilled === 1 ? "" : "s"} filled across ${results.filter((r) => r.filled.length > 0).length} item${results.filter((r) => r.filled.length > 0).length === 1 ? "" : "s"}`}
-        </span>
-        <div className="flex items-center gap-3">
-          {anyRemainder && (
-            <span className="text-xs text-yellow-700 bg-yellow-100 border border-yellow-200 rounded-md px-2 py-0.5">
-              Some excess remaining
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={onDismiss}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
-            aria-label="Dismiss"
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <path d="M18 6 6 18M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-      </div>
-
-      {/* Per-item results */}
-      {anyFilled && (
-        <div className="divide-y divide-inherit">
-          {results.filter((r) => r.filled.length > 0).map((item) => (
-            <div key={`${item.event}-${item.items}`}>
-              <div className="px-4 py-2 flex items-center justify-between bg-white/40">
-                <span className="text-xs font-medium text-foreground">{item.items}</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-500">{item.event}</span>
-                  {item.remainder > 0 && (
-                    <span className="text-xs text-yellow-700 bg-yellow-100 border border-yellow-200 rounded px-1.5 py-0.5">
-                      {item.remainder} remaining
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs min-w-[420px]">
-                  <tbody>
-                    {item.filled.map((row, i) => (
-                      <tr key={row.rowNumber} className="border-t border-inherit">
-                        <td className="px-4 py-2 text-gray-400 w-8">{i + 1}</td>
-                        <td className="px-4 py-2 text-foreground">
-                          {displayIg(row.customer)}
-                          {row.event !== item.event && (
-                            <span className="ml-1.5 text-[10px] text-brand">→ {row.event}</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-2 text-foreground text-right font-semibold tabular-nums">{row.unitBuy}</td>
-                        <td className="px-4 py-2 text-right text-gray-400 w-20">
-                          {row.oldUnitBuy > 0 && `(was ${row.oldUnitBuy})`}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}

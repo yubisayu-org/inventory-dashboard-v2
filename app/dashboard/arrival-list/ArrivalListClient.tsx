@@ -1,6 +1,6 @@
 "use client"
 
-import { displayIg } from "@/lib/format"
+import { displayIg, fmt } from "@/lib/format"
 import TableSkeleton from "@/components/TableSkeleton"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { ArrivalListItem, ArrivalListOrder } from "@/lib/db"
@@ -11,10 +11,8 @@ import { fetchJson } from "@/lib/api-fetch"
 import ArriveBulkModal from "./ArriveBulkModal"
 import EventSelect from "@/components/EventSelect"
 import SearchableSelect from "@/components/SearchableSelect"
+import SearchInput from "@/components/SearchInput"
 import { generateCargoDocument } from "@/lib/cargo-document-pdf"
-
-const INPUT_CLASS =
-  "border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
 
 function computeFill(orders: ArrivalListOrder[], quantityArrived: number) {
   const { allocations, unallocated, excess } = allocateFifo(orders, (o) => o.pending, quantityArrived)
@@ -360,12 +358,11 @@ export default function ArrivalListClient() {
   return (
     <>
       <div className="flex items-center gap-2 flex-wrap mb-3">
-        <input
-          type="text"
+        <SearchInput
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={setSearch}
           placeholder="Search receiving list…"
-          className={`${INPUT_CLASS} flex-1 min-w-[180px]`}
+          className="flex-1 min-w-[180px]"
         />
         <div style={{ width: "12rem" }}>
           <EventSelect
@@ -592,7 +589,7 @@ export default function ArrivalListClient() {
       {arrivingItem && (
         <ArriveModal
           item={arrivingItem}
-          itemOptions={(options?.items ?? []).map((it) => ({ value: it.name, label: it.name, meta: it.store || undefined }))}
+          itemOptions={(options?.items ?? []).map((it) => ({ value: it.name, label: it.name, meta: `Rp ${fmt(it.price)}` }))}
           onClose={() => setArrivingItem(null)}
           onSuccess={() => {
             handleArrivedSuccess()

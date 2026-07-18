@@ -591,6 +591,7 @@ export interface PaginatedExcess {
   rows: ExcessRow[]
   totalCount: number
   filteredSum: number | null
+  filteredValue: number | null  // sum(unit_buy × product sell price), matched by item name — null when skipCount=true
   page: number
   pageSize: number
   totalPages: number
@@ -602,7 +603,11 @@ export const EXCESS_TOTAL_COUNT_UNCHANGED = -1
 /**
  * One page of excess-purchase (Inventory) rows with server-side
  * search/filter/sort. Mirrors getPaymentsPaginated. filteredSum is the summed
- * unit_buy across the whole filtered set (units still to apply).
+ * unit_buy across the whole filtered set (units still to apply). filteredValue
+ * estimates the sell-through value by joining each row's item name to the
+ * products table's price — same name-collision-across-stores caveat as
+ * Apply's matching, so a bare name shared by multiple stores is averaged
+ * rather than picked exactly.
  */
 export async function getExcessPurchasePaginated(opts: {
   page: number
@@ -626,7 +631,7 @@ export async function getExcessPurchasePaginated(opts: {
     params.push(`%${search.toLowerCase()}%`)
     const p = `$${params.length}`
     conditions.push(
-      `(lower(event) LIKE ${p} OR lower(items) LIKE ${p} OR lower(COALESCE(receipt,'')) LIKE ${p} OR lower(COALESCE(expected_item,'')) LIKE ${p})`,
+      `(lower(e.event) LIKE ${p} OR lower(e.items) LIKE ${p} OR lower(COALESCE(e.receipt,'')) LIKE ${p} OR lower(COALESCE(e.expected_item,'')) LIKE ${p})`,
     )
   }
 
@@ -639,7 +644,7 @@ export async function getExcessPurchasePaginated(opts: {
   for (const [value, col] of textFilters) {
     if (value) {
       params.push(`%${value.toLowerCase()}%`)
-      conditions.push(`lower(COALESCE(${col},'')) LIKE $${params.length}`)
+      conditions.push(`lower(COALESCE(e.${col},'')) LIKE $${params.length}`)
     }
   }
 
@@ -653,26 +658,36 @@ export async function getExcessPurchasePaginated(opts: {
   const sortDir = opts.sortDir === "asc" ? "ASC" : "DESC"
 
   const dataRows = await sql.unsafe(
-    `SELECT id, event, items, unit_buy, receipt, reason, expected_item, created_at, updated_at
-     FROM excess_purchase
+    `SELECT e.id, e.event, e.items, e.unit_buy, e.receipt, e.reason, e.expected_item, e.created_at, e.updated_at
+     FROM excess_purchase e
      ${where}
-     ORDER BY ${sortCol} ${sortDir}, id ${sortDir}
+     ORDER BY ${sortCol} ${sortDir}, e.id ${sortDir}
      LIMIT ${pageSize} OFFSET ${offset}`,
     params,
   )
   const rows = (dataRows as Record<string, unknown>[]).map(mapExcessRow)
 
   if (skipCount) {
-    return { rows, totalCount: EXCESS_TOTAL_COUNT_UNCHANGED, filteredSum: null, page, pageSize, totalPages: EXCESS_TOTAL_COUNT_UNCHANGED }
+    return { rows, totalCount: EXCESS_TOTAL_COUNT_UNCHANGED, filteredSum: null, filteredValue: null, page, pageSize, totalPages: EXCESS_TOTAL_COUNT_UNCHANGED }
   }
 
   const [countRows, sumRows] = await Promise.all([
-    sql.unsafe(`SELECT COUNT(*)::int AS c FROM excess_purchase ${where}`, params),
-    sql.unsafe(`SELECT COALESCE(SUM(unit_buy), 0)::bigint AS s FROM excess_purchase ${where}`, params),
+    sql.unsafe(`SELECT COUNT(*)::int AS c FROM excess_purchase e ${where}`, params),
+    sql.unsafe(
+      `WITH product_price AS (SELECT name, AVG(price) AS price FROM products GROUP BY name)
+       SELECT
+         COALESCE(SUM(e.unit_buy), 0)::bigint AS s,
+         COALESCE(SUM(e.unit_buy * COALESCE(pp.price, 0)), 0)::bigint AS v
+       FROM excess_purchase e
+       LEFT JOIN product_price pp ON pp.name = e.items
+       ${where}`,
+      params,
+    ),
   ])
   const totalCount = Number((countRows as Record<string, unknown>[])[0]?.c ?? 0)
   const filteredSum = Number((sumRows as Record<string, unknown>[])[0]?.s ?? 0)
-  return { rows, totalCount, filteredSum, page, pageSize, totalPages: Math.max(1, Math.ceil(totalCount / pageSize)) }
+  const filteredValue = Number((sumRows as Record<string, unknown>[])[0]?.v ?? 0)
+  return { rows, totalCount, filteredSum, filteredValue, page, pageSize, totalPages: Math.max(1, Math.ceil(totalCount / pageSize)) }
 }
 
 /**

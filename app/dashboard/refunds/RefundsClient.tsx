@@ -86,6 +86,7 @@ export default function RefundsClient() {
   const [error, setError] = useState("")
   const [tab, setTab] = useState<RefundStatus>("pending")
   const [creating, setCreating] = useState(false)
+  const [mobileCreating, setMobileCreating] = useState(false)
   const [editRow, setEditRow] = useState<RefundRow | null>(null)
 
   const fetchRows = useCallback((forceScan = false) => {
@@ -217,7 +218,6 @@ export default function RefundsClient() {
 
   function handleCreated(created: RefundRow) {
     setRows((prev) => [created, ...prev])
-    setCreating(false)
     setTab("pending")
   }
 
@@ -238,7 +238,7 @@ export default function RefundsClient() {
   return (
     <>
       {/* Tabs */}
-      <div className="flex border-b border-cream-border gap-0 overflow-x-auto">
+      <div className="flex items-center gap-1 w-full rounded-xl border border-cream-border bg-white p-1 overflow-x-auto">
         {ACTIVE_TABS.map(({ key, label }) => {
           const count = key === "refunded" ? counts.done : counts[key as RefundStatus]
           const active = tab === key || (key === "refunded" && doneStatuses.includes(tab))
@@ -246,15 +246,15 @@ export default function RefundsClient() {
             <button
               key={key}
               onClick={() => setTab(key === "refunded" ? "refunded" : key as RefundStatus)}
-              className={`shrink-0 px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+              className={`flex-1 shrink-0 flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
                 active
-                  ? "border-brand text-brand"
-                  : "border-transparent text-gray-500 hover:text-foreground"
+                  ? "bg-brand text-white"
+                  : "text-gray-500 hover:text-foreground"
               }`}
             >
               {label}
               {count ? (
-                <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${active ? "bg-brand/10 text-brand" : "bg-gray-100 text-gray-500"}`}>
+                <span className={`text-xs rounded-full px-1.5 py-0.5 tabular-nums ${active ? "bg-white/20 text-white" : "bg-gray-100 text-gray-500"}`}>
                   {count}
                 </span>
               ) : null}
@@ -269,30 +269,37 @@ export default function RefundsClient() {
           columns={columns}
           pageSize={25}
           searchPlaceholder="Search customer or event…"
+          fullWidthSearch
+          tightToolbar
+          boldUppercaseHeader
+          toolbarExtraAfterColumns
+          hideRowCount
           getRowId={(row) => String(row.id)}
           onRowClick={(row) => setEditRow(row)}
           renderMobileCard={renderMobileCard}
+          belowToolbar={
+            creating ? (
+              <div className="hidden md:block">
+                <CreateRefundCard
+                  events={options?.events ?? []}
+                  onCreated={handleCreated}
+                  onClose={() => setCreating(false)}
+                />
+              </div>
+            ) : undefined
+          }
           toolbarExtra={
-            <>
-              <button
-                onClick={() => fetchRows(true)}
-                title="Refresh (re-scan for overpayments)"
-                className="p-1.5 text-gray-400 hover:text-brand transition-colors rounded"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 12a9 9 0 1 1-6.22-8.56" /><polyline points="21 3 21 9 15 9" />
-                </svg>
-              </button>
-              <button
-                onClick={() => setCreating(true)}
-                className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors"
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                  <path d="M12 5v14M5 12h14" />
-                </svg>
-                New Refund
-              </button>
-            </>
+            <button
+              onClick={() => setCreating((o) => !o)}
+              className={`hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg transition-colors ${
+                creating ? "bg-brand-light text-brand border border-brand/30" : "bg-brand text-white hover:bg-brand-hover"
+              }`}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              New Refund
+            </button>
           }
         />
       </div>
@@ -300,19 +307,24 @@ export default function RefundsClient() {
       {/* Mobile add FAB */}
       <button
         type="button"
-        onClick={() => setCreating(true)}
+        onClick={() => setMobileCreating(true)}
         aria-label="New refund"
         className="md:hidden fixed right-4 bottom-20 z-30 w-14 h-14 rounded-full bg-brand text-white text-3xl leading-none shadow-lg flex items-center justify-center active:bg-brand/90"
       >
         +
       </button>
 
-      {creating && (
-        <CreateRefundModal
-          events={options?.events ?? []}
-          onCreated={handleCreated}
-          onClose={() => setCreating(false)}
-        />
+      {/* Mobile add sheet */}
+      {mobileCreating && (
+        <div className="md:hidden fixed inset-0 z-40 bg-black/40 flex flex-col justify-end" onClick={() => setMobileCreating(false)}>
+          <div className="max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <CreateRefundCard
+              events={options?.events ?? []}
+              onCreated={(row) => { handleCreated(row); setMobileCreating(false) }}
+              onClose={() => setMobileCreating(false)}
+            />
+          </div>
+        </div>
       )}
 
       {editRow && (
@@ -327,9 +339,9 @@ export default function RefundsClient() {
   )
 }
 
-// ─── Create refund modal ──────────────────────────────────────────────────────
+// ─── Create refund card ──────────────────────────────────────────────────────
 
-function CreateRefundModal({
+function CreateRefundCard({
   events,
   onCreated,
   onClose,
@@ -374,6 +386,7 @@ function CreateRefundModal({
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "Failed to create")
+      setForm({ event: "", customer: "", reason: "overpayment", refundAmount: "", note: "" })
       onCreated(data.row)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create")
@@ -383,66 +396,61 @@ function CreateRefundModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
-      <form
-        className="bg-white rounded-xl border border-cream-border shadow-xl w-full max-w-md flex flex-col gap-4 p-6"
-        onClick={(e) => e.stopPropagation()}
-        onSubmit={handleSubmit}
-      >
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-semibold text-foreground">New Refund</span>
-          <button type="button" onClick={onClose} className="text-gray-400 hover:text-brand transition-colors">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-          </button>
-        </div>
+    <form onSubmit={handleSubmit} className="rounded-xl border border-cream-border bg-white p-5 flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-semibold text-foreground">New Refund</span>
+        <button type="button" onClick={onClose} className="text-gray-400 hover:text-brand transition-colors">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+        </button>
+      </div>
 
-        <div className="flex flex-col gap-3">
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-500">Event</span>
-            <EventSelect value={form.event} onChange={(v) => setForm((f) => ({ ...f, event: v }))} events={events} disabled={saving} />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-500">Customer (Instagram ID)</span>
-            <input {...field("customer")} required disabled={saving} placeholder="@username" className={`${INPUT_CLASS} w-full`} />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-500">Reason</span>
-            <select {...field("reason")} disabled={saving} className={`${INPUT_CLASS} w-full`}>
-              {(Object.entries(REASON_LABELS) as [RefundReason, string][]).map(([k, v]) => (
-                <option key={k} value={k}>{v}</option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-500">Refund Amount (Rp)</span>
-            <input
-              {...field("refundAmount")}
-              type="number"
-              min="1"
-              required
-              disabled={saving}
-              placeholder="e.g. 150000"
-              className={`${INPUT_CLASS} w-full`}
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-500">Note <span className="font-normal text-gray-400">(optional)</span></span>
-            <textarea {...field("note")} disabled={saving} rows={2} placeholder="Additional context…" className={`${INPUT_CLASS} w-full resize-none`} />
-          </label>
-        </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-gray-500">Event</span>
+          <EventSelect value={form.event} onChange={(v) => setForm((f) => ({ ...f, event: v }))} events={events} disabled={saving} />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-gray-500">Customer (Instagram ID)</span>
+          <input {...field("customer")} required disabled={saving} placeholder="@username" className={`${INPUT_CLASS} w-full`} />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-gray-500">Reason</span>
+          <select {...field("reason")} disabled={saving} className={`${INPUT_CLASS} w-full`}>
+            {(Object.entries(REASON_LABELS) as [RefundReason, string][]).map(([k, v]) => (
+              <option key={k} value={k}>{v}</option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-gray-500">Refund Amount (Rp)</span>
+          <input
+            {...field("refundAmount")}
+            type="number"
+            min="1"
+            required
+            disabled={saving}
+            placeholder="e.g. 150000"
+            className={`${INPUT_CLASS} w-full`}
+          />
+        </label>
+      </div>
 
-        {error && <p className="text-xs text-red-500">{error}</p>}
+      <label className="flex flex-col gap-1">
+        <span className="text-xs font-medium text-gray-500">Note <span className="font-normal text-gray-400">(optional)</span></span>
+        <textarea {...field("note")} disabled={saving} rows={2} placeholder="Additional context…" className={`${INPUT_CLASS} w-full resize-none`} />
+      </label>
 
-        <div className="flex justify-end gap-2 pt-1">
-          <button type="button" onClick={onClose} disabled={saving} className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
-            Cancel
-          </button>
-          <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors">
-            {saving ? "Creating…" : "Create"}
-          </button>
-        </div>
-      </form>
-    </div>
+      {error && <p className="text-xs text-red-500">{error}</p>}
+
+      <div className="flex justify-end gap-2">
+        <button type="button" onClick={onClose} disabled={saving} className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
+          Cancel
+        </button>
+        <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors">
+          {saving ? "Creating…" : "Create"}
+        </button>
+      </div>
+    </form>
   )
 }
 

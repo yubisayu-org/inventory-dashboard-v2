@@ -338,28 +338,16 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
 
   return (
     <div className="space-y-3">
-      {/* Desktop: existing inline add form */}
-      {addOpen && (
-        <div className="hidden md:block">
-          <AddPaymentForm
-            options={options}
-            isAdmin={isAdmin}
-            onClose={() => setAddOpen(false)}
-            onAdded={() => { refreshRef.current(); setAddOpen(false) }}
-          />
-        </div>
-      )}
-
       {/* Type filter tabs */}
-      <div className="hidden md:flex border-b border-cream-border gap-0">
+      <div className="hidden md:flex items-center gap-1 w-full rounded-xl border border-cream-border bg-white p-1 overflow-x-auto">
         {KIND_TABS.map(({ key, label }) => {
           const active = kindFilter === key
           return (
             <button
               key={key || "all"}
               onClick={() => handleKindFilterChange(key)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                active ? "border-brand text-brand" : "border-transparent text-gray-500 hover:text-foreground"
+              className={`flex-1 shrink-0 flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+                active ? "bg-brand text-white" : "text-gray-500 hover:text-foreground"
               }`}
             >
               {label}
@@ -375,6 +363,21 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
           columns={columns}
           getRowId={(row) => String(row.rowNumber)}
           searchPlaceholder="Search name, amount, account..."
+          fullWidthSearch
+          tightToolbar
+          boldUppercaseHeader
+          toolbarExtraAfterColumns
+          hideRowCount
+          belowToolbar={
+            addOpen ? (
+              <AddPaymentForm
+                options={options}
+                isAdmin={isAdmin}
+                onClose={() => setAddOpen(false)}
+                onAdded={() => refreshRef.current()}
+              />
+            ) : undefined
+          }
           toolbarExtra={
             <>
               <CheckedFilterSelect
@@ -759,6 +762,9 @@ function AddPaymentForm({
         throw new Error(d.error ?? "Failed to save")
       }
       setFeedback({ type: "success", message: "Payment added" })
+      setCustomer("")
+      setAmount("")
+      setRemarks("")
       onAdded()
     } catch (err) {
       setFeedback({ type: "error", message: err instanceof Error ? err.message : "Failed to save" })

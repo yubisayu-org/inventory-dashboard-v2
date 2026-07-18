@@ -98,6 +98,7 @@ export default function ProductsPageClient() {
   const [globalFilter, setGlobalFilter] = useState("")
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: PAGE_SIZE })
 
+  const [addOpen, setAddOpen] = useState(false)
   const [mobileAddOpen, setMobileAddOpen] = useState(false)
   // When set, the Add form pre-fills itself from this product (Duplicate flow).
   // The Add form clears this via onConsumeSeed once it has copied the values.
@@ -105,6 +106,7 @@ export default function ProductsPageClient() {
   const consumeSeed = useCallback(() => setSeedProduct(null), [])
   const handleDuplicate = useCallback((row: ProductRow) => {
     setSeedProduct(row)
+    setAddOpen(true)
     // Open the mobile add sheet too — no-op on desktop (it's hidden anyway),
     // but on mobile the Add form is otherwise unreachable from a row card.
     setMobileAddOpen(true)
@@ -375,32 +377,10 @@ export default function ProductsPageClient() {
     },
   ], [countries, stores, handleDuplicate, handleStoreSave])
 
-  const refreshButton = (
-    <button
-      type="button"
-      onClick={reloadAll}
-      disabled={fetchState.loading}
-      className="text-xs text-gray-500 hover:text-brand disabled:opacity-50 transition-colors px-3 py-1.5 rounded-lg border border-cream-border hover:border-brand"
-    >
-      {fetchState.loading ? "…" : "Refresh"}
-    </button>
-  )
-
   const errorMsg = fetchState.error || metaError
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Add form (desktop) */}
-      <div className="hidden md:block">
-        <AddProductForm
-          countries={countries}
-          stores={stores}
-          onAdded={reloadAll}
-          seed={seedProduct}
-          onConsumeSeed={consumeSeed}
-        />
-      </div>
-
       {errorMsg && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{errorMsg}</div>
       )}
@@ -416,7 +396,36 @@ export default function ProductsPageClient() {
           columns={columns}
           getRowId={(row) => String(row.id)}
           searchPlaceholder="Search name, store, country…"
-          toolbarExtra={refreshButton}
+          fullWidthSearch
+          tightToolbar
+          boldUppercaseHeader
+          toolbarExtraAfterColumns
+          hideRowCount
+          belowToolbar={
+            addOpen ? (
+              <AddProductForm
+                countries={countries}
+                stores={stores}
+                onAdded={reloadAll}
+                seed={seedProduct}
+                onConsumeSeed={consumeSeed}
+              />
+            ) : undefined
+          }
+          toolbarExtra={
+            <button
+              type="button"
+              onClick={() => setAddOpen((o) => !o)}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg transition-colors ${
+                addOpen ? "bg-brand-light text-brand border border-brand/30" : "bg-brand text-white hover:bg-brand-hover"
+              }`}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              Add Product
+            </button>
+          }
           initialVisibility={{
             id: false,
             kurs: false,

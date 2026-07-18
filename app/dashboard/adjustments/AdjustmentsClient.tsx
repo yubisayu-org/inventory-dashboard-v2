@@ -39,6 +39,7 @@ export default function AdjustmentsClient() {
   const [totalCount, setTotalCount] = useState(0)
   const [filteredSum, setFilteredSum] = useState<number | null>(null)
   const [addOpen, setAddOpen] = useState(false)
+  const [mobileAddOpen, setMobileAddOpen] = useState(false)
   const [editingRow, setEditingRow] = useState<AdjustmentRow | null>(null)
 
   // Server-side table state.
@@ -190,24 +191,29 @@ export default function AdjustmentsClient() {
 
   return (
     <div className="space-y-3">
-      {/* Desktop: inline add form above the table */}
-      {addOpen && (
-        <div className="hidden md:block">
-          <AddAdjustmentForm
-            options={options}
-            onClose={() => setAddOpen(false)}
-            onAdded={() => { refreshRef.current(); setAddOpen(false) }}
-          />
-        </div>
-      )}
-
       <DataGrid
         data={rows}
         columns={columns}
         searchPlaceholder="Search adjustments..."
+        fullWidthSearch
+        tightToolbar
+        boldUppercaseHeader
+        toolbarExtraAfterColumns
+        hideRowCount
         getRowId={(row) => String(row.rowNumber)}
         initialVisibility={{ updatedAt: false }}
         renderMobileCard={renderMobileCard}
+        belowToolbar={
+          addOpen ? (
+            <div className="hidden md:block">
+              <AddAdjustmentForm
+                options={options}
+                onClose={() => setAddOpen(false)}
+                onAdded={() => refreshRef.current()}
+              />
+            </div>
+          ) : undefined
+        }
         toolbarExtra={
           <>
             <button
@@ -250,7 +256,7 @@ export default function AdjustmentsClient() {
       {/* Mobile add FAB */}
       <button
         type="button"
-        onClick={() => { setAddOpen(true); setEditingRow(null) }}
+        onClick={() => { setMobileAddOpen(true); setEditingRow(null) }}
         aria-label="Add adjustment"
         className="md:hidden fixed right-4 bottom-20 z-30 w-14 h-14 rounded-full bg-brand text-white text-3xl leading-none shadow-lg flex items-center justify-center active:bg-brand/90"
       >
@@ -258,13 +264,13 @@ export default function AdjustmentsClient() {
       </button>
 
       {/* Mobile add sheet */}
-      {addOpen && (
-        <div className="md:hidden fixed inset-0 z-40 bg-black/40 flex flex-col justify-end" onClick={() => setAddOpen(false)}>
+      {mobileAddOpen && (
+        <div className="md:hidden fixed inset-0 z-40 bg-black/40 flex flex-col justify-end" onClick={() => setMobileAddOpen(false)}>
           <div className="max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <AddAdjustmentForm
               options={options}
-              onClose={() => setAddOpen(false)}
-              onAdded={() => { refreshRef.current(); setAddOpen(false) }}
+              onClose={() => setMobileAddOpen(false)}
+              onAdded={() => { refreshRef.current(); setMobileAddOpen(false) }}
             />
           </div>
         </div>
@@ -471,6 +477,10 @@ function AddAdjustmentForm({
         throw new Error(d.error ?? "Failed to save")
       }
       setFeedback({ type: "success", message: "Adjustment added" })
+      setEvent("")
+      setCustomer("")
+      setDescription("")
+      setAmount("")
       onAdded()
     } catch (err) {
       setFeedback({ type: "error", message: err instanceof Error ? err.message : "Failed to save" })

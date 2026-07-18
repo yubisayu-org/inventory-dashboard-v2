@@ -20,6 +20,7 @@ import {
   type OnChangeFn,
 } from "@tanstack/react-table"
 import { Fragment, useState, useRef, useEffect, useCallback, useMemo } from "react"
+import SearchInput from "./SearchInput"
 
 // Register our custom filter keys with the table types so a column can say
 // `filterFn: "numeric"` (etc.) directly — no `as unknown as undefined` cast.
@@ -112,6 +113,10 @@ interface DataGridProps<T> {
   boldUppercaseHeader?: boolean
   /** Render toolbarExtra after the Columns button instead of before it. */
   toolbarExtraAfterColumns?: boolean
+  /** Extra toolbar content always rendered after the Columns button,
+   *  independent of toolbarExtraAfterColumns — use to split some controls
+   *  before Columns and others after. */
+  toolbarExtraEnd?: React.ReactNode
   /** Hide the entire toolbar row (search, active-filter chips, toolbarExtra,
    *  row count, column visibility). Per-column filter buttons in the header
    *  still work — their popover clears the value even without the toolbar's
@@ -187,6 +192,7 @@ export default function DataGrid<T>({
   hiddenFilterChips,
   boldUppercaseHeader,
   toolbarExtraAfterColumns,
+  toolbarExtraEnd,
   hideToolbar,
   toolbarExtra,
   belowToolbar,
@@ -308,29 +314,13 @@ export default function DataGrid<T>({
         <div className="flex flex-wrap items-center gap-3">
           {/* Global search */}
           {!hideSearch && (
-            <div className={`relative ${fullWidthSearch ? "flex-1 min-w-[160px]" : ""}`}>
-              <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="11" cy="11" r="8" />
-                <path d="m21 21-4.35-4.35" />
-              </svg>
-              <input
-                type="text"
-                value={table.getState().globalFilter ?? ""}
-                onChange={(e) => table.setGlobalFilter(e.target.value)}
-                placeholder={searchPlaceholder}
-                className={`border border-cream-border rounded-lg pl-8 pr-8 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors ${fullWidthSearch ? "w-full" : "w-56"}`}
-              />
-              {Boolean(table.getState().globalFilter) && (
-                <button
-                  type="button"
-                  onClick={() => table.setGlobalFilter("")}
-                  aria-label="Clear search"
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-brand transition-colors"
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-                </button>
-              )}
-            </div>
+            <SearchInput
+              value={table.getState().globalFilter ?? ""}
+              onChange={(v) => table.setGlobalFilter(v)}
+              placeholder={searchPlaceholder}
+              className={fullWidthSearch ? "flex-1 min-w-[160px]" : "w-56"}
+              dense
+            />
           )}
 
           {/* Active filters */}
@@ -352,6 +342,8 @@ export default function DataGrid<T>({
           )}
 
           {toolbarExtraAfterColumns && toolbarExtra}
+
+          {toolbarExtraEnd}
         </div>
       )}
 
