@@ -584,6 +584,7 @@ function mapExcessRow(r: Record<string, unknown>): ExcessRow {
     expectedItem: (r.expected_item as string) ?? "",
     createdAt: tsToString(r.created_at as Date | null),
     updatedAt: tsToString(r.updated_at as Date | null),
+    price: r.price != null ? Number(r.price) : null,
   }
 }
 
@@ -658,8 +659,10 @@ export async function getExcessPurchasePaginated(opts: {
   const sortDir = opts.sortDir === "asc" ? "ASC" : "DESC"
 
   const dataRows = await sql.unsafe(
-    `SELECT e.id, e.event, e.items, e.unit_buy, e.receipt, e.reason, e.expected_item, e.created_at, e.updated_at
+    `WITH product_price AS (SELECT name, AVG(price) AS price FROM products GROUP BY name)
+     SELECT e.id, e.event, e.items, e.unit_buy, e.receipt, e.reason, e.expected_item, e.created_at, e.updated_at, pp.price
      FROM excess_purchase e
+     LEFT JOIN product_price pp ON pp.name = e.items
      ${where}
      ORDER BY ${sortCol} ${sortDir}, e.id ${sortDir}
      LIMIT ${pageSize} OFFSET ${offset}`,

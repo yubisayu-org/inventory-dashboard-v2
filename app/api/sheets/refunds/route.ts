@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { getRefunds, createRefund, materializeOverpaymentRefunds, withActor } from "@/lib/db"
-import type { RefundReason } from "@/lib/db"
-
-const VALID_REASONS: RefundReason[] = ["overpayment", "unavailable", "shipping_loss", "damaged", "goodwill", "other"]
+import { getRefunds, createRefund, materializeOverpaymentRefunds, getDistinctRefundReasons, withActor } from "@/lib/db"
 
 // Overpayment detection is a full aggregate over orders/payments/adjustments,
 // so it shouldn't run on every page open. Skip re-running it if it fired within
@@ -19,6 +16,19 @@ export async function GET(req: NextRequest) {
   if (roleError) return roleError
 
   const { searchParams } = req.nextUrl
+
+  // Lightweight path for the reason picker (e.g. the invoice page's Create
+  // Refund modal) — skip the full list + materialize scan.
+  if (searchParams.get("meta") === "reasons") {
+    try {
+      const reasons = await getDistinctRefundReasons()
+      return NextResponse.json({ reasons }, { headers: { "Cache-Control": "no-store" } })
+    } catch (err) {
+      console.error("Failed to fetch refund reasons:", err)
+      return NextResponse.json({ error: "Failed to fetch refund reasons" }, { status: 500 })
+    }
+  }
+
   const event = searchParams.get("event") ?? undefined
   const status = searchParams.get("status") ?? undefined
   const customer = searchParams.get("customer") ?? undefined
@@ -41,8 +51,11 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const rows = await getRefunds({ event, status, customer })
-    return NextResponse.json({ rows }, { headers: { "Cache-Control": "no-store" } })
+    const [rows, reasons] = await Promise.all([
+      getRefunds({ event, status, customer }),
+      getDistinctRefundReasons(),
+    ])
+    return NextResponse.json({ rows, reasons }, { headers: { "Cache-Control": "no-store" } })
   } catch (err) {
     console.error("Failed to fetch refunds:", err)
     return NextResponse.json({ error: "Failed to fetch refunds" }, { status: 500 })
@@ -56,16 +69,15 @@ export async function POST(req: NextRequest) {
   if (roleError) return roleError
 
   try {
-    const { event, customer, reason, refundAmount, orderId, affectedUnits, note } = await req.json()
+    const body = await req.json()
+    const { event, customer, refundAmount, orderId, affectedUnits, note } = body
+    const reason = String(body.reason ?? "").trim()
 
     if (!event || !customer || !reason || typeof refundAmount !== "number" || refundAmount < 1) {
       return NextResponse.json(
         { error: "event, customer, reason and refundAmount are required" },
         { status: 400 },
       )
-    }
-    if (!VALID_REASONS.includes(reason)) {
-      return NextResponse.json({ error: "Invalid reason" }, { status: 400 })
     }
 
     const row = await withActor(session.user.email, (tx) => createRefund({

@@ -211,6 +211,17 @@ export default function ExcessTable() {
         ),
       },
       {
+        accessorKey: "price",
+        header: "Price",
+        enableColumnFilter: false,
+        size: 130,
+        meta: { align: "right" },
+        cell: ({ getValue }) => {
+          const price = getValue<number | null>()
+          return <span className="text-gray-500 tabular-nums whitespace-nowrap">{price != null ? `Rp ${fmt(price)}` : "—"}</span>
+        },
+      },
+      {
         accessorKey: "receipt",
         header: "Receipt",
         filterFn: "textContains",
@@ -252,13 +263,24 @@ export default function ExcessTable() {
             <div className="flex items-center justify-end gap-2">
               {/* Broken stock isn't sellable — no apply action. */}
               {r.reason === "broken" ? (
-                <span className="text-[11px] text-gray-400 italic">Not sellable</span>
+                <span className="relative inline-flex p-1 text-gray-300" title="Not sellable — broken inventory can't be applied">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M22 14a8 8 0 0 1-8 8" />
+                    <path d="M18 11v-1a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0" />
+                    <path d="M14 10V9a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v1" />
+                    <path d="M10 9.5V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v10" />
+                    <path d="M18 11a2 2 0 1 1 4 0v3a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" />
+                  </svg>
+                  <svg className="absolute -top-0.5 -right-0.5 bg-white rounded-full text-red-400" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round">
+                    <path d="M18 6 6 18M6 6l12 12" />
+                  </svg>
+                </span>
               ) : (
                 <button
                   type="button"
                   onClick={() => isPending ? cancelPending() : openPending(r.rowNumber)}
                   disabled={busy || busyRow !== null}
-                  title={busy ? "Applying…" : isPending ? "Cancel" : "Apply"}
+                  title={busy ? "Applying…" : isPending ? "Cancel" : "Apply Excess"}
                   className={`transition-colors p-1 disabled:opacity-50 disabled:cursor-not-allowed ${
                     isPending ? "text-gray-400 hover:text-red-500" : "text-gray-400 hover:text-brand"
                   }`}
@@ -460,6 +482,7 @@ export default function ExcessTable() {
         tightToolbar
         boldUppercaseHeader
         hideRowCount
+        initialVisibility={{ createdAt: false, updatedAt: false }}
         renderMobileCard={renderMobileCard}
         belowToolbar={
           addOpen ? (
@@ -643,10 +666,13 @@ function ApplyExcessModal({
 // free-text — "Apply" matches purely on exact item-name equality against
 // order lines, so a typo here would silently make a row unmatchable forever.
 
-// Shared field set for the Add card and the Edit modal below.
+// Shared field set for the Add card and the Edit modal below. `inline` lays
+// the fields out in one flex row (with fixed field widths) instead of the
+// default responsive grid, so a caller can append a trailing button
+// (e.g. Submit) on the same line.
 function InventoryFields({
   event, setEvent, items, setItems, unitBuy, setUnitBuy, receipt, setReceipt,
-  eventOptions, itemOptions, saving,
+  eventOptions, itemOptions, saving, inline, trailing,
 }: {
   event: string; setEvent: (v: string) => void
   items: string; setItems: (v: string) => void
@@ -655,18 +681,20 @@ function InventoryFields({
   eventOptions: string[]
   itemOptions: { value: string; label: string; meta?: string }[]
   saving: boolean
+  inline?: boolean
+  trailing?: React.ReactNode
 }) {
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-      <label className="flex flex-col gap-1">
+    <div className={inline ? "flex items-end gap-3 flex-wrap" : "grid grid-cols-2 gap-3 sm:grid-cols-4"}>
+      <label className="flex flex-col gap-1" style={inline ? { width: "10rem" } : undefined}>
         <span className="text-xs font-medium text-gray-500">Event</span>
         <EventSelect value={event} onChange={setEvent} events={eventOptions} placeholder="Select event…" disabled={saving} />
       </label>
-      <label className="flex flex-col gap-1">
+      <label className="flex flex-col gap-1" style={inline ? { width: "12rem" } : undefined}>
         <span className="text-xs font-medium text-gray-500">Item</span>
         <SearchableSelect value={items} onChange={setItems} options={itemOptions} placeholder="Search item…" disabled={saving} />
       </label>
-      <label className="flex flex-col gap-1">
+      <label className="flex flex-col gap-1" style={inline ? { width: "7rem" } : undefined}>
         <span className="text-xs font-medium text-gray-500">Quantity</span>
         <input
           type="number"
@@ -677,7 +705,7 @@ function InventoryFields({
           className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
         />
       </label>
-      <label className="flex flex-col gap-1">
+      <label className={`flex flex-col gap-1 ${inline ? "flex-1 min-w-[10rem]" : ""}`}>
         <span className="text-xs font-medium text-gray-500">Note <span className="text-gray-400 font-normal">(optional)</span></span>
         <input
           type="text"
@@ -688,6 +716,7 @@ function InventoryFields({
           className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
         />
       </label>
+      {trailing}
     </div>
   )
 }
@@ -751,6 +780,12 @@ function AddInventoryCard({
         unitBuy={unitBuy} setUnitBuy={setUnitBuy}
         receipt={receipt} setReceipt={setReceipt}
         eventOptions={eventOptions} itemOptions={itemOptions} saving={saving}
+        inline
+        trailing={
+          <button type="submit" disabled={saving || !valid} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-hover disabled:opacity-50 transition-colors shrink-0">
+            {saving ? "Saving…" : "Add"}
+          </button>
+        }
       />
 
       <p className="text-[11px] text-gray-400">
@@ -759,15 +794,6 @@ function AddInventoryCard({
       </p>
 
       {error && <p className="text-xs text-red-500">{error}</p>}
-
-      <div className="flex justify-end gap-2">
-        <button type="button" onClick={onClose} disabled={saving} className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
-          Cancel
-        </button>
-        <button type="submit" disabled={saving || !valid} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-hover disabled:opacity-50 transition-colors">
-          {saving ? "Saving…" : "Add Inventory"}
-        </button>
-      </div>
     </form>
   )
 }

@@ -370,7 +370,7 @@ export default function CustomersClient() {
         toolbarExtraAfterColumns
         hideRowCount
         toolbarExtra={toolbarExtra}
-        initialVisibility={{ updatedAt: false }}
+        initialVisibility={{ updatedAt: false, dataDiri: false, bankName: false }}
         renderMobileCard={renderMobileCard}
         onRowClick={(row) => setDetailCustomer(row.instagramId)}
         serverSide={{
@@ -495,7 +495,7 @@ function CustomerFields({
       </label>
 
       <div className="flex flex-col gap-1">
-        <span className="text-xs font-medium text-gray-500">Ongkos Kirim per Gudang (IDR)</span>
+        <span className="text-xs font-medium text-gray-500">Ongkos kirim per kg</span>
         {warehouses.length === 0 ? (
           <span className="text-xs text-gray-400">No warehouses configured.</span>
         ) : (

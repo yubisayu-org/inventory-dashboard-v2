@@ -1,7 +1,7 @@
 "use client"
 
 import { displayIg } from "@/lib/format"
-import { useCallback, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { AdjustmentRow } from "@/lib/db"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import { useModalDismiss } from "@/hooks/useModalDismiss"
@@ -41,6 +41,16 @@ export default function AdjustmentsClient() {
   const [addOpen, setAddOpen] = useState(false)
   const [mobileAddOpen, setMobileAddOpen] = useState(false)
   const [editingRow, setEditingRow] = useState<AdjustmentRow | null>(null)
+
+  // Every previously typed description, so the picker keeps suggesting them
+  // (not just the two built-in presets).
+  const [dbDescriptions, setDbDescriptions] = useState<string[]>([])
+  useEffect(() => {
+    fetch("/api/sheets/adjustments?meta=descriptions")
+      .then((res) => res.json())
+      .then((data) => setDbDescriptions(data.descriptions ?? []))
+      .catch(() => {})
+  }, [])
 
   // Server-side table state.
   const [sorting, setSorting] = useState<SortingState>([])
@@ -93,6 +103,20 @@ export default function AdjustmentsClient() {
   const handleGlobalFilterChange = useCallback((u: string | ((p: string) => string)) => {
     setGlobalFilter(u); setPagination((p) => ({ ...p, pageIndex: 0 }))
   }, [])
+
+  async function handleDeleteRow(row: AdjustmentRow) {
+    if (!confirm("Delete this adjustment? This cannot be undone.")) return
+    try {
+      const res = await fetch(`/api/sheets/adjustments/${row.rowNumber}`, { method: "DELETE" })
+      if (!res.ok) {
+        const d = await res.json()
+        throw new Error(d.error ?? "Failed to delete")
+      }
+      refreshRef.current()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete")
+    }
+  }
 
   const columns = useMemo<ColumnDef<AdjustmentRow, unknown>[]>(() => [
     {
@@ -149,13 +173,33 @@ export default function AdjustmentsClient() {
       enableSorting: false,
       enableColumnFilter: false,
       enableHiding: false,
+      size: 80,
       cell: ({ row }) => (
-        <button
-          onClick={() => setEditingRow(row.original)}
-          className="text-xs text-brand font-medium hover:underline"
-        >
-          Edit
-        </button>
+        <div className="flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => setEditingRow(row.original)}
+            title="Edit"
+            className="text-gray-400 hover:text-brand transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleDeleteRow(row.original)}
+            title="Delete"
+            className="text-gray-400 hover:text-red-500 transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 6h18" />
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+              <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            </svg>
+          </button>
+        </div>
       ),
     },
   ], [])
@@ -201,13 +245,14 @@ export default function AdjustmentsClient() {
         toolbarExtraAfterColumns
         hideRowCount
         getRowId={(row) => String(row.rowNumber)}
-        initialVisibility={{ updatedAt: false }}
+        initialVisibility={{ createdAt: false, updatedAt: false }}
         renderMobileCard={renderMobileCard}
         belowToolbar={
           addOpen ? (
             <div className="hidden md:block">
               <AddAdjustmentForm
                 options={options}
+                dbDescriptions={dbDescriptions}
                 onClose={() => setAddOpen(false)}
                 onAdded={() => refreshRef.current()}
               />
@@ -247,6 +292,7 @@ export default function AdjustmentsClient() {
         <EditAdjustmentModal
           row={editingRow}
           options={options}
+          dbDescriptions={dbDescriptions}
           onClose={() => setEditingRow(null)}
           onSaved={() => { setEditingRow(null); refreshRef.current() }}
           onDeleted={() => { setEditingRow(null); refreshRef.current() }}
@@ -269,6 +315,7 @@ export default function AdjustmentsClient() {
           <div className="max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <AddAdjustmentForm
               options={options}
+              dbDescriptions={dbDescriptions}
               onClose={() => setMobileAddOpen(false)}
               onAdded={() => { refreshRef.current(); setMobileAddOpen(false) }}
             />
@@ -286,12 +333,14 @@ export default function AdjustmentsClient() {
 function EditAdjustmentModal({
   row,
   options,
+  dbDescriptions,
   onClose,
   onSaved,
   onDeleted,
 }: {
   row: AdjustmentRow
   options: ReturnType<typeof useSheetOptions>
+  dbDescriptions: string[]
   onClose: () => void
   onSaved: (updated: AdjustmentRow) => void
   onDeleted: (rowNumber: number) => void
@@ -385,7 +434,7 @@ function EditAdjustmentModal({
             <SearchableSelect
               value={form.description}
               onChange={(v) => setForm({ ...form, description: v })}
-              options={descriptionOptions([form.description])}
+              options={descriptionOptions([...dbDescriptions, form.description])}
               placeholder="Select or type…"
               allowNewValue
             />
@@ -440,10 +489,12 @@ function EditAdjustmentModal({
 
 function AddAdjustmentForm({
   options,
+  dbDescriptions,
   onClose,
   onAdded,
 }: {
   options: ReturnType<typeof useSheetOptions>
+  dbDescriptions: string[]
   onClose: () => void
   onAdded: () => void
 }) {
@@ -497,49 +548,51 @@ function AddAdjustmentForm({
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
         </button>
       </div>
-      <div className="mb-3">
-        <AmountSignHint value={amount} />
-      </div>
-      <form onSubmit={handleSubmit} className="flex items-end gap-3 flex-wrap">
-        <div>
-          <label className={LABEL}>Event <span className="text-brand">*</span></label>
-          <div style={{ width: "10rem" }}>
-            <EventSelect value={event} onChange={(v) => { setEvent(v); setFeedback(null) }} events={options?.events ?? []} />
+      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+        <div className="flex items-end gap-3 flex-wrap">
+          <div>
+            <label className={LABEL}>Event <span className="text-brand">*</span></label>
+            <div style={{ width: "10rem" }}>
+              <EventSelect value={event} onChange={(v) => { setEvent(v); setFeedback(null) }} events={options?.events ?? []} />
+            </div>
           </div>
-        </div>
-        <div>
-          <label className={LABEL}>Customer <span className="text-brand">*</span></label>
-          <div style={{ width: "10rem" }}>
+          <div>
+            <label className={LABEL}>Customer <span className="text-brand">*</span></label>
+            <div style={{ width: "10rem" }}>
+              <SearchableSelect
+                value={customer}
+                onChange={(v) => { setCustomer(v); setFeedback(null) }}
+                options={customerOptions}
+                placeholder="Customer..."
+                allowNewValue
+              />
+            </div>
+          </div>
+          <div className="flex-1 min-w-[10rem]">
+            <label className={LABEL}>Description</label>
             <SearchableSelect
-              value={customer}
-              onChange={(v) => { setCustomer(v); setFeedback(null) }}
-              options={customerOptions}
-              placeholder="Customer..."
+              value={description}
+              onChange={(v) => { setDescription(v); setFeedback(null) }}
+              options={descriptionOptions([...dbDescriptions, description])}
+              placeholder="Select or type…"
               allowNewValue
             />
           </div>
+          <div>
+            <label className={LABEL}>Amount <span className="text-brand">*</span></label>
+            <input type="number" value={amount} onChange={(e) => { setAmount(e.target.value); setFeedback(null) }} placeholder="0" className="w-full border border-cream-border rounded-md px-2 py-2 text-sm text-foreground bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors" style={{ width: "7rem" }} />
+          </div>
+          <button
+            type="submit"
+            disabled={submitting || !canSubmit}
+            className="px-4 py-2 text-sm font-medium rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+          >
+            {submitting ? "Saving…" : "Add"}
+          </button>
         </div>
-        <div className="flex-1 min-w-[10rem]">
-          <label className={LABEL}>Description</label>
-          <SearchableSelect
-            value={description}
-            onChange={(v) => { setDescription(v); setFeedback(null) }}
-            options={descriptionOptions([description])}
-            placeholder="Select or type…"
-            allowNewValue
-          />
-        </div>
-        <div>
-          <label className={LABEL}>Amount <span className="text-brand">*</span></label>
-          <input type="number" value={amount} onChange={(e) => { setAmount(e.target.value); setFeedback(null) }} placeholder="0" className={INPUT_CLASS} style={{ width: "7rem" }} />
-        </div>
-        <button
-          type="submit"
-          disabled={submitting || !canSubmit}
-          className="px-4 py-2 text-sm font-medium rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-        >
-          {submitting ? "Saving…" : "Add"}
-        </button>
+        <p className="text-[11px] text-gray-400 leading-snug">
+          <strong>Positive</strong> = Biaya Lainnya (adds to total). <strong>Negative</strong> = Diskon (reduces total).
+        </p>
       </form>
       {feedback && <p className={`text-xs mt-2 ${feedback.type === "success" ? "text-green-600" : "text-red-600"}`}>{feedback.message}</p>}
     </div>

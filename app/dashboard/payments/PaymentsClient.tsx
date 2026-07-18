@@ -23,6 +23,10 @@ const PAGE_SIZE = 25
 
 const INPUT_CLASS =
   "w-full border border-cream-border rounded-md px-2 py-1 text-sm text-foreground bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+// Same as INPUT_CLASS but py-2 to match SearchableSelect's height (used in
+// AddPaymentForm so Amount/Account/Date/Remarks line up with Customer).
+const INPUT_CLASS_TALL =
+  "w-full border border-cream-border rounded-md px-2 py-2 text-sm text-foreground bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
 const LABEL = "text-xs text-gray-500 mb-1 block"
 const ACCOUNT_OPTIONS = ["BCA", "JAGO", "QRIS", "TRANSFER"] as const
 
@@ -69,17 +73,22 @@ function CheckedFilterSelect({
   className: string
 }) {
   return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value as CheckedFilter)}
-      title="Filter by checked status"
-      aria-label="Filter by checked status"
-      className={className}
-    >
-      <option value="">All status</option>
-      <option value="true">Checked</option>
-      <option value="false">Unchecked</option>
-    </select>
+    <div className="relative inline-block">
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value as CheckedFilter)}
+        title="Filter by checked status"
+        aria-label="Filter by checked status"
+        className={`appearance-none ${className}`}
+      >
+        <option value="">All status</option>
+        <option value="true">Checked</option>
+        <option value="false">Unchecked</option>
+      </select>
+      <svg className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" viewBox="0 0 20 20" fill="currentColor">
+        <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+      </svg>
+    </div>
   )
 }
 
@@ -201,6 +210,20 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
     }
   }
 
+  async function handleDeleteRow(row: PaymentRow) {
+    if (!confirm("Delete this payment? This cannot be undone.")) return
+    try {
+      const res = await fetch(`/api/sheets/payments/${row.rowNumber}`, { method: "DELETE" })
+      if (!res.ok) {
+        const d = await res.json()
+        throw new Error(d.error ?? "Failed to delete")
+      }
+      refreshRef.current()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete")
+    }
+  }
+
   const columns = useMemo<ColumnDef<PaymentRow, unknown>[]>(() => [
     {
       accessorKey: "event",
@@ -298,14 +321,33 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
       header: "",
       enableSorting: false,
       enableHiding: false,
-      size: 70,
+      size: 80,
       cell: ({ row }) => (
-        <button
-          onClick={() => setEditingRow(row.original)}
-          className="text-xs text-brand font-medium hover:underline"
-        >
-          Edit
-        </button>
+        <div className="flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => setEditingRow(row.original)}
+            title="Edit"
+            className="text-gray-400 hover:text-brand transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleDeleteRow(row.original)}
+            title="Delete"
+            className="text-gray-400 hover:text-red-500 transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 6h18" />
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+              <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            </svg>
+          </button>
+        </div>
       ),
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -366,29 +408,25 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
           fullWidthSearch
           tightToolbar
           boldUppercaseHeader
-          toolbarExtraAfterColumns
           hideRowCount
           belowToolbar={
             addOpen ? (
               <AddPaymentForm
                 options={options}
-                isAdmin={isAdmin}
                 onClose={() => setAddOpen(false)}
                 onAdded={() => refreshRef.current()}
               />
             ) : undefined
           }
           toolbarExtra={
-            <>
-              <CheckedFilterSelect
-                value={checkedFilter}
-                onChange={handleCheckedFilterChange}
-                className="border border-cream-border rounded-lg px-2 py-1.5 text-xs text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
-              />
-              {refreshButton}
-            </>
+            <CheckedFilterSelect
+              value={checkedFilter}
+              onChange={handleCheckedFilterChange}
+              className="w-32 border border-cream-border rounded-lg pl-2 pr-6 py-1.5 text-xs text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+            />
           }
-          initialVisibility={{ updatedAt: false }}
+          toolbarExtraEnd={refreshButton}
+          initialVisibility={{ createdAt: false, updatedAt: false }}
           serverSide={{
             rowCount: totalCount,
             loading: fetchState.loading,
@@ -417,7 +455,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
           <CheckedFilterSelect
             value={checkedFilter}
             onChange={handleCheckedFilterChange}
-            className="shrink-0 border border-cream-border rounded-lg px-2 py-2 text-sm text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+            className="shrink-0 border border-cream-border rounded-lg pl-2 pr-6 py-2 text-sm text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
           />
           <select
             value={kindFilter}
@@ -535,9 +573,9 @@ function InlineRemarks({
       type="button"
       onClick={() => setEditing(true)}
       title="Click to edit remarks"
-      className="text-left text-sm text-gray-500 truncate block max-w-[220px] w-full hover:text-brand transition-colors"
+      className="text-left text-sm text-gray-500 uppercase truncate block max-w-[220px] w-full hover:text-brand transition-colors"
     >
-      {row.remarks || <span className="text-gray-300">Add remark…</span>}
+      {row.remarks || <span className="text-gray-300 normal-case">Add remark…</span>}
     </button>
   )
 }
@@ -720,12 +758,10 @@ function EditPaymentModal({
 
 function AddPaymentForm({
   options,
-  isAdmin,
   onClose,
   onAdded,
 }: {
   options: ReturnType<typeof useSheetOptions>
-  isAdmin: boolean
   onClose: () => void
   onAdded: () => void
 }) {
@@ -733,7 +769,6 @@ function AddPaymentForm({
   const [customer, setCustomer] = useState("")
   const [amount, setAmount] = useState("")
   const [account, setAccount] = useState("BCA")
-  const [isChecked, setIsChecked] = useState(false)
   const [payDate, setPayDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [remarks, setRemarks] = useState("")
   const [submitting, setSubmitting] = useState(false)
@@ -755,7 +790,7 @@ function AddPaymentForm({
       const res = await fetch("/api/sheets/payments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ event, customer, amount: Number(amount), account, isChecked, payDate, remarks }),
+        body: JSON.stringify({ event, customer, amount: Number(amount), account, isChecked: false, payDate, remarks }),
       })
       if (!res.ok) {
         const d = await res.json()
@@ -802,27 +837,21 @@ function AddPaymentForm({
         </div>
         <div>
           <label className={LABEL}>Amount <span className="text-brand">*</span></label>
-          <input type="number" min="0" value={amount} onChange={(e) => { setAmount(e.target.value); setFeedback(null) }} placeholder="0" className={INPUT_CLASS} style={{ width: "7rem" }} />
+          <input type="number" min="0" value={amount} onChange={(e) => { setAmount(e.target.value); setFeedback(null) }} placeholder="0" className={INPUT_CLASS_TALL} style={{ width: "7rem" }} />
         </div>
         <div>
           <label className={LABEL}>Account</label>
-          <select value={account} onChange={(e) => setAccount(e.target.value)} className={INPUT_CLASS} style={{ width: "7rem" }}>
+          <select value={account} onChange={(e) => setAccount(e.target.value)} className={INPUT_CLASS_TALL} style={{ width: "7rem" }}>
             {ACCOUNT_OPTIONS.map((a) => <option key={a} value={a}>{a}</option>)}
           </select>
         </div>
         <div>
           <label className={LABEL}>Date</label>
-          <input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} className={INPUT_CLASS} style={{ width: "9rem" }} />
+          <input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} className={INPUT_CLASS_TALL} style={{ width: "9rem" }} />
         </div>
-        {!isAdmin && (
-          <div className="flex items-center gap-1.5 pb-2">
-            <input type="checkbox" checked={isChecked} onChange={(e) => setIsChecked(e.target.checked)} id="add-checked" className="accent-brand" />
-            <label htmlFor="add-checked" className="text-xs text-gray-500">Checked</label>
-          </div>
-        )}
         <div className="flex-1 min-w-[8rem]">
           <label className={LABEL}>Remarks</label>
-          <input type="text" value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Optional" className={INPUT_CLASS} />
+          <input type="text" value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Optional" className={INPUT_CLASS_TALL} />
         </div>
         <button
           type="submit"
@@ -910,7 +939,7 @@ function PaymentCard({
       </div>
 
       {row.remarks && (
-        <div className="text-[12.5px] text-gray-500 leading-snug border-t border-cream-border pt-2 break-words">
+        <div className="text-[12.5px] text-gray-500 uppercase leading-snug border-t border-cream-border pt-2 break-words">
           {row.remarks}
         </div>
       )}

@@ -378,7 +378,7 @@ export default function DataGrid<T>({
                   {hg.headers.map((header) => {
                     const align = (header.column.columnDef.meta as { align?: string } | undefined)?.align
                     return (
-                    <th key={header.id} className={`px-4 py-3 relative select-none group ${boldUppercaseHeader ? "font-bold" : "font-medium"} ${align === "right" ? "text-right" : ""}`} style={{ width: header.getSize() !== 150 ? header.getSize() : undefined }}>
+                    <th key={header.id} className={`px-4 py-3 relative select-none group whitespace-nowrap ${boldUppercaseHeader ? "font-bold" : "font-medium"} ${align === "right" ? "text-right" : ""}`} style={{ width: header.getSize() !== 150 ? header.getSize() : undefined }}>
                       <div className={`flex items-center gap-1 ${align === "right" ? "justify-end" : ""}`}>
                         {header.isPlaceholder ? null : (
                           <>

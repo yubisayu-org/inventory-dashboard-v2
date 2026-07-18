@@ -487,7 +487,7 @@ export default function ProductsPageClient() {
                     <span className="min-w-0 break-words">{p.name}</span>
                     <CopyButton value={`${p.name} ${fmt(p.price)}`} label="Copy name & price" />
                   </div>
-                  <div className="text-[12.5px] text-gray-400 mt-0.5">{p.store || "—"}</div>
+                  <div className="text-[12.5px] text-gray-400 uppercase mt-0.5">{p.store || "—"}</div>
                 </div>
                 <span className={`shrink-0 inline-block px-2 py-0.5 rounded-full text-[10px] font-medium ${abroad ? "bg-blue-50 text-blue-600" : "bg-green-50 text-green-600"}`}>
                   {abroad ? "Overseas" : "Domestic"}
@@ -863,11 +863,11 @@ function EditableStoreCell({ row, listId, onSave }: {
         onClick={() => { setDraft(row.store ?? ""); setEditing(true) }}
         title={error ?? "Click to edit"}
         disabled={saving}
-        className={`w-full text-left rounded px-2 py-0.5 -mx-2 break-words transition-colors hover:bg-cream disabled:opacity-50 ${
+        className={`w-full text-left rounded px-2 py-0.5 -mx-2 whitespace-nowrap transition-colors hover:bg-cream disabled:opacity-50 ${
           error ? "text-red-700" : row.store ? "text-foreground" : "text-gray-300"
         }`}
       >
-        {saving ? "Saving…" : (row.store || "—")}
+        {saving ? "Saving…" : <span className="uppercase">{row.store || "—"}</span>}
       </button>
     )
   }

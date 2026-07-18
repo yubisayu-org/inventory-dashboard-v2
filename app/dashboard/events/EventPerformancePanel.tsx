@@ -18,21 +18,22 @@ export default function EventPerformancePanel({ perf }: { perf: EventPerformance
   const profitPositive = perf.netProfit >= 0
 
   return (
-    <div className="flex flex-col gap-4 p-4">
+    <div className="flex flex-col gap-4 pt-4 pr-4 pb-4 pl-[38px] md:pl-12">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {/* Sales */}
         <StatGroup title="Sales">
-          <Stat label="Orders" value={fmt(perf.orderCount)} />
-          <Stat label="Buyers" value={fmt(perf.customerCount)} />
-          <Stat label="Units" value={fmt(perf.totalUnits)} />
-          <Stat label="Revenue" value={rp(perf.revenue)} strong />
+          <Stat label="Customers" value={fmt(perf.customerCount)} />
+          <Stat label="Items" value={fmt(perf.totalUnits)} />
+          <Stat label="Unpaid invoices" value={fmt(perf.unpaidCount)} />
+          <Stat label="Overpaid invoices" value={fmt(perf.overpaidCount)} />
         </StatGroup>
 
         {/* Payments */}
         <StatGroup title="Payments">
+          <Stat label="Revenue" value={rp(perf.revenue)} strong />
           <Stat label="Paid" value={rp(perf.totalPaid)} />
-          <Stat label="Owed" value={rp(perf.outstanding)} className={perf.outstanding > 0 ? "text-red-600" : undefined} />
-          <Stat label="Unpaid invoices" value={fmt(perf.unpaidCount)} />
+          <Stat label="Outstanding" value={rp(perf.outstanding)} className={perf.outstanding > 0 ? "text-red-600" : undefined} />
+          <Stat label="Overpayment" value={rp(perf.dueRefund)} className={perf.dueRefund > 0 ? "text-red-600" : undefined} />
         </StatGroup>
 
         {/* Fulfillment */}
@@ -45,7 +46,7 @@ export default function EventPerformancePanel({ perf }: { perf: EventPerformance
 
       {/* Net profit */}
       <div className="flex flex-wrap items-baseline justify-between gap-2 border-t border-cream-border pt-3">
-        <span className="text-xs font-medium text-gray-500">Net profit</span>
+        <span className="text-xs font-medium text-gray-500">Profit estimation</span>
         <span className="flex items-baseline gap-2">
           <span className={`text-base font-semibold tabular-nums ${profitPositive ? "text-emerald-600" : "text-red-600"}`}>
             {rp(perf.netProfit)}

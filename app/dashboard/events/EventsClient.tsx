@@ -219,19 +219,20 @@ export default function EventsClient() {
   const addForm = (
     <form onSubmit={handleAdd} className="hidden md:flex rounded-xl border border-cream-border bg-white p-5 flex-col gap-4">
       <div className="text-sm font-semibold text-foreground">Add Event</div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+      <div className="flex items-end gap-3 flex-wrap">
         <input
           {...field("name")}
           placeholder="Event name"
           required
           disabled={adding}
-          className={formInputCls}
+          className={`${formInputCls} flex-1 min-w-[10rem]`}
         />
         <input
           {...field("eta")}
           placeholder="ETA (e.g. 2026-06-15)"
           disabled={adding}
           className={formInputCls}
+          style={{ width: "10rem" }}
         />
         <select
           value={form.warehouseId}
@@ -239,6 +240,7 @@ export default function EventsClient() {
           disabled={adding || warehouses.length === 0}
           className={formInputCls}
           aria-label="Gudang"
+          style={{ width: "10rem" }}
         >
           {warehouses.map((w) => (
             <option key={w.id} value={String(w.id)}>
@@ -252,6 +254,7 @@ export default function EventsClient() {
           disabled={adding}
           className={formInputCls}
           aria-label="Country"
+          style={{ width: "10rem" }}
         >
           <option value="">No country (IDR)</option>
           {countries.map((c) => (
@@ -260,14 +263,11 @@ export default function EventsClient() {
             </option>
           ))}
         </select>
-      </div>
-
-      <div className="flex items-center justify-end gap-3">
         {addError && <p className="text-xs text-red-500">{addError}</p>}
         <button
           type="submit"
           disabled={adding}
-          className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
+          className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors shrink-0"
         >
           {adding ? "Saving…" : "Add"}
         </button>

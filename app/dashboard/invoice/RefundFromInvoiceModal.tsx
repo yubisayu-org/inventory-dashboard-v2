@@ -1,13 +1,15 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { fmt } from "@/lib/format"
 import type { InvoiceOrderLine, RefundReason } from "@/lib/db"
+import { REFUND_REASONS } from "@/lib/db/types"
 import { useModalDismiss } from "@/hooks/useModalDismiss"
+import SearchableSelect from "@/components/SearchableSelect"
 
 // ─── Refund from invoice modal ───────────────────────────────────────────────
 
-const REASON_LABELS: Record<RefundReason, string> = {
+const REASON_LABELS: Record<string, string> = {
   overpayment: "Overpayment",
   unavailable: "Item Unavailable",
   shipping_loss: "Lost in Shipping",
@@ -15,6 +17,8 @@ const REASON_LABELS: Record<RefundReason, string> = {
   goodwill: "Goodwill",
   other: "Other",
 }
+const toReasonOptions = (reasons: string[]) =>
+  Array.from(new Set([...REFUND_REASONS, ...reasons])).map((r) => ({ value: r, label: REASON_LABELS[r] ?? r }))
 
 const INPUT_CLASS =
   "w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
@@ -42,12 +46,23 @@ export function RefundFromInvoiceModal({
   const defaultReason: RefundReason = unfulfilledUnits > 0 ? "shipping_loss" : "other"
 
   const [reason, setReason] = useState<RefundReason>(defaultReason)
+  const [reasonOptions, setReasonOptions] = useState(() => toReasonOptions([]))
   const [affectedUnits, setAffectedUnits] = useState(String(line.unit))
   const [refundAmount, setRefundAmount] = useState(String(line.unit * unitPrice))
   const [note, setNote] = useState("")
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
+
+  // Pull in any previously-typed custom reasons so they show up as suggestions.
+  useEffect(() => {
+    let cancelled = false
+    fetch("/api/sheets/refunds?meta=reasons")
+      .then((res) => res.json())
+      .then((data) => { if (!cancelled) setReasonOptions(toReasonOptions(data.reasons ?? [])) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
 
   function handleAffectedUnitsChange(val: string) {
     setAffectedUnits(val)
@@ -120,16 +135,14 @@ export function RefundFromInvoiceModal({
             <div className="flex flex-col gap-3">
               <label className="flex flex-col gap-1">
                 <span className="text-xs font-medium text-gray-500">Reason</span>
-                <select
+                <SearchableSelect
                   value={reason}
-                  onChange={(e) => setReason(e.target.value as RefundReason)}
+                  onChange={(v) => setReason(v)}
+                  options={reasonOptions}
+                  placeholder="Select or type…"
+                  allowNewValue
                   disabled={saving}
-                  className={INPUT_CLASS}
-                >
-                  {(Object.entries(REASON_LABELS) as [RefundReason, string][]).map(([k, v]) => (
-                    <option key={k} value={k}>{v}</option>
-                  ))}
-                </select>
+                />
               </label>
               <label className="flex flex-col gap-1">
                 <span className="text-xs font-medium text-gray-500">

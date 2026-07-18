@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { getAdjustmentRows, getAdjustmentsPaginated, addAdjustment, withActor } from "@/lib/db"
+import { getAdjustmentRows, getAdjustmentsPaginated, getDistinctAdjustmentDescriptions, addAdjustment, withActor } from "@/lib/db"
 
 export async function GET(req: NextRequest) {
   const { session, error: authError } = await requireSession()
@@ -12,6 +12,13 @@ export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams
 
   try {
+    // Lightweight path for the description picker (adjustments form + the
+    // invoice page's per-row "+ Adjustment" modals).
+    if (params.get("meta") === "descriptions") {
+      const descriptions = await getDistinctAdjustmentDescriptions()
+      return NextResponse.json({ descriptions }, { headers: { "Cache-Control": "no-store" } })
+    }
+
     // Paginated page of rows when ?page is present (the dashboard table).
     if (params.get("page")) {
       const page = Math.max(1, parseInt(params.get("page")!, 10) || 1)

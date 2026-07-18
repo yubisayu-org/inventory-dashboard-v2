@@ -21,7 +21,7 @@ type CustomerSummary = {
   refunds: RefundRow[]
 }
 
-const REASON_LABELS: Record<RefundReason, string> = {
+const REASON_LABELS: Record<string, string> = {
   overpayment: "Overpayment",
   unavailable: "Item Unavailable",
   shipping_loss: "Lost in Shipping",
@@ -29,6 +29,7 @@ const REASON_LABELS: Record<RefundReason, string> = {
   goodwill: "Goodwill",
   other: "Other",
 }
+const reasonLabel = (reason: RefundReason) => REASON_LABELS[reason] ?? reason
 
 const STATUS_LABELS: Record<RefundStatus, string> = {
   pending: "Pending",
@@ -132,7 +133,7 @@ export function CustomerDetailDrawer({
               </div>
 
               {/* Invoices */}
-              <Section title="Invoices" count={events.length} empty="No invoices yet">
+              <Section title="Order history" count={events.length} empty="No invoices yet">
                 {events.map((ev) => (
                   <InvoiceBlock key={ev.eventId} event={ev} />
                 ))}
@@ -187,7 +188,7 @@ export function CustomerDetailDrawer({
                       <div className="min-w-0">
                         <div className="text-foreground">{r.event}</div>
                         <div className="text-xs text-gray-400 mt-0.5">
-                          {REASON_LABELS[r.reason]} · {STATUS_LABELS[r.status]}
+                          {reasonLabel(r.reason)} · {STATUS_LABELS[r.status]}
                         </div>
                       </div>
                       <span className="tabular-nums text-foreground shrink-0">Rp {fmt(r.refundAmount)}</span>

@@ -132,13 +132,13 @@ export function PaymentStatusPanel({
     },
     {
       accessorKey: "outstanding",
-      header: "Outstanding",
+      header: "Balance",
       filterFn: "numeric",
       meta: { align: "right" },
       cell: ({ getValue }) => {
         const v = getValue<number>()
         return (
-          <span className={`tabular-nums font-medium ${v > 0 ? "text-red-600" : v < 0 ? "text-purple-600" : "text-green-600"}`}>
+          <span className={`tabular-nums font-medium ${v > 0 ? "text-red-600" : v < 0 ? "text-blue-600" : "text-green-600"}`}>
             {v > 0 ? "Rp " + fmt(v) : v < 0 ? "−Rp " + fmt(Math.abs(v)) : "—"}
           </span>
         )
@@ -254,6 +254,19 @@ export function PaymentStatusPanel({
 
   return (
     <>
+      {rows.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-3">
+          <div className="rounded-xl border border-cream-border border-l-4 border-l-red-500 bg-white px-5 py-4">
+            <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Outstanding</div>
+            <div className="text-2xl font-bold text-foreground mt-1 tabular-nums">Rp {fmt(totals.outstanding)}</div>
+          </div>
+          <div className="rounded-xl border border-cream-border border-l-4 border-l-blue-500 bg-white px-5 py-4">
+            <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Overpayment</div>
+            <div className="text-2xl font-bold text-foreground mt-1 tabular-nums">Rp {fmt(totals.overpaid)}</div>
+          </div>
+        </div>
+      )}
+
       {/* Tabs */}
       <div className="flex items-center gap-1 w-full rounded-xl border border-cream-border bg-white p-1 overflow-x-auto">
         {tabs.map(({ key, label, count }) => {
@@ -289,27 +302,12 @@ export function PaymentStatusPanel({
           fullWidthSearch
           tightToolbar
           boldUppercaseHeader
-          toolbarExtraAfterColumns
           hideRowCount
           onFilteredRowsChange={setSearchedRows}
           pageSize={50}
           initialSorting={[{ id: "outstanding", desc: true }]}
           renderMobileCard={renderMobileCard}
           renderExpandedRow={renderExpandedRow}
-          toolbarExtra={
-            rows.length > 0 ? (
-              <>
-                <span className="text-xs text-gray-500 whitespace-nowrap">
-                  <span className="text-gray-400">Outstanding:</span>{" "}
-                  <span className="font-semibold text-red-600">Rp {fmt(totals.outstanding)}</span>
-                </span>
-                <span className="text-xs text-gray-500 whitespace-nowrap">
-                  <span className="text-gray-400">Overpaid:</span>{" "}
-                  <span className="font-semibold text-purple-600">Rp {fmt(totals.overpaid)}</span>
-                </span>
-              </>
-            ) : null
-          }
         />
       </div>
 
@@ -382,7 +380,7 @@ function ExpandedInvoice({
       <table className="w-full text-sm">
         <thead>
           <tr className="text-left text-xs text-gray-500 border-b border-cream-border">
-            <th className="pl-10 pr-4 py-2 font-medium">Order</th>
+            <th className="pl-12 pr-4 py-2 font-medium">Order</th>
             <th className="px-4 py-2 font-medium text-right w-20">Unit</th>
             <th className="px-4 py-2 font-medium text-right w-28">Price</th>
             <th className="px-4 py-2 font-medium text-right w-28">Subtotal</th>
@@ -392,7 +390,7 @@ function ExpandedInvoice({
         <tbody>
           {[...ev.orders].reverse().map((r, i) => (
             <tr key={i} className="border-b border-cream-border/60">
-              <td className="pl-10 pr-4 py-2">{r.productName || r.order}</td>
+              <td className="pl-12 pr-4 py-2">{r.productName || r.order}</td>
               <td className="px-4 py-2 text-right tabular-nums">{r.unit}</td>
               <td className="px-4 py-2 text-right tabular-nums">{r.price}</td>
               <td className="px-4 py-2 text-right tabular-nums">{r.subtotal}</td>
@@ -403,9 +401,11 @@ function ExpandedInvoice({
       </table>
 
       {/* Summary + message actions */}
-      <div className="pl-5">
-        <InvoiceSummary event={ev} actions={<InvoiceMessageActions event={ev} whatsapp={result.customerDetail?.whatsapp} />} />
-      </div>
+      <InvoiceSummary
+        event={ev}
+        actions={<InvoiceMessageActions event={ev} whatsapp={result.customerDetail?.whatsapp} />}
+        leftPadding="pl-12"
+      />
     </div>
   )
 }

@@ -210,19 +210,20 @@ export default function CountriesClient() {
   const addForm = (
     <form onSubmit={handleAdd} className="hidden md:flex rounded-xl border border-cream-border bg-white p-5 flex-col gap-4">
       <div className="text-sm font-semibold text-foreground">Add Country</div>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="flex items-end gap-3 flex-wrap">
         <input
           {...field("name")}
           placeholder="Country name"
           required
           disabled={adding}
-          className={formInputCls}
+          className={`${formInputCls} flex-1 min-w-[10rem]`}
         />
         <input
           {...field("currency")}
           placeholder="Currency (e.g. CNY)"
           disabled={adding}
           className={formInputCls}
+          style={{ width: "9rem" }}
         />
         <input
           {...field("kurs")}
@@ -232,6 +233,7 @@ export default function CountriesClient() {
           placeholder="Kurs (IDR)"
           disabled={adding}
           className={formInputCls}
+          style={{ width: "9rem" }}
         />
         <input
           {...field("cargoPerKg")}
@@ -240,15 +242,13 @@ export default function CountriesClient() {
           placeholder="Cargo / kg (IDR)"
           disabled={adding}
           className={formInputCls}
+          style={{ width: "9rem" }}
         />
-      </div>
-
-      <div className="flex items-center justify-end gap-3">
         {addError && <p className="text-xs text-red-500">{addError}</p>}
         <button
           type="submit"
           disabled={adding}
-          className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
+          className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors shrink-0"
         >
           {adding ? "Saving…" : "Add"}
         </button>
