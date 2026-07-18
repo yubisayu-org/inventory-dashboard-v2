@@ -76,6 +76,7 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
   const [editingRow, setEditingRow] = useState<FormRow | null>(null)
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
   const [bulkDeleting, setBulkDeleting] = useState(false)
+  const [addOpen, setAddOpen] = useState(false)
   const [mobileAddOpen, setMobileAddOpen] = useState(false)
 
   // -- Convert TanStack state → usePaginatedFetch params --
@@ -351,6 +352,18 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
           {bulkDeleting ? "Deleting…" : `Delete ${selectedCount}`}
         </button>
       )}
+      <button
+        type="button"
+        onClick={() => setAddOpen((o) => !o)}
+        className={`hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg transition-colors ${
+          addOpen ? "bg-brand-light text-brand border border-brand/30" : "bg-brand text-white hover:bg-brand-hover"
+        }`}
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+        Add Order
+      </button>
     </>
   )
 
@@ -369,11 +382,6 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Add form (desktop) */}
-      <div className="hidden md:block">
-        <AddOrderForm options={options} onOrderAdded={() => refreshRef.current()} />
-      </div>
-
       {fetchState.refreshError && (
         <div className="flex items-center justify-between gap-3 px-4 py-2 rounded-lg border border-red-200 bg-red-50 text-xs text-red-600">
           <span>Refresh failed: {fetchState.refreshError}</span>
@@ -388,6 +396,16 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
           columns={columns}
           getRowId={(row) => String(row.rowNumber)}
           searchPlaceholder="Search orders..."
+          fullWidthSearch
+          tightToolbar
+          boldUppercaseHeader
+          toolbarExtraAfterColumns
+          hideRowCount
+          belowToolbar={
+            addOpen ? (
+              <AddOrderForm options={options} onOrderAdded={() => refreshRef.current()} />
+            ) : undefined
+          }
           toolbarExtra={toolbarExtra}
           initialVisibility={{ unitPrice: false, unitBuy: false, unitArrive: false, note: false, createdAt: false, updatedAt: false }}
           enableRowSelection
@@ -716,7 +734,11 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
     [options],
   )
   const itemOptions = useMemo(
-    () => (options?.items ?? []).map((it) => ({ value: String(it.id), label: it.name })),
+    () => (options?.items ?? []).map((it) => ({
+      value: String(it.id),
+      label: it.name,
+      meta: `Rp ${fmt(it.price)}`,
+    })),
     [options],
   )
 
@@ -1051,7 +1073,11 @@ function AddOrderForm({ options, onOrderAdded }: {
     [options],
   )
   const itemOptions = useMemo(
-    () => (options?.items ?? []).map((it) => ({ value: String(it.id), label: it.name })),
+    () => (options?.items ?? []).map((it) => ({
+      value: String(it.id),
+      label: it.name,
+      meta: `Rp ${fmt(it.price)}`,
+    })),
     [options],
   )
 

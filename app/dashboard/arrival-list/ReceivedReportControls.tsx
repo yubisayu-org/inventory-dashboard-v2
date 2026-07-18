@@ -14,6 +14,15 @@ function jakartaToday(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date())
 }
 
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-xs font-medium text-gray-500">{label}</span>
+      {children}
+    </label>
+  )
+}
+
 type Report = { from: string; to: string; items: ReceivedReportItem[]; totalUnits: number }
 
 export default function ReceivedReportControls() {
@@ -65,36 +74,40 @@ export default function ReceivedReportControls() {
   }
 
   return (
-    <div className="mb-6 flex flex-wrap items-center gap-3">
-      <label className="text-sm text-gray-600">Received report</label>
-      <div className="flex items-center gap-2">
-        <input
-          type="date"
-          value={from}
-          max={today}
-          onChange={(e) => setFrom(e.target.value)}
-          aria-label="From date"
-          className={INPUT_CLASS}
-        />
-        <span className="text-sm text-gray-400">to</span>
-        <input
-          type="date"
-          value={to}
-          max={today}
-          onChange={(e) => setTo(e.target.value)}
-          aria-label="To date"
-          className={INPUT_CLASS}
-        />
+    <div className="mb-6 rounded-xl border border-cream-border bg-white p-4 flex items-end gap-3 flex-wrap">
+      <div className="flex-1 min-w-[140px]">
+        <Field label="From">
+          <input
+            type="date"
+            value={from}
+            max={today}
+            onChange={(e) => setFrom(e.target.value)}
+            aria-label="From date"
+            className={`${INPUT_CLASS} w-full`}
+          />
+        </Field>
+      </div>
+      <div className="flex-1 min-w-[140px]">
+        <Field label="To">
+          <input
+            type="date"
+            value={to}
+            max={today}
+            onChange={(e) => setTo(e.target.value)}
+            aria-label="To date"
+            className={`${INPUT_CLASS} w-full`}
+          />
+        </Field>
       </div>
       <button
         type="button"
         onClick={download}
         disabled={loading || !from || !to}
-        className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-dark disabled:opacity-50"
+        className="h-[38px] shrink-0 rounded-lg border border-cream-border bg-white px-4 text-sm font-medium text-gray-600 transition-colors hover:border-brand hover:text-brand disabled:opacity-50"
       >
         {loading ? "Preparing…" : "Download PDF"}
       </button>
-      {message && <span className="text-sm text-gray-500">{message}</span>}
+      {message && <span className="text-sm text-gray-500 basis-full">{message}</span>}
     </div>
   )
 }

@@ -3,11 +3,12 @@ import { requireSession, requireOwner } from "@/lib/api"
 import {
   getOperationalExpensesPaginated,
   getExpenseMethods,
+  getExpenseCategories,
   addOperationalExpense,
   getEvents,
   withActor,
 } from "@/lib/db"
-import { EXPENSE_CATEGORIES, type ExpenseCategory } from "@/lib/db/types"
+import type { ExpenseCategory } from "@/lib/db/types"
 
 export async function GET(req: NextRequest) {
   const { session, error: authError } = await requireSession()
@@ -30,6 +31,8 @@ export async function GET(req: NextRequest) {
         category: params.get("category") ?? undefined,
         method: params.get("method") ?? undefined,
         settled: params.get("settled") ?? undefined,
+        dateFrom: params.get("dateFrom") ?? undefined,
+        dateTo: params.get("dateTo") ?? undefined,
         sortKey: params.get("sortKey") ?? undefined,
         sortDir: (params.get("sortDir") as "asc" | "desc") ?? undefined,
         skipCount: params.get("skipCount") === "true",
@@ -38,13 +41,15 @@ export async function GET(req: NextRequest) {
     }
 
     // Otherwise return dropdown meta: events with their currency + kurs (1 event =
-    // 1 country drives the expense's default currency/kurs) and the distinct method
-    // list (autocomplete). Both are full lists, not derivable from a page.
-    const [events, methods] = await Promise.all([getEvents(), getExpenseMethods()])
+    // 1 country drives the expense's default currency/kurs), the distinct method
+    // list, and the distinct category list (autocomplete) — all full lists, not
+    // derivable from a page.
+    const [events, methods, categories] = await Promise.all([getEvents(), getExpenseMethods(), getExpenseCategories()])
     return NextResponse.json(
       {
         events: events.map((e) => ({ name: e.name, currency: e.currency, kurs: e.kurs })),
         methods,
+        categories,
       },
       { headers: { "Cache-Control": "no-store" } },
     )
@@ -65,9 +70,9 @@ export async function POST(req: NextRequest) {
     if (!String(body.event ?? "").trim()) {
       return NextResponse.json({ error: "event is required" }, { status: 400 })
     }
-    const category = body.category as ExpenseCategory
-    if (!EXPENSE_CATEGORIES.includes(category)) {
-      return NextResponse.json({ error: "invalid category" }, { status: 400 })
+    const category = String(body.category ?? "").trim() as ExpenseCategory
+    if (!category) {
+      return NextResponse.json({ error: "category is required" }, { status: 400 })
     }
 
     const result = await withActor(session.user.email, (tx) => addOperationalExpense({

@@ -1,6 +1,6 @@
 "use client"
 
-import { displayIg } from "@/lib/format"
+import { displayIg, fmt } from "@/lib/format"
 import { useEffect, useMemo, useState } from "react"
 import SearchableSelect from "@/components/SearchableSelect"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
@@ -59,7 +59,7 @@ export default function PurchaseModal({
     () => (options?.items ?? []).map((it) => ({
       value: it.name,
       label: it.name,
-      meta: it.store || undefined,
+      meta: `Rp ${fmt(it.price)}`,
     })),
     [options?.items],
   )

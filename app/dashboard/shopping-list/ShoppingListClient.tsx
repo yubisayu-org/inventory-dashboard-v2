@@ -9,6 +9,7 @@ import { allocateFifo } from "@/lib/fifo-fill"
 import { fetchJson } from "@/lib/api-fetch"
 import PurchaseModal from "./PurchaseModal"
 import EventSelect from "@/components/EventSelect"
+import SearchInput from "@/components/SearchInput"
 
 const INPUT_CLASS =
   "border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
@@ -371,12 +372,11 @@ export default function ShoppingListClient() {
     <>
       {/* Toolbar */}
       <div className="flex items-center gap-2 flex-wrap mb-3">
-        <input
-          type="text"
+        <SearchInput
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={setSearch}
           placeholder="Search shopping list…"
-          className={`${INPUT_CLASS} flex-1 min-w-[180px]`}
+          className="flex-1 min-w-[180px]"
         />
         <div style={{ width: "12rem" }}>
           <EventSelect

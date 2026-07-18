@@ -11,6 +11,7 @@ import DataGrid, {
 } from "@/components/DataGrid"
 import { usePaginatedFetch, type PageData } from "@/hooks/usePaginatedFetch"
 import SearchableSelect from "@/components/SearchableSelect"
+import EventSelect from "@/components/EventSelect"
 
 const PAGE_SIZE = 25
 
@@ -96,17 +97,26 @@ export default function OperationalExpensesClient() {
   const [data, setData] = useState<OperationalExpenseRow[]>([])
   const [totalCount, setTotalCount] = useState(0)
   const [filteredSum, setFilteredSum] = useState<number | null>(null)
-  // Full dropdown lists (event names + distinct methods) — load once from the
-  // meta endpoint (a GET with no `page` param), like products' countries/stores.
+  const [cogsSum, setCogsSum] = useState<number | null>(null)
+  const [opexSum, setOpexSum] = useState<number | null>(null)
+  // Full dropdown lists (event names + distinct methods/categories) — load once
+  // from the meta endpoint (a GET with no `page` param), like products'
+  // countries/stores.
   const [events, setEvents] = useState<EventOption[]>([])
   const [methods, setMethods] = useState<string[]>([])
+  const [categories, setCategories] = useState<string[]>([])
   const [metaError, setMetaError] = useState<string | null>(null)
 
   const [sorting, setSorting] = useState<SortingState>([{ id: "id", desc: true }])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [globalFilter, setGlobalFilter] = useState("")
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: PAGE_SIZE })
+  // Date-range filter, separate from columnFilters — expenseDate has no column
+  // header filter, this is its own control above the search bar.
+  const [dateFrom, setDateFrom] = useState("")
+  const [dateTo, setDateTo] = useState("")
 
+  const [addOpen, setAddOpen] = useState(false)
   const [mobileAddOpen, setMobileAddOpen] = useState(false)
   // Set when "Duplicate" is clicked on a row — seeds the Add form with that
   // row's fields (fresh date, unsettled) so a similar entry can be added fast.
@@ -120,13 +130,15 @@ export default function OperationalExpensesClient() {
       if (!res.ok) throw new Error(json.error ?? "Failed to load")
       setEvents(json.events as EventOption[])
       setMethods(json.methods as string[])
+      setCategories(json.categories as string[])
     } catch (err) {
       setMetaError(err instanceof Error ? err.message : "Failed to load")
     }
   }, [])
   useEffect(() => { loadMeta() }, [loadMeta])
 
-  // Server-filterable text columns → query params (event / category / method).
+  // Server-filterable text columns → query params (event / category / method),
+  // plus the standalone date-range filter above the search bar.
   const fetchFilters = useMemo<Record<string, string>>(() => {
     const f: Record<string, string> = {}
     for (const cf of columnFilters) {
@@ -137,18 +149,22 @@ export default function OperationalExpensesClient() {
       else if (cf.id === "method") f.method = v
       else if (cf.id === "isSettled") f.settled = v
     }
+    if (dateFrom) f.dateFrom = dateFrom
+    if (dateTo) f.dateTo = dateTo
     return f
-  }, [columnFilters])
+  }, [columnFilters, dateFrom, dateTo])
 
   const fetchSort = useMemo(() => {
     if (sorting.length === 0) return null
     return { key: sorting[0].id, direction: sorting[0].desc ? ("desc" as const) : ("asc" as const) }
   }, [sorting])
 
-  const onData = useCallback((d: PageData) => {
+  const onData = useCallback((d: PageData & { cogsSum?: number | null; opexSum?: number | null }) => {
     setData(d.rows as OperationalExpenseRow[])
     setTotalCount(d.totalCount)
     setFilteredSum(d.filteredSum)
+    if (d.cogsSum !== undefined) setCogsSum(d.cogsSum)
+    if (d.opexSum !== undefined) setOpexSum(d.opexSum)
   }, [])
 
   const { fetchState, refresh } = usePaginatedFetch({
@@ -177,6 +193,23 @@ export default function OperationalExpensesClient() {
     setColumnFilters(u)
     setPagination((p) => ({ ...p, pageIndex: 0 }))
   }, [])
+  // Upserts the "event" column filter — shares state with the Event column's
+  // own header filter, so the dropdown above the search bar and that header
+  // filter always agree.
+  const handleEventPickerChange = useCallback((name: string) => {
+    handleColumnFiltersChange((prev) => {
+      const rest = prev.filter((cf) => cf.id !== "event")
+      return name ? [...rest, { id: "event", value: name }] : rest
+    })
+  }, [handleColumnFiltersChange])
+  const handleDateFromChange = useCallback((v: string) => {
+    setDateFrom(v)
+    setPagination((p) => ({ ...p, pageIndex: 0 }))
+  }, [])
+  const handleDateToChange = useCallback((v: string) => {
+    setDateTo(v)
+    setPagination((p) => ({ ...p, pageIndex: 0 }))
+  }, [])
   const handleGlobalFilterChange = useCallback((u: string | ((p: string) => string)) => {
     setGlobalFilter(u)
     setPagination((p) => ({ ...p, pageIndex: 0 }))
@@ -184,9 +217,20 @@ export default function OperationalExpensesClient() {
 
   const mobileIdDesc = (sorting.find((s) => s.id === "id")?.desc) ?? true
 
-  // Seed the Add form (desktop: scroll to it; mobile: open the add sheet).
+  // Current "event" column-filter value, so the Event picker above the search
+  // bar stays in sync with the (shared) column header filter.
+  const eventFilterValue = (columnFilters.find((cf) => cf.id === "event")?.value as string) ?? ""
+
+  // Suggested categories + whatever's actually in the DB, deduped.
+  const categoryOptions = useMemo(
+    () => Array.from(new Set([...EXPENSE_CATEGORIES, ...categories])),
+    [categories],
+  )
+
+  // Seed the Add form (desktop: open + scroll to it; mobile: open the add sheet).
   const handleDuplicate = useCallback((row: OperationalExpenseRow) => {
     setDuplicateSeed({ row, version: Date.now() })
+    setAddOpen(true)
     setMobileAddOpen(true)
     addFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
   }, [])
@@ -276,32 +320,109 @@ export default function OperationalExpensesClient() {
           row={row.original}
           events={events}
           methods={methods}
+          categories={categoryOptions}
           onUpdated={() => refreshRef.current()}
           onDeleted={() => refreshRef.current()}
           onDuplicate={handleDuplicate}
         />
       ),
     },
-  ], [events, methods, handleDuplicate])
+  ], [events, methods, categoryOptions, handleDuplicate])
 
-  const refreshButton = (
-    <button
-      type="button"
-      onClick={reloadAll}
-      disabled={fetchState.loading}
-      className="text-xs text-gray-500 hover:text-brand disabled:opacity-50 transition-colors px-3 py-1.5 rounded-lg border border-cream-border hover:border-brand"
-    >
-      {fetchState.loading ? "…" : "Refresh"}
-    </button>
-  )
+  const hasDateFilter = Boolean(dateFrom || dateTo)
+  const clearFilters = () => {
+    handleEventPickerChange("")
+    setDateFrom("")
+    setDateTo("")
+    setPagination((p) => ({ ...p, pageIndex: 0 }))
+  }
 
   const errorMsg = fetchState.error || metaError
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Add form (desktop) */}
-      <div className="hidden md:block" ref={addFormRef}>
-        <AddExpenseForm events={events} methods={methods} onAdded={reloadAll} seed={duplicateSeed} />
+      {/* Stat cards: Total, COGS (Shop + Cargo), OPEX (everything else except Dividend) */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="rounded-xl border border-cream-border border-l-4 border-l-brand bg-white px-5 py-4">
+          <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Total</div>
+          <div className="text-2xl font-bold text-foreground mt-1 tabular-nums">
+            {filteredSum !== null ? `Rp ${fmt(filteredSum)}` : "—"}
+          </div>
+        </div>
+        <div className="rounded-xl border border-cream-border border-l-4 border-l-amber-500 bg-white px-5 py-4">
+          <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">COGS</div>
+          <div className="text-2xl font-bold text-foreground mt-1 tabular-nums">
+            {cogsSum !== null ? `Rp ${fmt(cogsSum)}` : "—"}
+          </div>
+        </div>
+        <div className="rounded-xl border border-cream-border border-l-4 border-l-rose-500 bg-white px-5 py-4">
+          <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">OPEX</div>
+          <div className="text-2xl font-bold text-foreground mt-1 tabular-nums">
+            {opexSum !== null ? `Rp ${fmt(opexSum)}` : "—"}
+          </div>
+        </div>
+      </div>
+
+      {/* Filters: date range + event, sit above the search bar (both layouts) */}
+      <div className="rounded-xl border border-cream-border bg-white p-4 flex items-end gap-3 flex-wrap">
+        <div className="flex-1 min-w-[140px]">
+          <Field label="Dari">
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => handleDateFromChange(e.target.value)}
+              aria-label="From date"
+              className={`${formInputCls} w-full`}
+            />
+          </Field>
+        </div>
+        <div className="flex-1 min-w-[140px]">
+          <Field label="Sampai">
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => handleDateToChange(e.target.value)}
+              aria-label="To date"
+              className={`${formInputCls} w-full`}
+            />
+          </Field>
+        </div>
+        <div className="flex-1 min-w-[160px]">
+          <Field label="Batch">
+            <EventSelect
+              value={eventFilterValue}
+              onChange={handleEventPickerChange}
+              events={events.map((e) => e.name)}
+              placeholder="Semua batch"
+              clearable
+            />
+          </Field>
+        </div>
+        {(() => {
+          const active = Boolean(eventFilterValue || hasDateFilter)
+          return (
+            <button
+              type="button"
+              onClick={active ? clearFilters : undefined}
+              disabled={!active}
+              title={active ? "Clear filters" : "No filters applied"}
+              className={`shrink-0 h-[38px] w-[38px] flex items-center justify-center rounded-lg border border-cream-border text-gray-500 transition-colors ${
+                active ? "hover:bg-gray-50 cursor-pointer" : "text-gray-300 cursor-default"
+              }`}
+            >
+              {active ? (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M22 3H2l8 9.46V19l4 2v-8.54z" />
+                  <path d="m15 3 6 6M21 3l-6 6" />
+                </svg>
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M22 3H2l8 9.46V19l4 2v-8.54z" />
+                </svg>
+              )}
+            </button>
+          )
+        })()}
       </div>
 
       {errorMsg && (
@@ -314,18 +435,41 @@ export default function OperationalExpensesClient() {
           data={data}
           columns={columns}
           getRowId={(row) => String(row.rowNumber)}
-          searchPlaceholder="Search event, expense, method, remarks…"
-          toolbarExtra={
-            <>
-              {filteredSum !== null && (
-                <span className="text-xs text-gray-500 whitespace-nowrap">
-                  Total: <span className="font-semibold text-foreground">Rp {fmt(filteredSum)}</span>
-                </span>
-              )}
-              {refreshButton}
-            </>
+          searchPlaceholder="Search event, expense, category, method, remarks, VLS, IDR…"
+          fullWidthSearch
+          tightToolbar
+          hideRowCount
+          hiddenFilterChips={["event"]}
+          boldUppercaseHeader
+          toolbarExtraAfterColumns
+          belowToolbar={
+            addOpen ? (
+              <div ref={addFormRef}>
+                <AddExpenseForm
+                  events={events}
+                  methods={methods}
+                  categories={categoryOptions}
+                  onAdded={() => reloadAll()}
+                  seed={duplicateSeed}
+                />
+              </div>
+            ) : undefined
           }
-          initialVisibility={{ id: false, createdAt: false, updatedAt: false }}
+          toolbarExtra={
+            <button
+              type="button"
+              onClick={() => setAddOpen((o) => !o)}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg transition-colors ${
+                addOpen ? "bg-brand-light text-brand border border-brand/30" : "bg-brand text-white hover:bg-brand-hover"
+              }`}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              New Expenses
+            </button>
+          }
+          initialVisibility={{ id: false, remarks: false, createdAt: false, updatedAt: false }}
           serverSide={{
             rowCount: totalCount,
             loading: fetchState.loading,
@@ -388,6 +532,7 @@ export default function OperationalExpensesClient() {
                   row={x}
                   events={events}
                   methods={methods}
+                  categories={categoryOptions}
                   onUpdated={() => refreshRef.current()}
                   onDeleted={() => refreshRef.current()}
                   onDuplicate={handleDuplicate}
@@ -426,7 +571,7 @@ export default function OperationalExpensesClient() {
               </button>
             </div>
             <div className="px-3 pb-8">
-              <AddExpenseForm events={events} methods={methods} onAdded={() => { setMobileAddOpen(false); reloadAll() }} seed={duplicateSeed} />
+              <AddExpenseForm events={events} methods={methods} categories={categoryOptions} onAdded={() => { setMobileAddOpen(false); reloadAll() }} seed={duplicateSeed} />
             </div>
           </div>
         </div>
@@ -538,11 +683,13 @@ const emptyDraft = () => ({
 function AddExpenseForm({
   events,
   methods,
+  categories,
   onAdded,
   seed,
 }: {
   events: EventOption[]
   methods: string[]
+  categories: string[]
   onAdded: () => void
   seed?: { row: OperationalExpenseRow; version: number } | null
 }) {
@@ -647,9 +794,15 @@ function AddExpenseForm({
           <input value={draft.description} onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))} placeholder="Vendor / description" disabled={adding} className={formInputCls} />
         </Field>
         <Field label="Category">
-          <select value={draft.category} onChange={(e) => setDraft((d) => ({ ...d, category: e.target.value as ExpenseCategory }))} disabled={adding} className={formInputCls}>
-            {EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
+          <SearchableSelect
+            value={draft.category}
+            onChange={(v) => setDraft((d) => ({ ...d, category: v as ExpenseCategory }))}
+            options={categories.map((c) => ({ value: c, label: c }))}
+            placeholder="Category…"
+            allowNewValue
+            alwaysShowAll
+            disabled={adding}
+          />
         </Field>
       </div>
 
@@ -686,10 +839,6 @@ function AddExpenseForm({
 
       <div className="flex items-center justify-end gap-3">
         {addError && <p className="text-xs text-red-500">{addError}</p>}
-        <label className="flex items-center gap-2 text-sm text-gray-600">
-          <input type="checkbox" checked={draft.isSettled} onChange={(e) => setDraft((d) => ({ ...d, isSettled: e.target.checked }))} disabled={adding} className="h-4 w-4 rounded border-cream-border accent-brand" />
-          Settled
-        </label>
         <button type="submit" disabled={adding} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors">
           {adding ? "Saving…" : "Add"}
         </button>
@@ -704,6 +853,7 @@ function ExpenseActions({
   row,
   events,
   methods,
+  categories,
   onUpdated,
   onDeleted,
   onDuplicate,
@@ -711,6 +861,7 @@ function ExpenseActions({
   row: OperationalExpenseRow
   events: EventOption[]
   methods: string[]
+  categories: string[]
   onUpdated: () => void
   onDeleted: () => void
   onDuplicate: (row: OperationalExpenseRow) => void
@@ -740,6 +891,7 @@ function ExpenseActions({
         row={row}
         events={events}
         methods={methods}
+        categories={categories}
         onSave={() => { onUpdated(); setEditing(false) }}
         onCancel={() => setEditing(false)}
       />
@@ -776,12 +928,14 @@ function EditExpenseModal({
   row,
   events,
   methods,
+  categories,
   onSave,
   onCancel,
 }: {
   row: OperationalExpenseRow
   events: EventOption[]
   methods: string[]
+  categories: string[]
   onSave: () => void
   onCancel: () => void
 }) {
@@ -875,9 +1029,15 @@ function EditExpenseModal({
             <input value={draft.description} onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))} disabled={saving} className={formInputCls} />
           </Field>
           <Field label="Category">
-            <select value={draft.category} onChange={(e) => setDraft((d) => ({ ...d, category: e.target.value as ExpenseCategory }))} disabled={saving} className={formInputCls}>
-              {EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
+            <SearchableSelect
+              value={draft.category}
+              onChange={(v) => setDraft((d) => ({ ...d, category: v as ExpenseCategory }))}
+              options={categories.map((c) => ({ value: c, label: c }))}
+              placeholder="Category…"
+              allowNewValue
+              alwaysShowAll
+              disabled={saving}
+            />
           </Field>
           <Field label="Currency">
             <select value={draft.currency} onChange={(e) => pickCurrency(e.target.value)} disabled={saving} className={formInputCls}>
@@ -918,9 +1078,8 @@ function EditExpenseModal({
         </div>
 
         <div className="flex items-center justify-between pt-2 border-t border-cream-border">
-          <label className="flex items-center gap-2 text-sm text-gray-600">
+          <label className="flex items-center cursor-pointer" title="Settled">
             <input type="checkbox" checked={draft.isSettled} onChange={(e) => setDraft((d) => ({ ...d, isSettled: e.target.checked }))} disabled={saving} className="h-4 w-4 rounded border-cream-border accent-brand" />
-            Settled
           </label>
           <div className="flex items-center gap-2">
             {saveError && <p className="text-xs text-red-500">{saveError}</p>}

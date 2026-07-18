@@ -158,7 +158,7 @@ function StatCards({ totals }: { totals: DashboardTotals }) {
       ),
     },
     {
-      label: "Due refund",
+      label: "Overpayment",
       amount: totals.refundNeeded,
       money: true,
       sub: invoiceSub(totals.refundCount),

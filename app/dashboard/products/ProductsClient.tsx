@@ -152,16 +152,6 @@ export default function ProductsClient() {
     </div>
   )
 
-  const refreshButton = (
-    <button
-      type="button"
-      onClick={load}
-      disabled={loading}
-      className="text-xs text-gray-500 hover:text-brand disabled:opacity-50 transition-colors px-3 py-1.5 rounded-lg border border-cream-border hover:border-brand"
-    >
-      {loading ? "…" : "Refresh"}
-    </button>
-  )
 
   return (
     <div className="flex flex-col gap-6">
@@ -220,7 +210,10 @@ export default function ProductsClient() {
           columns={columns}
           getRowId={(row) => String(row.rowNumber)}
           searchPlaceholder="Search product, store…"
-          toolbarExtra={refreshButton}
+          fullWidthSearch
+          tightToolbar
+          boldUppercaseHeader
+          hideRowCount
           renderMobileCard={renderMobileCard}
           initialVisibility={{
             createdAt: false,

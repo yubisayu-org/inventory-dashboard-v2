@@ -60,6 +60,9 @@ export interface ExcessRow {
   expectedItem: string
   createdAt: string
   updatedAt: string
+  /** Item's sell price, joined by name from products — only populated by the
+   *  paginated fetch (for display); undefined elsewhere. */
+  price?: number | null
 }
 
 export interface PurchaseUpdate {
@@ -177,7 +180,11 @@ export interface WarehouseRow {
   isDefault: boolean
 }
 
-export type RefundReason = "overpayment" | "unavailable" | "shipping_loss" | "damaged" | "goodwill" | "other"
+// Free text — "overpayment" stays special-cased in code (materializeOverpaymentRefunds,
+// the apply-as-credit flow, the one-active-overpayment unique index), but any other
+// reason is just a label. REFUND_REASONS are the suggested presets in the picker.
+export type RefundReason = string
+export const REFUND_REASONS: RefundReason[] = ["overpayment", "unavailable", "shipping_loss", "damaged", "goodwill", "other"]
 export type RefundStatus = "pending" | "awaiting_bank_info" | "ready_to_refund" | "refunded" | "applied_to_next_order" | "cancelled"
 
 export interface RefundRow {
@@ -410,12 +417,11 @@ export interface AdjustmentRow {
   updatedAt: string
 }
 
-/** Closed set of operational-expense categories — mirrors the dashboard's
- *  fixed dropdown and the operational_expenses.category CHECK constraint. */
-export type ExpenseCategory =
-  | "Flight" | "Lodging" | "Cargo" | "Meal" | "Transport" | "Shop"
-  | "Supplies" | "Delivery" | "Personal" | "Payroll" | "Dividend" | "Other" 
+/** Free text (no DB constraint, same as `method`) — users can add new
+ *  categories on the fly via the dashboard's SearchableSelect+allowNewValue. */
+export type ExpenseCategory = string
 
+/** Suggested categories offered in the picker; not an exhaustive list. */
 export const EXPENSE_CATEGORIES: ExpenseCategory[] = [
   "Flight", "Lodging", "Cargo", "Meal", "Transport", "Shop",
   "Supplies", "Delivery", "Personal", "Payroll", "Dividend", "Other"

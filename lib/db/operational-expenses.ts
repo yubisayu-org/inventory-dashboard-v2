@@ -32,6 +32,8 @@ export interface PaginatedOperationalExpenses {
   rows: OperationalExpenseRow[]
   totalCount: number
   filteredSum: number | null  // null when skipCount=true (use cached value client-side)
+  cogsSum: number | null      // Shop + Cargo — null when skipCount=true
+  opexSum: number | null      // everything except Shop, Cargo, Dividend — null when skipCount=true
   page: number
   pageSize: number
   totalPages: number
@@ -50,6 +52,18 @@ export async function getExpenseMethods(): Promise<string[]> {
   return rows.map((r) => r.method as string)
 }
 
+/** Distinct, non-empty categories actually in use — merged with the suggested
+ *  EXPENSE_CATEGORIES list client-side so custom categories persist as options
+ *  for everyone (category is free text; see migration 038). */
+export async function getExpenseCategories(): Promise<string[]> {
+  const rows = await sql`
+    SELECT DISTINCT category FROM operational_expenses
+    WHERE category IS NOT NULL AND category != ''
+    ORDER BY category
+  `
+  return rows.map((r) => r.category as string)
+}
+
 /**
  * One page of operational expenses with server-side search/filter/sort.
  * Mirrors getProductsPaginated (catalog.ts).
@@ -62,11 +76,13 @@ export async function getOperationalExpensesPaginated(opts: {
   category?: string
   method?: string
   settled?: string // "true" / "false"; anything else = no filter
+  dateFrom?: string // inclusive, YYYY-MM-DD
+  dateTo?: string   // inclusive, YYYY-MM-DD
   sortKey?: string
   sortDir?: "asc" | "desc"
   skipCount?: boolean
 }): Promise<PaginatedOperationalExpenses> {
-  const { page, pageSize, search, event, category, method, settled, skipCount } = opts
+  const { page, pageSize, search, event, category, method, settled, dateFrom, dateTo, skipCount } = opts
   const offset = (page - 1) * pageSize
 
   const conditions: string[] = []
@@ -77,7 +93,9 @@ export async function getOperationalExpensesPaginated(opts: {
     const p = `$${params.length}`
     conditions.push(
       `(lower(e.event) LIKE ${p} OR lower(e.description) LIKE ${p} ` +
-      `OR lower(e.method) LIKE ${p} OR lower(e.remarks) LIKE ${p})`,
+      `OR lower(e.method) LIKE ${p} OR lower(e.remarks) LIKE ${p} ` +
+      `OR lower(e.category) LIKE ${p} ` +
+      `OR e.amount_foreign::text LIKE ${p} OR e.amount_idr::text LIKE ${p})`,
     )
   }
   if (event) {
@@ -95,6 +113,14 @@ export async function getOperationalExpensesPaginated(opts: {
   if (settled === "true" || settled === "false") {
     params.push(settled === "true")
     conditions.push(`e.is_settled = $${params.length}`)
+  }
+  if (dateFrom) {
+    params.push(dateFrom)
+    conditions.push(`e.expense_date >= $${params.length}`)
+  }
+  if (dateTo) {
+    params.push(dateTo)
+    conditions.push(`e.expense_date <= $${params.length}`)
   }
 
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""
@@ -136,6 +162,8 @@ export async function getOperationalExpensesPaginated(opts: {
       rows: dataRows.map(mapExpenseRow),
       totalCount: OPERATIONAL_EXPENSES_TOTAL_COUNT_UNCHANGED,
       filteredSum: null,
+      cogsSum: null,
+      opexSum: null,
       page,
       pageSize,
       totalPages: OPERATIONAL_EXPENSES_TOTAL_COUNT_UNCHANGED,
@@ -146,18 +174,28 @@ export async function getOperationalExpensesPaginated(opts: {
     `SELECT COUNT(*)::int AS c FROM operational_expenses e ${where}`,
     params,
   )
+  // COGS = Shop + Cargo. OPEX = everything else except Shop, Cargo, Dividend
+  // (Dividend is a payout, not an operating expense — excluded from both).
   const sumQuery = sql.unsafe(
-    `SELECT COALESCE(SUM(e.amount_idr), 0)::bigint AS s FROM operational_expenses e ${where}`,
+    `SELECT
+       COALESCE(SUM(e.amount_idr), 0)::bigint AS s,
+       COALESCE(SUM(e.amount_idr) FILTER (WHERE lower(e.category) IN ('shop', 'cargo')), 0)::bigint AS cogs,
+       COALESCE(SUM(e.amount_idr) FILTER (WHERE lower(e.category) NOT IN ('shop', 'cargo', 'dividend')), 0)::bigint AS opex
+     FROM operational_expenses e ${where}`,
     params,
   )
 
   const [dataRows, countRows, sumRows] = await Promise.all([dataQuery, countQuery, sumQuery])
   const totalCount = Number(countRows[0]?.c ?? 0)
   const filteredSum = Number(sumRows[0]?.s ?? 0)
+  const cogsSum = Number(sumRows[0]?.cogs ?? 0)
+  const opexSum = Number(sumRows[0]?.opex ?? 0)
   return {
     rows: dataRows.map(mapExpenseRow),
     totalCount,
     filteredSum,
+    cogsSum,
+    opexSum,
     page,
     pageSize,
     totalPages: Math.max(1, Math.ceil(totalCount / pageSize)),

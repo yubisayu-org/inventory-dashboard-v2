@@ -278,19 +278,6 @@ export default function FormRecordsTable({ role }: { role: Role | null }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   ), [isOwner, handleSaveReceipt])
 
-  // -- Toolbar extra --
-  const toolbarExtra = (
-    <button onClick={refresh} title="Reload" className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs border border-cream-border rounded-lg hover:bg-cream transition-colors text-gray-600">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
-        <path d="M21 3v5h-5" />
-        <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
-        <path d="M8 16H3v5" />
-      </svg>
-      Reload
-    </button>
-  )
-
   // -- Loading / error states --
   if (fetchState.loading && rows.length === 0) return <TableSkeleton />
 
@@ -308,7 +295,10 @@ export default function FormRecordsTable({ role }: { role: Role | null }) {
       columns={columns}
       getRowId={(row) => String(row.rowNumber)}
       searchPlaceholder="Search…"
-      toolbarExtra={toolbarExtra}
+      fullWidthSearch
+      tightToolbar
+      boldUppercaseHeader
+      hideRowCount
       renderMobileCard={renderMobileCard}
       initialVisibility={{
         receipt: false,

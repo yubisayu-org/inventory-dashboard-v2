@@ -342,23 +342,13 @@ export default function CustomersClient() {
   }, [])
 
   const toolbarExtra = (
-    <>
-      <button
-        type="button"
-        onClick={() => { refreshRef.current(); loadMeta() }}
-        disabled={fetchState.loading}
-        className="text-xs text-gray-500 hover:text-brand disabled:opacity-50 transition-colors px-3 py-1.5 rounded-lg border border-cream-border hover:border-brand"
-      >
-        {fetchState.loading ? "…" : "Refresh"}
-      </button>
-      <button
-        type="button"
-        onClick={() => setCreating(true)}
-        className="hidden md:inline-flex px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 transition-colors"
-      >
-        + Add Customer
-      </button>
-    </>
+    <button
+      type="button"
+      onClick={() => setCreating(true)}
+      className="hidden md:inline-flex px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 transition-colors"
+    >
+      + Add Customer
+    </button>
   )
 
   const errorMsg = fetchState.error || metaError
@@ -374,8 +364,13 @@ export default function CustomersClient() {
         columns={columns}
         getRowId={(row) => String(row.id)}
         searchPlaceholder="Search customers…"
+        fullWidthSearch
+        tightToolbar
+        boldUppercaseHeader
+        toolbarExtraAfterColumns
+        hideRowCount
         toolbarExtra={toolbarExtra}
-        initialVisibility={{ updatedAt: false }}
+        initialVisibility={{ updatedAt: false, dataDiri: false, bankName: false }}
         renderMobileCard={renderMobileCard}
         onRowClick={(row) => setDetailCustomer(row.instagramId)}
         serverSide={{
@@ -403,18 +398,15 @@ export default function CustomersClient() {
       </button>
 
       {creating && (
-        <CustomerModal
-          mode="create"
+        <CreateCustomerModal
           warehouses={warehouses}
-          initial={EMPTY_DRAFT}
           onSaved={() => { setCreating(false); refreshRef.current() }}
           onCancel={() => setCreating(false)}
         />
       )}
 
       {editRow && (
-        <CustomerModal
-          mode="edit"
+        <EditCustomerModal
           rowId={editRow.id}
           warehouses={warehouses}
           initial={rowToDraft(editRow)}
@@ -430,30 +422,18 @@ export default function CustomersClient() {
   )
 }
 
-// ─── Add / Edit modal ──────────────────────────────────────────────────────
+// ─── Add / Edit form ──────────────────────────────────────────────────────
 
-function CustomerModal({
-  mode,
-  rowId,
-  warehouses,
-  initial,
-  onSaved,
-  onCancel,
+// Shared field set for the Add card and the Edit modal below.
+function CustomerFields({
+  draft, setDraft, warehouses, saving, firstInputRef,
 }: {
-  mode: "create" | "edit"
-  rowId?: number
+  draft: DraftCustomer
+  setDraft: React.Dispatch<React.SetStateAction<DraftCustomer>>
   warehouses: WarehouseRow[]
-  initial: DraftCustomer
-  onSaved: () => void
-  onCancel: () => void
+  saving: boolean
+  firstInputRef?: React.RefObject<HTMLInputElement | null>
 }) {
-  const [draft, setDraft] = useState<DraftCustomer>(initial)
-  const [saving, setSaving] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
-  const firstInputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => { firstInputRef.current?.focus() }, [])
-
   // Only the plain string fields go through this helper; ongkir is a map and is
   // handled with its own per-warehouse inputs below.
   function field(key: Exclude<keyof DraftCustomer, "ongkir">) {
@@ -465,6 +445,152 @@ function CustomerModal({
     }
   }
 
+  return (
+    <div className="flex flex-col gap-3">
+      <label className="flex flex-col gap-1">
+        <span className="text-xs font-medium text-gray-500">Instagram ID <span className="text-red-500">*</span></span>
+        <input
+          ref={firstInputRef}
+          {...field("instagramId")}
+          placeholder="@username"
+          className={modalInputCls}
+        />
+      </label>
+
+      <label className="flex flex-col gap-1">
+        <span className="text-xs font-medium text-gray-500">Name</span>
+        <input
+          {...field("name")}
+          placeholder="Full name"
+          className={modalInputCls}
+        />
+      </label>
+
+      <label className="flex flex-col gap-1">
+        <span className="text-xs font-medium text-gray-500">WhatsApp</span>
+        <input
+          {...field("whatsapp")}
+          placeholder="08xx-xxxx-xxxx"
+          className={modalInputCls}
+        />
+      </label>
+
+      <label className="flex flex-col gap-1">
+        <span className="text-xs font-medium text-gray-500">Alamat / Data Diri</span>
+        <textarea
+          {...field("dataDiri")}
+          placeholder="Full name, address, phone…"
+          rows={4}
+          className={`${modalInputCls} resize-none`}
+        />
+      </label>
+
+      <label className="flex flex-col gap-1">
+        <span className="text-xs font-medium text-gray-500">Ekspedisi</span>
+        <input
+          {...field("ekspedisi")}
+          placeholder="e.g. JNE, J&T"
+          className={modalInputCls}
+        />
+      </label>
+
+      <div className="flex flex-col gap-1">
+        <span className="text-xs font-medium text-gray-500">Ongkos kirim per kg</span>
+        {warehouses.length === 0 ? (
+          <span className="text-xs text-gray-400">No warehouses configured.</span>
+        ) : (
+          <div className="grid grid-cols-2 gap-3">
+            {warehouses.map((wh) => (
+              <label key={wh.id} className="flex flex-col gap-1">
+                <span className="text-[11px] font-medium text-gray-400">{wh.name} ({wh.code})</span>
+                <input
+                  value={draft.ongkir[wh.id] ?? ""}
+                  onChange={(e) =>
+                    setDraft((d) => ({ ...d, ongkir: { ...d.ongkir, [wh.id]: e.target.value } }))
+                  }
+                  disabled={saving}
+                  type="number"
+                  min="0"
+                  placeholder="0"
+                  className={modalInputCls}
+                />
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="pt-2 border-t border-cream-border" />
+
+      <div className="text-xs font-semibold text-gray-500 -mb-1">Bank Info</div>
+
+      <label className="flex flex-col gap-1">
+        <span className="text-xs font-medium text-gray-500">Bank Name</span>
+        <input
+          {...field("bankName")}
+          placeholder="e.g. BCA, Mandiri"
+          className={modalInputCls}
+        />
+      </label>
+
+      <div className="grid grid-cols-2 gap-3">
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-gray-500">Account Number</span>
+          <input
+            {...field("bankAccountNumber")}
+            placeholder="1234567890"
+            className={modalInputCls}
+          />
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-gray-500">Account Holder</span>
+          <input
+            {...field("bankAccountHolder")}
+            placeholder="Name as registered"
+            className={modalInputCls}
+          />
+        </label>
+      </div>
+    </div>
+  )
+}
+
+function buildCustomerPayload(draft: DraftCustomer, warehouses: WarehouseRow[]) {
+  // Build the per-warehouse ongkir map (numbers) from the form's string inputs.
+  const ongkir: Record<number, number> = {}
+  for (const wh of warehouses) {
+    ongkir[wh.id] = Number(draft.ongkir[wh.id]) || 0
+  }
+  return {
+    instagramId: draft.instagramId.trim(),
+    name: draft.name.trim(),
+    whatsapp: draft.whatsapp.trim(),
+    dataDiri: draft.dataDiri.trim(),
+    ekspedisi: draft.ekspedisi.trim(),
+    ongkir,
+    bankName: draft.bankName.trim(),
+    bankAccountNumber: draft.bankAccountNumber.trim(),
+    bankAccountHolder: draft.bankAccountHolder.trim(),
+  }
+}
+
+function CreateCustomerModal({
+  warehouses,
+  onSaved,
+  onCancel,
+}: {
+  warehouses: WarehouseRow[]
+  onSaved: () => void
+  onCancel: () => void
+}) {
+  const [draft, setDraft] = useState<DraftCustomer>(EMPTY_DRAFT)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const firstInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => { firstInputRef.current?.focus() }, [])
+
   async function handleSave() {
     if (!draft.instagramId.trim()) {
       setSaveError("Instagram ID is required")
@@ -472,33 +598,93 @@ function CustomerModal({
     }
     setSaving(true)
     setSaveError(null)
-
-    // Build the per-warehouse ongkir map (numbers) from the form's string inputs.
-    const ongkir: Record<number, number> = {}
-    for (const wh of warehouses) {
-      ongkir[wh.id] = Number(draft.ongkir[wh.id]) || 0
-    }
-
-    const payload = {
-      instagramId: draft.instagramId.trim(),
-      name: draft.name.trim(),
-      whatsapp: draft.whatsapp.trim(),
-      dataDiri: draft.dataDiri.trim(),
-      ekspedisi: draft.ekspedisi.trim(),
-      ongkir,
-      bankName: draft.bankName.trim(),
-      bankAccountNumber: draft.bankAccountNumber.trim(),
-      bankAccountHolder: draft.bankAccountHolder.trim(),
-    }
-
     try {
-      const url = mode === "create"
-        ? "/api/sheets/customers"
-        : `/api/sheets/customers/${rowId}`
-      const res = await fetch(url, {
-        method: mode === "create" ? "POST" : "PUT",
+      const res = await fetch("/api/sheets/customers", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(buildCustomerPayload(draft, warehouses)),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? "Failed")
+      onSaved()
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Failed to save")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Escape") onCancel()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={onCancel}>
+      <div
+        className="bg-white rounded-xl border border-cream-border shadow-xl p-6 w-full max-w-lg flex flex-col gap-4 max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={handleKeyDown}
+      >
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-semibold text-foreground">Add Customer</span>
+        </div>
+
+        <CustomerFields draft={draft} setDraft={setDraft} warehouses={warehouses} saving={saving} firstInputRef={firstInputRef} />
+
+        {saveError && <p className="text-xs text-red-500">{saveError}</p>}
+
+        <div className="flex items-center justify-end gap-2 pt-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={saving}
+            className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
+          >
+            {saving ? "Saving…" : "Add"}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function EditCustomerModal({
+  rowId,
+  warehouses,
+  initial,
+  onSaved,
+  onCancel,
+}: {
+  rowId: number
+  warehouses: WarehouseRow[]
+  initial: DraftCustomer
+  onSaved: () => void
+  onCancel: () => void
+}) {
+  const [draft, setDraft] = useState<DraftCustomer>(initial)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  async function handleSave() {
+    if (!draft.instagramId.trim()) {
+      setSaveError("Instagram ID is required")
+      return
+    }
+    setSaving(true)
+    setSaveError(null)
+    try {
+      const res = await fetch(`/api/sheets/customers/${rowId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildCustomerPayload(draft, warehouses)),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? "Failed")
@@ -525,121 +711,11 @@ function CustomerModal({
         onKeyDown={handleKeyDown}
       >
         <div className="flex items-center justify-between">
-          <span className="text-sm font-semibold text-foreground">
-            {mode === "create" ? "Add Customer" : "Edit Customer"}
-          </span>
-          {mode === "edit" && rowId != null && (
-            <span className="text-xs text-gray-400">ID: {rowId}</span>
-          )}
+          <span className="text-sm font-semibold text-foreground">Edit Customer</span>
+          <span className="text-xs text-gray-400">ID: {rowId}</span>
         </div>
 
-        <div className="flex flex-col gap-3">
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-500">Instagram ID <span className="text-red-500">*</span></span>
-            <input
-              ref={firstInputRef}
-              {...field("instagramId")}
-              placeholder="@username"
-              className={modalInputCls}
-            />
-          </label>
-
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-500">Name</span>
-            <input
-              {...field("name")}
-              placeholder="Full name"
-              className={modalInputCls}
-            />
-          </label>
-
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-500">WhatsApp</span>
-            <input
-              {...field("whatsapp")}
-              placeholder="08xx-xxxx-xxxx"
-              className={modalInputCls}
-            />
-          </label>
-
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-500">Alamat / Data Diri</span>
-            <textarea
-              {...field("dataDiri")}
-              placeholder="Full name, address, phone…"
-              rows={4}
-              className={`${modalInputCls} resize-none`}
-            />
-          </label>
-
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-500">Ekspedisi</span>
-            <input
-              {...field("ekspedisi")}
-              placeholder="e.g. JNE, J&T"
-              className={modalInputCls}
-            />
-          </label>
-
-          <div className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-500">Ongkos Kirim per Gudang (IDR)</span>
-            {warehouses.length === 0 ? (
-              <span className="text-xs text-gray-400">No warehouses configured.</span>
-            ) : (
-              <div className="grid grid-cols-2 gap-3">
-                {warehouses.map((wh) => (
-                  <label key={wh.id} className="flex flex-col gap-1">
-                    <span className="text-[11px] font-medium text-gray-400">{wh.name} ({wh.code})</span>
-                    <input
-                      value={draft.ongkir[wh.id] ?? ""}
-                      onChange={(e) =>
-                        setDraft((d) => ({ ...d, ongkir: { ...d.ongkir, [wh.id]: e.target.value } }))
-                      }
-                      disabled={saving}
-                      type="number"
-                      min="0"
-                      placeholder="0"
-                      className={modalInputCls}
-                    />
-                  </label>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="pt-2 border-t border-cream-border" />
-
-          <div className="text-xs font-semibold text-gray-500 -mb-1">Bank Info</div>
-
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-500">Bank Name</span>
-            <input
-              {...field("bankName")}
-              placeholder="e.g. BCA, Mandiri"
-              className={modalInputCls}
-            />
-          </label>
-
-          <div className="grid grid-cols-2 gap-3">
-            <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-gray-500">Account Number</span>
-              <input
-                {...field("bankAccountNumber")}
-                placeholder="1234567890"
-                className={modalInputCls}
-              />
-            </label>
-
-            <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-gray-500">Account Holder</span>
-              <input
-                {...field("bankAccountHolder")}
-                placeholder="Name as registered"
-                className={modalInputCls}
-              />
-            </label>
-          </div>
-        </div>
+        <CustomerFields draft={draft} setDraft={setDraft} warehouses={warehouses} saving={saving} />
 
         {saveError && <p className="text-xs text-red-500">{saveError}</p>}
 
@@ -658,7 +734,7 @@ function CustomerModal({
             disabled={saving}
             className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
           >
-            {saving ? "Saving…" : mode === "create" ? "Add" : "Save"}
+            {saving ? "Saving…" : "Save"}
           </button>
         </div>
       </div>

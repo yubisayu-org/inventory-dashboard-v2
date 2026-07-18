@@ -20,6 +20,7 @@ export default function CountriesClient() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
+  const [addOpen, setAddOpen] = useState(false)
   const [mobileAddOpen, setMobileAddOpen] = useState(false)
 
   const [editRow, setEditRow] = useState<CountryRow | null>(null)
@@ -205,67 +206,58 @@ export default function CountriesClient() {
     </div>
   )
 
-  const refreshButton = (
-    <button
-      type="button"
-      onClick={load}
-      disabled={loading}
-      className="text-xs text-gray-500 hover:text-brand disabled:opacity-50 transition-colors px-3 py-1.5 rounded-lg border border-cream-border hover:border-brand"
-    >
-      {loading ? "…" : "Refresh"}
-    </button>
+
+  const addForm = (
+    <form onSubmit={handleAdd} className="hidden md:flex rounded-xl border border-cream-border bg-white p-5 flex-col gap-4">
+      <div className="text-sm font-semibold text-foreground">Add Country</div>
+      <div className="flex items-end gap-3 flex-wrap">
+        <input
+          {...field("name")}
+          placeholder="Country name"
+          required
+          disabled={adding}
+          className={`${formInputCls} flex-1 min-w-[10rem]`}
+        />
+        <input
+          {...field("currency")}
+          placeholder="Currency (e.g. CNY)"
+          disabled={adding}
+          className={formInputCls}
+          style={{ width: "9rem" }}
+        />
+        <input
+          {...field("kurs")}
+          type="number"
+          min="0"
+          step="any"
+          placeholder="Kurs (IDR)"
+          disabled={adding}
+          className={formInputCls}
+          style={{ width: "9rem" }}
+        />
+        <input
+          {...field("cargoPerKg")}
+          type="number"
+          min="0"
+          placeholder="Cargo / kg (IDR)"
+          disabled={adding}
+          className={formInputCls}
+          style={{ width: "9rem" }}
+        />
+        {addError && <p className="text-xs text-red-500">{addError}</p>}
+        <button
+          type="submit"
+          disabled={adding}
+          className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors shrink-0"
+        >
+          {adding ? "Saving…" : "Add"}
+        </button>
+      </div>
+    </form>
   )
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Add form (desktop only) */}
-      <form onSubmit={handleAdd} className="hidden md:flex rounded-xl border border-cream-border bg-white p-5 flex-col gap-4">
-        <div className="text-sm font-semibold text-foreground">Add Country</div>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <input
-            {...field("name")}
-            placeholder="Country name"
-            required
-            disabled={adding}
-            className={formInputCls}
-          />
-          <input
-            {...field("currency")}
-            placeholder="Currency (e.g. CNY)"
-            disabled={adding}
-            className={formInputCls}
-          />
-          <input
-            {...field("kurs")}
-            type="number"
-            min="0"
-            step="any"
-            placeholder="Kurs (IDR)"
-            disabled={adding}
-            className={formInputCls}
-          />
-          <input
-            {...field("cargoPerKg")}
-            type="number"
-            min="0"
-            placeholder="Cargo / kg (IDR)"
-            disabled={adding}
-            className={formInputCls}
-          />
-        </div>
-
-        <div className="flex items-center justify-end gap-3">
-          {addError && <p className="text-xs text-red-500">{addError}</p>}
-          <button
-            type="submit"
-            disabled={adding}
-            className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
-          >
-            {adding ? "Saving…" : "Add"}
-          </button>
-        </div>
-      </form>
-
       {/* Data grid */}
       {loading && <TableSkeleton />}
       {error && (
@@ -277,7 +269,26 @@ export default function CountriesClient() {
           columns={columns}
           pageSize={25}
           searchPlaceholder="Search countries…"
-          toolbarExtra={refreshButton}
+          fullWidthSearch
+          tightToolbar
+          boldUppercaseHeader
+          toolbarExtraAfterColumns
+          hideRowCount
+          belowToolbar={addOpen ? addForm : undefined}
+          toolbarExtra={
+            <button
+              type="button"
+              onClick={() => setAddOpen((o) => !o)}
+              className={`hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg transition-colors ${
+                addOpen ? "bg-brand-light text-brand border border-brand/30" : "bg-brand text-white hover:bg-brand-hover"
+              }`}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              Add Country
+            </button>
+          }
           getRowId={(row) => String(row.id)}
           initialVisibility={{ createdAt: false, updatedAt: false }}
           initialSorting={[{ id: "name", desc: false }]}

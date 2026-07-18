@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { displayIg } from "@/lib/format"
 import SearchableSelect from "@/components/SearchableSelect"
 import { useModalDismiss } from "@/hooks/useModalDismiss"
@@ -27,8 +27,17 @@ export function AddAdjustmentFromInvoiceModal({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
+  const [dbDescriptions, setDbDescriptions] = useState<string[]>([])
 
-  const descOptions = useMemo(() => descriptionOptions([description]), [description])
+  // Pull in previously-typed descriptions so they show up as suggestions.
+  useEffect(() => {
+    fetch("/api/sheets/adjustments?meta=descriptions")
+      .then((res) => res.json())
+      .then((data) => setDbDescriptions(data.descriptions ?? []))
+      .catch(() => {})
+  }, [])
+
+  const descOptions = useMemo(() => descriptionOptions([...dbDescriptions, description]), [dbDescriptions, description])
   const canSubmit = Boolean(amount) && Number(amount) !== 0 && Number.isFinite(Number(amount))
 
   async function handleSubmit(e: React.FormEvent) {

@@ -219,6 +219,18 @@ export async function deletePayment(rowNumber: number, db: DBExecutor = sql): Pr
 
 // ─── Adjustments ───────────────────────────────────────────────────────────
 
+/** Every non-empty description ever used, so the description picker's
+ *  autocomplete keeps offering previously typed-in values, not just the
+ *  built-in presets (Free Shipping, Shipping Difference). */
+export async function getDistinctAdjustmentDescriptions(): Promise<string[]> {
+  const rows = await sql`
+    SELECT DISTINCT description FROM adjustments
+    WHERE description IS NOT NULL AND description != ''
+    ORDER BY description
+  `
+  return rows.map((r) => r.description as string)
+}
+
 export async function getAdjustmentRows(): Promise<AdjustmentRow[]> {
   const rows = await sql`
     SELECT id, event, customer, description, amount, created_at, updated_at
@@ -505,6 +517,13 @@ export async function getRefunds(filters?: { event?: string; status?: string; cu
     params,
   )
   return attachStaleReview(rows.map(mapRefundRow))
+}
+
+/** Every reason value ever used, so the reason picker's autocomplete keeps
+ *  offering previously typed-in values (not just the built-in presets). */
+export async function getDistinctRefundReasons(): Promise<string[]> {
+  const rows = await sql`SELECT DISTINCT reason FROM refunds ORDER BY reason`
+  return rows.map((r) => r.reason as string)
 }
 
 export async function createRefund(data: {

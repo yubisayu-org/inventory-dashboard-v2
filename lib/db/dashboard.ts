@@ -293,6 +293,8 @@ export interface EventPerformance {
   totalPaid: number
   outstanding: number
   unpaidCount: number
+  overpaidCount: number
+  dueRefund: number
   // Fulfillment
   totalBought: number
   totalArrived: number
@@ -351,7 +353,8 @@ export async function getEventPerformance(): Promise<EventPerformance[]> {
         event,
         COALESCE(SUM(invoice_total), 0)::bigint AS revenue,
         COALESCE(SUM(GREATEST(invoice_total - paid, 0)), 0)::bigint AS outstanding,
-        COUNT(*) FILTER (WHERE invoice_total - paid > 0)::int AS unpaid_count
+        COUNT(*) FILTER (WHERE invoice_total - paid > 0)::int AS unpaid_count,
+        COUNT(*) FILTER (WHERE invoice_total - paid < 0)::int AS overpaid_count
       FROM invoice
       GROUP BY event
     ),
@@ -381,6 +384,13 @@ export async function getEventPerformance(): Promise<EventPerformance[]> {
       SELECT event, SUM(amount_idr)::bigint AS ops_expenses
       FROM operational_expenses
       GROUP BY event
+    ),
+    refund_due AS (
+      -- Money still owed back to customers — open refund tickets for the event.
+      SELECT event, SUM(refund_amount)::bigint AS due_refund
+      FROM refunds
+      WHERE status IN ('pending', 'awaiting_bank_info', 'ready_to_refund')
+      GROUP BY event
     )
     SELECT
       e.name,
@@ -394,12 +404,15 @@ export async function getEventPerformance(): Promise<EventPerformance[]> {
       COALESCE(pe.total_paid, 0)::bigint AS total_paid,
       COALESCE(s.outstanding, 0)::bigint AS outstanding,
       COALESCE(s.unpaid_count, 0)::int AS unpaid_count,
-      COALESCE(op.ops_expenses, 0)::bigint AS ops_expenses
+      COALESCE(s.overpaid_count, 0)::int AS overpaid_count,
+      COALESCE(op.ops_expenses, 0)::bigint AS ops_expenses,
+      COALESCE(rd.due_refund, 0)::bigint AS due_refund
     FROM events e
     LEFT JOIN order_agg oa ON oa.event = e.name
     LEFT JOIN sales s ON s.event = e.name
     LEFT JOIN pay_event pe ON pe.event = e.name
     LEFT JOIN ops op ON op.event = e.name
+    LEFT JOIN refund_due rd ON rd.event = e.name
   `
 
   return rows.map((r) => {
@@ -415,6 +428,8 @@ export async function getEventPerformance(): Promise<EventPerformance[]> {
       totalPaid,
       outstanding: Number(r.outstanding ?? 0),
       unpaidCount: Number(r.unpaid_count ?? 0),
+      overpaidCount: Number(r.overpaid_count ?? 0),
+      dueRefund: Number(r.due_refund ?? 0),
       totalBought: Number(r.total_bought ?? 0),
       totalArrived: Number(r.total_arrived ?? 0),
       totalShipped: Number(r.total_shipped ?? 0),

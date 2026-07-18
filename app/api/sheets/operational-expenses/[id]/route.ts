@@ -7,7 +7,7 @@ import {
   deleteOperationalExpense,
   withActor,
 } from "@/lib/db"
-import { EXPENSE_CATEGORIES, type ExpenseCategory } from "@/lib/db/types"
+import type { ExpenseCategory } from "@/lib/db/types"
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -28,9 +28,9 @@ export async function PUT(req: NextRequest, { params }: Params) {
     if (!String(body.event ?? "").trim()) {
       return NextResponse.json({ error: "event is required" }, { status: 400 })
     }
-    const category = body.category as ExpenseCategory
-    if (!EXPENSE_CATEGORIES.includes(category)) {
-      return NextResponse.json({ error: "invalid category" }, { status: 400 })
+    const category = String(body.category ?? "").trim() as ExpenseCategory
+    if (!category) {
+      return NextResponse.json({ error: "category is required" }, { status: 400 })
     }
 
     await withActor(session.user.email, (tx) => updateOperationalExpense(id, {
