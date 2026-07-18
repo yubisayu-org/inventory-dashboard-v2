@@ -122,17 +122,20 @@ export default function AdjustmentsClient() {
     {
       accessorKey: "event",
       header: "Event",
+      size: 130,
       filterFn: "textContains",
     },
     {
       accessorKey: "customer",
       header: "Customer",
+      size: 160,
       filterFn: "textContains",
       cell: ({ getValue }) => <span>{displayIg(getValue<string>())}</span>,
     },
     {
       accessorKey: "description",
       header: "Description",
+      size: 220,
       filterFn: "textContains",
       cell: ({ getValue }) => {
         const v = getValue<string>()
@@ -142,6 +145,7 @@ export default function AdjustmentsClient() {
     {
       accessorKey: "amount",
       header: "Amount",
+      size: 130,
       enableColumnFilter: false,
       meta: { align: "right" },
       cell: ({ getValue }) => {
@@ -156,6 +160,7 @@ export default function AdjustmentsClient() {
     {
       accessorKey: "createdAt",
       header: "Created",
+      size: 110,
       enableColumnFilter: false,
       cell: ({ getValue }) => (
         <span className="text-gray-400 text-xs">{getValue<string>()}</span>
@@ -164,6 +169,7 @@ export default function AdjustmentsClient() {
     {
       accessorKey: "updatedAt",
       header: "Updated",
+      size: 110,
       enableColumnFilter: false,
       enableHiding: true,
     },

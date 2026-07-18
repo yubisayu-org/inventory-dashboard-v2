@@ -162,6 +162,7 @@ export default function CustomersClient() {
     {
       accessorKey: "instagramId",
       header: "Instagram ID",
+      size: 160,
       filterFn: "textContains",
       cell: ({ row }) => {
         const hasAddress = Boolean(row.original.dataDiri && row.original.dataDiri.trim())
@@ -183,6 +184,7 @@ export default function CustomersClient() {
     {
       accessorKey: "name",
       header: "Name",
+      size: 160,
       filterFn: "textContains",
       cell: ({ getValue }) => {
         const v = getValue<string>()
@@ -192,6 +194,7 @@ export default function CustomersClient() {
     {
       accessorKey: "whatsapp",
       header: "WhatsApp",
+      size: 140,
       filterFn: "textContains",
       cell: ({ getValue }) => {
         const v = getValue<string>()
@@ -201,6 +204,7 @@ export default function CustomersClient() {
     {
       accessorKey: "ekspedisi",
       header: "Ekspedisi",
+      size: 120,
       filterFn: "textContains",
       cell: ({ getValue }) => {
         const v = getValue<string>()
@@ -214,6 +218,7 @@ export default function CustomersClient() {
       id: `ongkir_${wh.id}`,
       accessorFn: (row) => row.ongkir?.[wh.id] ?? 0,
       header: `Ongkir ${wh.code}`,
+      size: 120,
       enableSorting: false,
       enableColumnFilter: false,
       meta: { align: "right" },
@@ -227,6 +232,7 @@ export default function CustomersClient() {
     {
       accessorKey: "dataDiri",
       header: "Alamat",
+      size: 220,
       filterFn: "textContains",
       cell: ({ getValue }) => {
         const v = getValue<string>()
@@ -241,6 +247,7 @@ export default function CustomersClient() {
     {
       accessorKey: "bankName",
       header: "Bank",
+      size: 180,
       filterFn: "textContains",
       cell: ({ row }) => {
         const { bankName, bankAccountNumber, bankAccountHolder } = row.original
@@ -259,6 +266,7 @@ export default function CustomersClient() {
     {
       accessorKey: "updatedAt",
       header: "Updated",
+      size: 110,
       enableColumnFilter: false,
       cell: ({ getValue }) => {
         const v = getValue<string | null>()

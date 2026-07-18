@@ -226,9 +226,10 @@ export default function ExcessTable() {
         header: "Receipt",
         filterFn: "textContains",
         size: 150,
-        cell: ({ getValue }) => (
-          <span className="text-gray-500">{getValue<string>() || "—"}</span>
-        ),
+        cell: ({ getValue }) => {
+          const v = getValue<string>()
+          return <span className="text-gray-500 block truncate" title={v || undefined}>{v || "—"}</span>
+        },
       },
       {
         accessorKey: "createdAt",
@@ -684,38 +685,68 @@ function InventoryFields({
   inline?: boolean
   trailing?: React.ReactNode
 }) {
+  const eventField = (
+    <label className="flex flex-col gap-1" style={inline ? { width: "10rem" } : undefined}>
+      <span className="text-xs font-medium text-gray-500">Event</span>
+      <EventSelect value={event} onChange={setEvent} events={eventOptions} placeholder="Select event…" disabled={saving} />
+    </label>
+  )
+  const itemField = (
+    <label className="flex flex-col gap-1" style={inline ? { width: "12rem" } : undefined}>
+      <span className="text-xs font-medium text-gray-500">Item</span>
+      <SearchableSelect value={items} onChange={setItems} options={itemOptions} placeholder="Search item…" disabled={saving} />
+    </label>
+  )
+  const quantityField = (
+    <label className="flex flex-col gap-1" style={inline ? { width: "7rem" } : undefined}>
+      <span className="text-xs font-medium text-gray-500">Quantity</span>
+      <input
+        type="number"
+        min={1}
+        value={unitBuy}
+        onChange={(e) => setUnitBuy(e.target.value)}
+        disabled={saving}
+        className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+      />
+    </label>
+  )
+  // Bound to the excess row's `receipt` column, which despite the name is
+  // used as a free-text reference/note (e.g. "pre-dashboard stock") — not
+  // always an actual receipt number, hence the placeholder.
+  const receiptField = (
+    <label className={`flex flex-col gap-1 ${inline ? "flex-1 min-w-[10rem]" : "w-full"}`}>
+      <span className="text-xs font-medium text-gray-500">Receipt <span className="text-gray-400 font-normal">(optional)</span></span>
+      <input
+        type="text"
+        value={receipt}
+        onChange={(e) => setReceipt(e.target.value)}
+        disabled={saving}
+        placeholder="e.g. pre-dashboard stock"
+        className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+      />
+    </label>
+  )
+
+  if (inline) {
+    return (
+      <div className="flex items-end gap-3 flex-wrap">
+        {eventField}
+        {itemField}
+        {quantityField}
+        {receiptField}
+        {trailing}
+      </div>
+    )
+  }
+
   return (
-    <div className={inline ? "flex items-end gap-3 flex-wrap" : "grid grid-cols-2 gap-3 sm:grid-cols-4"}>
-      <label className="flex flex-col gap-1" style={inline ? { width: "10rem" } : undefined}>
-        <span className="text-xs font-medium text-gray-500">Event</span>
-        <EventSelect value={event} onChange={setEvent} events={eventOptions} placeholder="Select event…" disabled={saving} />
-      </label>
-      <label className="flex flex-col gap-1" style={inline ? { width: "12rem" } : undefined}>
-        <span className="text-xs font-medium text-gray-500">Item</span>
-        <SearchableSelect value={items} onChange={setItems} options={itemOptions} placeholder="Search item…" disabled={saving} />
-      </label>
-      <label className="flex flex-col gap-1" style={inline ? { width: "7rem" } : undefined}>
-        <span className="text-xs font-medium text-gray-500">Quantity</span>
-        <input
-          type="number"
-          min={1}
-          value={unitBuy}
-          onChange={(e) => setUnitBuy(e.target.value)}
-          disabled={saving}
-          className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
-        />
-      </label>
-      <label className={`flex flex-col gap-1 ${inline ? "flex-1 min-w-[10rem]" : ""}`}>
-        <span className="text-xs font-medium text-gray-500">Note <span className="text-gray-400 font-normal">(optional)</span></span>
-        <input
-          type="text"
-          value={receipt}
-          onChange={(e) => setReceipt(e.target.value)}
-          disabled={saving}
-          placeholder="e.g. pre-dashboard stock"
-          className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
-        />
-      </label>
+    <div className="flex flex-col gap-3">
+      <div className="grid grid-cols-3 gap-3">
+        {eventField}
+        {itemField}
+        {quantityField}
+      </div>
+      {receiptField}
       {trailing}
     </div>
   )

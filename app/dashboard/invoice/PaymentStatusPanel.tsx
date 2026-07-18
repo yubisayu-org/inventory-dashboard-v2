@@ -99,12 +99,14 @@ export function PaymentStatusPanel({
     {
       accessorKey: "event",
       header: "Event",
+      size: 130,
       filterFn: "textContains",
       cell: ({ getValue }) => <span className="text-gray-500 whitespace-nowrap">{getValue<string>()}</span>,
     },
     {
       accessorKey: "customer",
       header: "Customer",
+      size: 160,
       filterFn: "textContains",
       cell: ({ row }) => (
         <button
@@ -119,6 +121,7 @@ export function PaymentStatusPanel({
     {
       accessorKey: "invoiceTotal",
       header: "Invoice Total",
+      size: 140,
       filterFn: "numeric",
       meta: { align: "right" },
       cell: ({ getValue }) => <span className="tabular-nums">Rp {fmt(getValue<number>())}</span>,
@@ -126,6 +129,7 @@ export function PaymentStatusPanel({
     {
       accessorKey: "totalPaid",
       header: "Paid",
+      size: 130,
       filterFn: "numeric",
       meta: { align: "right" },
       cell: ({ getValue }) => <span className="tabular-nums">Rp {fmt(getValue<number>())}</span>,
@@ -133,6 +137,7 @@ export function PaymentStatusPanel({
     {
       accessorKey: "outstanding",
       header: "Balance",
+      size: 140,
       filterFn: "numeric",
       meta: { align: "right" },
       cell: ({ getValue }) => {
@@ -147,6 +152,7 @@ export function PaymentStatusPanel({
     {
       accessorKey: "status",
       header: "Status",
+      size: 120,
       enableColumnFilter: false,
       cell: ({ getValue }) => {
         const s = getValue<PaymentStatus>()

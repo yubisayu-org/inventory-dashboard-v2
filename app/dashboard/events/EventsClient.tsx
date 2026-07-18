@@ -123,6 +123,7 @@ export default function EventsClient() {
     {
       accessorKey: "name",
       header: "Event Name",
+      size: 200,
       filterFn: "textContains",
       enableHiding: false,
       cell: ({ getValue }) => (
@@ -132,6 +133,7 @@ export default function EventsClient() {
     {
       accessorKey: "eta",
       header: "ETA",
+      size: 120,
       filterFn: "textContains",
       cell: ({ getValue }) => {
         const v = getValue<string>()
@@ -141,6 +143,7 @@ export default function EventsClient() {
     {
       accessorKey: "warehouseId",
       header: "Gudang",
+      size: 110,
       filterFn: "textContains",
       cell: ({ getValue }) => {
         const wh = warehouseById.get(getValue<number>())
@@ -152,6 +155,7 @@ export default function EventsClient() {
     {
       accessorKey: "countryName",
       header: "Country",
+      size: 150,
       filterFn: "textContains",
       cell: ({ row }) => {
         const { countryName, currency } = row.original
@@ -163,6 +167,7 @@ export default function EventsClient() {
     {
       accessorKey: "createdAt",
       header: "Created",
+      size: 110,
       enableColumnFilter: false,
       cell: ({ getValue }) => {
         const v = getValue<string | null>()
@@ -172,6 +177,7 @@ export default function EventsClient() {
     {
       accessorKey: "updatedAt",
       header: "Updated",
+      size: 110,
       enableColumnFilter: false,
       cell: ({ getValue }) => {
         const v = getValue<string | null>()

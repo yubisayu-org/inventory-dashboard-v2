@@ -140,6 +140,7 @@ export default function RefundsClient() {
     {
       accessorKey: "customer",
       header: "Customer",
+      size: 180,
       filterFn: "textContains",
       cell: ({ row }) => {
         const r = row.original
@@ -162,6 +163,7 @@ export default function RefundsClient() {
     {
       accessorKey: "event",
       header: "Event",
+      size: 130,
       filterFn: "textContains",
       cell: ({ getValue }) => <span className="text-gray-600">{getValue<string>()}</span>,
     },
@@ -169,6 +171,7 @@ export default function RefundsClient() {
       id: "reason",
       accessorFn: (r) => reasonLabel(r.reason),
       header: "Reason",
+      size: 150,
       filterFn: "textContains",
       cell: ({ getValue }) => <span className="text-gray-600">{getValue<string>()}</span>,
     },
@@ -176,6 +179,7 @@ export default function RefundsClient() {
       id: "amount",
       accessorFn: (r) => displayAmount(r),
       header: "Amount",
+      size: 150,
       filterFn: "numeric",
       meta: { align: "right" },
       cell: ({ getValue }) => (
@@ -186,6 +190,7 @@ export default function RefundsClient() {
       id: "status",
       accessorFn: (r) => STATUS_LABELS[r.status],
       header: "Status",
+      size: 150,
       filterFn: "textContains",
       cell: ({ row }) => (
         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${STATUS_COLORS[row.original.status]}`}>

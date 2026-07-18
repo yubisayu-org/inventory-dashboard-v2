@@ -228,6 +228,7 @@ export default function ProductsPageClient() {
     {
       accessorKey: "name",
       header: "Name",
+      size: 220,
       filterFn: "textContains",
       cell: ({ row }) => (
         <span className="inline-flex items-center gap-1">
@@ -239,6 +240,7 @@ export default function ProductsPageClient() {
     {
       accessorKey: "store",
       header: "Store",
+      size: 120,
       filterFn: "textContains",
       cell: ({ row }) => (
         <EditableStoreCell
@@ -251,6 +253,7 @@ export default function ProductsPageClient() {
     {
       accessorKey: "price",
       header: "Price",
+      size: 110,
       filterFn: "numeric",
       enableColumnFilter: false,
       cell: ({ row }) => <span className="tabular-nums font-medium">{fmt(row.original.price)}</span>,
@@ -259,6 +262,7 @@ export default function ProductsPageClient() {
     {
       id: "type",
       header: "Type",
+      size: 100,
       accessorFn: (row) => isAbroad(row) ? "Overseas" : "Domestic",
       filterFn: "textContains",
       cell: ({ row }) => {
@@ -273,12 +277,14 @@ export default function ProductsPageClient() {
     {
       accessorKey: "countryName",
       header: "Country",
+      size: 120,
       filterFn: "textContains",
       cell: ({ row }) => <span className="text-gray-600">{row.original.countryName || "—"}</span>,
     },
     {
       accessorKey: "valas",
       header: "Valas",
+      size: 90,
       filterFn: "numeric",
       enableColumnFilter: false,
       cell: ({ row }) => <span className="tabular-nums">{isAbroad(row.original) ? fmt(row.original.valas) : "—"}</span>,
@@ -287,6 +293,7 @@ export default function ProductsPageClient() {
     {
       accessorKey: "gram",
       header: "Gram",
+      size: 90,
       filterFn: "numeric",
       enableColumnFilter: false,
       cell: ({ row }) => <span className="tabular-nums">{row.original.gram ? fmt(row.original.gram) : "—"}</span>,
@@ -295,6 +302,7 @@ export default function ProductsPageClient() {
     {
       accessorKey: "kurs",
       header: "Kurs",
+      size: 90,
       filterFn: "numeric",
       enableColumnFilter: false,
       cell: ({ row }) => <span className="tabular-nums">{isAbroad(row.original) ? fmt(row.original.kurs) : "—"}</span>,
@@ -303,6 +311,7 @@ export default function ProductsPageClient() {
     {
       accessorKey: "cargoPerKg",
       header: "Cargo/kg",
+      size: 100,
       filterFn: "numeric",
       enableColumnFilter: false,
       cell: ({ row }) => <span className="tabular-nums">{isAbroad(row.original) ? fmt(row.original.cargoPerKg) : "—"}</span>,
@@ -311,6 +320,7 @@ export default function ProductsPageClient() {
     {
       accessorKey: "profitPct",
       header: "%",
+      size: 70,
       filterFn: "numeric",
       enableColumnFilter: false,
       cell: ({ row }) => <span className="tabular-nums">{isAbroad(row.original) ? `${row.original.profitPct}%` : "—"}</span>,
@@ -319,6 +329,7 @@ export default function ProductsPageClient() {
     {
       accessorKey: "operationalFee",
       header: "Op Fee",
+      size: 100,
       filterFn: "numeric",
       enableColumnFilter: false,
       cell: ({ row }) => <span className="tabular-nums">{isAbroad(row.original) ? fmt(row.original.operationalFee) : "—"}</span>,
@@ -327,6 +338,7 @@ export default function ProductsPageClient() {
     {
       accessorKey: "packingFee",
       header: "Pack Fee",
+      size: 100,
       filterFn: "numeric",
       enableColumnFilter: false,
       cell: ({ row }) => <span className="tabular-nums">{isAbroad(row.original) ? fmt(row.original.packingFee) : "—"}</span>,
@@ -335,6 +347,7 @@ export default function ProductsPageClient() {
     {
       accessorKey: "cost",
       header: "Base Cost",
+      size: 110,
       filterFn: "numeric",
       enableColumnFilter: false,
       cell: ({ row }) => <span className="tabular-nums">{!isAbroad(row.original) ? fmt(row.original.cost) : "—"}</span>,
@@ -343,6 +356,7 @@ export default function ProductsPageClient() {
     {
       accessorKey: "profitFixed",
       header: "Fixed Profit",
+      size: 110,
       filterFn: "numeric",
       enableColumnFilter: false,
       cell: ({ row }) => <span className="tabular-nums">{!isAbroad(row.original) ? fmt(row.original.profitFixed) : "—"}</span>,
@@ -351,16 +365,19 @@ export default function ProductsPageClient() {
     {
       accessorKey: "createdAt",
       header: "Created",
+      size: 110,
       enableColumnFilter: false,
     },
     {
       accessorKey: "updatedAt",
       header: "Updated",
+      size: 110,
       enableColumnFilter: false,
     },
     {
       id: "actions",
       header: "",
+      size: 80,
       enableSorting: false,
       enableColumnFilter: false,
       enableHiding: false,

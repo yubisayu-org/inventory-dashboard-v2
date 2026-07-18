@@ -93,6 +93,7 @@ export default function CountriesClient() {
     {
       accessorKey: "name",
       header: "Country",
+      size: 160,
       filterFn: "textContains",
       cell: ({ getValue }) => (
         <span className="font-medium">{getValue<string>()}</span>
@@ -101,6 +102,7 @@ export default function CountriesClient() {
     {
       accessorKey: "currency",
       header: "Currency",
+      size: 110,
       filterFn: "textContains",
       cell: ({ getValue }) => (
         <span className="text-gray-600">{getValue<string>()}</span>
@@ -109,6 +111,7 @@ export default function CountriesClient() {
     {
       accessorKey: "kurs",
       header: "Kurs (IDR)",
+      size: 130,
       filterFn: "numeric",
       meta: { align: "right" },
       cell: ({ getValue }) => (
@@ -118,6 +121,7 @@ export default function CountriesClient() {
     {
       accessorKey: "cargoPerKg",
       header: "Cargo / kg",
+      size: 120,
       filterFn: "numeric",
       meta: { align: "right" },
       cell: ({ getValue }) => (
@@ -127,6 +131,7 @@ export default function CountriesClient() {
     {
       accessorKey: "createdAt",
       header: "Created",
+      size: 110,
       enableColumnFilter: false,
       cell: ({ getValue }) => {
         const v = getValue<string | null>()
@@ -136,6 +141,7 @@ export default function CountriesClient() {
     {
       accessorKey: "updatedAt",
       header: "Updated",
+      size: 110,
       enableColumnFilter: false,
       cell: ({ getValue }) => {
         const v = getValue<string | null>()

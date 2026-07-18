@@ -228,17 +228,20 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
     {
       accessorKey: "event",
       header: "Event",
+      size: 130,
       filterFn: "textContains",
     },
     {
       accessorKey: "customer",
       header: "Customer",
+      size: 160,
       filterFn: "textContains",
       cell: ({ getValue }) => <span>{displayIg(getValue<string>())}</span>,
     },
     {
       accessorKey: "amount",
       header: "Amount",
+      size: 130,
       enableColumnFilter: false,
       meta: { align: "right" },
       cell: ({ row }) => (
@@ -248,6 +251,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
     {
       accessorKey: "kind",
       header: "Type",
+      size: 100,
       enableColumnFilter: false,
       cell: ({ getValue }) => {
         const k = getValue<PaymentRow["kind"]>()
@@ -265,6 +269,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
     {
       accessorKey: "account",
       header: "Account",
+      size: 120,
       filterFn: "textContains",
       cell: ({ row }) => (
         <span className="text-gray-500">{row.original.account || "—"}</span>
@@ -289,6 +294,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
     {
       accessorKey: "payDate",
       header: "Date",
+      size: 100,
       enableColumnFilter: false,
       cell: ({ row }) => (
         <span className="text-gray-500 text-xs whitespace-nowrap">
@@ -299,12 +305,14 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
     {
       accessorKey: "remarks",
       header: "Remarks",
+      size: 200,
       filterFn: "textContains",
       cell: ({ row }) => <InlineRemarks row={row.original} onSave={handleSaveRemarks} />,
     },
     {
       accessorKey: "createdAt",
       header: "Created",
+      size: 110,
       enableColumnFilter: false,
       cell: ({ row }) => (
         <span className="text-gray-400 text-xs whitespace-nowrap">{row.original.createdAt}</span>
@@ -313,6 +321,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
     {
       accessorKey: "updatedAt",
       header: "Updated",
+      size: 110,
       enableColumnFilter: false,
       enableHiding: true,
     },

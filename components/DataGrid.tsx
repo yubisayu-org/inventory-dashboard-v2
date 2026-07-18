@@ -360,7 +360,7 @@ export default function DataGrid<T>({
               </svg>
             </div>
           )}
-          <table className="w-full text-sm" style={{ tableLayout: "auto" }}>
+          <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
             <thead>
               {table.getHeaderGroups().map((hg) => (
                 <tr key={hg.id} className={`text-left text-xs text-gray-500 border-b border-cream-border bg-cream ${boldUppercaseHeader ? "uppercase" : ""}`}>
@@ -445,7 +445,7 @@ export default function DataGrid<T>({
                     {row.getVisibleCells().map((cell) => {
                       const align = (cell.column.columnDef.meta as { align?: string } | undefined)?.align
                       return (
-                        <td key={cell.id} className={`px-4 py-3 ${align === "right" ? "text-right" : ""}`}>
+                        <td key={cell.id} className={`px-4 py-3 overflow-hidden ${align === "right" ? "text-right" : ""}`}>
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
                         </td>
                       )

@@ -240,30 +240,35 @@ export default function OperationalExpensesClient() {
     {
       accessorKey: "event",
       header: "Event",
+      size: 130,
       filterFn: "textContains",
       cell: ({ row }) => <span className="font-medium whitespace-nowrap">{row.original.event}</span>,
     },
     {
       accessorKey: "expenseDate",
       header: "Date",
+      size: 100,
       enableColumnFilter: false,
       cell: ({ row }) => <span className="whitespace-nowrap text-gray-600">{formatDate(row.original.expenseDate)}</span>,
     },
     {
       accessorKey: "description",
       header: "Expenses",
+      size: 180,
       enableColumnFilter: false,
       cell: ({ row }) => <span className="whitespace-nowrap">{row.original.description || "—"}</span>,
     },
     {
       accessorKey: "category",
       header: "Category",
+      size: 120,
       filterFn: "textContains",
       cell: ({ row }) => <CategoryBadge category={row.original.category} />,
     },
     {
       accessorKey: "amountForeign",
       header: "VLS",
+      size: 100,
       filterFn: "numeric",
       enableColumnFilter: false,
       cell: ({ row }) => <span className="tabular-nums">{fmt(row.original.amountForeign)}</span>,
@@ -272,6 +277,7 @@ export default function OperationalExpensesClient() {
     {
       accessorKey: "rate",
       header: "Kurs",
+      size: 90,
       filterFn: "numeric",
       enableColumnFilter: false,
       cell: ({ row }) => <span className="tabular-nums">{fmt(row.original.rate)}</span>,
@@ -280,6 +286,7 @@ export default function OperationalExpensesClient() {
     {
       accessorKey: "amountIdr",
       header: "IDR",
+      size: 120,
       filterFn: "numeric",
       enableColumnFilter: false,
       cell: ({ row }) => <span className="tabular-nums font-medium">{fmt(row.original.amountIdr)}</span>,
@@ -288,6 +295,7 @@ export default function OperationalExpensesClient() {
     {
       accessorKey: "isSettled",
       header: "Settle",
+      size: 90,
       filterFn: "boolean",
       cell: ({ row }) => (
         <SettleToggle row={row.original} onToggled={() => refreshRef.current()} />
@@ -297,21 +305,24 @@ export default function OperationalExpensesClient() {
     {
       accessorKey: "method",
       header: "Method",
+      size: 120,
       filterFn: "textContains",
       cell: ({ row }) => <span className="whitespace-nowrap text-gray-600">{row.original.method || "—"}</span>,
     },
     {
       accessorKey: "remarks",
       header: "Remarks",
+      size: 180,
       enableColumnFilter: false,
       enableSorting: false,
       cell: ({ row }) => <InlineRemarks row={row.original} onSaved={() => refreshRef.current()} />,
     },
-    { accessorKey: "createdAt", header: "Created", enableColumnFilter: false },
-    { accessorKey: "updatedAt", header: "Updated", enableColumnFilter: false },
+    { accessorKey: "createdAt", header: "Created", size: 110, enableColumnFilter: false },
+    { accessorKey: "updatedAt", header: "Updated", size: 110, enableColumnFilter: false },
     {
       id: "actions",
       header: "",
+      size: 100,
       enableSorting: false,
       enableColumnFilter: false,
       enableHiding: false,

@@ -75,7 +75,9 @@ function buildShipGroups(
     // orders/payments tied to this event yet) — keeps physically-ready cards
     // out of "Siap Dikirim" by default rather than slipping through.
     const paymentStatus: PaymentStatus = paymentMap.get(`${customerKey}|${event}`) ?? "unpaid"
-    const paymentClear = paymentStatus === "paid" || paymentStatus === "overpaid"
+    // "void" counts as clear: a zeroed invoice (e.g. offset by a Personal
+    // Expense adjustment) has nothing to pay, so payment can't block shipping.
+    const paymentClear = paymentStatus === "paid" || paymentStatus === "overpaid" || paymentStatus === "void"
     // "hold" wins over ready/shipped when any unit is parked — the customer
     // asked to wait, so we surface that even if some other units already went out.
     const status: ShipStatus = !anyArrived

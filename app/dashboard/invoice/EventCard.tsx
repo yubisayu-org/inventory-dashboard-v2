@@ -33,16 +33,16 @@ export function EventCard({
   return (
     <div className="rounded-xl border border-cream-border bg-white overflow-hidden">
       {/* Header */}
-      <div className="px-5 py-4 bg-cream border-b border-cream-border">
+      <div className="px-5 py-4 bg-brand">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-1.5">
-            <span className="text-sm font-semibold text-foreground">{displayIg(customer).toUpperCase()}</span>
+            <span className="text-sm font-semibold text-white">{displayIg(customer).toUpperCase()}</span>
             {customerDetail && (
               <button
                 type="button"
                 onClick={() => setInfoOpen(true)}
                 aria-label="Customer info"
-                className="text-gray-400 hover:text-brand transition-colors"
+                className="text-white/60 hover:text-white transition-colors"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="10" />
@@ -55,19 +55,19 @@ export function EventCard({
           {infoOpen && customerDetail && (
             <CustomerInfoModal customer={customer} detail={customerDetail} onClose={() => setInfoOpen(false)} />
           )}
-          <div className="flex flex-wrap items-center gap-2 text-sm text-foreground">
+          <div className="flex flex-wrap items-center gap-2 text-sm text-white">
             <span className="font-medium">{event.eventId}</span>
-            {eta && <span className="text-gray-500">• {eta}</span>}
+            {eta && <span className="text-white/70">• {eta}</span>}
           </div>
           {status && (
-            <div className="text-xs text-gray-500">
-              <span className="font-medium text-foreground">Status:</span> {status}
+            <div className="text-xs text-white/80">
+              <span className="font-medium text-white">Status:</span> {status}
             </div>
           )}
           {showShipments &&
             shipments.map((s, i) => (
-              <div key={i} className="text-xs text-gray-500">
-                <span className="font-medium text-foreground">
+              <div key={i} className="text-xs text-white/80">
+                <span className="font-medium text-white">
                   Resi{shipmentCount > 1 ? ` ${i + 1}/${shipmentCount}` : ""}:
                 </span>{" "}
                 <span className="font-mono">{s.resi}</span>
@@ -81,7 +81,7 @@ export function EventCard({
       <div className="hidden md:block overflow-x-auto">
         <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
           <thead>
-            <tr className="text-left text-xs text-gray-500 border-b border-cream-border">
+            <tr className="text-left text-xs font-semibold text-brand border-b border-cream-border bg-cream">
               <th className="px-4 py-2 font-medium relative select-none" style={{ width: widths.order }}>
                 Order
                 <div onMouseDown={(e) => startResize("order", e)} className="absolute inset-y-0 right-0 w-1 cursor-col-resize hover:bg-brand/30 active:bg-brand/60" />

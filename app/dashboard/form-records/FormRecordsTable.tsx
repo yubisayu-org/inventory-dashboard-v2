@@ -160,17 +160,20 @@ export default function FormRecordsTable({ role }: { role: Role | null }) {
     {
       accessorKey: "event",
       header: "Event",
+      size: 130,
       filterFn: "textContains",
     },
     {
       accessorKey: "customer",
       header: "Customer",
+      size: 150,
       filterFn: "textContains",
       cell: ({ getValue }) => <span>{displayIg(getValue<string>())}</span>,
     },
     {
       accessorKey: "items",
       header: "Item",
+      size: 180,
       filterFn: "textContains",
       enableHiding: false,
     },
@@ -195,6 +198,7 @@ export default function FormRecordsTable({ role }: { role: Role | null }) {
     {
       accessorKey: "receipt",
       header: "Receipt",
+      size: 140,
       enableColumnFilter: false,
       cell: ({ row }) => isOwner
         ? <InlineReceipt row={row.original} onSave={handleSaveReceipt} />
@@ -236,18 +240,21 @@ export default function FormRecordsTable({ role }: { role: Role | null }) {
     {
       accessorKey: "note",
       header: "Note",
+      size: 160,
       enableColumnFilter: false,
       cell: ({ getValue }) => <span className="text-gray-500 text-xs">{getValue<string>() || "—"}</span>,
     },
     {
       accessorKey: "createdAt",
       header: "Created At",
+      size: 110,
       enableColumnFilter: false,
       cell: ({ getValue }) => <span className="text-gray-400 text-xs whitespace-nowrap">{getValue<string>() || "—"}</span>,
     },
     {
       accessorKey: "updatedAt",
       header: "Updated At",
+      size: 110,
       enableColumnFilter: false,
       cell: ({ getValue }) => <span className="text-gray-400 text-xs whitespace-nowrap">{getValue<string>() || "—"}</span>,
     },

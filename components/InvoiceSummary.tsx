@@ -27,7 +27,7 @@ export default function InvoiceSummary({
   return (
     <div className={`${leftPadding} pr-5 py-4 bg-cream/30 border-t border-cream-border`}>
       <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
-        <div className="text-sm font-semibold text-foreground">Invoice</div>
+        <div className="text-sm font-semibold text-brand">Invoice</div>
         {actions}
       </div>
       <dl className="text-sm">

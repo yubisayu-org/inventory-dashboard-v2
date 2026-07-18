@@ -210,11 +210,13 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
     {
       accessorKey: "event",
       header: "Event",
+      size: 130,
       filterFn: "textContains",
     },
     {
       accessorKey: "customer",
       header: "Customer",
+      size: 160,
       filterFn: "textContains",
       cell: ({ row }) => (
         <span className="inline-flex items-center gap-1.5">
@@ -226,6 +228,7 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
     {
       accessorKey: "items",
       header: "Item",
+      size: 180,
       filterFn: "textContains",
       enableHiding: false,
     },
@@ -291,12 +294,14 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
     {
       accessorKey: "createdAt",
       header: "Created At",
+      size: 110,
       enableColumnFilter: false,
       cell: ({ getValue }) => <span className="text-gray-400 text-xs whitespace-nowrap">{getValue<string>() || "—"}</span>,
     },
     {
       accessorKey: "updatedAt",
       header: "Updated At",
+      size: 110,
       enableColumnFilter: false,
       cell: ({ getValue }) => <span className="text-gray-400 text-xs whitespace-nowrap">{getValue<string>() || "—"}</span>,
     },

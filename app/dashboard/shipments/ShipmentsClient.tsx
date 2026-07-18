@@ -16,6 +16,7 @@ import DataGrid, {
   type ColumnDef,
   type RowSelectionState,
 } from "@/components/DataGrid"
+import { InvoiceDetailDrawer } from "@/app/dashboard/invoice/InvoiceDetailDrawer"
 
 const fmt = (n: number) => n.toLocaleString("id-ID")
 
@@ -84,7 +85,8 @@ function CopyShipmentMessageButton({ record }: { record: DisplayShipment }) {
     return () => clearTimeout(timer)
   }, [state.status])
 
-  async function handleClick() {
+  async function handleClick(e: React.MouseEvent) {
+    e.stopPropagation()
     setState({ status: "loading" })
     try {
       // Skip the customer fetch when the shipment carries its own temp address —
@@ -488,10 +490,11 @@ export default function ShipmentsClient() {
   const [printingPdf, setPrintingPdf] = useState(false)
   const [labelRecord, setLabelRecord] = useState<DisplayShipment | null>(null)
   const [editResiRecord, setEditResiRecord] = useState<DisplayShipment | null>(null)
+  const [invoiceCustomer, setInvoiceCustomer] = useState<string | null>(null)
   const [editTempRecord, setEditTempRecord] = useState<DisplayShipment | null>(null)
   // Bound the default fetch to recent shipments so the payload stays small as
   // history grows; "all" loads everything on demand.
-  const [windowDays, setWindowDays] = useState<string>("90")
+  const [windowDays, setWindowDays] = useState<string>("1")
 
   async function load(days: string = windowDays) {
     setLoading(true)
@@ -603,11 +606,11 @@ export default function ShipmentsClient() {
           const r = row.original
           return (
             <span className="inline-flex items-center gap-1.5">
-              <span>{displayIg(r.customer)}</span>
+              <span className="line-clamp-2">{displayIg(r.customer)}</span>
               {r.tempAddress ? (
                 <button
                   type="button"
-                  onClick={() => setEditTempRecord(r)}
+                  onClick={(e) => { e.stopPropagation(); setEditTempRecord(r) }}
                   title={`Alamat sementara:\n${r.tempAddress}`}
                   className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-purple-100 text-purple-700 hover:bg-purple-200 transition-colors"
                 >
@@ -620,7 +623,7 @@ export default function ShipmentsClient() {
               ) : (
                 <button
                   type="button"
-                  onClick={() => setEditTempRecord(r)}
+                  onClick={(e) => { e.stopPropagation(); setEditTempRecord(r) }}
                   title="Set alamat sementara untuk shipment ini"
                   className="p-0.5 rounded text-gray-300 hover:text-purple-600 transition-colors"
                 >
@@ -641,7 +644,7 @@ export default function ShipmentsClient() {
         size: 160,
         cell: ({ getValue }) => {
           const v = getValue<string>()
-          return <span className={v ? "" : "text-gray-400"}>{v || "—"}</span>
+          return <span className={`line-clamp-2 ${v ? "" : "text-gray-400"}`}>{v || "—"}</span>
         },
       },
       {
@@ -651,9 +654,9 @@ export default function ShipmentsClient() {
         size: 220,
         enableSorting: false,
         cell: ({ getValue }) => (
-          <pre className="whitespace-pre-wrap font-sans text-xs text-gray-600 leading-relaxed max-w-[200px]">
+          <span className="whitespace-pre-wrap font-sans text-xs text-gray-600 leading-relaxed max-w-[200px] line-clamp-2">
             {getValue<string>()}
-          </pre>
+          </span>
         ),
       },
       {
@@ -702,7 +705,7 @@ export default function ShipmentsClient() {
           return (
             <button
               type="button"
-              onClick={() => setEditResiRecord(record)}
+              onClick={(e) => { e.stopPropagation(); setEditResiRecord(record) }}
               className="group flex items-center gap-1.5 text-left"
             >
               <span
@@ -761,7 +764,7 @@ export default function ShipmentsClient() {
             <CopyShipmentMessageButton record={row.original} />
             <button
               type="button"
-              onClick={() => setLabelRecord(row.original)}
+              onClick={(e) => { e.stopPropagation(); setLabelRecord(row.original) }}
               title="Lihat label pengiriman"
               className="p-1 text-gray-400 hover:text-brand transition-colors rounded"
             >
@@ -841,9 +844,9 @@ export default function ShipmentsClient() {
         title="Rentang waktu shipment yang dimuat"
         className="text-xs text-gray-600 bg-white border border-cream-border rounded-lg px-2 py-1.5 hover:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand disabled:opacity-50 transition-colors"
       >
-        <option value="90">90 hari terakhir</option>
-        <option value="180">180 hari terakhir</option>
-        <option value="365">1 tahun terakhir</option>
+        <option value="1">24 jam terakhir</option>
+        <option value="7">Minggu terakhir</option>
+        <option value="30">Bulan terakhir</option>
         <option value="all">Semua</option>
       </select>
       {selectedCount > 0 && (
@@ -883,25 +886,7 @@ export default function ShipmentsClient() {
           {error}
         </div>
       )}
-      {!loading && !error && data?.length === 0 && (
-        <div className="rounded-xl border border-cream-border bg-white p-12 text-center text-gray-400 text-sm">
-          {windowDays === "all" ? (
-            "No shipments yet."
-          ) : (
-            <span className="inline-flex flex-col items-center gap-2">
-              Tidak ada shipment dalam rentang ini.
-              <button
-                type="button"
-                onClick={() => setWindowDays("all")}
-                className="text-xs font-medium text-brand hover:underline"
-              >
-                Muat semua shipment
-              </button>
-            </span>
-          )}
-        </div>
-      )}
-      {!loading && !error && data && data.length > 0 && (
+      {!loading && !error && data && (
         <DataGrid<DisplayShipment>
           data={displayData}
           columns={columns}
@@ -915,12 +900,31 @@ export default function ShipmentsClient() {
           enableRowSelection
           rowSelection={rowSelection}
           onRowSelectionChange={setRowSelection}
+          onRowClick={(row) => setInvoiceCustomer(row.customer)}
           initialVisibility={{ updatedAt: false, isLastShipment: false, createdAt: false }}
           initialSorting={[{ id: "createdAt", desc: true }]}
           renderMobileCard={renderMobileCard}
         />
       )}
+      {!loading && !error && data && data.length === 0 && windowDays !== "all" && (
+        <div className="text-center text-sm text-gray-400 -mt-1">
+          Tidak ada shipment dalam rentang ini.{" "}
+          <button
+            type="button"
+            onClick={() => setWindowDays("all")}
+            className="font-medium text-brand hover:underline"
+          >
+            Muat semua shipment
+          </button>
+        </div>
+      )}
 
+      {invoiceCustomer && (
+        <InvoiceDetailDrawer
+          customer={invoiceCustomer}
+          onClose={() => setInvoiceCustomer(null)}
+        />
+      )}
       {labelRecord && (
         <LabelModal record={labelRecord} onClose={() => setLabelRecord(null)} />
       )}
