@@ -7,8 +7,8 @@ import type { SheetOptions, ItemOption, OrderRow, FormRow, ExcessRow, ExcessReas
 
 export async function getSheetOptions(): Promise<SheetOptions> {
   const [eventsRows, productRows, customerRows] = await Promise.all([
-    sql`SELECT name FROM events ORDER BY created_at DESC, id DESC`,
-    sql`SELECT id, name, store, price FROM products WHERE name != '' ORDER BY name`,
+    sql`SELECT name, is_active FROM events ORDER BY created_at DESC, id DESC`,
+    sql`SELECT id, name, store, price, is_active FROM products WHERE name != '' ORDER BY name`,
     sql`
       SELECT instagram_id FROM customers
       WHERE instagram_id NOT LIKE '\\_old%' AND instagram_id != 'gantialamat'
@@ -26,7 +26,8 @@ export async function getSheetOptions(): Promise<SheetOptions> {
 
   return {
     events: eventsRows.map((r) => r.name),
-    items: productRows.map((r) => ({ id: r.id, name: r.name, store: r.store, price: r.price })),
+    activeEvents: eventsRows.filter((r) => r.is_active).map((r) => r.name),
+    items: productRows.map((r) => ({ id: r.id, name: r.name, store: r.store, price: r.price, active: r.is_active })),
     customers,
   }
 }

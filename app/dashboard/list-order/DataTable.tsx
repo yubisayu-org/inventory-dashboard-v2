@@ -739,7 +739,8 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
     [options],
   )
   const itemOptions = useMemo(
-    () => (options?.items ?? []).map((it) => ({
+    // Inactive products are hidden from the Order-input item picker only.
+    () => (options?.items ?? []).filter((it) => it.active).map((it) => ({
       value: String(it.id),
       label: it.name,
       meta: `Rp ${fmt(it.price)}`,
@@ -829,7 +830,7 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
             <label className="text-xs text-gray-500 mb-1 block">Event</label>
-            <EventSelect value={form.event} onChange={(v) => setForm((f) => ({ ...f, event: v }))} events={options?.events ?? []} />
+            <EventSelect value={form.event} onChange={(v) => setForm((f) => ({ ...f, event: v }))} events={options?.activeEvents ?? []} />
           </div>
           <div>
             <label className="text-xs text-gray-500 mb-1 block">Customer</label>
@@ -1078,7 +1079,8 @@ function AddOrderForm({ options, onOrderAdded }: {
     [options],
   )
   const itemOptions = useMemo(
-    () => (options?.items ?? []).map((it) => ({
+    // Inactive products are hidden from the Order-input item picker only.
+    () => (options?.items ?? []).filter((it) => it.active).map((it) => ({
       value: String(it.id),
       label: it.name,
       meta: `Rp ${fmt(it.price)}`,
@@ -1133,7 +1135,7 @@ function AddOrderForm({ options, onOrderAdded }: {
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
           <label className={LABEL}>Event <span className="text-brand">*</span></label>
-          <EventSelect value={event} onChange={(v) => { setEvent(v); setFeedback(null) }} events={options?.events ?? []} placeholder="Select event…" />
+          <EventSelect value={event} onChange={(v) => { setEvent(v); setFeedback(null) }} events={options?.activeEvents ?? []} placeholder="Select event…" />
         </div>
         <div>
           <label className={LABEL}>Customer <span className="text-brand">*</span></label>

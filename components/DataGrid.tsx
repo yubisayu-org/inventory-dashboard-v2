@@ -167,6 +167,9 @@ interface DataGridProps<T> {
   /** Make rows clickable (e.g. open a detail modal). Controls inside a row
    *  should call e.stopPropagation() to avoid also triggering this. */
   onRowClick?: (row: T) => void
+  /** Optional extra class per row, derived from its data (e.g. dim inactive
+   *  rows). Applied to the `<tr>` alongside the base row classes. */
+  rowClassName?: (row: T) => string
   /** Server-side mode configuration */
   serverSide?: ServerSideConfig
   /** Optional per-row mobile card renderer. When provided, the table becomes
@@ -209,6 +212,7 @@ export default function DataGrid<T>({
   rowSelection: controlledRowSelection,
   onRowSelectionChange,
   onRowClick,
+  rowClassName,
   serverSide,
   renderMobileCard,
   renderExpandedRow,
@@ -414,7 +418,7 @@ export default function DataGrid<T>({
                   <Fragment key={row.id}>
                   <tr
                     onClick={onRowClick ? () => onRowClick(row.original) : undefined}
-                    className={`border-b border-cream-border/60 transition-colors ${enableRowSelection && row.getIsSelected() ? "bg-brand-light/20" : "hover:bg-cream/30"} ${onRowClick ? "cursor-pointer" : ""} ${isExpanded ? "bg-cream/30" : ""}`}
+                    className={`border-b border-cream-border/60 transition-colors ${enableRowSelection && row.getIsSelected() ? "bg-brand-light/20" : "hover:bg-cream/30"} ${onRowClick ? "cursor-pointer" : ""} ${isExpanded ? "bg-cream/30" : ""} ${rowClassName?.(row.original) ?? ""}`}
                   >
                     {renderExpandedRow && (
                       <td className="pl-3 pr-0 py-3">

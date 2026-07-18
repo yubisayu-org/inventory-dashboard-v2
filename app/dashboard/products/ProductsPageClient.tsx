@@ -9,6 +9,7 @@ import DataGrid, {
   type PaginationState,
 } from "@/components/DataGrid"
 import { usePaginatedFetch, type PageData } from "@/hooks/usePaginatedFetch"
+import ToggleSwitch from "@/components/ToggleSwitch"
 import SearchableSelect from "@/components/SearchableSelect"
 import { calcAbroadPrice, calcDomesticPrice, abroadProfit } from "@/lib/pricing"
 import { useCopyFeedback } from "@/hooks/useCopyFeedback"
@@ -215,6 +216,23 @@ export default function ProductsPageClient() {
     setData((rows) => rows.map((r) => (r.id === row.id ? { ...r, store } : r)))
   }, [])
 
+  // Optimistic active/inactive flip: update the page row immediately, revert if
+  // the PATCH fails. Inactive products drop out of the List Order item picker.
+  const handleToggleActive = useCallback(async (row: ProductRow, next: boolean) => {
+    setData((rows) => rows.map((r) => (r.id === row.id ? { ...r, isActive: next } : r)))
+    try {
+      const res = await fetch(`/api/sheets/products/${row.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: next }),
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Failed")
+    } catch (err) {
+      setData((rows) => rows.map((r) => (r.id === row.id ? { ...r, isActive: !next } : r)))
+      alert(err instanceof Error ? err.message : "Failed to update")
+    }
+  }, [])
+
   // Mobile sort toggle reads/writes the `id` sort direction.
   const mobileIdDesc = (sorting.find((s) => s.id === "id")?.desc) ?? true
 
@@ -234,6 +252,9 @@ export default function ProductsPageClient() {
         <span className="inline-flex items-center gap-1">
           <span className="font-medium whitespace-nowrap">{row.original.name}</span>
           <CopyButton value={`${row.original.name} ${fmt(row.original.price)}`} label="Copy name & price" />
+          {!row.original.isActive && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-500 border border-gray-200 whitespace-nowrap">Inactive</span>
+          )}
         </span>
       ),
     },
@@ -375,6 +396,21 @@ export default function ProductsPageClient() {
       enableColumnFilter: false,
     },
     {
+      id: "active",
+      header: "Active",
+      size: 90,
+      enableSorting: false,
+      enableColumnFilter: false,
+      enableHiding: false,
+      cell: ({ row }) => (
+        <ToggleSwitch
+          checked={row.original.isActive}
+          onChange={(next) => handleToggleActive(row.original, next)}
+          label={`Toggle ${row.original.name} active`}
+        />
+      ),
+    },
+    {
       id: "actions",
       header: "",
       size: 80,
@@ -392,7 +428,7 @@ export default function ProductsPageClient() {
         />
       ),
     },
-  ], [countries, stores, handleDuplicate, handleStoreSave])
+  ], [countries, stores, handleDuplicate, handleStoreSave, handleToggleActive])
 
   const errorMsg = fetchState.error || metaError
 
@@ -452,6 +488,7 @@ export default function ProductsPageClient() {
             createdAt: false,
             updatedAt: false,
           }}
+          rowClassName={(row) => (row.isActive ? "" : "opacity-60")}
           serverSide={{
             rowCount: totalCount,
             loading: fetchState.loading,
@@ -497,12 +534,15 @@ export default function ProductsPageClient() {
         {data.map((p) => {
           const abroad = isAbroad(p)
           return (
-            <div key={p.id} className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+            <div key={p.id} className={`rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] ${p.isActive ? "" : "opacity-60"}`}>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="font-semibold text-foreground text-sm flex items-start gap-1">
                     <span className="min-w-0 break-words">{p.name}</span>
                     <CopyButton value={`${p.name} ${fmt(p.price)}`} label="Copy name & price" />
+                    {!p.isActive && (
+                      <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-500 border border-gray-200">Inactive</span>
+                    )}
                   </div>
                   <div className="text-[12.5px] text-gray-400 uppercase mt-0.5">{p.store || "—"}</div>
                 </div>
@@ -511,9 +551,16 @@ export default function ProductsPageClient() {
                 </span>
               </div>
               <div className="flex items-center justify-between gap-3 mt-2.5 pt-2.5 border-t border-cream-border">
-                <span className="text-xs text-gray-400 min-w-0 truncate">
-                  {abroad ? (p.countryName || "—") : "Domestic"}{p.gram ? ` · ${fmt(p.gram)} g` : ""}{abroad ? ` · Valas ${fmt(p.valas)}` : ""}
-                </span>
+                <div className="flex items-center gap-2 min-w-0">
+                  <ToggleSwitch
+                    checked={p.isActive}
+                    onChange={(next) => handleToggleActive(p, next)}
+                    label={`Toggle ${p.name} active`}
+                  />
+                  <span className="text-xs text-gray-400 min-w-0 truncate">
+                    {abroad ? (p.countryName || "—") : "Domestic"}{p.gram ? ` · ${fmt(p.gram)} g` : ""}
+                  </span>
+                </div>
                 <div className="flex items-center gap-2.5 shrink-0">
                   <span className="text-brand font-bold tabular-nums whitespace-nowrap">Rp {fmt(p.price)}</span>
                   <ProductActions

@@ -4,6 +4,7 @@ import TableSkeleton from "@/components/TableSkeleton"
 import { useEffect, useMemo, useRef, useState } from "react"
 import type { EventRow, WarehouseRow, CountryRow, EventPerformance } from "@/lib/db"
 import DataGrid, { type ColumnDef } from "@/components/DataGrid"
+import ToggleSwitch from "@/components/ToggleSwitch"
 import EventPerformancePanel from "./EventPerformancePanel"
 
 const EMPTY_FORM = { name: "", eta: "", warehouseId: "", countryId: "" }
@@ -119,6 +120,23 @@ export default function EventsClient() {
     }
   }
 
+  // Optimistic active/inactive flip: update the row immediately, revert if the
+  // PATCH fails. Inactive events drop out of the List Order event picker.
+  async function handleToggleActive(row: EventRow, next: boolean) {
+    setData((prev) => prev?.map((r) => (r.id === row.id ? { ...r, isActive: next } : r)) ?? null)
+    try {
+      const res = await fetch(`/api/sheets/events/${row.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: next }),
+      })
+      if (!res.ok) throw new Error((await res.json()).error ?? "Failed")
+    } catch (err) {
+      setData((prev) => prev?.map((r) => (r.id === row.id ? { ...r, isActive: !next } : r)) ?? null)
+      alert(err instanceof Error ? err.message : "Failed to update")
+    }
+  }
+
   const columns = useMemo<ColumnDef<EventRow, unknown>[]>(() => [
     {
       accessorKey: "name",
@@ -126,8 +144,13 @@ export default function EventsClient() {
       size: 200,
       filterFn: "textContains",
       enableHiding: false,
-      cell: ({ getValue }) => (
-        <span className="font-medium">{getValue<string>()}</span>
+      cell: ({ row }) => (
+        <span className="inline-flex items-center gap-1.5">
+          <span className="font-medium">{row.original.name}</span>
+          {!row.original.isActive && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-500 border border-gray-200">Inactive</span>
+          )}
+        </span>
       ),
     },
     {
@@ -183,6 +206,21 @@ export default function EventsClient() {
         const v = getValue<string | null>()
         return v ? <span className="text-gray-400 text-xs whitespace-nowrap">{v}</span> : ""
       },
+    },
+    {
+      id: "active",
+      header: "Active",
+      enableSorting: false,
+      enableColumnFilter: false,
+      enableHiding: false,
+      size: 90,
+      cell: ({ row }) => (
+        <ToggleSwitch
+          checked={row.original.isActive}
+          onChange={(next) => handleToggleActive(row.original, next)}
+          label={`Toggle ${row.original.name} active`}
+        />
+      ),
     },
     {
       id: "actions",
@@ -325,6 +363,7 @@ export default function EventsClient() {
               getRowId={(row) => String(row.id)}
               initialVisibility={{ createdAt: false, updatedAt: false }}
               initialSorting={[{ id: "name", desc: false }]}
+              rowClassName={(row) => (row.isActive ? "" : "opacity-60")}
               renderExpandedRow={(row) => <EventPerformancePanel perf={perfByName.get(row.name)} />}
             />
           </div>

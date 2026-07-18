@@ -9,10 +9,16 @@ export interface ItemOption {
   name: string
   store: string
   price: number
+  /** False when the product is deactivated — the List Order item picker drops
+   *  inactive items; every other picker ignores this flag and shows them all. */
+  active: boolean
 }
 
 export interface SheetOptions {
   events: string[]
+  /** Subset of `events` that are active. Only the List Order event picker uses
+   *  this; the other pickers keep using the full `events` list. */
+  activeEvents: string[]
   items: ItemOption[]
   customers: string[]
 }
@@ -377,6 +383,8 @@ export interface ProductRow {
   packingFee: number
   cost: number
   profitFixed: number
+  /** False when deactivated — hidden from the List Order item picker. */
+  isActive: boolean
   createdAt: string
   updatedAt: string
 }

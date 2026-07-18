@@ -54,7 +54,7 @@ export async function getProducts(): Promise<ProductRow[]> {
            p.country_id, COALESCE(c.name, '') AS country_name,
            p.valas, p.kurs, p.cargo_per_kg, p.profit_pct,
            p.operational_fee, p.packing_fee, p.cost, p.profit_fixed,
-           p.created_at, p.updated_at
+           p.is_active, p.created_at, p.updated_at
     FROM products p
     LEFT JOIN countries c ON c.id = p.country_id
     WHERE p.name != ''
@@ -77,6 +77,7 @@ export async function getProducts(): Promise<ProductRow[]> {
     packingFee: r.packing_fee ?? 5000,
     cost: r.cost ?? 0,
     profitFixed: r.profit_fixed ?? 0,
+    isActive: (r.is_active as boolean | undefined) ?? true,
     createdAt: tsToString(r.created_at),
     updatedAt: tsToString(r.updated_at),
   }))
@@ -101,6 +102,9 @@ function mapProductRow(r: Record<string, unknown>): ProductRow {
     packingFee: (r.packing_fee as number) ?? 5000,
     cost: (r.cost as number) ?? 0,
     profitFixed: (r.profit_fixed as number) ?? 0,
+    // Defaults true when the column is absent (e.g. products_indo mapping paths
+    // that never select it) so those rows stay usable.
+    isActive: (r.is_active as boolean | undefined) ?? true,
     createdAt: tsToString(r.created_at as Date | null),
     updatedAt: tsToString(r.updated_at as Date | null),
   }
@@ -191,7 +195,7 @@ export async function getProductsPaginated(opts: {
             p.country_id, COALESCE(c.name, '') AS country_name,
             p.valas, p.kurs, p.cargo_per_kg, p.profit_pct,
             p.operational_fee, p.packing_fee, p.cost, p.profit_fixed,
-            p.created_at, p.updated_at
+            p.is_active, p.created_at, p.updated_at
      FROM products p
      LEFT JOIN countries c ON c.id = p.country_id
      ${where}
@@ -376,6 +380,7 @@ export interface EventRow {
   countryName: string
   currency: string
   kurs: number
+  isActive: boolean
   createdAt: string
   updatedAt: string
 }
@@ -385,7 +390,7 @@ export async function getEvents(): Promise<EventRow[]> {
     SELECT e.id, e.name, e.eta, e.warehouse_id, e.country_id,
            COALESCE(c.name, '') AS country_name,
            COALESCE(c.currency, '') AS currency, c.kurs,
-           e.created_at, e.updated_at
+           e.is_active, e.created_at, e.updated_at
     FROM events e
     LEFT JOIN countries c ON c.id = e.country_id
     ORDER BY e.id DESC
@@ -400,9 +405,18 @@ export async function getEvents(): Promise<EventRow[]> {
     currency: (r.currency as string) ?? "",
     // kurs is NUMERIC(12,4) — postgres-js returns it as a string, so coerce.
     kurs: Number(r.kurs) || 0,
+    isActive: r.is_active as boolean,
     createdAt: tsToString(r.created_at),
     updatedAt: tsToString(r.updated_at),
   }))
+}
+
+export async function setEventActive(id: number, isActive: boolean, db: DBExecutor = sql): Promise<void> {
+  await db`UPDATE events SET is_active = ${isActive}, updated_at = NOW() WHERE id = ${id}`
+}
+
+export async function setProductActive(id: number, isActive: boolean, db: DBExecutor = sql): Promise<void> {
+  await db`UPDATE products SET is_active = ${isActive}, updated_at = NOW() WHERE id = ${id}`
 }
 
 export async function addEvent(data: {
