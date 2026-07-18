@@ -262,7 +262,7 @@ export default function FormRecordsTable({ role }: { role: Role | null }) {
   ], [isOwner, handleSaveReceipt])
 
   const renderMobileCard = useCallback((row: FormRow) => (
-    <div className="rounded-xl border border-cream-border bg-white p-3.5 flex flex-col gap-1.5">
+    <div className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] flex flex-col gap-1.5">
       <div className="flex items-center justify-between gap-2">
         <span className="text-sm font-semibold text-foreground truncate">{displayIg(row.customer)}</span>
         <span className="text-xs text-gray-400 shrink-0">{row.event}</span>
@@ -275,11 +275,11 @@ export default function FormRecordsTable({ role }: { role: Role | null }) {
         <span>Ship <span className="font-medium text-foreground">{fmtNum(row.unitShip)}</span></span>
       </div>
       {isOwner ? (
-        <div className="pt-1 border-t border-cream-border/60 mt-1">
+        <div className="pt-2.5 border-t border-cream-border mt-1">
           <InlineReceipt row={row} onSave={handleSaveReceipt} />
         </div>
       ) : row.receipt ? (
-        <div className="text-xs text-gray-500 pt-1 border-t border-cream-border/60 mt-1">{row.receipt}</div>
+        <div className="text-xs text-gray-500 pt-2.5 border-t border-cream-border mt-1">{row.receipt}</div>
       ) : null}
     </div>
   // eslint-disable-next-line react-hooks/exhaustive-deps

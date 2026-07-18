@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import type { EventRow, WarehouseRow, CountryRow, EventPerformance } from "@/lib/db"
 import DataGrid, { type ColumnDef } from "@/components/DataGrid"
 import ToggleSwitch from "@/components/ToggleSwitch"
+import MobileActionSheet from "@/components/MobileActionSheet"
 import EventPerformancePanel from "./EventPerformancePanel"
 
 const EMPTY_FORM = { name: "", eta: "", warehouseId: "", countryId: "" }
@@ -26,6 +27,7 @@ export default function EventsClient() {
   const [addError, setAddError] = useState<string | null>(null)
 
   const [editRow, setEditRow] = useState<EventRow | null>(null)
+  const [sheetRow, setSheetRow] = useState<EventRow | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [mobileAddOpen, setMobileAddOpen] = useState(false)
 
@@ -386,21 +388,25 @@ export default function EventsClient() {
                   >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`mt-0.5 shrink-0 text-gray-400 transition-transform ${isExpanded ? "rotate-90" : ""}`}><path d="m9 18 6-6-6-6" /></svg>
                     <span className="min-w-0">
-                      <span className="block font-semibold text-foreground truncate">{ev.name}</span>
-                      <span className={`block text-[12.5px] mt-0.5 ${ev.eta ? "text-gray-500" : "text-gray-400"}`}>
+                      <span className="block text-sm font-semibold text-foreground truncate">{ev.name}</span>
+                      <span className={`block text-xs mt-0.5 ${ev.eta ? "text-gray-500" : "text-gray-400"}`}>
                         {ev.eta ? `ETA ${ev.eta}` : "No ETA"}
                         {ev.countryName ? ` · ${ev.countryName} (${ev.currency})` : " · IDR"}
                       </span>
                     </span>
                   </button>
-                  <div className="flex gap-0.5 shrink-0">
-                    <button type="button" onClick={() => setEditRow(ev)} aria-label="Edit" className="p-2 rounded-lg text-gray-400 active:bg-cream active:text-brand transition-colors">
-                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" /></svg>
-                    </button>
-                    <button type="button" onClick={() => handleDelete(ev)} aria-label="Delete" className="p-2 rounded-lg text-gray-400 active:bg-cream active:text-red-500 transition-colors">
-                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
-                    </button>
-                  </div>
+                  {/* Kebab opens the action sheet — tapping the row body still
+                      expands/collapses the performance panel, unchanged. */}
+                  <button
+                    type="button"
+                    onClick={() => setSheetRow(ev)}
+                    aria-label="More actions"
+                    className="shrink-0 p-2 rounded-lg text-gray-400 active:bg-cream active:text-brand transition-colors"
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                      <circle cx="12" cy="5" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="12" cy="19" r="1.5" />
+                    </svg>
+                  </button>
                 </div>
                 {isExpanded && (
                   <div className="border-t border-cream-border">
@@ -482,6 +488,35 @@ export default function EventsClient() {
           onCancel={() => setEditRow(null)}
         />
       )}
+
+      {/* Mobile row action sheet */}
+      <MobileActionSheet
+        open={sheetRow != null}
+        onClose={() => setSheetRow(null)}
+        title={sheetRow?.name}
+        actions={sheetRow ? [
+          {
+            label: "Edit",
+            onClick: () => setEditRow(sheetRow),
+            icon: (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
+              </svg>
+            ),
+          },
+          {
+            label: "Delete",
+            destructive: true,
+            onClick: () => handleDelete(sheetRow),
+            icon: (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+              </svg>
+            ),
+          },
+        ] : []}
+      />
     </div>
   )
 }

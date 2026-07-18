@@ -203,7 +203,7 @@ export default function RefundsClient() {
   const renderMobileCard = useCallback((r: RefundRow) => {
     const msg = reviewMessage(r)
     return (
-      <div className="rounded-xl border border-cream-border bg-white p-3.5 flex items-center justify-between gap-3">
+      <div className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] flex items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">
             <span className="text-sm font-semibold text-foreground truncate">{displayIg(r.customer)}</span>

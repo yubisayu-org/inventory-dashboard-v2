@@ -10,7 +10,9 @@ import DataGrid, {
 } from "@/components/DataGrid"
 import { usePaginatedFetch, type PageData } from "@/hooks/usePaginatedFetch"
 import ToggleSwitch from "@/components/ToggleSwitch"
+import MobileActionSheet from "@/components/MobileActionSheet"
 import SearchableSelect from "@/components/SearchableSelect"
+import SearchInput from "@/components/SearchInput"
 import { calcAbroadPrice, calcDomesticPrice, abroadProfit } from "@/lib/pricing"
 import { useCopyFeedback } from "@/hooks/useCopyFeedback"
 
@@ -101,6 +103,11 @@ export default function ProductsPageClient() {
 
   const [addOpen, setAddOpen] = useState(false)
   const [mobileAddOpen, setMobileAddOpen] = useState(false)
+  // Mobile row action sheet + the edit modal it can open — separate from
+  // ProductActions' own internal edit state (which desktop's inline icons use).
+  const [sheetProduct, setSheetProduct] = useState<ProductRow | null>(null)
+  const [editingProduct, setEditingProduct] = useState<ProductRow | null>(null)
+  const [mobileDeleting, setMobileDeleting] = useState(false)
   // When set, the Add form pre-fills itself from this product (Duplicate flow).
   // The Add form clears this via onConsumeSeed once it has copied the values.
   const [seedProduct, setSeedProduct] = useState<ProductRow | null>(null)
@@ -170,6 +177,23 @@ export default function ProductsPageClient() {
   // After a mutation, refetch the current page and the meta (a new product may
   // introduce a store the autocomplete hasn't seen yet).
   const reloadAll = useCallback(() => { refreshRef.current(); loadMeta() }, [loadMeta])
+
+  // Mirrors ProductActions' own delete handler — used by the mobile action
+  // sheet, which triggers Delete without mounting a ProductActions instance.
+  const handleMobileDelete = useCallback(async (row: ProductRow) => {
+    if (!confirm(`Delete "${row.name}"?`)) return
+    setMobileDeleting(true)
+    try {
+      const res = await fetch(`/api/sheets/products/${row.id}`, { method: "DELETE" })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? "Failed")
+      refreshRef.current()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete")
+    } finally {
+      setMobileDeleting(false)
+    }
+  }, [])
 
   // Reset to page 1 whenever the query shape (sort / filter / search) changes.
   const handleSortingChange = useCallback((u: SortingState | ((p: SortingState) => SortingState)) => {
@@ -507,15 +531,12 @@ export default function ProductsPageClient() {
       {/* Mobile: search + sort + cards (server-driven) */}
       <div className="md:hidden flex flex-col gap-2.5">
         <div className="flex gap-2">
-          <div className="relative flex-1">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
-            <input
-              value={globalFilter}
-              onChange={(e) => handleGlobalFilterChange(e.target.value)}
-              placeholder="Search products or store…"
-              className="w-full border border-cream-border rounded-xl pl-9 pr-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
-            />
-          </div>
+          <SearchInput
+            value={globalFilter}
+            onChange={handleGlobalFilterChange}
+            placeholder="Search products or store…"
+            className="flex-1 min-w-0"
+          />
           <button
             type="button"
             onClick={() => handleSortingChange([{ id: "id", desc: !mobileIdDesc }])}
@@ -534,7 +555,11 @@ export default function ProductsPageClient() {
         {data.map((p) => {
           const abroad = isAbroad(p)
           return (
-            <div key={p.id} className={`rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] ${p.isActive ? "" : "opacity-60"}`}>
+            <div
+              key={p.id}
+              onClick={() => setSheetProduct(p)}
+              className={`rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] cursor-pointer active:bg-cream/40 transition-colors ${p.isActive ? "" : "opacity-60"}`}
+            >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="font-semibold text-foreground text-sm flex items-start gap-1">
@@ -544,7 +569,7 @@ export default function ProductsPageClient() {
                       <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-500 border border-gray-200">Inactive</span>
                     )}
                   </div>
-                  <div className="text-[12.5px] text-gray-400 uppercase mt-0.5">{p.store || "—"}</div>
+                  <div className="text-xs text-gray-500 uppercase mt-0.5">{p.store || "—"}</div>
                 </div>
                 <span className={`shrink-0 inline-block px-2 py-0.5 rounded-full text-[10px] font-medium ${abroad ? "bg-blue-50 text-blue-600" : "bg-green-50 text-green-600"}`}>
                   {abroad ? "Overseas" : "Domestic"}
@@ -561,17 +586,7 @@ export default function ProductsPageClient() {
                     {abroad ? (p.countryName || "—") : "Domestic"}{p.gram ? ` · ${fmt(p.gram)} g` : ""}
                   </span>
                 </div>
-                <div className="flex items-center gap-2.5 shrink-0">
-                  <span className="text-brand font-bold tabular-nums whitespace-nowrap">Rp {fmt(p.price)}</span>
-                  <ProductActions
-                    row={p}
-                    countries={countries}
-                    stores={stores}
-                    onUpdated={() => refreshRef.current()}
-                    onDeleted={() => refreshRef.current()}
-                    onDuplicate={handleDuplicate}
-                  />
-                </div>
+                <span className="text-brand font-bold tabular-nums whitespace-nowrap shrink-0">Rp {fmt(p.price)}</span>
               </div>
             </div>
           )
@@ -584,6 +599,57 @@ export default function ProductsPageClient() {
           </div>
         )}
       </div>
+
+      {/* Mobile row action sheet */}
+      <MobileActionSheet
+        open={sheetProduct != null}
+        onClose={() => setSheetProduct(null)}
+        title={sheetProduct?.name}
+        subtitle={sheetProduct?.store}
+        actions={sheetProduct ? [
+          {
+            label: "Edit",
+            onClick: () => setEditingProduct(sheetProduct),
+            icon: (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
+              </svg>
+            ),
+          },
+          {
+            label: "Duplicate",
+            onClick: () => handleDuplicate(sheetProduct),
+            icon: (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+              </svg>
+            ),
+          },
+          {
+            label: "Delete",
+            destructive: true,
+            disabled: mobileDeleting,
+            onClick: () => handleMobileDelete(sheetProduct),
+            icon: (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+              </svg>
+            ),
+          },
+        ] : []}
+      />
+
+      {editingProduct && (
+        <EditProductModal
+          row={editingProduct}
+          countries={countries}
+          stores={stores}
+          onSave={() => { refreshRef.current(); setEditingProduct(null) }}
+          onCancel={() => setEditingProduct(null)}
+        />
+      )}
 
       {/* Mobile add FAB */}
       <button

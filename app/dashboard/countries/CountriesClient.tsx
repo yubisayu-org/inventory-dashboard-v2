@@ -4,6 +4,7 @@ import TableSkeleton from "@/components/TableSkeleton"
 import { useEffect, useMemo, useRef, useState } from "react"
 import type { CountryRow } from "@/lib/db"
 import DataGrid, { type ColumnDef, numericFilter, textContainsFilter } from "@/components/DataGrid"
+import MobileActionSheet from "@/components/MobileActionSheet"
 
 const EMPTY_FORM = { name: "", currency: "", kurs: "", cargoPerKg: "" }
 
@@ -24,6 +25,7 @@ export default function CountriesClient() {
   const [mobileAddOpen, setMobileAddOpen] = useState(false)
 
   const [editRow, setEditRow] = useState<CountryRow | null>(null)
+  const [sheetRow, setSheetRow] = useState<CountryRow | null>(null)
 
   async function load() {
     setLoading(true)
@@ -186,7 +188,10 @@ export default function CountriesClient() {
   ], [])
 
   const renderMobileCard = (row: CountryRow) => (
-    <div className="rounded-xl border border-cream-border bg-white p-3.5 flex items-center justify-between gap-3">
+    <div
+      onClick={() => setSheetRow(row)}
+      className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] flex items-center justify-between gap-3 cursor-pointer active:bg-cream/40 transition-colors"
+    >
       <div className="min-w-0">
         <div className="text-sm font-semibold text-foreground">{row.name}</div>
         <div className="text-xs text-gray-500 mt-0.5">{row.currency || "—"}</div>
@@ -194,21 +199,9 @@ export default function CountriesClient() {
           Kurs {fmt(row.kurs)} · Cargo {fmt(row.cargoPerKg)}/kg
         </div>
       </div>
-      <div className="flex items-center gap-3 shrink-0">
-        <button type="button" onClick={(e) => { e.stopPropagation(); setEditRow(row) }} title="Edit" className="text-gray-400 hover:text-brand transition-colors">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
-          </svg>
-        </button>
-        <button type="button" onClick={(e) => { e.stopPropagation(); handleDelete(row) }} title="Delete" className="text-gray-400 hover:text-red-500 transition-colors">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 6h18" />
-            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-            <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-          </svg>
-        </button>
-      </div>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-300 shrink-0">
+        <path d="m9 18 6-6-6-6" />
+      </svg>
     </div>
   )
 
@@ -315,6 +308,37 @@ export default function CountriesClient() {
           onCancel={() => setEditRow(null)}
         />
       )}
+
+      {/* Mobile row action sheet */}
+      <MobileActionSheet
+        open={sheetRow != null}
+        onClose={() => setSheetRow(null)}
+        title={sheetRow?.name}
+        actions={sheetRow ? [
+          {
+            label: "Edit",
+            onClick: () => setEditRow(sheetRow),
+            icon: (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
+              </svg>
+            ),
+          },
+          {
+            label: "Delete",
+            destructive: true,
+            onClick: () => handleDelete(sheetRow),
+            icon: (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 6h18" />
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+              </svg>
+            ),
+          },
+        ] : []}
+      />
 
       {/* Mobile add FAB */}
       <button

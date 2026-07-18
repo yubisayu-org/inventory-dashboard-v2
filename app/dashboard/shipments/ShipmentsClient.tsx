@@ -791,7 +791,7 @@ export default function ShipmentsClient() {
   )
 
   const renderMobileCard = useCallback((r: DisplayShipment) => (
-    <div className="rounded-xl border border-cream-border bg-white p-3.5 flex flex-col gap-2">
+    <div className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] flex flex-col gap-2">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-1.5 flex-wrap">
@@ -822,7 +822,7 @@ export default function ShipmentsClient() {
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); setEditResiRecord(r) }}
-        className="group flex items-center gap-1.5 text-left pt-1.5 border-t border-cream-border/60"
+        className="group flex items-center gap-1.5 text-left pt-2.5 border-t border-cream-border"
       >
         <span className={`text-xs ${r.trackingNumber ? "text-foreground font-mono" : "text-gray-400 italic"}`}>
           {r.trackingNumber || "Resi belum diisi"}
