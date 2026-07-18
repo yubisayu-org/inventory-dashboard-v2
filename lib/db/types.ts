@@ -410,12 +410,11 @@ export interface AdjustmentRow {
   updatedAt: string
 }
 
-/** Closed set of operational-expense categories — mirrors the dashboard's
- *  fixed dropdown and the operational_expenses.category CHECK constraint. */
-export type ExpenseCategory =
-  | "Flight" | "Lodging" | "Cargo" | "Meal" | "Transport" | "Shop"
-  | "Supplies" | "Delivery" | "Personal" | "Payroll" | "Dividend" | "Other" 
+/** Free text (no DB constraint, same as `method`) — users can add new
+ *  categories on the fly via the dashboard's SearchableSelect+allowNewValue. */
+export type ExpenseCategory = string
 
+/** Suggested categories offered in the picker; not an exhaustive list. */
 export const EXPENSE_CATEGORIES: ExpenseCategory[] = [
   "Flight", "Lodging", "Cargo", "Meal", "Transport", "Shop",
   "Supplies", "Delivery", "Personal", "Payroll", "Dividend", "Other"

@@ -6,7 +6,7 @@ export default function OperationalExpensesPage() {
   return (
     <PageShell>
       <PageHeader
-        title="Operational Expenses"
+        title="Expenses"
         subtitle="Track per-event operating and trip costs"
       />
       <OperationalExpensesClient />

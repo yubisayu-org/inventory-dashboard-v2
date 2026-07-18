@@ -99,6 +99,19 @@ interface DataGridProps<T> {
   /** Hide the built-in search box — use when the caller renders its own
    *  search input elsewhere and drives filtering externally (via `data`). */
   hideSearch?: boolean
+  /** Let the search box grow to fill the toolbar row instead of a fixed w-56
+   *  — use on pages with little else in the toolbar so it doesn't leave a
+   *  large empty gap. */
+  fullWidthSearch?: boolean
+  /** Drop the spacer that pushes row count/column visibility to the far
+   *  right — use with fullWidthSearch so search+toolbarExtra expand all the
+   *  way to the Columns button instead of splitting the growth with it. */
+  tightToolbar?: boolean
+  /** Render column headers bold + uppercase instead of the default
+   *  medium-weight sentence case. */
+  boldUppercaseHeader?: boolean
+  /** Render toolbarExtra after the Columns button instead of before it. */
+  toolbarExtraAfterColumns?: boolean
   /** Hide the entire toolbar row (search, active-filter chips, toolbarExtra,
    *  row count, column visibility). Per-column filter buttons in the header
    *  still work — their popover clears the value even without the toolbar's
@@ -107,6 +120,10 @@ interface DataGridProps<T> {
   hideToolbar?: boolean
   /** Extra toolbar content rendered before the column visibility button */
   toolbarExtra?: React.ReactNode
+  /** Column ids to omit from the active-filter chip row — use when a filter
+   *  already has its own dedicated control elsewhere (e.g. a filter select
+   *  above the table) so it isn't shown twice. */
+  hiddenFilterChips?: string[]
   /** Content rendered as its own full-width row between the toolbar and the
    *  table — e.g. filter chips or a summary line that should sit under the
    *  search/column-visibility row rather than inline with it. */
@@ -165,6 +182,11 @@ export default function DataGrid<T>({
   pageSize = 25,
   searchPlaceholder = "Search…",
   hideSearch,
+  fullWidthSearch,
+  tightToolbar,
+  hiddenFilterChips,
+  boldUppercaseHeader,
+  toolbarExtraAfterColumns,
   hideToolbar,
   toolbarExtra,
   belowToolbar,
@@ -286,7 +308,7 @@ export default function DataGrid<T>({
         <div className="flex flex-wrap items-center gap-3">
           {/* Global search */}
           {!hideSearch && (
-            <div className="relative">
+            <div className={`relative ${fullWidthSearch ? "flex-1 min-w-[160px]" : ""}`}>
               <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="11" cy="11" r="8" />
                 <path d="m21 21-4.35-4.35" />
@@ -296,17 +318,27 @@ export default function DataGrid<T>({
                 value={table.getState().globalFilter ?? ""}
                 onChange={(e) => table.setGlobalFilter(e.target.value)}
                 placeholder={searchPlaceholder}
-                className="border border-cream-border rounded-lg pl-8 pr-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors w-56"
+                className={`border border-cream-border rounded-lg pl-8 pr-8 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors ${fullWidthSearch ? "w-full" : "w-56"}`}
               />
+              {Boolean(table.getState().globalFilter) && (
+                <button
+                  type="button"
+                  onClick={() => table.setGlobalFilter("")}
+                  aria-label="Clear search"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-brand transition-colors"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                </button>
+              )}
             </div>
           )}
 
           {/* Active filters */}
-          <ActiveFilters table={table} />
+          <ActiveFilters table={table} hiddenIds={hiddenFilterChips} />
 
-          {toolbarExtra}
+          {!toolbarExtraAfterColumns && toolbarExtra}
 
-          <div className="flex-1" />
+          {!tightToolbar && <div className="flex-1" />}
 
           {!hideRowCount && (
             <span className="text-xs text-gray-400">{totalRows} rows</span>
@@ -318,6 +350,8 @@ export default function DataGrid<T>({
               <ColumnVisibilityMenu columns={columns} columnVisibility={columnVisibility} onColumnVisibilityChange={setColumnVisibility} />
             </div>
           )}
+
+          {toolbarExtraAfterColumns && toolbarExtra}
         </div>
       )}
 
@@ -337,7 +371,7 @@ export default function DataGrid<T>({
           <table className="w-full text-sm" style={{ tableLayout: "auto" }}>
             <thead>
               {table.getHeaderGroups().map((hg) => (
-                <tr key={hg.id} className="text-left text-xs text-gray-500 border-b border-cream-border bg-cream">
+                <tr key={hg.id} className={`text-left text-xs text-gray-500 border-b border-cream-border bg-cream ${boldUppercaseHeader ? "uppercase" : ""}`}>
                   {renderExpandedRow && <th className="pl-3 pr-0 py-3 w-8" />}
                   {enableRowSelection && (
                     <th className="pl-4 pr-2 py-3 w-10">
@@ -352,7 +386,7 @@ export default function DataGrid<T>({
                   {hg.headers.map((header) => {
                     const align = (header.column.columnDef.meta as { align?: string } | undefined)?.align
                     return (
-                    <th key={header.id} className={`px-4 py-3 font-medium relative select-none group ${align === "right" ? "text-right" : ""}`} style={{ width: header.getSize() !== 150 ? header.getSize() : undefined }}>
+                    <th key={header.id} className={`px-4 py-3 relative select-none group ${boldUppercaseHeader ? "font-bold" : "font-medium"} ${align === "right" ? "text-right" : ""}`} style={{ width: header.getSize() !== 150 ? header.getSize() : undefined }}>
                       <div className={`flex items-center gap-1 ${align === "right" ? "justify-end" : ""}`}>
                         {header.isPlaceholder ? null : (
                           <>
@@ -667,8 +701,8 @@ function BooleanFilterInput<T>({ column, onClose }: { column: Column<T, unknown>
 
 // ─── Active filters chips ──────────────────────────────────────────────────
 
-function ActiveFilters<T>({ table }: { table: TanTable<T> }) {
-  const filters = table.getState().columnFilters
+function ActiveFilters<T>({ table, hiddenIds }: { table: TanTable<T>; hiddenIds?: string[] }) {
+  const filters = table.getState().columnFilters.filter((f) => !hiddenIds?.includes(f.id))
   if (filters.length === 0) return null
 
   return (
