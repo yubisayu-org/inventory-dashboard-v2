@@ -15,6 +15,7 @@ import { DEFAULT_PRODUCT_DEFAULTS, type ProductDefaults } from "@/lib/product-de
 
 const TEMPLATE_LABELS: Record<TemplateKey, string> = {
   invoice: "Invoice message",
+  invoice_dp: "Invoice message — DP reminder",
   shipment: "Shipment confirmation",
   refund_specific: "Refund message — items unavailable",
   refund_generic: "Refund message — generic",
@@ -32,6 +33,21 @@ const SAMPLE_VARS: Record<TemplateKey, Record<string, string>> = {
     perKgRate: "50,000",
     biayaLainnyaBlock: "\nBiaya Lainnya: Rp 10,000",
     sisaPelunasan: "250,000",
+    bankAccountHolder: "Business Owner",
+    bankAccountLines: "Bank Example 123456789",
+    publicSiteUrl: "https://example.com/",
+  },
+  invoice_dp: {
+    eventId: "EVT1",
+    handle: "@customer",
+    produkLines: "Lip Balm x 2 x Rp 150,000",
+    subtotalBarang: "300,000",
+    weightKg: "2",
+    perKgRate: "50,000",
+    biayaLainnyaBlock: "\nBiaya Lainnya: Rp 10,000",
+    dpAmount: "90,000",
+    dpShortfall: "40,000",
+    sisaPelunasan: "300,000",
     bankAccountHolder: "Business Owner",
     bankAccountLines: "Bank Example 123456789",
     publicSiteUrl: "https://example.com/",
@@ -173,6 +189,10 @@ function BusinessProfileSection() {
     setProfile((p) => (p ? { ...p, [key]: value } : p))
   }
 
+  function setProfileNumber(key: "dpPercent", value: string) {
+    setProfile((p) => (p ? { ...p, [key]: Number(value) || 0 } : p))
+  }
+
   return (
     <div className="bg-white border border-cream-border rounded-xl p-4 flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -223,6 +243,20 @@ function BusinessProfileSection() {
             <input
               value={profile.publicSiteUrl}
               onChange={(e) => field("publicSiteUrl", e.target.value)}
+              className={fieldInputCls}
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-gray-500">Down Payment %</span>
+            <span className="text-[10px] text-gray-400">
+              Customers below this % of an event's total get the DP reminder message instead of the invoice message. 0 = feature off.
+            </span>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={profile.dpPercent}
+              onChange={(e) => setProfileNumber("dpPercent", e.target.value)}
               className={fieldInputCls}
             />
           </label>
