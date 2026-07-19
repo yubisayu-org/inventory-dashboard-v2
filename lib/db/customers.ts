@@ -163,6 +163,11 @@ export async function getCustomersPaginated(opts: {
   sortKey?: string
   sortDir?: "asc" | "desc"
   skipCount?: boolean
+  /** Filter one warehouse's ongkir column (the grid's dynamic `ongkir_<id>`
+   *  columns), e.g. "only customers whose ongkir to warehouse 3 is >= 20000". */
+  ongkirWarehouseId?: number
+  ongkirOp?: "eq" | "gt" | "lt" | "gte" | "lte"
+  ongkirValue?: number
 }): Promise<PaginatedCustomers> {
   const { page, pageSize, search, skipCount } = opts
   const offset = (page - 1) * pageSize
@@ -174,9 +179,9 @@ export async function getCustomersPaginated(opts: {
     params.push(`%${search.toLowerCase()}%`)
     const p = `$${params.length}`
     conditions.push(
-      `(lower(instagram_id) LIKE ${p} OR lower(COALESCE(name,'')) LIKE ${p} OR ` +
-        `lower(COALESCE(whatsapp,'')) LIKE ${p} OR lower(COALESCE(ekspedisi,'')) LIKE ${p} OR ` +
-        `lower(COALESCE(data_diri,'')) LIKE ${p} OR lower(COALESCE(bank_name,'')) LIKE ${p})`,
+      `(lower(c.instagram_id) LIKE ${p} OR lower(COALESCE(c.name,'')) LIKE ${p} OR ` +
+        `lower(COALESCE(c.whatsapp,'')) LIKE ${p} OR lower(COALESCE(c.ekspedisi,'')) LIKE ${p} OR ` +
+        `lower(COALESCE(c.data_diri,'')) LIKE ${p} OR lower(COALESCE(c.bank_name,'')) LIKE ${p})`,
     )
   }
 
@@ -192,27 +197,65 @@ export async function getCustomersPaginated(opts: {
   for (const [value, col] of colFilters) {
     if (value) {
       params.push(`%${value.toLowerCase()}%`)
-      conditions.push(`lower(COALESCE(${col},'')) LIKE $${params.length}`)
+      conditions.push(`lower(COALESCE(c.${col},'')) LIKE $${params.length}`)
     }
+  }
+
+  // The dynamic per-warehouse ongkir columns aren't on `customers` — they need
+  // customer_warehouse_ongkir joined for the ONE warehouse being sorted/filtered
+  // (not all of them, or every page load would join once per warehouse). Sort
+  // and filter reuse the same join when they target the same warehouse.
+  const sortOngkirMatch = opts.sortKey?.match(/^ongkir_(\d+)$/)
+  const sortWarehouseId = sortOngkirMatch ? Number(sortOngkirMatch[1]) : null
+  const filterWarehouseId = opts.ongkirWarehouseId ?? null
+  const sameWarehouse = sortWarehouseId != null && sortWarehouseId === filterWarehouseId
+
+  let joinSql = ""
+  let sortOngkirExpr: string | null = null
+  let filterOngkirExpr: string | null = null
+
+  if (sameWarehouse) {
+    params.push(sortWarehouseId!)
+    joinSql = ` LEFT JOIN customer_warehouse_ongkir ongkir_sf ON ongkir_sf.customer_id = c.id AND ongkir_sf.warehouse_id = $${params.length}`
+    sortOngkirExpr = "COALESCE(ongkir_sf.ongkos_kirim, 0)"
+    filterOngkirExpr = "COALESCE(ongkir_sf.ongkos_kirim, 0)"
+  } else {
+    if (sortWarehouseId != null) {
+      params.push(sortWarehouseId)
+      joinSql += ` LEFT JOIN customer_warehouse_ongkir ongkir_sort ON ongkir_sort.customer_id = c.id AND ongkir_sort.warehouse_id = $${params.length}`
+      sortOngkirExpr = "COALESCE(ongkir_sort.ongkos_kirim, 0)"
+    }
+    if (filterWarehouseId != null) {
+      params.push(filterWarehouseId)
+      joinSql += ` LEFT JOIN customer_warehouse_ongkir ongkir_filter ON ongkir_filter.customer_id = c.id AND ongkir_filter.warehouse_id = $${params.length}`
+      filterOngkirExpr = "COALESCE(ongkir_filter.ongkos_kirim, 0)"
+    }
+  }
+
+  const OP_SQL: Record<string, string> = { eq: "=", gt: ">", lt: "<", gte: ">=", lte: "<=" }
+  if (filterOngkirExpr && opts.ongkirOp && OP_SQL[opts.ongkirOp] && opts.ongkirValue != null && Number.isFinite(opts.ongkirValue)) {
+    params.push(opts.ongkirValue)
+    conditions.push(`${filterOngkirExpr} ${OP_SQL[opts.ongkirOp]} $${params.length}`)
   }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""
 
   const SORT_COLUMNS: Record<string, string> = {
-    instagramId: "instagram_id", name: "name", whatsapp: "whatsapp",
-    ekspedisi: "ekspedisi", dataDiri: "data_diri", bankName: "bank_name",
-    createdAt: "created_at", updatedAt: "updated_at",
+    instagramId: "c.instagram_id", name: "c.name", whatsapp: "c.whatsapp",
+    ekspedisi: "c.ekspedisi", dataDiri: "c.data_diri", bankName: "c.bank_name",
+    createdAt: "c.created_at", updatedAt: "c.updated_at",
   }
-  const sortCol = (opts.sortKey && SORT_COLUMNS[opts.sortKey]) || "instagram_id"
+  const sortCol = sortOngkirExpr ?? ((opts.sortKey && SORT_COLUMNS[opts.sortKey]) || "c.instagram_id")
   const sortDir = opts.sortDir === "desc" ? "DESC" : "ASC"
 
   const dataRows = await sql.unsafe(
-    `SELECT id, instagram_id, name, whatsapp, data_diri, ekspedisi,
-            bank_name, bank_account_number, bank_account_holder,
-            created_at, updated_at
-     FROM customers
+    `SELECT c.id, c.instagram_id, c.name, c.whatsapp, c.data_diri, c.ekspedisi,
+            c.bank_name, c.bank_account_number, c.bank_account_holder,
+            c.created_at, c.updated_at
+     FROM customers c
+     ${joinSql}
      ${where}
-     ORDER BY ${sortCol} ${sortDir}, id ${sortDir}
+     ORDER BY ${sortCol} ${sortDir}, c.id ${sortDir}
      LIMIT ${pageSize} OFFSET ${offset}`,
     params,
   )
@@ -226,7 +269,7 @@ export async function getCustomersPaginated(opts: {
       : Promise.resolve([] as Record<string, unknown>[]),
     skipCount
       ? Promise.resolve(null)
-      : sql.unsafe(`SELECT COUNT(*)::int AS c FROM customers ${where}`, params),
+      : sql.unsafe(`SELECT COUNT(*)::int AS total FROM customers c ${joinSql} ${where}`, params),
   ])
 
   const ongkirByCustomer = groupOngkirByCustomer(ongkirRows)
@@ -242,7 +285,7 @@ export async function getCustomersPaginated(opts: {
     }
   }
 
-  const totalCount = Number((countRows as Record<string, unknown>[])[0]?.c ?? 0)
+  const totalCount = Number((countRows as Record<string, unknown>[])[0]?.total ?? 0)
   return {
     rows,
     totalCount,

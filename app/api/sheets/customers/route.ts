@@ -29,6 +29,9 @@ export async function GET(req: NextRequest) {
         sortKey: params.get("sortKey") ?? undefined,
         sortDir: (params.get("sortDir") as "asc" | "desc") ?? undefined,
         skipCount: params.get("skipCount") === "true",
+        ongkirWarehouseId: params.get("ongkirWarehouseId") ? Number(params.get("ongkirWarehouseId")) : undefined,
+        ongkirOp: (params.get("ongkirOp") as "eq" | "gt" | "lt" | "gte" | "lte") ?? undefined,
+        ongkirValue: params.get("ongkirValue") ? Number(params.get("ongkirValue")) : undefined,
       })
       return NextResponse.json(result, { headers: { "Cache-Control": "no-store" } })
     }
