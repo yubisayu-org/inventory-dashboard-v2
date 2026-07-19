@@ -57,6 +57,8 @@ export async function getPaymentsPaginated(opts: {
   account?: string
   remarks?: string
   kind?: string
+  dateFrom?: string
+  dateTo?: string
   isChecked?: boolean
   sortKey?: string
   sortDir?: "asc" | "desc"
@@ -105,6 +107,15 @@ export async function getPaymentsPaginated(opts: {
   if (typeof opts.isChecked === "boolean") {
     params.push(opts.isChecked)
     conditions.push(`is_checked = $${params.length}`)
+  }
+  // Inclusive date range on pay_date (a DATE column); either bound optional.
+  if (opts.dateFrom) {
+    params.push(opts.dateFrom)
+    conditions.push(`pay_date >= $${params.length}`)
+  }
+  if (opts.dateTo) {
+    params.push(opts.dateTo)
+    conditions.push(`pay_date <= $${params.length}`)
   }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""

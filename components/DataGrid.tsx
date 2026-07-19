@@ -29,8 +29,14 @@ declare module "@tanstack/react-table" {
     numeric: FilterFn<unknown>
     textContains: FilterFn<unknown>
     boolean: FilterFn<unknown>
+    dateRange: FilterFn<unknown>
   }
 }
+
+// A date-range filter value: inclusive from/to bounds as "YYYY-MM-DD" strings.
+// Either bound may be empty (open-ended). Row values are compared as plain
+// "YYYY-MM-DD" strings, which sort lexicographically the same as by date.
+export type DateRangeFilter = { from: string; to: string }
 
 // ─── Filter functions ──────────────────────────────────────────────────────
 
@@ -65,7 +71,18 @@ const booleanFilter: FilterFn<unknown> = (row, columnId, filterValue) => {
 }
 booleanFilter.autoRemove = (val) => !val || val === ""
 
-export { numericFilter, textContainsFilter, booleanFilter }
+const dateRangeFilter: FilterFn<unknown> = (row, columnId, filterValue) => {
+  const { from, to } = filterValue as DateRangeFilter
+  // Row date normalized to "YYYY-MM-DD"; empty/missing never matches a bound.
+  const val = String(row.getValue<string>(columnId) ?? "").slice(0, 10)
+  if (!val) return false
+  if (from && val < from) return false
+  if (to && val > to) return false
+  return true
+}
+dateRangeFilter.autoRemove = (val) => !val || (!val.from && !val.to)
+
+export { numericFilter, textContainsFilter, booleanFilter, dateRangeFilter }
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -276,7 +293,7 @@ export default function DataGrid<T>({
     ...(enableRowSelection ? { enableRowSelection: true, onRowSelectionChange: setRowSelection } : {}),
     getRowId: getRowId as ((row: T) => string) | undefined,
     ...(!ss ? { initialState: { pagination: { pageSize } } } : {}),
-    filterFns: { numeric: numericFilter, textContains: textContainsFilter, boolean: booleanFilter },
+    filterFns: { numeric: numericFilter, textContains: textContainsFilter, boolean: booleanFilter, dateRange: dateRangeFilter },
   })
 
   const totalRows = ss ? ss.rowCount : table.getFilteredRowModel().rows.length
@@ -557,6 +574,7 @@ function ColumnFilterButton<T>({ column }: { column: Column<T, unknown> }) {
   const filterFnName = (column.columnDef as { filterFn?: string }).filterFn
   const isNumeric = filterFnName === "numeric"
   const isBoolean = filterFnName === "boolean"
+  const isDateRange = filterFnName === "dateRange"
 
   return (
     <div className="relative inline-flex">
@@ -578,6 +596,8 @@ function ColumnFilterButton<T>({ column }: { column: Column<T, unknown> }) {
             <BooleanFilterInput column={column} onClose={() => setOpen(false)} />
           ) : isNumeric ? (
             <NumericFilterInput column={column} onClose={() => setOpen(false)} />
+          ) : isDateRange ? (
+            <DateRangeFilterInput column={column} onClose={() => setOpen(false)} />
           ) : (
             <TextFilterInput column={column} onClose={() => setOpen(false)} />
           )}
@@ -611,6 +631,58 @@ function TextFilterInput<T>({ column, onClose }: { column: Column<T, unknown>; o
         <button
           type="button"
           onClick={() => { column.setFilterValue(undefined); onClose() }}
+          className="text-xs text-gray-400 hover:text-brand transition-colors text-left"
+        >
+          Clear filter
+        </button>
+      )}
+    </div>
+  )
+}
+
+function DateRangeFilterInput<T>({ column, onClose }: { column: Column<T, unknown>; onClose: () => void }) {
+  const current = (column.getFilterValue() as DateRangeFilter | undefined) ?? { from: "", to: "" }
+  const [from, setFrom] = useState(current.from)
+  const [to, setTo] = useState(current.to)
+
+  // Push the current bounds to the table; clears the filter when both are empty
+  // (autoRemove also guards this, but keeping the value undefined is cleaner).
+  const apply = useCallback((f: string, t: string) => {
+    if (!f && !t) column.setFilterValue(undefined)
+    else column.setFilterValue({ from: f, to: t })
+  }, [column])
+
+  const inputCls = "border border-cream-border rounded-md px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
+
+  return (
+    <div className="flex flex-col gap-2">
+      <span className="text-xs font-medium text-gray-500">Filter: date range</span>
+      <label className="flex items-center gap-2 text-xs text-gray-500">
+        <span className="w-9 shrink-0">From</span>
+        <input
+          type="date"
+          value={from}
+          max={to || undefined}
+          onChange={(e) => { setFrom(e.target.value); apply(e.target.value, to) }}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Escape") onClose() }}
+          className={inputCls}
+        />
+      </label>
+      <label className="flex items-center gap-2 text-xs text-gray-500">
+        <span className="w-9 shrink-0">To</span>
+        <input
+          type="date"
+          value={to}
+          min={from || undefined}
+          onChange={(e) => { setTo(e.target.value); apply(from, e.target.value) }}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Escape") onClose() }}
+          className={inputCls}
+        />
+      </label>
+      {(from || to) && (
+        <button
+          type="button"
+          onClick={() => { setFrom(""); setTo(""); column.setFilterValue(undefined); onClose() }}
           className="text-xs text-gray-400 hover:text-brand transition-colors text-left"
         >
           Clear filter
@@ -712,6 +784,9 @@ function ActiveFilters<T>({ table, hiddenIds }: { table: TanTable<T>; hiddenIds?
           const { op, value } = f.value as { op: string; value: number }
           const opLabels: Record<string, string> = { eq: "=", gt: ">", lt: "<", gte: "≥", lte: "≤" }
           label = `${header} ${opLabels[op] ?? op} ${value}`
+        } else if (typeof f.value === "object" && f.value !== null && ("from" in f.value || "to" in f.value)) {
+          const { from, to } = f.value as DateRangeFilter
+          label = from && to ? `${header}: ${from} → ${to}` : from ? `${header}: from ${from}` : `${header}: to ${to}`
         } else if (f.value === "true" || f.value === "false") {
           const labels = (col.columnDef.meta as { booleanLabels?: { true: string; false: string } } | undefined)?.booleanLabels
           const text = f.value === "true" ? (labels?.true ?? "true") : (labels?.false ?? "false")

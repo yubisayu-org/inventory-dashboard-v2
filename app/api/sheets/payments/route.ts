@@ -26,6 +26,8 @@ export async function GET(req: NextRequest) {
         account: params.get("account") ?? undefined,
         remarks: params.get("remarks") ?? undefined,
         kind: params.get("kind") ?? undefined,
+        dateFrom: params.get("dateFrom") ?? undefined,
+        dateTo: params.get("dateTo") ?? undefined,
         isChecked: checkedParam == null ? undefined : checkedParam === "true",
         sortKey: params.get("sortKey") ?? undefined,
         sortDir: (params.get("sortDir") as "asc" | "desc") ?? undefined,
