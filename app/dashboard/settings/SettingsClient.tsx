@@ -45,6 +45,7 @@ const SAMPLE_VARS: Record<TemplateKey, Record<string, string>> = {
     weightKg: "2",
     perKgRate: "50,000",
     biayaLainnyaBlock: "\nBiaya Lainnya: Rp 10,000",
+    dpPercent: "30",
     dpAmount: "90,000",
     dpShortfall: "40,000",
     sisaPelunasan: "300,000",

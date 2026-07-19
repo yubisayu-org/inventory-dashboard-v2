@@ -29,7 +29,7 @@ Produk:
 Subtotal Barang: Rp {subtotalBarang}
 Estimasi Ongkir: {weightKg} kg x Rp {perKgRate}{biayaLainnyaBlock}
 
-Down Payment yang dibutuhkan: Rp {dpAmount}
+Down Payment yang dibutuhkan: {dpPercent}% (Rp {dpAmount})
 Kekurangan Down Payment: Rp {dpShortfall}
 
 Rekening an {bankAccountHolder}:

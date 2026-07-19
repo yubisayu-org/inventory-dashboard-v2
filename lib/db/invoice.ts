@@ -260,6 +260,7 @@ export async function getInvoiceForCustomer(
       message = meetsDpThreshold
         ? buildInvoiceMessage(base, customer, templates.invoice, businessProfile)
         : buildInvoiceMessage(base, customer, templates.invoice_dp, businessProfile, {
+            dpPercent: String(businessProfile.dpPercent),
             dpAmount: formatIdrNumber(Math.round(dpThreshold)),
             dpShortfall: formatIdrNumber(Math.round(Math.max(0, dpThreshold - invoice.pembayaran))),
           })

@@ -18,7 +18,7 @@ export const REQUIRED_TOKENS: Record<TemplateKey, string[]> = {
   ],
   invoice_dp: [
     "{eventId}", "{handle}", "{produkLines}", "{subtotalBarang}", "{weightKg}", "{perKgRate}",
-    "{dpAmount}", "{dpShortfall}", "{bankAccountHolder}", "{bankAccountLines}", "{publicSiteUrl}",
+    "{dpPercent}", "{dpAmount}", "{dpShortfall}", "{bankAccountHolder}", "{bankAccountLines}", "{publicSiteUrl}",
   ],
   shipment: ["{event}", "{handle}", "{dataDiri}", "{items}", "{publicSiteUrl}"],
   refund_specific: ["{customer}", "{event}", "{itemsList}", "{refundAmount}"],
@@ -68,7 +68,7 @@ export const DEFAULT_TEMPLATES: Record<TemplateKey, string> = {
     "Subtotal Barang: Rp {subtotalBarang}",
     "Estimasi Ongkir: {weightKg} kg x Rp {perKgRate}{biayaLainnyaBlock}",
     "",
-    "Down Payment yang dibutuhkan: Rp {dpAmount}",
+    "Down Payment yang dibutuhkan: {dpPercent}% (Rp {dpAmount})",
     "Kekurangan Down Payment: Rp {dpShortfall}",
     "",
     "Rekening an {bankAccountHolder}:",
