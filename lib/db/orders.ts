@@ -5,8 +5,12 @@ import type { SheetOptions, ItemOption, OrderRow, FormRow, ExcessRow, ExcessReas
 
 // ─── Options ────────────────────────────────────────────────────────────────
 
+// Seed accounts so the Account picker isn't empty before any payment has used
+// them — once a payment uses a new one it's picked up from the DB instead.
+const FALLBACK_ACCOUNTS = ["BCA", "JAGO", "QRIS", "TRANSFER"]
+
 export async function getSheetOptions(): Promise<SheetOptions> {
-  const [eventsRows, productRows, customerRows] = await Promise.all([
+  const [eventsRows, productRows, customerRows, accountRows] = await Promise.all([
     sql`SELECT name, is_active FROM events ORDER BY created_at DESC, id DESC`,
     sql`SELECT id, name, store, price, is_active FROM products WHERE name != '' ORDER BY name`,
     sql`
@@ -14,6 +18,7 @@ export async function getSheetOptions(): Promise<SheetOptions> {
       WHERE instagram_id NOT LIKE '\\_old%' AND instagram_id != 'gantialamat'
       ORDER BY instagram_id
     `,
+    sql`SELECT DISTINCT account FROM payments WHERE account IS NOT NULL AND account != ''`,
   ])
 
   // Collapse handles that differ only by a leading "@" or case (legacy Sheets
@@ -24,11 +29,16 @@ export async function getSheetOptions(): Promise<SheetOptions> {
     ...new Set(customerRows.map((r) => normalizeCustomer(r.instagram_id))),
   ].sort()
 
+  const accounts = [
+    ...new Set([...FALLBACK_ACCOUNTS, ...accountRows.map((r) => r.account as string)]),
+  ].sort()
+
   return {
     events: eventsRows.map((r) => r.name),
     activeEvents: eventsRows.filter((r) => r.is_active).map((r) => r.name),
     items: productRows.map((r) => ({ id: r.id, name: r.name, store: r.store, price: r.price, active: r.is_active })),
     customers,
+    accounts,
   }
 }
 

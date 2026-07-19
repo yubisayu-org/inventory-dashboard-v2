@@ -21,6 +21,9 @@ export interface SheetOptions {
   activeEvents: string[]
   items: ItemOption[]
   customers: string[]
+  /** Distinct payment accounts in use (e.g. "BCA", "JAGO") — the Payments
+   *  page's Account field is free text with autocomplete, not a fixed set. */
+  accounts: string[]
 }
 
 export interface OrderRow {

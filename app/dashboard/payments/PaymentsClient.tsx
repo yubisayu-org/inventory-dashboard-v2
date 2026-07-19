@@ -30,7 +30,10 @@ const INPUT_CLASS =
 const INPUT_CLASS_TALL =
   "w-full border border-cream-border rounded-md px-2 py-2 text-sm text-foreground bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
 const LABEL = "text-xs text-gray-500 mb-1 block"
-const ACCOUNT_OPTIONS = ["BCA", "JAGO", "QRIS", "TRANSFER"] as const
+// Fallback while options are still loading — the real list comes from
+// useSheetOptions().accounts (distinct values already in use, autocompleted
+// via SearchableSelect, same pattern as the Products page's Store field).
+const FALLBACK_ACCOUNT_OPTIONS = ["BCA", "JAGO", "QRIS", "TRANSFER"]
 
 // Checked-status filter: "" = all, "true" = checked only, "false" = unchecked.
 type CheckedFilter = "" | "true" | "false"
@@ -658,6 +661,10 @@ function EditPaymentModal({
     () => (options?.customers ?? []).map((c) => ({ value: c, label: displayIg(c) })),
     [options],
   )
+  const accountOptions = useMemo(
+    () => (options?.accounts ?? FALLBACK_ACCOUNT_OPTIONS).map((a) => ({ value: a, label: a })),
+    [options],
+  )
 
   async function handleSave() {
     setSaving(true)
@@ -750,10 +757,13 @@ function EditPaymentModal({
           </div>
           <div>
             <label className={LABEL}>Account</label>
-            <select value={form.account} onChange={(e) => setForm({ ...form, account: e.target.value })} className={INPUT_CLASS}>
-              <option value="">Select…</option>
-              {ACCOUNT_OPTIONS.map((a) => <option key={a} value={a}>{a}</option>)}
-            </select>
+            <SearchableSelect
+              value={form.account}
+              onChange={(v) => setForm({ ...form, account: v })}
+              options={accountOptions}
+              placeholder="Account..."
+              allowNewValue
+            />
           </div>
           <div className="flex items-center gap-2">
             <input type="checkbox" checked={form.isChecked} onChange={(e) => setForm({ ...form, isChecked: e.target.checked })} disabled={isAdmin} id="edit-checked" className="accent-brand disabled:cursor-default" />
@@ -819,6 +829,10 @@ function AddPaymentForm({
     () => (options?.customers ?? []).map((c) => ({ value: c, label: displayIg(c) })),
     [options],
   )
+  const accountOptions = useMemo(
+    () => (options?.accounts ?? FALLBACK_ACCOUNT_OPTIONS).map((a) => ({ value: a, label: a })),
+    [options],
+  )
 
   const canSubmit = Boolean(event) && Boolean(customer) && Boolean(amount) && Number(amount) > 0
 
@@ -882,9 +896,15 @@ function AddPaymentForm({
         </div>
         <div>
           <label className={LABEL}>Account</label>
-          <select value={account} onChange={(e) => setAccount(e.target.value)} className={INPUT_CLASS_TALL} style={{ width: "7rem" }}>
-            {ACCOUNT_OPTIONS.map((a) => <option key={a} value={a}>{a}</option>)}
-          </select>
+          <div style={{ width: "9rem" }}>
+            <SearchableSelect
+              value={account}
+              onChange={setAccount}
+              options={accountOptions}
+              placeholder="Account..."
+              allowNewValue
+            />
+          </div>
         </div>
         <div>
           <label className={LABEL}>Date</label>
@@ -1004,6 +1024,10 @@ function MobileAddPaymentSheet({
     () => (options?.customers ?? []).map((c) => ({ value: c, label: displayIg(c) })),
     [options],
   )
+  const accountOptions = useMemo(
+    () => (options?.accounts ?? FALLBACK_ACCOUNT_OPTIONS).map((a) => ({ value: a, label: a })),
+    [options],
+  )
 
   const canSubmit = Boolean(event) && Boolean(customer) && Boolean(amount) && Number(amount) > 0
 
@@ -1065,9 +1089,13 @@ function MobileAddPaymentSheet({
           </div>
           <div>
             <label className={LABEL}>Account</label>
-            <select value={account} onChange={(e) => setAccount(e.target.value)} className={INPUT_CLASS}>
-              {ACCOUNT_OPTIONS.map((a) => <option key={a} value={a}>{a}</option>)}
-            </select>
+            <SearchableSelect
+              value={account}
+              onChange={setAccount}
+              options={accountOptions}
+              placeholder="Account..."
+              allowNewValue
+            />
           </div>
         </div>
         <div>
