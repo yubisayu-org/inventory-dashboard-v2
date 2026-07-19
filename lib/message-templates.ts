@@ -14,9 +14,9 @@ export const TEMPLATE_KEYS: TemplateKey[] = ["invoice", "shipment", "refund_spec
 export const REQUIRED_TOKENS: Record<TemplateKey, string[]> = {
   invoice: [
     "{eventId}", "{handle}", "{produkLines}", "{subtotalBarang}", "{weightKg}", "{perKgRate}", "{sisaPelunasan}",
-    "{bankAccountHolder}", "{bankAccountLines}",
+    "{bankAccountHolder}", "{bankAccountLines}", "{publicSiteUrl}",
   ],
-  shipment: ["{event}", "{handle}", "{dataDiri}", "{items}"],
+  shipment: ["{event}", "{handle}", "{dataDiri}", "{items}", "{publicSiteUrl}"],
   refund_specific: ["{customer}", "{event}", "{itemsList}", "{refundAmount}"],
   refund_generic: ["{customer}", "{event}", "{refundAmount}"],
 }
@@ -47,7 +47,7 @@ export const DEFAULT_TEMPLATES: Record<TemplateKey, string> = {
     "",
     "Apabila memesan lebih dari 1 barang, transfer boleh digabung.",
     "",
-    "Cek rekapan mandiri https://yubisayu-invoice.netlify.app/",
+    "Cek rekapan mandiri {publicSiteUrl}",
     "",
     "Jika ada kesalahan/kekurangan rekap, mohon infokan kembali untuk direvisi.",
   ].join("\n"),
@@ -64,7 +64,7 @@ export const DEFAULT_TEMPLATES: Record<TemplateKey, string> = {
     "",
     "Cek kembali detail pesanan (jumlah, ukuran, warna jika ada) dan alamat, info jika ada perubahan alamat.",
     "",
-    "Cek resi https://yubisayu-invoice.netlify.app/ atau WA Channel.",
+    "Cek resi {publicSiteUrl} atau WA Channel.",
     "",
     "Mohon konfirmasi jika paket sudah diterima.",
     "",

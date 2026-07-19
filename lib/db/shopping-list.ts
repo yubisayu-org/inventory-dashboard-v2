@@ -138,6 +138,17 @@ export async function getShoppingList(event?: string): Promise<ShoppingListItem[
     fetchPaidStatusMap(eventsForStatus),
   ])
 
+  // A row without an `orders` array is impossible for this query (JSON_AGG over
+  // a grouped join always yields one). If it happens anyway, the connection
+  // handed back a response that belongs to a different query — seen once when
+  // dev-mode pool churn desynced a pooled connection. Fail with a clear message
+  // instead of a baffling `undefined.map` crash deep in the mapping below.
+  for (const r of rows) {
+    if (!Array.isArray(r.orders)) {
+      throw new Error("Shopping list query returned a malformed row (missing orders array) — likely a desynced DB connection; retry the request")
+    }
+  }
+
   const items: ShoppingListItem[] = rows.map((r) => ({
     event: r.event as string,
     productId: r.product_id as number,

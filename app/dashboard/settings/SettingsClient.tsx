@@ -34,12 +34,14 @@ const SAMPLE_VARS: Record<TemplateKey, Record<string, string>> = {
     sisaPelunasan: "250,000",
     bankAccountHolder: "Business Owner",
     bankAccountLines: "Bank Example 123456789",
+    publicSiteUrl: "https://example.com/",
   },
   shipment: {
     event: "EVT1",
     handle: "@customer",
     dataDiri: "Jane Doe\n0812xxxxxxx\nJl. Contoh No. 1, Jakarta",
     items: "Lip Balm x 2",
+    publicSiteUrl: "https://example.com/",
   },
   refund_specific: {
     customer: "@customer",
@@ -213,6 +215,15 @@ function BusinessProfileSection() {
               value={profile.bankAccountLines}
               onChange={(e) => field("bankAccountLines", e.target.value)}
               className={`${fieldInputCls} font-mono min-h-[70px] resize-y`}
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-gray-500">Public site URL</span>
+            <span className="text-[10px] text-gray-400">Used in the invoice and shipment messages.</span>
+            <input
+              value={profile.publicSiteUrl}
+              onChange={(e) => field("publicSiteUrl", e.target.value)}
+              className={fieldInputCls}
             />
           </label>
           <label className="flex flex-col gap-1">

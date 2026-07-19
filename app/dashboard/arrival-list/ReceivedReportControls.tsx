@@ -74,8 +74,8 @@ export default function ReceivedReportControls() {
   }
 
   return (
-    <div className="mb-6 rounded-xl border border-cream-border bg-white p-4 flex items-end gap-3 flex-wrap">
-      <div className="flex-1 min-w-[140px]">
+    <div className="mb-6 rounded-xl border border-cream-border bg-white p-4 flex items-end gap-2 sm:gap-3 flex-wrap">
+      <div className="flex-1 min-w-0 sm:min-w-[140px]">
         <Field label="From">
           <input
             type="date"
@@ -87,7 +87,7 @@ export default function ReceivedReportControls() {
           />
         </Field>
       </div>
-      <div className="flex-1 min-w-[140px]">
+      <div className="flex-1 min-w-0 sm:min-w-[140px]">
         <Field label="To">
           <input
             type="date"
@@ -103,9 +103,16 @@ export default function ReceivedReportControls() {
         type="button"
         onClick={download}
         disabled={loading || !from || !to}
-        className="h-[38px] shrink-0 rounded-lg border border-cream-border bg-white px-4 text-sm font-medium text-gray-600 transition-colors hover:border-brand hover:text-brand disabled:opacity-50"
+        aria-label="Download PDF"
+        title="Download PDF"
+        className="h-[38px] w-[38px] sm:w-auto shrink-0 rounded-lg border border-cream-border bg-white sm:px-4 text-sm font-medium text-gray-600 transition-colors hover:border-brand hover:text-brand disabled:opacity-50 flex items-center justify-center"
       >
-        {loading ? "Preparing…" : "Download PDF"}
+        <svg className="sm:hidden" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <polyline points="7 10 12 15 17 10" />
+          <line x1="12" y1="15" x2="12" y2="3" />
+        </svg>
+        <span className="hidden sm:inline">{loading ? "Preparing…" : "Download PDF"}</span>
       </button>
       {message && <span className="text-sm text-gray-500 basis-full">{message}</span>}
     </div>

@@ -48,6 +48,7 @@ function buildInvoiceMessage(
     sisaPelunasan: formatIdrNumber(invoice.sisaPelunasan),
     bankAccountHolder: profile.bankAccountHolder,
     bankAccountLines: profile.bankAccountLines,
+    publicSiteUrl: profile.publicSiteUrl,
   })
 }
 

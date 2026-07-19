@@ -363,9 +363,9 @@ export default function ArrivalListClient() {
           value={search}
           onChange={setSearch}
           placeholder="Search receiving list…"
-          className="flex-1 min-w-[180px]"
+          className="flex-1 min-w-0 sm:min-w-[180px]"
         />
-        <div style={{ width: "12rem" }}>
+        <div className="w-28 shrink-0 sm:w-[12rem]">
           <EventSelect
             value={selectedEvent}
             onChange={(v) => { setSelectedEvent(v); clearSelection() }}

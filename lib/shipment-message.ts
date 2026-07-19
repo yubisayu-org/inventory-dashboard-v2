@@ -9,6 +9,7 @@
 
 import { displayIg } from "./format"
 import { fillTemplate, DEFAULT_TEMPLATES } from "./message-templates"
+import { DEFAULT_BUSINESS_PROFILE } from "./business-profile"
 
 export interface ShipmentConfirmMessageInput {
   /** Event id, or "EVT1 + EVT2" for a merged shipment. */
@@ -27,6 +28,7 @@ export interface ShipmentConfirmMessageInput {
 export function buildShipmentConfirmMessage(
   input: ShipmentConfirmMessageInput,
   template: string = DEFAULT_TEMPLATES.shipment,
+  publicSiteUrl: string = DEFAULT_BUSINESS_PROFILE.publicSiteUrl,
 ): string {
   const { event, customer, dataDiri, items } = input
   const handle = displayIg(customer)
@@ -35,5 +37,6 @@ export function buildShipmentConfirmMessage(
     handle,
     dataDiri,
     items: items.join("\n"),
+    publicSiteUrl,
   })
 }

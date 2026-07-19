@@ -261,14 +261,14 @@ export function PaymentStatusPanel({
   return (
     <>
       {rows.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-3">
-          <div className="rounded-xl border border-cream-border border-l-4 border-l-red-500 bg-white px-5 py-4">
+        <div className="grid grid-cols-2 gap-2 sm:gap-4 mb-3">
+          <div className="rounded-xl border border-cream-border border-l-4 border-l-red-500 bg-white px-3 py-3 sm:px-5 sm:py-4">
             <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Outstanding</div>
-            <div className="text-2xl font-bold text-foreground mt-1 tabular-nums">Rp {fmt(totals.outstanding)}</div>
+            <div className="text-lg sm:text-2xl font-bold text-foreground mt-1 tabular-nums">Rp {fmt(totals.outstanding)}</div>
           </div>
-          <div className="rounded-xl border border-cream-border border-l-4 border-l-blue-500 bg-white px-5 py-4">
+          <div className="rounded-xl border border-cream-border border-l-4 border-l-blue-500 bg-white px-3 py-3 sm:px-5 sm:py-4">
             <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Overpayment</div>
-            <div className="text-2xl font-bold text-foreground mt-1 tabular-nums">Rp {fmt(totals.overpaid)}</div>
+            <div className="text-lg sm:text-2xl font-bold text-foreground mt-1 tabular-nums">Rp {fmt(totals.overpaid)}</div>
           </div>
         </div>
       )}
@@ -289,7 +289,7 @@ export function PaymentStatusPanel({
             >
               {label}
               {count ? (
-                <span className={`text-xs rounded-full px-1.5 py-0.5 tabular-nums ${active ? "bg-white/20 text-white" : "bg-gray-100 text-gray-500"}`}>
+                <span className={`hidden sm:inline text-xs rounded-full px-1.5 py-0.5 tabular-nums ${active ? "bg-white/20 text-white" : "bg-gray-100 text-gray-500"}`}>
                   {count}
                 </span>
               ) : null}

@@ -10,6 +10,7 @@ import { useModalDismiss } from "@/hooks/useModalDismiss"
 import { copyToClipboard } from "@/lib/clipboard"
 import { buildShipmentConfirmMessage } from "@/lib/shipment-message"
 import { useMessageTemplates } from "@/hooks/useMessageTemplates"
+import { useBusinessProfile } from "@/hooks/useBusinessProfile"
 import DataGrid, {
   numericFilter,
   textContainsFilter,
@@ -79,6 +80,7 @@ type CopyState =
 function CopyShipmentMessageButton({ record }: { record: DisplayShipment }) {
   const [state, setState] = useState<CopyState>({ status: "idle" })
   const templates = useMessageTemplates()
+  const businessProfile = useBusinessProfile()
 
   useEffect(() => {
     if (state.status === "idle") return
@@ -107,7 +109,7 @@ function CopyShipmentMessageButton({ record }: { record: DisplayShipment }) {
         // The `invoicing` field already prefixes merged-event lines with
         // "[event]" so the customer can tell which event each item came from.
         items: record.invoicing.split("\n").filter(Boolean),
-      }, templates?.shipment)
+      }, templates?.shipment, businessProfile?.publicSiteUrl)
       await copyToClipboard(message)
       setState({ status: "copied" })
     } catch (err) {
@@ -126,7 +128,7 @@ function CopyShipmentMessageButton({ record }: { record: DisplayShipment }) {
     <button
       type="button"
       onClick={handleClick}
-      disabled={status === "loading" || !templates}
+      disabled={status === "loading" || !templates || !businessProfile}
       title={status === "error" ? state.message : "Copy pesan konfirmasi pengiriman"}
       className={`p-1 transition-colors rounded disabled:opacity-50 ${
         status === "copied" ? "text-green-600"
