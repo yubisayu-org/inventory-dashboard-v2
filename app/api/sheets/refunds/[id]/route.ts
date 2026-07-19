@@ -22,11 +22,16 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const { action, ...data } = body
 
     if (action === "execute") {
-      const { transferReference } = data
+      const { transferReference, account } = data
       if (!transferReference?.trim()) {
         return NextResponse.json({ error: "transferReference is required" }, { status: 400 })
       }
-      await executeRefund(refundId, transferReference.trim(), session.user.email)
+      // Our sending bank (BCA/JAGO/...), not the customer's account number —
+      // required so the payment row records where the money went out from.
+      if (!account?.trim()) {
+        return NextResponse.json({ error: "account is required" }, { status: 400 })
+      }
+      await executeRefund(refundId, transferReference.trim(), account.trim(), session.user.email)
       return NextResponse.json({ success: true })
     }
 

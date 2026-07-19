@@ -349,6 +349,7 @@ export default function RefundsClient() {
       {editRow && (
         <RefundDetailModal
           row={editRow}
+          accounts={options?.accounts ?? []}
           onUpdated={handleUpdated}
           onDeleted={() => handleDeleted(editRow.id)}
           onClose={() => setEditRow(null)}
@@ -522,11 +523,14 @@ function StepIndicator({ status }: { status: RefundStatus }) {
 
 function RefundDetailModal({
   row,
+  accounts,
   onUpdated,
   onDeleted,
   onClose,
 }: {
   row: RefundRow
+  /** OUR bank names (BCA/JAGO/...) for the execute step's Account picker. */
+  accounts: string[]
   onUpdated: (updated: RefundRow) => void
   onDeleted: () => void
   onClose: () => void
@@ -535,6 +539,7 @@ function RefundDetailModal({
   const [bankAccountNumber, setBankAccountNumber] = useState(row.bankAccountNumber)
   const [bankAccountHolder, setBankAccountHolder] = useState(row.bankAccountHolder)
   const [transferRef, setTransferRef] = useState(row.transferReference)
+  const [refundAccount, setRefundAccount] = useState("")
   const [note, setNote] = useState(row.note)
   const [refundAmount, setRefundAmount] = useState(String(row.refundAmount))
   const [saving, setSaving] = useState(false)
@@ -666,7 +671,8 @@ function RefundDetailModal({
 
   async function handleExecute() {
     if (!transferRef.trim()) { setError("Transfer reference is required"); return }
-    const ok = await patch({ action: "execute", transferReference: transferRef.trim() })
+    if (!refundAccount.trim()) { setError("Pick the account the refund was sent from"); return }
+    const ok = await patch({ action: "execute", transferReference: transferRef.trim(), account: refundAccount.trim() })
     if (ok) onUpdated({ ...row, status: "refunded", transferReference: transferRef.trim() })
   }
 
@@ -747,7 +753,7 @@ function RefundDetailModal({
     ) : row.status === "ready_to_refund" ? (
       <button
         onClick={handleExecute}
-        disabled={saving || !transferRef.trim()}
+        disabled={saving || !transferRef.trim() || !refundAccount.trim()}
         className="px-4 py-2 rounded-lg bg-orange-600 text-white text-sm font-medium hover:bg-orange-700 disabled:opacity-50 transition-colors"
       >
         {saving ? "Processing…" : "Mark as Refunded"}
@@ -945,6 +951,17 @@ function RefundDetailModal({
                 Transfer <span className="font-bold">{formatRp(row.refundAmount)}</span> to{" "}
                 <span className="font-medium">{row.bankName}</span> · {row.bankAccountNumber} · {row.bankAccountHolder}
               </div>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-orange-800">Sent from account <span className="text-brand">*</span></span>
+                <SearchableSelect
+                  value={refundAccount}
+                  onChange={setRefundAccount}
+                  options={accounts.map((a) => ({ value: a, label: a }))}
+                  placeholder="Which of our accounts sent it..."
+                  allowNewValue
+                  disabled={saving}
+                />
+              </label>
               <label className="flex flex-col gap-1">
                 <span className="text-xs font-medium text-orange-800">Transfer Reference</span>
                 <input
