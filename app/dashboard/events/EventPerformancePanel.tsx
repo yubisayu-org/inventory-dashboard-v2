@@ -21,50 +21,44 @@ export default function EventPerformancePanel({ perf }: { perf: EventPerformance
     <div className="flex flex-col gap-4 pt-4 pr-4 pb-4 pl-[38px] md:pl-12">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {/* Fulfillment */}
-        <StatGroup title="Fulfillment">
+        <StatGroup title="Fulfillment" accent="border-l-brand">
           <Bar label="Bought" value={perf.totalBought} pct={pct(perf.totalBought)} />
           <Bar label="Arrived" value={perf.totalArrived} pct={pct(perf.totalArrived)} />
           <Bar label="Shipped" value={perf.totalShipped} pct={pct(perf.totalShipped)} />
         </StatGroup>
 
         {/* Sales */}
-        <StatGroup title="Sales">
+        <StatGroup title="Sales" accent="border-l-amber-500">
           <Stat label="Customers" value={fmt(perf.customerCount)} />
           <Stat label="Items" value={fmt(perf.totalUnits)} />
           <Stat label="Unpaid invoices" value={fmt(perf.unpaidCount)} />
           <Stat label="Overpaid invoices" value={fmt(perf.overpaidCount)} />
+          <Stat label="Kurs" value={fmt(perf.kurs)} />
         </StatGroup>
 
         {/* Finance */}
-        <StatGroup title="Finance">
-          <Stat label="Revenue" value={rp(perf.revenue)} strong />
+        <StatGroup title="Finance" accent="border-l-rose-500">
           <Stat label="Paid" value={rp(perf.totalPaid)} />
           <Stat label="Outstanding" value={rp(perf.outstanding)} className={perf.outstanding > 0 ? "text-red-600" : undefined} />
           <Stat label="Overpayment" value={rp(perf.dueRefund)} className={perf.dueRefund > 0 ? "text-blue-600" : undefined} />
+          <Stat label="Operational expenses" value={rp(perf.opsExpenses)} />
+          <Stat
+            label="Profit estimation"
+            value={rp(perf.netProfit)}
+            strong
+            className={profitPositive ? "text-emerald-600" : "text-red-600"}
+          />
         </StatGroup>
-      </div>
-
-      {/* Net profit */}
-      <div className="flex flex-wrap items-baseline justify-between gap-2 border-t border-cream-border pt-3">
-        <span className="text-xs font-medium text-gray-500">Profit estimation</span>
-        <span className="flex items-baseline gap-2">
-          <span className={`text-base font-semibold tabular-nums ${profitPositive ? "text-emerald-600" : "text-red-600"}`}>
-            {rp(perf.netProfit)}
-          </span>
-          <span className="hidden sm:inline text-[11px] text-gray-400">
-            paid {rp(perf.totalPaid)} − ops {rp(perf.opsExpenses)}
-          </span>
-        </span>
       </div>
     </div>
   )
 }
 
-function StatGroup({ title, children }: { title: string; children: React.ReactNode }) {
+function StatGroup({ title, accent, children }: { title: string; accent: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-2">
-      <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">{title}</div>
-      <div className="flex flex-col gap-1.5">{children}</div>
+    <div className={`flex h-full flex-col gap-2 rounded-xl border border-cream-border border-l-4 ${accent} bg-white px-3 py-3 sm:px-5 sm:py-4`}>
+      <div className="text-xs font-medium uppercase tracking-wide text-gray-400">{title}</div>
+      <div className="flex flex-1 flex-col justify-between gap-1.5">{children}</div>
     </div>
   )
 }
