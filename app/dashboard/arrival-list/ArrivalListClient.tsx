@@ -12,6 +12,7 @@ import ArriveBulkModal from "./ArriveBulkModal"
 import EventSelect from "@/components/EventSelect"
 import SearchableSelect from "@/components/SearchableSelect"
 import SearchInput from "@/components/SearchInput"
+import SelectionActionBar from "@/components/SelectionActionBar"
 import { generateCargoDocument } from "@/lib/cargo-document-pdf"
 
 function computeFill(orders: ArrivalListOrder[], quantityArrived: number) {
@@ -607,24 +608,35 @@ export default function ArrivalListClient() {
 
       {/* Multi-select action bar */}
       {selected.size > 0 && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 rounded-full bg-gray-900 text-white shadow-xl px-4 py-2.5">
-          <span className="text-sm tabular-nums">{selected.size} selected</span>
-          <button
-            onClick={() => setCargoOpen(true)}
-            className="px-3 py-1.5 rounded-full bg-brand text-white text-xs font-medium hover:bg-brand-hover transition-colors"
-          >
-            Create cargo document
-          </button>
-          <button
-            onClick={() => setReceiveOpen(true)}
-            className="px-3 py-1.5 rounded-full bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 transition-colors"
-          >
-            Mark as received
-          </button>
-          <button onClick={clearSelection} aria-label="Clear selection" className="text-white/70 hover:text-white transition-colors">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-          </button>
-        </div>
+        <SelectionActionBar
+          count={selected.size}
+          onClear={clearSelection}
+          actions={[
+            {
+              label: "Cargo",
+              color: "brand",
+              onClick: () => setCargoOpen(true),
+              icon: (
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <path d="M14 2v6h6" />
+                </svg>
+              ),
+            },
+            {
+              label: "Received",
+              color: "blue",
+              onClick: () => setReceiveOpen(true),
+              icon: (
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="8" width="18" height="4" rx="1" />
+                  <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7" />
+                  <path d="M12 12v7" />
+                </svg>
+              ),
+            },
+          ]}
+        />
       )}
 
       {cargoOpen && (
@@ -757,7 +769,7 @@ function ConfirmReceivePanel({
           <p className="text-xs text-gray-500 mt-0.5">Adjust quantities if needed. Units are assigned to waiting customers, highest-priority first.</p>
         </div>
 
-        <div className="px-5 py-4 overflow-y-auto flex flex-col gap-4">
+        <div className="px-5 py-4 overflow-y-auto min-h-0 flex flex-col gap-4">
           {[...byEvent.entries()].map(([event, evItems]) => (
             <div key={event} className="flex flex-col gap-2">
               <div className="text-xs font-semibold text-gray-500">{event}</div>
@@ -923,7 +935,7 @@ function CargoDocPanel({
           <p className="text-xs text-gray-500 mt-0.5">Adjust quantities if needed. Items are grouped by currency, with a subtotal per currency.</p>
         </div>
 
-        <div className="px-5 py-4 overflow-y-auto flex flex-col gap-4">
+        <div className="px-5 py-4 overflow-y-auto min-h-0 flex flex-col gap-4">
           {[...byCurrency.entries()].map(([currency, curItems]) => {
             const subtotal = curItems.reduce(
               (s, it) => s + (Number(qtys[selKey(it)]) || 0) * it.valas,
@@ -1165,7 +1177,7 @@ function ArriveModal({
         {/* Fixed-height dialog: this is the only scrollable region, so the
             modal itself is always the same height no matter which tab (and
             its content length) is active. */}
-        <div className="flex-1 overflow-y-auto flex flex-col gap-5 -mr-2 pr-2">
+        <div className="flex-1 overflow-y-auto min-h-0 flex flex-col gap-5 -mr-2 pr-2">
         <div className="flex flex-col gap-1.5">
           <span className="text-xs font-medium text-gray-500">What happened?</span>
           <div className="flex rounded-lg border border-cream-border overflow-hidden text-xs">
