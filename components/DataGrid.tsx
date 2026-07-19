@@ -71,10 +71,24 @@ const booleanFilter: FilterFn<unknown> = (row, columnId, filterValue) => {
 }
 booleanFilter.autoRemove = (val) => !val || val === ""
 
+// Normalize a cell's date value to a "YYYY-MM-DD" string so it compares
+// lexicographically against the range bounds. Handles the three shapes app
+// tables store dates in: ISO strings/timestamps, epoch milliseconds, and the
+// localized "DD/MM/YYYY" display strings some client tables render.
+function toIsoDay(raw: unknown): string {
+  if (raw == null || raw === "") return ""
+  if (typeof raw === "number") return new Date(raw).toISOString().slice(0, 10)
+  const s = String(raw)
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10)
+  const dmy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+  if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, "0")}-${dmy[1].padStart(2, "0")}`
+  return ""
+}
+
 const dateRangeFilter: FilterFn<unknown> = (row, columnId, filterValue) => {
   const { from, to } = filterValue as DateRangeFilter
-  // Row date normalized to "YYYY-MM-DD"; empty/missing never matches a bound.
-  const val = String(row.getValue<string>(columnId) ?? "").slice(0, 10)
+  // Row date normalized to "YYYY-MM-DD"; empty/unparseable never matches a bound.
+  const val = toIsoDay(row.getValue(columnId))
   if (!val) return false
   if (from && val < from) return false
   if (to && val > to) return false

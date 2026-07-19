@@ -63,6 +63,13 @@ export default function AdjustmentsClient() {
   const fetchFilters = useMemo<Record<string, string>>(() => {
     const f: Record<string, string> = {}
     for (const cf of columnFilters) {
+      // Date column carries a {from,to} range object, not a plain string.
+      if (cf.id === "createdAt") {
+        const { from, to } = (cf.value as { from?: string; to?: string } | undefined) ?? {}
+        if (from) f.dateFrom = from
+        if (to) f.dateTo = to
+        continue
+      }
       const v = String(cf.value ?? "").trim()
       if (!v) continue
       if (cf.id === "event") f.event = v
@@ -163,7 +170,7 @@ export default function AdjustmentsClient() {
       accessorKey: "createdAt",
       header: "Created",
       size: 110,
-      enableColumnFilter: false,
+      filterFn: "dateRange",
       cell: ({ getValue }) => (
         <span className="text-gray-400 text-xs">{getValue<string>()}</span>
       ),
@@ -251,7 +258,7 @@ export default function AdjustmentsClient() {
         toolbarExtraAfterColumns
         hideRowCount
         getRowId={(row) => String(row.rowNumber)}
-        initialVisibility={{ createdAt: false, updatedAt: false }}
+        initialVisibility={{ updatedAt: false }}
         renderMobileCard={renderMobileCard}
         belowToolbar={
           addOpen ? (

@@ -320,6 +320,8 @@ export async function getAdjustmentsPaginated(opts: {
   event?: string
   customer?: string
   description?: string
+  dateFrom?: string
+  dateTo?: string
   sortKey?: string
   sortDir?: "asc" | "desc"
   skipCount?: boolean
@@ -356,6 +358,15 @@ export async function getAdjustmentsPaginated(opts: {
       params.push(`%${value.toLowerCase()}%`)
       conditions.push(`lower(COALESCE(${col},'')) LIKE $${params.length}`)
     }
+  }
+  // Inclusive date range on the created_at day (timestamptz → ::date).
+  if (opts.dateFrom) {
+    params.push(opts.dateFrom)
+    conditions.push(`created_at::date >= $${params.length}`)
+  }
+  if (opts.dateTo) {
+    params.push(opts.dateTo)
+    conditions.push(`created_at::date <= $${params.length}`)
   }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""

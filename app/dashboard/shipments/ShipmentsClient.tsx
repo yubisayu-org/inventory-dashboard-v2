@@ -738,9 +738,10 @@ export default function ShipmentsClient() {
       {
         accessorKey: "createdAt",
         header: "Tanggal",
-        filterFn: "textContains",
-        // Display + filter on the formatted string, but sort by the real epoch:
-        // the localized DD/MM/YYYY string doesn't sort chronologically as text.
+        filterFn: "dateRange",
+        // Display shows the localized DD/MM/YYYY string; the dateRange filter
+        // normalizes it, and sort uses the real epoch (the localized string
+        // doesn't sort chronologically as text).
         sortingFn: (a, b) => a.original.createdAtTs - b.original.createdAtTs,
         size: 160,
         cell: ({ getValue }) => (
@@ -905,7 +906,7 @@ export default function ShipmentsClient() {
           rowSelection={rowSelection}
           onRowSelectionChange={setRowSelection}
           onRowClick={(row) => setInvoiceCustomer(row.customer)}
-          initialVisibility={{ updatedAt: false, isLastShipment: false, createdAt: false }}
+          initialVisibility={{ updatedAt: false, isLastShipment: false }}
           initialSorting={[{ id: "createdAt", desc: true }]}
           renderMobileCard={renderMobileCard}
         />

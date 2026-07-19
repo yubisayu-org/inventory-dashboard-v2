@@ -23,6 +23,8 @@ export async function GET(req: NextRequest) {
         event: params.get("event") ?? undefined,
         customer: params.get("customer") ?? undefined,
         items: params.get("items") ?? undefined,
+        dateFrom: params.get("dateFrom") ?? undefined,
+        dateTo: params.get("dateTo") ?? undefined,
         sortKey: params.get("sortKey") ?? undefined,
         sortDir: (params.get("sortDir") as "asc" | "desc") ?? undefined,
         newestFirst: params.get("newestFirst") === "true",
