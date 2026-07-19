@@ -34,13 +34,13 @@ export async function updateMessageTemplate(
 
 // ─── Business profile ────────────────────────────────────────────────────────
 //
-// Shared business identity fields (bank details today; owner name/store name/
-// phone number stored for later use). Single row, id always 1. See
-// lib/business-profile.ts and app/api/sheets/business-profile/route.ts.
+// Shared business identity fields (bank details, DP threshold today; owner
+// name/store name/phone number stored for later use). Single row, id always
+// 1. See lib/business-profile.ts and app/api/sheets/business-profile/route.ts.
 
 export async function getBusinessProfile(): Promise<BusinessProfile> {
   const [row] = await sql`
-    SELECT bank_account_holder, bank_account_lines, owner_name, store_name, phone_number, public_site_url
+    SELECT bank_account_holder, bank_account_lines, owner_name, store_name, phone_number, public_site_url, dp_percent
     FROM business_profile WHERE id = 1
   `
   if (!row) return DEFAULT_BUSINESS_PROFILE
@@ -51,13 +51,14 @@ export async function getBusinessProfile(): Promise<BusinessProfile> {
     storeName: row.store_name as string,
     phoneNumber: row.phone_number as string,
     publicSiteUrl: row.public_site_url as string,
+    dpPercent: Number(row.dp_percent),
   }
 }
 
 export async function updateBusinessProfile(data: BusinessProfile, db: DBExecutor = sql): Promise<void> {
   await db`
-    INSERT INTO business_profile (id, bank_account_holder, bank_account_lines, owner_name, store_name, phone_number, public_site_url, updated_at)
-    VALUES (1, ${data.bankAccountHolder}, ${data.bankAccountLines}, ${data.ownerName}, ${data.storeName}, ${data.phoneNumber}, ${data.publicSiteUrl}, NOW())
+    INSERT INTO business_profile (id, bank_account_holder, bank_account_lines, owner_name, store_name, phone_number, public_site_url, dp_percent, updated_at)
+    VALUES (1, ${data.bankAccountHolder}, ${data.bankAccountLines}, ${data.ownerName}, ${data.storeName}, ${data.phoneNumber}, ${data.publicSiteUrl}, ${data.dpPercent}, NOW())
     ON CONFLICT (id) DO UPDATE SET
       bank_account_holder = EXCLUDED.bank_account_holder,
       bank_account_lines = EXCLUDED.bank_account_lines,
@@ -65,6 +66,7 @@ export async function updateBusinessProfile(data: BusinessProfile, db: DBExecuto
       store_name = EXCLUDED.store_name,
       phone_number = EXCLUDED.phone_number,
       public_site_url = EXCLUDED.public_site_url,
+      dp_percent = EXCLUDED.dp_percent,
       updated_at = NOW()
   `
 }
