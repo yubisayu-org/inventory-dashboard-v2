@@ -1,6 +1,9 @@
 import sql from "../db-pool"
 import { normalizeId } from "./helpers"
 import { lookupCustomerDetail } from "./customers"
+import { getMessageTemplates, getBusinessProfile } from "./settings"
+import { fillTemplate } from "../message-templates"
+import type { BusinessProfile } from "../business-profile"
 import type { InvoiceResult, InvoiceEvent, InvoiceShipment, InvoiceOrderLine, PublicInvoiceResult, PublicInvoiceEvent, PublicInvoiceOrderLine } from "./types"
 
 // ─── Invoice ────────────────────────────────────────────────────────────────
@@ -13,6 +16,8 @@ function formatIdrNumber(n: number | null | undefined): string {
 function buildInvoiceMessage(
   event: Omit<InvoiceEvent, "message">,
   customer: string,
+  template: string,
+  profile: BusinessProfile,
 ): string {
   const { orders, totals, invoice } = event
   const handle = customer.startsWith("@") ? customer : `@${customer}`
@@ -28,33 +33,22 @@ function buildInvoiceMessage(
         ? Math.round(invoice.estimasiOngkir / totals.weightKg)
         : 0
 
-  const biayaLine = invoice.biayaLainnya !== 0
-    ? [`Biaya Lainnya: Rp ${formatIdrNumber(invoice.biayaLainnya)}`]
-    : []
+  const biayaLainnyaBlock = invoice.biayaLainnya !== 0
+    ? `\nBiaya Lainnya: Rp ${formatIdrNumber(invoice.biayaLainnya)}`
+    : ""
 
-  return [
-    "INVOICE",
-    `${event.eventId} ${handle}`,
-    "",
-    "Produk:",
+  return fillTemplate(template, {
+    eventId: event.eventId,
+    handle,
     produkLines,
-    "",
-    `Subtotal Barang: Rp ${formatIdrNumber(invoice.subtotalBarang)}`,
-    `Estimasi Ongkir: ${formatIdrNumber(totals.weightKg)} kg x Rp ${formatIdrNumber(perKg)}`,
-    ...biayaLine,
-    "",
-    `Pelunasan: Rp ${formatIdrNumber(invoice.sisaPelunasan)}`,
-    "",
-    "Rekening an Shinta Michiko:",
-    "Bank Jago (Artos) 103382719370",
-    "Bank Central Asia 4419051991 ",
-    "",
-    "Apabila memesan lebih dari 1 barang, transfer boleh digabung.",
-    "",
-    "Cek rekapan mandiri https://yubisayu-invoice.netlify.app/",
-    "",
-    "Jika ada kesalahan/kekurangan rekap, mohon infokan kembali untuk direvisi.",
-  ].join("\n")
+    subtotalBarang: formatIdrNumber(invoice.subtotalBarang),
+    weightKg: formatIdrNumber(totals.weightKg),
+    perKgRate: formatIdrNumber(perKg),
+    biayaLainnyaBlock,
+    sisaPelunasan: formatIdrNumber(invoice.sisaPelunasan),
+    bankAccountHolder: profile.bankAccountHolder,
+    bankAccountLines: profile.bankAccountLines,
+  })
 }
 
 function cleanResi(s: string): string {
@@ -141,7 +135,7 @@ function computeEventCore(
 export async function getInvoiceForCustomer(instagramId: string): Promise<InvoiceResult> {
   const searchId = normalizeId(instagramId)
 
-  const [orderRows, customerDetail, paymentRows, adjustmentRows] = await Promise.all([
+  const [orderRows, customerDetail, paymentRows, adjustmentRows, templates, businessProfile] = await Promise.all([
     sql`
       SELECT o.id, o.event, o.customer, o.unit, o.note,
              o.unit_price, o.product_id,
@@ -179,6 +173,8 @@ export async function getInvoiceForCustomer(instagramId: string): Promise<Invoic
       WHERE lower(replace(customer, '@', '')) = ${searchId}
       GROUP BY event
     `,
+    getMessageTemplates(),
+    getBusinessProfile(),
   ])
 
   if (orderRows.length === 0) {
@@ -227,7 +223,7 @@ export async function getInvoiceForCustomer(instagramId: string): Promise<Invoic
       totals,
       invoice,
     }
-    return { ...base, message: buildInvoiceMessage(base, customer) }
+    return { ...base, message: buildInvoiceMessage(base, customer, templates.invoice, businessProfile) }
   })
 
   return { customer, customerDetail, events }

@@ -1,0 +1,468 @@
+"use client"
+
+import { useEffect, useState } from "react"
+import {
+  TEMPLATE_KEYS,
+  REQUIRED_TOKENS,
+  OPTIONAL_TOKENS,
+  DEFAULT_TEMPLATES,
+  fillTemplate,
+  findMissingTokens,
+  type TemplateKey,
+} from "@/lib/message-templates"
+import { DEFAULT_BUSINESS_PROFILE, type BusinessProfile } from "@/lib/business-profile"
+import { DEFAULT_PRODUCT_DEFAULTS, type ProductDefaults } from "@/lib/product-defaults"
+
+const TEMPLATE_LABELS: Record<TemplateKey, string> = {
+  invoice: "Invoice message",
+  shipment: "Shipment confirmation",
+  refund_specific: "Refund message — items unavailable",
+  refund_generic: "Refund message — generic",
+}
+
+// Sample data so the preview pane renders something readable while editing —
+// values only, never sent anywhere.
+const SAMPLE_VARS: Record<TemplateKey, Record<string, string>> = {
+  invoice: {
+    eventId: "EVT1",
+    handle: "@customer",
+    produkLines: "Lip Balm x 2 x Rp 150,000",
+    subtotalBarang: "300,000",
+    weightKg: "2",
+    perKgRate: "50,000",
+    biayaLainnyaBlock: "\nBiaya Lainnya: Rp 10,000",
+    sisaPelunasan: "250,000",
+    bankAccountHolder: "Business Owner",
+    bankAccountLines: "Bank Example 123456789",
+  },
+  shipment: {
+    event: "EVT1",
+    handle: "@customer",
+    dataDiri: "Jane Doe\n0812xxxxxxx\nJl. Contoh No. 1, Jakarta",
+    items: "Lip Balm x 2",
+  },
+  refund_specific: {
+    customer: "@customer",
+    event: "EVT1",
+    itemsList: "- Lip Balm",
+    refundAmount: "Rp 150,000",
+  },
+  refund_generic: {
+    customer: "@customer",
+    event: "EVT1",
+    refundAmount: "Rp 150,000",
+  },
+}
+
+const textareaCls = "w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white font-mono focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors min-h-[240px] resize-y"
+
+type Tab = "business" | "product-defaults" | "messages"
+
+const TABS: { key: Tab; label: string }[] = [
+  { key: "business", label: "Business Profile" },
+  { key: "product-defaults", label: "Product Defaults" },
+  { key: "messages", label: "Message Templates" },
+]
+
+export default function SettingsClient() {
+  const [templates, setTemplates] = useState<Record<TemplateKey, string> | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [tab, setTab] = useState<Tab>("business")
+
+  useEffect(() => {
+    fetch("/api/sheets/message-templates", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data: { templates?: Record<TemplateKey, string>; error?: string }) => {
+        if (data.error) setLoadError(data.error)
+        else if (data.templates) setTemplates(data.templates)
+      })
+      .catch(() => setLoadError("Failed to load templates"))
+  }, [])
+
+  if (loadError) return <p className="text-sm text-red-600">{loadError}</p>
+  if (!templates) return <p className="text-sm text-gray-500">Loading…</p>
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center gap-1 w-full rounded-xl border border-cream-border bg-white p-1 overflow-x-auto">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => setTab(t.key)}
+            className={`flex-1 shrink-0 flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+              tab === t.key
+                ? "bg-brand text-white"
+                : "text-gray-500 hover:text-foreground"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Every panel stays mounted (each fetches its own data once) — only
+          hidden ones are visually hidden, so switching tabs never refetches. */}
+      <div className={tab === "business" ? "" : "hidden"}>
+        <BusinessProfileSection />
+      </div>
+      <div className={tab === "product-defaults" ? "" : "hidden"}>
+        <ProductDefaultsSection />
+      </div>
+      <div className={`flex flex-col gap-6 ${tab === "messages" ? "" : "hidden"}`}>
+        {TEMPLATE_KEYS.map((key) => (
+          <TemplateSection key={key} templateKey={key} initialBody={templates[key]} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+const fieldInputCls = "w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+
+function BusinessProfileSection() {
+  const [profile, setProfile] = useState<BusinessProfile | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    fetch("/api/sheets/business-profile", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data: { profile?: BusinessProfile; error?: string }) => {
+        if (data.error) setLoadError(data.error)
+        else if (data.profile) setProfile(data.profile)
+      })
+      .catch(() => setLoadError("Failed to load business profile"))
+  }, [])
+
+  useEffect(() => {
+    if (!saved) return
+    const t = setTimeout(() => setSaved(false), 2000)
+    return () => clearTimeout(t)
+  }, [saved])
+
+  async function handleSave() {
+    if (!profile) return
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await fetch("/api/sheets/business-profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(profile),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "Failed to save")
+      setSaved(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function handleReset() {
+    setProfile(DEFAULT_BUSINESS_PROFILE)
+  }
+
+  function field(key: keyof BusinessProfile, value: string) {
+    setProfile((p) => (p ? { ...p, [key]: value } : p))
+  }
+
+  return (
+    <div className="bg-white border border-cream-border rounded-xl p-4 flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <h2 className="text-sm font-semibold text-foreground">Business profile</h2>
+        <div className="flex items-center gap-3">
+          {saved && <span className="text-xs text-green-600">Saved</span>}
+          <button type="button" onClick={handleReset} className="text-xs text-gray-500 hover:text-brand underline">
+            Reset to default
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving || !profile}
+            className="text-xs font-medium px-3 py-1.5 rounded-lg bg-brand text-white hover:bg-brand-light transition-colors disabled:opacity-50"
+          >
+            {saving ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+
+      {loadError && <p className="text-xs text-red-600">{loadError}</p>}
+      {error && <p className="text-xs text-red-600">{error}</p>}
+      {!profile && !loadError && <p className="text-xs text-gray-500">Loading…</p>}
+
+      {profile && (
+        <div className="grid md:grid-cols-2 gap-3">
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-gray-500">Bank account holder</span>
+            <span className="text-[10px] text-gray-400">Used in the invoice message.</span>
+            <input
+              value={profile.bankAccountHolder}
+              onChange={(e) => field("bankAccountHolder", e.target.value)}
+              className={fieldInputCls}
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-gray-500">Bank accounts</span>
+            <span className="text-[10px] text-gray-400">One "Bank Name 123456789" per line. Used in the invoice message.</span>
+            <textarea
+              value={profile.bankAccountLines}
+              onChange={(e) => field("bankAccountLines", e.target.value)}
+              className={`${fieldInputCls} font-mono min-h-[70px] resize-y`}
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-gray-500">Owner name</span>
+            <span className="text-[10px] text-gray-400">Not used in any message yet.</span>
+            <input
+              value={profile.ownerName}
+              onChange={(e) => field("ownerName", e.target.value)}
+              className={fieldInputCls}
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-gray-500">Store name</span>
+            <span className="text-[10px] text-gray-400">Not used in any message yet.</span>
+            <input
+              value={profile.storeName}
+              onChange={(e) => field("storeName", e.target.value)}
+              className={fieldInputCls}
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-gray-500">Phone number</span>
+            <span className="text-[10px] text-gray-400">Not used in any message yet.</span>
+            <input
+              value={profile.phoneNumber}
+              onChange={(e) => field("phoneNumber", e.target.value)}
+              className={fieldInputCls}
+            />
+          </label>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ProductDefaultsSection() {
+  const [defaults, setDefaults] = useState<ProductDefaults | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    fetch("/api/sheets/product-defaults", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data: { defaults?: ProductDefaults; error?: string }) => {
+        if (data.error) setLoadError(data.error)
+        else if (data.defaults) setDefaults(data.defaults)
+      })
+      .catch(() => setLoadError("Failed to load product defaults"))
+  }, [])
+
+  useEffect(() => {
+    if (!saved) return
+    const t = setTimeout(() => setSaved(false), 2000)
+    return () => clearTimeout(t)
+  }, [saved])
+
+  async function handleSave() {
+    if (!defaults) return
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await fetch("/api/sheets/product-defaults", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(defaults),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "Failed to save")
+      setSaved(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function handleReset() {
+    setDefaults(DEFAULT_PRODUCT_DEFAULTS)
+  }
+
+  function field(key: keyof ProductDefaults, value: string) {
+    setDefaults((d) => (d ? { ...d, [key]: Number(value) || 0 } : d))
+  }
+
+  return (
+    <div className="bg-white border border-cream-border rounded-xl p-4 flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <h2 className="text-sm font-semibold text-foreground">Product defaults</h2>
+        <div className="flex items-center gap-3">
+          {saved && <span className="text-xs text-green-600">Saved</span>}
+          <button type="button" onClick={handleReset} className="text-xs text-gray-500 hover:text-brand underline">
+            Reset to default
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving || !defaults}
+            className="text-xs font-medium px-3 py-1.5 rounded-lg bg-brand text-white hover:bg-brand-light transition-colors disabled:opacity-50"
+          >
+            {saving ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+
+      <p className="text-[10px] text-gray-400">Pre-filled into the Add Product form. Editing this doesn't change any existing product.</p>
+
+      {loadError && <p className="text-xs text-red-600">{loadError}</p>}
+      {error && <p className="text-xs text-red-600">{error}</p>}
+      {!defaults && !loadError && <p className="text-xs text-gray-500">Loading…</p>}
+
+      {defaults && (
+        <div className="grid md:grid-cols-3 gap-3">
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-gray-500">Profit %</span>
+            <input
+              type="number"
+              value={defaults.profitPct}
+              onChange={(e) => field("profitPct", e.target.value)}
+              className={fieldInputCls}
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-gray-500">Operational fee</span>
+            <input
+              type="number"
+              value={defaults.operationalFee}
+              onChange={(e) => field("operationalFee", e.target.value)}
+              className={fieldInputCls}
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-gray-500">Packing fee</span>
+            <input
+              type="number"
+              value={defaults.packingFee}
+              onChange={(e) => field("packingFee", e.target.value)}
+              className={fieldInputCls}
+            />
+          </label>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TemplateSection({ templateKey, initialBody }: { templateKey: TemplateKey; initialBody: string }) {
+  const [body, setBody] = useState(initialBody)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    if (!saved) return
+    const t = setTimeout(() => setSaved(false), 2000)
+    return () => clearTimeout(t)
+  }, [saved])
+
+  const missing = findMissingTokens(body, templateKey)
+  const preview = fillTemplate(body, SAMPLE_VARS[templateKey])
+
+  async function handleSave() {
+    if (missing.length > 0) {
+      setError(`Missing required token(s): ${missing.join(", ")}`)
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await fetch("/api/sheets/message-templates", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: templateKey, body }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "Failed to save")
+      setSaved(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function handleReset() {
+    setBody(DEFAULT_TEMPLATES[templateKey])
+    setError(null)
+  }
+
+  return (
+    <div className="bg-white border border-cream-border rounded-xl p-4 flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <h2 className="text-sm font-semibold text-foreground">{TEMPLATE_LABELS[templateKey]}</h2>
+        <div className="flex items-center gap-3">
+          {saved && <span className="text-xs text-green-600">Saved</span>}
+          <button type="button" onClick={handleReset} className="text-xs text-gray-500 hover:text-brand underline">
+            Reset to default
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="text-xs font-medium px-3 py-1.5 rounded-lg bg-brand text-white hover:bg-brand-light transition-colors disabled:opacity-50"
+          >
+            {saving ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+
+      <p className="text-xs text-gray-500">
+        Required tokens:{" "}
+        {REQUIRED_TOKENS[templateKey].map((t) => (
+          <code
+            key={t}
+            className={`mx-0.5 px-1 py-0.5 rounded ${missing.includes(t) ? "bg-red-100 text-red-600" : "bg-cream text-gray-600"}`}
+          >
+            {t}
+          </code>
+        ))}
+        {OPTIONAL_TOKENS[templateKey].length > 0 && (
+          <>
+            {" "}· Optional:{" "}
+            {OPTIONAL_TOKENS[templateKey].map((t) => (
+              <code
+                key={t}
+                title={body.includes(t) ? undefined : "Not in the template — its content will be left out of the message"}
+                className={`mx-0.5 px-1 py-0.5 rounded ${body.includes(t) ? "bg-cream text-gray-400" : "bg-amber-100 text-amber-700"}`}
+              >
+                {t}
+              </code>
+            ))}
+          </>
+        )}
+      </p>
+
+      {error && <p className="text-xs text-red-600">{error}</p>}
+
+      <div className="grid md:grid-cols-2 gap-3">
+        <textarea
+          value={body}
+          onChange={(e) => { setBody(e.target.value); setError(null) }}
+          className={textareaCls}
+          spellCheck={false}
+        />
+        <div className="border border-cream-border rounded-lg px-3 py-2 bg-cream/40 overflow-auto">
+          <p className="text-[10px] uppercase tracking-wide text-gray-400 mb-1">Preview</p>
+          <pre className="text-xs whitespace-pre-wrap font-sans text-foreground">{preview}</pre>
+        </div>
+      </div>
+    </div>
+  )
+}

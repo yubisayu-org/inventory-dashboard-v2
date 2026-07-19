@@ -10,6 +10,7 @@ import { generateShippingLabel } from "@/lib/shipping-label"
 import { useModalDismiss } from "@/hooks/useModalDismiss"
 import { useResizableColumns } from "@/hooks/useResizableColumns"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
+import { useMessageTemplates } from "@/hooks/useMessageTemplates"
 import EventSelect from "@/components/EventSelect"
 import SearchInput from "@/components/SearchInput"
 import { InvoiceDetailDrawer } from "@/app/dashboard/invoice/InvoiceDetailDrawer"
@@ -345,6 +346,7 @@ type CopyState =
 
 function CopyConfirmMessageButton({ customer: c }: { customer: ShipCustomer }) {
   const [state, setState] = useState<CopyState>({ status: "idle" })
+  const templates = useMessageTemplates()
 
   useEffect(() => {
     if (state.status === "idle") return
@@ -364,7 +366,7 @@ function CopyConfirmMessageButton({ customer: c }: { customer: ShipCustomer }) {
         customer: c.customer,
         dataDiri: c.customerDetail?.dataDiri ?? "",
         items: confirmMessageItems(c),
-      })
+      }, templates?.shipment)
       await copyToClipboard(message)
       setState({ status: "copied" })
     } catch (err) {
@@ -383,7 +385,7 @@ function CopyConfirmMessageButton({ customer: c }: { customer: ShipCustomer }) {
     <button
       type="button"
       onClick={handleClick}
-      disabled={status === "loading"}
+      disabled={status === "loading" || !templates}
       title={status === "error" ? state.message : "Copy pesan konfirmasi pengiriman"}
       className={`p-1 transition-colors rounded disabled:opacity-50 ${
         status === "copied" ? "text-green-600"
@@ -685,6 +687,7 @@ function ShipConfirmModal({
   const [tempAddress, setTempAddress] = useState(profileAddress)
   const [msgCopied, setMsgCopied] = useState(false)
   const toShipRows = c.orders.filter((o) => o.toShip > 0)
+  const templates = useMessageTemplates()
 
   // Confirmation message uses whichever address is active (temp override or the
   // customer's profile), so Copy / WhatsApp always match what's shown above.
@@ -693,7 +696,7 @@ function ShipConfirmModal({
     customer: c.customer,
     dataDiri: useTempAddress ? tempAddress : profileAddress,
     items: confirmMessageItems(c),
-  })
+  }, templates?.shipment)
 
   async function handleCopyMessage() {
     try {
@@ -885,8 +888,9 @@ function ShipConfirmModal({
               <button
                 type="button"
                 onClick={handleCopyMessage}
+                disabled={!templates}
                 title="Salin pesan konfirmasi pengiriman"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-xs font-medium hover:border-brand hover:text-brand transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-xs font-medium hover:border-brand hover:text-brand transition-colors disabled:opacity-50"
               >
                 {msgCopied ? (
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
@@ -899,8 +903,9 @@ function ShipConfirmModal({
                 href={waLink(c.customerDetail?.whatsapp, confirmMessage)}
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={(e) => { if (!templates) e.preventDefault() }}
                 title="Kirim pesan via WhatsApp"
-                className="mr-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-green-500 text-green-700 text-xs font-medium hover:bg-green-500 hover:text-white transition-colors"
+                className={`mr-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-green-500 text-green-700 text-xs font-medium hover:bg-green-500 hover:text-white transition-colors ${templates ? "" : "opacity-50 pointer-events-none"}`}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                   <path d="M17.5 14.4c-.3-.15-1.77-.87-2.04-.97-.27-.1-.47-.15-.67.15-.2.3-.77.97-.94 1.17-.17.2-.35.22-.65.07-.3-.15-1.26-.46-2.4-1.48-.89-.79-1.49-1.77-1.66-2.07-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.08-.15-.67-1.62-.92-2.22-.24-.58-.49-.5-.67-.51-.17-.01-.37-.01-.57-.01-.2 0-.52.07-.8.37-.27.3-1.05 1.02-1.05 2.5s1.07 2.9 1.22 3.1c.15.2 2.1 3.2 5.08 4.49.71.31 1.26.49 1.7.62.71.23 1.36.2 1.87.12.57-.08 1.77-.72 2.02-1.42.25-.7.25-1.3.17-1.42-.07-.12-.27-.2-.57-.35zM12.05 21.5h-.01a9.4 9.4 0 0 1-4.8-1.32l-.34-.2-3.57.94.95-3.48-.22-.36a9.42 9.42 0 0 1-1.44-5.02c0-5.2 4.24-9.44 9.45-9.44 2.52 0 4.89.98 6.67 2.77a9.38 9.38 0 0 1 2.76 6.68c0 5.2-4.24 9.44-9.45 9.44zm8.04-17.49A11.36 11.36 0 0 0 12.05.5C5.8.5.72 5.58.72 11.83c0 2 .52 3.95 1.51 5.67L.63 23.5l6.14-1.61a11.33 11.33 0 0 0 5.28 1.34h.01c6.25 0 11.33-5.08 11.33-11.33 0-3.03-1.18-5.87-3.32-8.01z" />

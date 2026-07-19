@@ -15,6 +15,7 @@ import SearchableSelect from "@/components/SearchableSelect"
 import SearchInput from "@/components/SearchInput"
 import { calcAbroadPrice, calcDomesticPrice, abroadProfit } from "@/lib/pricing"
 import { useCopyFeedback } from "@/hooks/useCopyFeedback"
+import { useProductDefaults } from "@/hooks/useProductDefaults"
 
 const PAGE_SIZE = 25
 
@@ -719,6 +720,19 @@ function AddProductForm({
   const formRef = useRef<HTMLFormElement>(null)
   const nameRef = useRef<HTMLInputElement>(null)
 
+  // Settings-configured defaults (profit % / operational fee / packing fee)
+  // replace the hardcoded "30"/"5000"/"5000" once fetched — but only if the
+  // user hasn't started a duplicate flow (seed) in the meantime.
+  const productDefaults = useProductDefaults()
+  const defaultsAppliedRef = useRef(false)
+  useEffect(() => {
+    if (defaultsAppliedRef.current || !productDefaults || seed) return
+    defaultsAppliedRef.current = true
+    setProfitPct(String(productDefaults.profitPct))
+    setOpFee(String(productDefaults.operationalFee))
+    setPackFee(String(productDefaults.packingFee))
+  }, [productDefaults, seed])
+
   // Duplicate flow: when a seed product arrives, copy its fields into local
   // state, scroll the form into view, and focus the name. We pre-fill the
   // name as-is — the user must edit it before saving (UNIQUE(name, store)),
@@ -809,7 +823,7 @@ function AddProductForm({
       setStore("")
       setValas("")
       setGram("")
-      setProfitPct("30")
+      setProfitPct(String(productDefaults?.profitPct ?? 30))
       setCost("")
       setProfitFixed("")
       setProfitManual(false)

@@ -9,6 +9,7 @@ import type { ShippingLabelParams } from "@/lib/shipping-label"
 import { useModalDismiss } from "@/hooks/useModalDismiss"
 import { copyToClipboard } from "@/lib/clipboard"
 import { buildShipmentConfirmMessage } from "@/lib/shipment-message"
+import { useMessageTemplates } from "@/hooks/useMessageTemplates"
 import DataGrid, {
   numericFilter,
   textContainsFilter,
@@ -77,6 +78,7 @@ type CopyState =
 
 function CopyShipmentMessageButton({ record }: { record: DisplayShipment }) {
   const [state, setState] = useState<CopyState>({ status: "idle" })
+  const templates = useMessageTemplates()
 
   useEffect(() => {
     if (state.status === "idle") return
@@ -105,7 +107,7 @@ function CopyShipmentMessageButton({ record }: { record: DisplayShipment }) {
         // The `invoicing` field already prefixes merged-event lines with
         // "[event]" so the customer can tell which event each item came from.
         items: record.invoicing.split("\n").filter(Boolean),
-      })
+      }, templates?.shipment)
       await copyToClipboard(message)
       setState({ status: "copied" })
     } catch (err) {
@@ -124,7 +126,7 @@ function CopyShipmentMessageButton({ record }: { record: DisplayShipment }) {
     <button
       type="button"
       onClick={handleClick}
-      disabled={status === "loading"}
+      disabled={status === "loading" || !templates}
       title={status === "error" ? state.message : "Copy pesan konfirmasi pengiriman"}
       className={`p-1 transition-colors rounded disabled:opacity-50 ${
         status === "copied" ? "text-green-600"
