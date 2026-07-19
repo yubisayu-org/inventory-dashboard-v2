@@ -40,7 +40,7 @@ export async function updateMessageTemplate(
 
 export async function getBusinessProfile(): Promise<BusinessProfile> {
   const [row] = await sql`
-    SELECT bank_account_holder, bank_account_lines, owner_name, store_name, phone_number
+    SELECT bank_account_holder, bank_account_lines, owner_name, store_name, phone_number, public_site_url
     FROM business_profile WHERE id = 1
   `
   if (!row) return DEFAULT_BUSINESS_PROFILE
@@ -50,19 +50,21 @@ export async function getBusinessProfile(): Promise<BusinessProfile> {
     ownerName: row.owner_name as string,
     storeName: row.store_name as string,
     phoneNumber: row.phone_number as string,
+    publicSiteUrl: row.public_site_url as string,
   }
 }
 
 export async function updateBusinessProfile(data: BusinessProfile, db: DBExecutor = sql): Promise<void> {
   await db`
-    INSERT INTO business_profile (id, bank_account_holder, bank_account_lines, owner_name, store_name, phone_number, updated_at)
-    VALUES (1, ${data.bankAccountHolder}, ${data.bankAccountLines}, ${data.ownerName}, ${data.storeName}, ${data.phoneNumber}, NOW())
+    INSERT INTO business_profile (id, bank_account_holder, bank_account_lines, owner_name, store_name, phone_number, public_site_url, updated_at)
+    VALUES (1, ${data.bankAccountHolder}, ${data.bankAccountLines}, ${data.ownerName}, ${data.storeName}, ${data.phoneNumber}, ${data.publicSiteUrl}, NOW())
     ON CONFLICT (id) DO UPDATE SET
       bank_account_holder = EXCLUDED.bank_account_holder,
       bank_account_lines = EXCLUDED.bank_account_lines,
       owner_name = EXCLUDED.owner_name,
       store_name = EXCLUDED.store_name,
       phone_number = EXCLUDED.phone_number,
+      public_site_url = EXCLUDED.public_site_url,
       updated_at = NOW()
   `
 }

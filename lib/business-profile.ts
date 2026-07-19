@@ -10,6 +10,9 @@ export interface BusinessProfile {
   ownerName: string
   storeName: string
   phoneNumber: string
+  /** Public order-status site, e.g. "Cek rekapan mandiri {publicSiteUrl}" in
+   *  the invoice message and "Cek resi {publicSiteUrl}" in the shipment one. */
+  publicSiteUrl: string
 }
 
 export const DEFAULT_BUSINESS_PROFILE: BusinessProfile = {
@@ -18,4 +21,5 @@ export const DEFAULT_BUSINESS_PROFILE: BusinessProfile = {
   ownerName: "",
   storeName: "Yubisayu",
   phoneNumber: "",
+  publicSiteUrl: "https://yubisayu-invoice.netlify.app/",
 }

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { CustomerRow, WarehouseRow } from "@/lib/db"
 import DataGrid, {
+  numericFilter,
   type ColumnDef,
   type SortingState,
   type ColumnFiltersState,
@@ -92,11 +93,23 @@ export default function CustomersClient() {
   }, [])
   useEffect(() => { loadMeta() }, [loadMeta])
 
-  // Text column filters → server query params. The dynamic ongkir columns and
-  // the date column aren't server-filterable, so they're skipped here.
+  // Text column filters → server query params. The date column isn't
+  // server-filterable. Ongkir columns are numeric ({op, value}, not a plain
+  // string) and the server can only join one warehouse's ongkir per query, so
+  // only the first active ongkir filter is sent — later ones are ignored.
   const fetchFilters = useMemo<Record<string, string>>(() => {
     const f: Record<string, string> = {}
     for (const cf of columnFilters) {
+      const ongkirMatch = cf.id.match(/^ongkir_(\d+)$/)
+      if (ongkirMatch) {
+        if (f.ongkirWarehouseId) continue
+        const { op, value } = (cf.value ?? {}) as { op?: string; value?: number }
+        if (!op || value == null || Number.isNaN(value)) continue
+        f.ongkirWarehouseId = ongkirMatch[1]
+        f.ongkirOp = op
+        f.ongkirValue = String(value)
+        continue
+      }
       const v = String(cf.value ?? "").trim()
       if (!v) continue
       if (cf.id === "instagramId") f.instagramId = v
@@ -214,14 +227,15 @@ export default function CustomersClient() {
       },
     },
     // One ongkir column per warehouse (origin). Header shows the warehouse code.
-    // Not server-sortable/filterable (it's a per-warehouse join, not a customer
-    // column), so sorting/filtering are disabled on these.
+    // Server-sortable via a join scoped to that one warehouse (see
+    // getCustomersPaginated). Column filter UI is hidden (sort only) — the
+    // numeric filterFn/fetchFilters plumbing stays wired server-side in case
+    // it's re-enabled later.
     ...warehouses.map((wh): ColumnDef<CustomerRow, unknown> => ({
       id: `ongkir_${wh.id}`,
       accessorFn: (row) => row.ongkir?.[wh.id] ?? 0,
       header: `Ongkir ${wh.code}`,
       size: 120,
-      enableSorting: false,
       enableColumnFilter: false,
       meta: { align: "right" },
       cell: ({ getValue }) => {
@@ -234,7 +248,9 @@ export default function CustomersClient() {
     {
       accessorKey: "dataDiri",
       header: "Alamat",
-      size: 220,
+      // No explicit size — DataGrid leaves size-150 (tanstack default) columns
+      // unset in the header style, so this one column flexes to absorb any
+      // leftover table width instead of it landing on the actions column.
       filterFn: "textContains",
       cell: ({ getValue }) => {
         const v = getValue<string>()
@@ -377,7 +393,7 @@ export default function CustomersClient() {
         toolbarExtraAfterColumns
         hideRowCount
         toolbarExtra={toolbarExtra}
-        initialVisibility={{ updatedAt: false, dataDiri: false, bankName: false }}
+        initialVisibility={{ updatedAt: false, dataDiri: false, bankName: false, whatsapp: false }}
         renderMobileCard={renderMobileCard}
         onRowClick={(row) => setDetailCustomer(row.instagramId)}
         serverSide={{

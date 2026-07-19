@@ -17,10 +17,12 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const [invoices, ledger] = await Promise.all([
-      getInvoiceForCustomer(instagramId),
-      getCustomerLedger(instagramId),
-    ])
+    // Ledger first, then invoices derive their per-event payment/adjustment
+    // sums from the ledger rows instead of re-querying (see the ledger opt).
+    // lean: the drawer doesn't render customerDetail or the WhatsApp message,
+    // so those queries are skipped too. Net: 4 queries, max 3 concurrent.
+    const ledger = await getCustomerLedger(instagramId)
+    const invoices = await getInvoiceForCustomer(instagramId, { lean: true, ledger })
     return NextResponse.json(
       { invoices, payments: ledger.payments, adjustments: ledger.adjustments, refunds: ledger.refunds },
       { headers: { "Cache-Control": "no-store" } },

@@ -397,16 +397,16 @@ export default function ExcessTable() {
   return (
     <div className="space-y-3">
       {/* Stat cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div className="rounded-xl border border-cream-border border-l-4 border-l-brand bg-white px-5 py-4">
+      <div className="grid grid-cols-2 gap-2 sm:gap-4">
+        <div className="rounded-xl border border-cream-border border-l-4 border-l-brand bg-white px-3 py-3 sm:px-5 sm:py-4">
           <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Total Value</div>
-          <div className="text-2xl font-bold text-foreground mt-1 tabular-nums">
+          <div className="text-sm sm:text-2xl font-bold text-foreground mt-1 tabular-nums whitespace-nowrap">
             {filteredValue !== null ? `Rp ${fmt(filteredValue)}` : "—"}
           </div>
         </div>
-        <div className="rounded-xl border border-cream-border border-l-4 border-l-amber-500 bg-white px-5 py-4">
+        <div className="rounded-xl border border-cream-border border-l-4 border-l-amber-500 bg-white px-3 py-3 sm:px-5 sm:py-4">
           <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Total Units</div>
-          <div className="text-2xl font-bold text-foreground mt-1 tabular-nums">
+          <div className="text-sm sm:text-2xl font-bold text-foreground mt-1 tabular-nums whitespace-nowrap">
             {filteredSum !== null ? fmt(filteredSum) : "—"}
           </div>
         </div>

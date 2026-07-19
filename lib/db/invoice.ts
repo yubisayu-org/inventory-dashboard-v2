@@ -4,7 +4,7 @@ import { lookupCustomerDetail } from "./customers"
 import { getMessageTemplates, getBusinessProfile } from "./settings"
 import { fillTemplate } from "../message-templates"
 import type { BusinessProfile } from "../business-profile"
-import type { InvoiceResult, InvoiceEvent, InvoiceShipment, InvoiceOrderLine, PublicInvoiceResult, PublicInvoiceEvent, PublicInvoiceOrderLine } from "./types"
+import type { InvoiceResult, InvoiceEvent, InvoiceShipment, InvoiceOrderLine, PublicInvoiceResult, PublicInvoiceEvent, PublicInvoiceOrderLine, PaymentRow, AdjustmentRow } from "./types"
 
 // ─── Invoice ────────────────────────────────────────────────────────────────
 
@@ -48,6 +48,7 @@ function buildInvoiceMessage(
     sisaPelunasan: formatIdrNumber(invoice.sisaPelunasan),
     bankAccountHolder: profile.bankAccountHolder,
     bankAccountLines: profile.bankAccountLines,
+    publicSiteUrl: profile.publicSiteUrl,
   })
 }
 
@@ -132,8 +133,23 @@ function computeEventCore(
  * a dedicated `invoice_events` table. For now we return empty defaults for
  * those fields, matching what a fresh start provides.
  */
-export async function getInvoiceForCustomer(instagramId: string): Promise<InvoiceResult> {
+export async function getInvoiceForCustomer(
+  instagramId: string,
+  // lean: skip the message-template/business-profile reads and return
+  // message: "" per event. The customer detail drawer doesn't render the
+  // WhatsApp message text, and dropping those two queries keeps its fan-out
+  // (this plus getCustomerLedger, doubled by dev StrictMode) inside the
+  // pool's max. customerDetail is still fetched — the drawer does show it.
+  //
+  // ledger: payment/adjustment rows the caller already fetched (via
+  // getCustomerLedger) — the per-event sums are computed from them in JS
+  // instead of re-querying both tables. Callers must pass this customer's
+  // complete ledger, nothing filtered.
+  opts?: { lean?: boolean; ledger?: { payments: PaymentRow[]; adjustments: AdjustmentRow[] } },
+): Promise<InvoiceResult> {
   const searchId = normalizeId(instagramId)
+  const lean = opts?.lean === true
+  const ledger = opts?.ledger
 
   const [orderRows, customerDetail, paymentRows, adjustmentRows, templates, businessProfile] = await Promise.all([
     sql`
@@ -160,21 +176,23 @@ export async function getInvoiceForCustomer(instagramId: string): Promise<Invoic
       ORDER BY e.created_at DESC NULLS LAST, o.event, o.id
     `,
     lookupCustomerDetail(instagramId),
-    sql`
+    // Only checked payments count toward the invoice's paid total; the JS
+    // branch below must mirror the is_checked filter here.
+    ledger ? null : sql`
       SELECT event, COALESCE(SUM(amount), 0) AS total_paid
       FROM payments
       WHERE lower(replace(customer, '@', '')) = ${searchId}
         AND is_checked = true
       GROUP BY event
     `,
-    sql`
+    ledger ? null : sql`
       SELECT event, COALESCE(SUM(amount), 0) AS total_adj
       FROM adjustments
       WHERE lower(replace(customer, '@', '')) = ${searchId}
       GROUP BY event
     `,
-    getMessageTemplates(),
-    getBusinessProfile(),
+    lean ? null : getMessageTemplates(),
+    lean ? null : getBusinessProfile(),
   ])
 
   if (orderRows.length === 0) {
@@ -184,10 +202,19 @@ export async function getInvoiceForCustomer(instagramId: string): Promise<Invoic
   const customer = orderRows[0].customer
 
   const paymentByEvent = new Map<string, number>()
-  for (const r of paymentRows) paymentByEvent.set(r.event, Number(r.total_paid))
-
   const adjustmentByEvent = new Map<string, number>()
-  for (const r of adjustmentRows) adjustmentByEvent.set(r.event, Number(r.total_adj))
+  if (ledger) {
+    for (const p of ledger.payments) {
+      if (!p.isChecked) continue
+      paymentByEvent.set(p.event, (paymentByEvent.get(p.event) ?? 0) + p.amount)
+    }
+    for (const a of ledger.adjustments) {
+      adjustmentByEvent.set(a.event, (adjustmentByEvent.get(a.event) ?? 0) + a.amount)
+    }
+  } else {
+    for (const r of paymentRows!) paymentByEvent.set(r.event, Number(r.total_paid))
+    for (const r of adjustmentRows!) adjustmentByEvent.set(r.event, Number(r.total_adj))
+  }
 
   const { order, groups } = groupRowsByEvent(orderRows)
 
@@ -223,7 +250,12 @@ export async function getInvoiceForCustomer(instagramId: string): Promise<Invoic
       totals,
       invoice,
     }
-    return { ...base, message: buildInvoiceMessage(base, customer, templates.invoice, businessProfile) }
+    return {
+      ...base,
+      message: templates && businessProfile
+        ? buildInvoiceMessage(base, customer, templates.invoice, businessProfile)
+        : "",
+    }
   })
 
   return { customer, customerDetail, events }

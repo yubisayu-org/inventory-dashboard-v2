@@ -376,23 +376,24 @@ export default function OperationalExpensesClient() {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Stat cards: Total, COGS (Shop + Cargo), OPEX (everything else except Dividend) */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="rounded-xl border border-cream-border border-l-4 border-l-brand bg-white px-5 py-4">
+      {/* Stat cards: Total, COGS (Shop + Cargo), OPEX (everything else except Dividend).
+          On mobile Total spans the full width, COGS + OPEX sit side by side below. */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-4">
+        <div className="col-span-2 sm:col-span-1 rounded-xl border border-cream-border border-l-4 border-l-brand bg-white px-3 py-3 sm:px-5 sm:py-4">
           <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Total</div>
-          <div className="text-2xl font-bold text-foreground mt-1 tabular-nums">
+          <div className="text-sm sm:text-2xl font-bold text-foreground mt-1 tabular-nums whitespace-nowrap">
             {filteredSum !== null ? `Rp ${fmt(filteredSum)}` : "—"}
           </div>
         </div>
-        <div className="rounded-xl border border-cream-border border-l-4 border-l-amber-500 bg-white px-5 py-4">
+        <div className="rounded-xl border border-cream-border border-l-4 border-l-amber-500 bg-white px-3 py-3 sm:px-5 sm:py-4">
           <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">COGS</div>
-          <div className="text-2xl font-bold text-foreground mt-1 tabular-nums">
+          <div className="text-sm sm:text-2xl font-bold text-foreground mt-1 tabular-nums whitespace-nowrap">
             {cogsSum !== null ? `Rp ${fmt(cogsSum)}` : "—"}
           </div>
         </div>
-        <div className="rounded-xl border border-cream-border border-l-4 border-l-rose-500 bg-white px-5 py-4">
+        <div className="rounded-xl border border-cream-border border-l-4 border-l-rose-500 bg-white px-3 py-3 sm:px-5 sm:py-4">
           <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">OPEX</div>
-          <div className="text-2xl font-bold text-foreground mt-1 tabular-nums">
+          <div className="text-sm sm:text-2xl font-bold text-foreground mt-1 tabular-nums whitespace-nowrap">
             {opexSum !== null ? `Rp ${fmt(opexSum)}` : "—"}
           </div>
         </div>

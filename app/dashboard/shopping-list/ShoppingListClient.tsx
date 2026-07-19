@@ -378,9 +378,9 @@ export default function ShoppingListClient() {
           value={search}
           onChange={setSearch}
           placeholder="Search shopping list…"
-          className="flex-1 min-w-[180px]"
+          className="flex-1 min-w-0 sm:min-w-[180px]"
         />
-        <div style={{ width: "12rem" }}>
+        <div className="w-28 shrink-0 sm:w-[12rem]">
           <EventSelect
             value={selectedEvent}
             onChange={(v) => { setSelectedEvent(v); clearSelection() }}
@@ -522,7 +522,7 @@ export default function ShoppingListClient() {
                   <td className="px-4 py-2.5">
                     <button
                       onClick={() => setBuyingItem(row.item)}
-                      title="Mark as bought"
+                      title="Mark purchased"
                       className="text-gray-400 hover:text-green-600 transition-colors"
                     >
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -595,7 +595,7 @@ export default function ShoppingListClient() {
                               <span className="text-xs text-gray-400 font-normal" title="Partially bought"> / {item.totalOriginal}</span>
                             )}
                           </div>
-                          <button type="button" onClick={() => setBuyingItem(item)} aria-label="Mark bought" className="w-9 h-9 rounded-lg border border-cream-border text-brand flex items-center justify-center shrink-0 active:bg-green-50 active:text-green-700 active:border-green-200"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" /><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" /></svg></button>
+                          <button type="button" onClick={() => setBuyingItem(item)} aria-label="Mark purchased" className="w-9 h-9 rounded-lg border border-cream-border text-brand flex items-center justify-center shrink-0 active:bg-green-50 active:text-green-700 active:border-green-200"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" /><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" /></svg></button>
                         </div>
                     ))}
                   </div>
@@ -641,7 +641,7 @@ export default function ShoppingListClient() {
               ),
             },
             {
-              label: "Sold out",
+              label: "Sold Out",
               color: "red",
               onClick: () => setOosConfirmOpen(true),
               icon: (
@@ -998,7 +998,7 @@ function ConfirmOutOfStockPanel({
               disabled={submitting || !anyQty}
               className="px-4 py-1.5 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition-colors"
             >
-              {submitting ? "Saving…" : "Mark out of stock"}
+              {submitting ? "Saving…" : "Mark sold out"}
             </button>
           </div>
         </div>

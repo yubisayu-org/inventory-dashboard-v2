@@ -33,8 +33,8 @@ const toReasonOptions = (reasons: string[]) =>
 
 const STATUS_LABELS: Record<RefundStatus, string> = {
   pending: "Pending",
-  awaiting_bank_info: "Awaiting Bank Info",
-  ready_to_refund: "Ready to Refund",
+  awaiting_bank_info: "Bank Info",
+  ready_to_refund: "Transfer",
   refunded: "Refunded",
   applied_to_next_order: "Applied to Next Order",
   cancelled: "Cancelled",
@@ -51,8 +51,8 @@ const STATUS_COLORS: Record<RefundStatus, string> = {
 
 const ACTIVE_TABS: { key: RefundStatus | "active"; label: string }[] = [
   { key: "pending", label: "Pending" },
-  { key: "awaiting_bank_info", label: "Awaiting Bank Info" },
-  { key: "ready_to_refund", label: "Ready to Refund" },
+  { key: "awaiting_bank_info", label: "Bank Info" },
+  { key: "ready_to_refund", label: "Transfer" },
   { key: "refunded", label: "Done" },
 ]
 
@@ -271,7 +271,7 @@ export default function RefundsClient() {
             >
               {label}
               {count ? (
-                <span className={`text-xs rounded-full px-1.5 py-0.5 tabular-nums ${active ? "bg-white/20 text-white" : "bg-gray-100 text-gray-500"}`}>
+                <span className={`hidden sm:inline text-xs rounded-full px-1.5 py-0.5 tabular-nums ${active ? "bg-white/20 text-white" : "bg-gray-100 text-gray-500"}`}>
                   {count}
                 </span>
               ) : null}
@@ -740,7 +740,7 @@ function RefundDetailModal({
         disabled={saving}
         className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
       >
-        Mark message sent
+        Sent
       </button>
     ) : row.status === "awaiting_bank_info" ? (
       <button
@@ -748,7 +748,7 @@ function RefundDetailModal({
         disabled={saving || !bankName || !bankAccountNumber || !bankAccountHolder}
         className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
       >
-        {saving ? "Saving…" : "Save bank info"}
+        {saving ? "Saving…" : "Save"}
       </button>
     ) : row.status === "ready_to_refund" ? (
       <button
@@ -756,7 +756,7 @@ function RefundDetailModal({
         disabled={saving || !transferRef.trim() || !refundAccount.trim()}
         className="px-4 py-2 rounded-lg bg-orange-600 text-white text-sm font-medium hover:bg-orange-700 disabled:opacity-50 transition-colors"
       >
-        {saving ? "Processing…" : "Mark as Refunded"}
+        {saving ? "Processing…" : "Refund"}
       </button>
     ) : null
 
