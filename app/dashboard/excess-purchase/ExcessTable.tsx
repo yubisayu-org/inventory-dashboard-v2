@@ -350,6 +350,9 @@ export default function ExcessTable() {
           <div className="flex flex-col items-end gap-1 shrink-0">
             <ReasonBadge reason={r.reason} />
             <span className="text-sm font-semibold tabular-nums text-foreground">{fmt(r.unitBuy)}</span>
+            <span className="text-xs text-gray-400 tabular-nums whitespace-nowrap">
+              {r.price != null ? `Rp ${fmt(r.price)}` : "—"}
+            </span>
           </div>
         </div>
         <div className="flex items-center justify-end gap-3 pt-2.5 border-t border-cream-border">
