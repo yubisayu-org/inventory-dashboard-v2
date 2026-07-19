@@ -13,6 +13,29 @@ const modalInputCls = "w-full border border-cream-border rounded-lg px-3 py-2 te
 
 const fmt = (n: number) => n.toLocaleString("id-ID")
 
+// ISO 4217 currency → flag emoji, for the small circular badge on the mobile
+// card. Covers the currencies this business actually deals with; unmapped
+// currencies fall back to a 2-letter initial in CountryFlag below.
+const CURRENCY_FLAG: Record<string, string> = {
+  IDR: "🇮🇩", USD: "🇺🇸", CNY: "🇨🇳", VND: "🇻🇳", THB: "🇹🇭", MYR: "🇲🇾",
+  SGD: "🇸🇬", HKD: "🇭🇰", KRW: "🇰🇷", JPY: "🇯🇵", PHP: "🇵🇭", INR: "🇮🇳",
+  GBP: "🇬🇧", EUR: "🇪🇺", AUD: "🇦🇺", CAD: "🇨🇦", TWD: "🇹🇼", AED: "🇦🇪",
+  SAR: "🇸🇦",
+}
+
+function CountryFlag({ name, currency }: { name: string; currency: string }) {
+  const flag = CURRENCY_FLAG[currency.trim().toUpperCase()]
+  return (
+    <div className="shrink-0 w-9 h-9 rounded-full bg-cream border border-cream-border flex items-center justify-center overflow-hidden">
+      {flag ? (
+        <span className="text-base leading-none">{flag}</span>
+      ) : (
+        <span className="text-xs font-semibold text-gray-500">{name.slice(0, 2).toUpperCase()}</span>
+      )}
+    </div>
+  )
+}
+
 export default function CountriesClient() {
   const [data, setData] = useState<CountryRow[] | null>(null)
   const [loading, setLoading] = useState(true)
@@ -192,11 +215,14 @@ export default function CountriesClient() {
       onClick={() => setSheetRow(row)}
       className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] flex items-center justify-between gap-3 cursor-pointer active:bg-cream/40 transition-colors"
     >
-      <div className="min-w-0">
-        <div className="text-sm font-semibold text-foreground">{row.name}</div>
-        <div className="text-xs text-gray-500 mt-0.5">{row.currency || "—"}</div>
+      <CountryFlag name={row.name} currency={row.currency} />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <span className="text-sm font-semibold text-foreground">{row.name}</span>
+          <span className="text-xs text-gray-500">{row.currency || "—"}</span>
+        </div>
         <div className="text-xs text-gray-400 tabular-nums mt-0.5">
-          Kurs {fmt(row.kurs)} · Shipping {fmt(row.cargoPerKg)}/kg
+          RATE {fmt(row.kurs)} · SHIPPING {fmt(row.cargoPerKg)}/KG
         </div>
       </div>
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-300 shrink-0">

@@ -965,13 +965,13 @@ function PaymentCard({
           onClick={(e) => { e.stopPropagation(); onToggleCheck() }}
           disabled={isAdmin}
           aria-label={row.isChecked ? "Tandai belum dicek" : "Tandai sudah dicek"}
-          className={`shrink-0 p-2 rounded-lg transition-colors ${
+          className={`shrink-0 p-1.5 rounded-lg transition-colors ${
             row.isChecked
               ? "bg-green-100 text-green-700 active:bg-green-200"
               : "text-gray-300 active:bg-cream"
           } ${isAdmin ? "cursor-default" : "cursor-pointer"}`}
         >
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="20 6 9 17 4 12" />
           </svg>
         </button>

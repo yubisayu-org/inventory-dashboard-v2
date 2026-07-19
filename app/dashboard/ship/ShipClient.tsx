@@ -462,19 +462,21 @@ function CustomerCard({
           )}
         <div className="flex flex-col gap-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <button
-              type="button"
-              onClick={onOpenInvoice}
-              className="text-sm font-semibold text-foreground hover:text-brand hover:underline cursor-pointer text-left"
-              title="Lihat invoice"
-            >
-              {displayIg(c.customer).toUpperCase()}
-            </button>
-            <span className="text-sm text-gray-500 font-medium">{c.event}</span>
-            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[c.status].cls}`}>
+            <span className="flex items-center gap-1.5 shrink-0">
+              <span className="text-xs font-semibold text-foreground">{c.event}</span>
+              <button
+                type="button"
+                onClick={onOpenInvoice}
+                className="text-xs text-gray-500 font-medium hover:text-brand hover:underline cursor-pointer text-left"
+                title="Lihat invoice"
+              >
+                {displayIg(c.customer).toUpperCase()}
+              </button>
+            </span>
+            <span className={`hidden md:inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[c.status].cls}`}>
               {STATUS_BADGE[c.status].label}
             </span>
-            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${PAYMENT_BADGE[c.paymentStatus].cls}`}>
+            <span className={`hidden md:inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${PAYMENT_BADGE[c.paymentStatus].cls}`}>
               {PAYMENT_BADGE[c.paymentStatus].label}
             </span>
             {/* Surfaces a hold on a card whose status badge is something else
@@ -483,19 +485,11 @@ function CustomerCard({
                 would show no sign it's being held back. */}
             {totalHold > 0 && c.status !== "hold" && (
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
-                Ditahan
-              </span>
-            )}
-            {customerDetail?.ekspedisi && (
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                {customerDetail.ekspedisi}
+                Hold
               </span>
             )}
             {c.totalToShip > 0 && <CopyConfirmMessageButton customer={c} />}
           </div>
-          {customerDetail?.whatsapp && (
-            <div className="text-xs text-gray-500">{customerDetail.whatsapp}</div>
-          )}
         </div>
         </div>
         {/* Ship and hold are independent: a partially-arrived card can have some
@@ -592,7 +586,7 @@ function CustomerCard({
                   {o.productName}
                   {o.unitHold > 0 && (
                     <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-purple-100 text-purple-700 align-middle">
-                      Ditahan
+                      Hold
                     </span>
                   )}
                 </td>
@@ -611,13 +605,13 @@ function CustomerCard({
       {/* Orders list (mobile) */}
       <div className="md:hidden flex flex-col divide-y divide-cream-border/60">
         {c.orders.map((o) => (
-          <div key={o.rowNumber} className="px-4 py-2.5 flex items-center justify-between gap-3">
+          <div key={o.rowNumber} className="px-5 py-2.5 flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <div className="text-sm text-foreground truncate">
+              <div className="text-xs text-foreground truncate">
                 {o.productName}
                 {o.unitHold > 0 && (
                   <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-purple-100 text-purple-700 align-middle">
-                    Ditahan
+                    Hold
                   </span>
                 )}
               </div>
@@ -625,7 +619,7 @@ function CustomerCard({
                 Order {o.unit} · Tiba {o.unitArrive} · Kirim {o.unitShip}
               </div>
             </div>
-            <div className={`shrink-0 text-sm font-semibold tabular-nums ${o.toShip > 0 ? "text-brand" : "text-gray-400"}`}>
+            <div className={`shrink-0 text-xs font-semibold tabular-nums ${o.toShip > 0 ? "text-brand" : "text-gray-400"}`}>
               {o.toShip}
             </div>
           </div>

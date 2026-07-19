@@ -381,7 +381,7 @@ export default function OperationalExpensesClient() {
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-4">
         <div className="col-span-2 sm:col-span-1 rounded-xl border border-cream-border border-l-4 border-l-brand bg-white px-3 py-3 sm:px-5 sm:py-4">
           <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Total</div>
-          <div className="text-sm sm:text-2xl font-bold text-foreground mt-1 tabular-nums whitespace-nowrap">
+          <div className="text-lg sm:text-2xl font-bold text-foreground mt-1 tabular-nums whitespace-nowrap">
             {filteredSum !== null ? `Rp ${fmt(filteredSum)}` : "—"}
           </div>
         </div>
@@ -554,7 +554,7 @@ export default function OperationalExpensesClient() {
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="text-sm font-semibold text-foreground truncate">{x.description || "—"}</div>
-                <div className="text-xs text-gray-500 mt-0.5 truncate">{x.event} · {formatDate(x.expenseDate)}{x.method ? ` · ${x.method}` : ""}</div>
+                <div className="text-xs text-gray-500 mt-2 truncate">{x.event} · {formatDate(x.expenseDate)}{x.method ? ` · ${x.method}` : ""}</div>
               </div>
               <div className="shrink-0 flex flex-col items-end gap-1">
                 <span className="text-sm font-semibold tabular-nums text-foreground whitespace-nowrap">Rp {fmt(x.amountIdr)}</span>
@@ -691,13 +691,13 @@ function SettleToggle({ row, onToggled, iconButton }: {
         onClick={(e) => { e.stopPropagation(); toggle() }}
         disabled={saving}
         aria-label={row.isSettled ? "Tandai belum settled" : "Tandai settled"}
-        className={`shrink-0 p-2 rounded-lg transition-colors ${
+        className={`shrink-0 p-1.5 rounded-lg transition-colors ${
           row.isSettled
             ? "bg-green-100 text-green-700 active:bg-green-200"
             : "text-gray-300 active:bg-cream"
         } cursor-pointer disabled:opacity-50`}
       >
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <polyline points="20 6 9 17 4 12" />
         </svg>
       </button>

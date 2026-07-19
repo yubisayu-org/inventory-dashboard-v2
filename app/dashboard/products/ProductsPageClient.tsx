@@ -582,7 +582,10 @@ export default function ProductsPageClient() {
                     label={`Toggle ${p.name} active`}
                   />
                   <span className="text-xs text-gray-400 min-w-0 truncate">
-                    {abroad ? (p.countryName || "—") : "Domestic"}{p.gram ? ` · ${fmt(p.gram)} g` : ""}
+                    {[
+                      abroad ? (countries.find((c) => c.id === p.countryId)?.currency || "—") + (p.valas ? ` ${fmt(p.valas)}` : "") : "",
+                      p.gram ? `${fmt(p.gram)} GR` : "",
+                    ].filter(Boolean).join(" · ")}
                   </span>
                 </div>
                 <span className="text-brand font-bold tabular-nums whitespace-nowrap shrink-0">Rp {fmt(p.price)}</span>
@@ -855,21 +858,20 @@ function AddProductForm({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <Field label="Product Name">
-          <input ref={nameRef} value={name} onChange={(e) => setName(e.target.value)} placeholder="Product name" required disabled={adding} className={formInputCls} />
-        </Field>
-        <Field label="Store">
-          <SearchableSelect
-            value={store}
-            onChange={setStore}
-            options={stores.map((s) => ({ value: s, label: s }))}
-            placeholder="Select or type store…"
-            allowNewValue
-            disabled={adding}
-          />
-        </Field>
-      </div>
+      <Field label="Product Name">
+        <input ref={nameRef} value={name} onChange={(e) => setName(e.target.value)} placeholder="Product name" required disabled={adding} className={formInputCls} />
+      </Field>
+
+      <Field label="Store">
+        <SearchableSelect
+          value={store}
+          onChange={setStore}
+          options={stores.map((s) => ({ value: s, label: s }))}
+          placeholder="Select or type store…"
+          allowNewValue
+          disabled={adding}
+        />
+      </Field>
 
       {type === "overseas" && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -1218,10 +1220,11 @@ function EditProductModal({
           <span className="text-xs text-gray-400">ID: {row.id}</span>
         </div>
 
+        <Field label="Name">
+          <input value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} disabled={saving} className={formInputCls} />
+        </Field>
+
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Name">
-            <input value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} disabled={saving} className={formInputCls} />
-          </Field>
           <Field label="Store">
             <SearchableSelect
               value={draft.store}
@@ -1232,19 +1235,18 @@ function EditProductModal({
               disabled={saving}
             />
           </Field>
+          <Field label="Type">
+            <select
+              value={draft.countryId ?? ""}
+              onChange={(e) => setDraft((d) => ({ ...d, countryId: e.target.value ? Number(e.target.value) : null }))}
+              disabled={saving}
+              className={formInputCls}
+            >
+              <option value="">Domestic</option>
+              {countries.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.currency})</option>)}
+            </select>
+          </Field>
         </div>
-
-        <Field label="Type">
-          <select
-            value={draft.countryId ?? ""}
-            onChange={(e) => setDraft((d) => ({ ...d, countryId: e.target.value ? Number(e.target.value) : null }))}
-            disabled={saving}
-            className={formInputCls}
-          >
-            <option value="">Domestic</option>
-            {countries.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.currency})</option>)}
-          </select>
-        </Field>
 
         {draftAbroad ? (
           <div className="grid grid-cols-2 gap-3">
@@ -1280,7 +1282,7 @@ function EditProductModal({
             {draftCountry && (
               <div className="col-span-2 flex gap-4 text-xs text-gray-500 items-center">
                 <span>Kurs: {fmt(draftCountry.kurs)}</span>
-                <span>Cargo/kg: {fmt(draftCountry.cargoPerKg)}</span>
+                <span>Shipping/kg: {fmt(draftCountry.cargoPerKg)}</span>
               </div>
             )}
           </div>

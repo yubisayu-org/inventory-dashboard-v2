@@ -468,12 +468,10 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
               onClick={() => setSheetRow(r)}
               className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] cursor-pointer active:bg-cream/40 transition-colors"
             >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <div className="font-semibold text-sm text-foreground truncate">{displayIg(r.customer)}</div>
-                  {!r.hasAddress && <NoAddressIcon />}
-                </div>
-                <span className="shrink-0 text-[11px] text-gray-600 bg-cream border border-cream-border rounded-md px-2 py-0.5 font-semibold">{r.event}</span>
+              <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                <span className="font-semibold text-sm text-foreground">{r.event}</span>
+                {!r.hasAddress && <NoAddressIcon />}
+                <span className="text-xs text-gray-400 uppercase truncate">{displayIg(r.customer)}</span>
               </div>
               <div className="flex items-start justify-between gap-3 mt-2">
                 <div className="text-sm text-foreground">{r.items}</div>
@@ -482,7 +480,7 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
               {r.note && <div className="text-xs text-gray-400 italic mt-1">Note: {r.note}</div>}
               <div className="flex items-center justify-between gap-2 mt-2.5 pt-2.5 border-t border-cream-border">
                 <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-medium border ${bought ? "bg-green-50 text-green-700 border-green-200" : "bg-gray-50 text-gray-500 border-cream-border"}`}>
-                  {bought ? "Bought" : "Not bought"}
+                  {bought ? "Purchased" : "Not purchased"}
                 </span>
                 <div onClick={(e) => e.stopPropagation()}>
                   <CopyInvoiceButton customer={r.customer} event={r.event} />
