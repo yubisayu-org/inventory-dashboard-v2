@@ -158,11 +158,11 @@ export default function EventsClient() {
     {
       accessorKey: "eta",
       header: "ETA",
-      size: 120,
+      size: 160,
       filterFn: "textContains",
       cell: ({ getValue }) => {
         const v = getValue<string>()
-        return <span className={v ? "text-foreground" : "text-gray-400"}>{v || "—"}</span>
+        return <span className={`whitespace-nowrap ${v ? "text-foreground" : "text-gray-400"}`}>{v || "—"}</span>
       },
     },
     {

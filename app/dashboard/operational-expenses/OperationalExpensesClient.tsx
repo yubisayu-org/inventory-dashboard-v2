@@ -554,18 +554,18 @@ export default function OperationalExpensesClient() {
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="text-sm font-semibold text-foreground truncate">{x.description || "—"}</div>
-                <div className="text-xs text-gray-500 mt-0.5">{x.event} · {formatDate(x.expenseDate)}</div>
+                <div className="text-xs text-gray-500 mt-0.5 truncate">{x.event} · {formatDate(x.expenseDate)}{x.method ? ` · ${x.method}` : ""}</div>
               </div>
-              <CategoryBadge category={x.category} />
+              <div className="shrink-0 flex flex-col items-end gap-1">
+                <span className="text-sm font-semibold tabular-nums text-foreground whitespace-nowrap">Rp {fmt(x.amountIdr)}</span>
+                <SettleToggle row={x} onToggled={() => refreshRef.current()} iconButton />
+              </div>
             </div>
             <div className="flex items-center justify-between gap-3 mt-2.5 pt-2.5 border-t border-cream-border">
               <span className="text-xs text-gray-400 min-w-0 truncate">
-                {x.rate !== 1 ? `${fmt(x.amountForeign)} × ${fmt(x.rate)}` : ""}{x.method ? ` · ${x.method}` : ""}
+                {x.rate !== 1 ? `${fmt(x.amountForeign)} × ${fmt(x.rate)}` : ""}
               </span>
-              <div className="flex items-center gap-2.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-                <SettleToggle row={x} onToggled={() => refreshRef.current()} />
-                <span className="text-brand font-bold tabular-nums whitespace-nowrap">Rp {fmt(x.amountIdr)}</span>
-              </div>
+              <CategoryBadge category={x.category} />
             </div>
           </div>
         ))}
@@ -662,7 +662,9 @@ export default function OperationalExpensesClient() {
 
 // ─── Settle toggle (quick PATCH) ─────────────────────────────────────────────
 
-function SettleToggle({ row, onToggled }: { row: OperationalExpenseRow; onToggled: () => void }) {
+function SettleToggle({ row, onToggled, iconButton }: {
+  row: OperationalExpenseRow; onToggled: () => void; iconButton?: boolean
+}) {
   const [saving, setSaving] = useState(false)
   async function toggle() {
     setSaving(true)
@@ -679,6 +681,27 @@ function SettleToggle({ row, onToggled }: { row: OperationalExpenseRow; onToggle
     } finally {
       setSaving(false)
     }
+  }
+  // iconButton: mobile card variant matching the payments page's checked-toggle
+  // button (rounded icon, green when settled) instead of a plain checkbox.
+  if (iconButton) {
+    return (
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); toggle() }}
+        disabled={saving}
+        aria-label={row.isSettled ? "Tandai belum settled" : "Tandai settled"}
+        className={`shrink-0 p-2 rounded-lg transition-colors ${
+          row.isSettled
+            ? "bg-green-100 text-green-700 active:bg-green-200"
+            : "text-gray-300 active:bg-cream"
+        } cursor-pointer disabled:opacity-50`}
+      >
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="20 6 9 17 4 12" />
+        </svg>
+      </button>
+    )
   }
   return (
     <input

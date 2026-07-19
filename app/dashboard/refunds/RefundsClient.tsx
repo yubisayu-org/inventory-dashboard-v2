@@ -207,8 +207,9 @@ export default function RefundsClient() {
     return (
       <div className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <div className="flex items-center gap-1.5">
-            <span className="text-sm font-semibold text-foreground truncate">{displayIg(r.customer)}</span>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-sm font-semibold text-foreground">{r.event}</span>
+            <span className="text-xs text-gray-400 uppercase truncate">{displayIg(r.customer)}</span>
             {msg && (
               <span title={msg} className="text-amber-500 shrink-0">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -218,10 +219,7 @@ export default function RefundsClient() {
               </span>
             )}
           </div>
-          <div className="text-xs text-gray-500 mt-0.5">{r.event} · {reasonLabel(r.reason)}</div>
-          <span className={`inline-flex items-center mt-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium border ${STATUS_COLORS[r.status]}`}>
-            {STATUS_LABELS[r.status]}
-          </span>
+          <div className="text-xs text-gray-500 mt-0.5">{reasonLabel(r.reason)}</div>
         </div>
         <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">{formatRp(displayAmount(r))}</span>
       </div>

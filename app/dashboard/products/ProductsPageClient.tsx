@@ -506,6 +506,7 @@ export default function ProductsPageClient() {
           }
           initialVisibility={{
             id: false,
+            type: false,
             kurs: false,
             cargoPerKg: false,
             operationalFee: false,
@@ -572,9 +573,6 @@ export default function ProductsPageClient() {
                   </div>
                   <div className="text-xs text-gray-500 uppercase mt-0.5">{p.store || "—"}</div>
                 </div>
-                <span className={`shrink-0 inline-block px-2 py-0.5 rounded-full text-[10px] font-medium ${abroad ? "bg-blue-50 text-blue-600" : "bg-green-50 text-green-600"}`}>
-                  {abroad ? "Overseas" : "Domestic"}
-                </span>
               </div>
               <div className="flex items-center justify-between gap-3 mt-2.5 pt-2.5 border-t border-cream-border">
                 <div className="flex items-center gap-2 min-w-0">

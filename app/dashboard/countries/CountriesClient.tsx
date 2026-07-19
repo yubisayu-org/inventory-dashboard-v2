@@ -122,7 +122,7 @@ export default function CountriesClient() {
     },
     {
       accessorKey: "cargoPerKg",
-      header: "Cargo / kg",
+      header: "Shipping / kg",
       size: 120,
       filterFn: "numeric",
       meta: { align: "right" },
@@ -196,7 +196,7 @@ export default function CountriesClient() {
         <div className="text-sm font-semibold text-foreground">{row.name}</div>
         <div className="text-xs text-gray-500 mt-0.5">{row.currency || "—"}</div>
         <div className="text-xs text-gray-400 tabular-nums mt-0.5">
-          Kurs {fmt(row.kurs)} · Cargo {fmt(row.cargoPerKg)}/kg
+          Kurs {fmt(row.kurs)} · Shipping {fmt(row.cargoPerKg)}/kg
         </div>
       </div>
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-300 shrink-0">
@@ -238,7 +238,7 @@ export default function CountriesClient() {
           {...field("cargoPerKg")}
           type="number"
           min="0"
-          placeholder="Cargo / kg (IDR)"
+          placeholder="Shipping / kg (IDR)"
           disabled={adding}
           className={formInputCls}
           style={{ width: "9rem" }}
@@ -363,7 +363,7 @@ export default function CountriesClient() {
             <input {...field("name")} placeholder="Country name" required disabled={adding} className={modalInputCls} />
             <input {...field("currency")} placeholder="Currency (e.g. CNY)" disabled={adding} className={modalInputCls} />
             <input {...field("kurs")} type="number" min="0" step="any" placeholder="Kurs (IDR)" disabled={adding} className={modalInputCls} />
-            <input {...field("cargoPerKg")} type="number" min="0" placeholder="Cargo / kg (IDR)" disabled={adding} className={modalInputCls} />
+            <input {...field("cargoPerKg")} type="number" min="0" placeholder="Shipping / kg (IDR)" disabled={adding} className={modalInputCls} />
             {addError && <p className="text-xs text-red-500">{addError}</p>}
             <button type="submit" disabled={adding} className="px-4 py-3 rounded-xl bg-brand text-white text-sm font-semibold disabled:opacity-50">
               {adding ? "Saving…" : "Save Country"}
@@ -482,13 +482,13 @@ function EditCountryModal({
             />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-500">Cargo / kg (IDR)</span>
+            <span className="text-xs font-medium text-gray-500">Shipping / kg (IDR)</span>
             <input
               {...draftField("cargoPerKg")}
               onKeyDown={handleKeyDown}
               type="number"
               min="0"
-              placeholder="Cargo per kg"
+              placeholder="Shipping per kg"
               className={modalInputCls}
             />
           </label>

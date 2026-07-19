@@ -28,12 +28,12 @@ export default function EventPerformancePanel({ perf }: { perf: EventPerformance
           <Stat label="Overpaid invoices" value={fmt(perf.overpaidCount)} />
         </StatGroup>
 
-        {/* Payments */}
-        <StatGroup title="Payments">
+        {/* Finance */}
+        <StatGroup title="Finance">
           <Stat label="Revenue" value={rp(perf.revenue)} strong />
           <Stat label="Paid" value={rp(perf.totalPaid)} />
           <Stat label="Outstanding" value={rp(perf.outstanding)} className={perf.outstanding > 0 ? "text-red-600" : undefined} />
-          <Stat label="Overpayment" value={rp(perf.dueRefund)} className={perf.dueRefund > 0 ? "text-red-600" : undefined} />
+          <Stat label="Overpayment" value={rp(perf.dueRefund)} className={perf.dueRefund > 0 ? "text-blue-600" : undefined} />
         </StatGroup>
 
         {/* Fulfillment */}

@@ -949,8 +949,7 @@ function PaymentCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-sm font-semibold text-foreground truncate">{displayIg(row.customer)}</div>
-          <div className="text-xs text-gray-500 mt-0.5 truncate">{row.event}</div>
+          <div className="text-sm font-semibold text-foreground uppercase truncate">{displayIg(row.customer)}</div>
         </div>
         <div className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
           Rp {formatAmount(row.amount)}
@@ -959,15 +958,7 @@ function PaymentCard({
 
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-xs text-gray-500 min-w-0">
-          <span className="whitespace-nowrap">{formatDate(row.payDate)}</span>
-          {row.account && (
-            <>
-              <span className="text-gray-300">·</span>
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10.5px] font-medium bg-cream text-gray-600">
-                {row.account}
-              </span>
-            </>
-          )}
+          <span className="truncate">{row.event} · {formatDate(row.payDate)}{row.account ? ` · ${row.account}` : ""}</span>
         </div>
         <button
           type="button"
