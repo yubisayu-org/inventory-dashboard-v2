@@ -322,7 +322,7 @@ export default function DataGrid<T>({
               value={table.getState().globalFilter ?? ""}
               onChange={(v) => table.setGlobalFilter(v)}
               placeholder={searchPlaceholder}
-              className={fullWidthSearch ? "flex-1 min-w-[160px]" : "w-56"}
+              className={fullWidthSearch ? "flex-1 min-w-[120px]" : "w-56"}
               dense
             />
           )}

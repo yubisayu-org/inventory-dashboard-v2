@@ -20,6 +20,13 @@ export default function EventPerformancePanel({ perf }: { perf: EventPerformance
   return (
     <div className="flex flex-col gap-4 pt-4 pr-4 pb-4 pl-[38px] md:pl-12">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {/* Fulfillment */}
+        <StatGroup title="Fulfillment">
+          <Bar label="Bought" value={perf.totalBought} pct={pct(perf.totalBought)} />
+          <Bar label="Arrived" value={perf.totalArrived} pct={pct(perf.totalArrived)} />
+          <Bar label="Shipped" value={perf.totalShipped} pct={pct(perf.totalShipped)} />
+        </StatGroup>
+
         {/* Sales */}
         <StatGroup title="Sales">
           <Stat label="Customers" value={fmt(perf.customerCount)} />
@@ -28,19 +35,12 @@ export default function EventPerformancePanel({ perf }: { perf: EventPerformance
           <Stat label="Overpaid invoices" value={fmt(perf.overpaidCount)} />
         </StatGroup>
 
-        {/* Payments */}
-        <StatGroup title="Payments">
+        {/* Finance */}
+        <StatGroup title="Finance">
           <Stat label="Revenue" value={rp(perf.revenue)} strong />
           <Stat label="Paid" value={rp(perf.totalPaid)} />
           <Stat label="Outstanding" value={rp(perf.outstanding)} className={perf.outstanding > 0 ? "text-red-600" : undefined} />
-          <Stat label="Overpayment" value={rp(perf.dueRefund)} className={perf.dueRefund > 0 ? "text-red-600" : undefined} />
-        </StatGroup>
-
-        {/* Fulfillment */}
-        <StatGroup title="Fulfillment">
-          <Bar label="Bought" value={perf.totalBought} pct={pct(perf.totalBought)} />
-          <Bar label="Arrived" value={perf.totalArrived} pct={pct(perf.totalArrived)} />
-          <Bar label="Shipped" value={perf.totalShipped} pct={pct(perf.totalShipped)} />
+          <Stat label="Overpayment" value={rp(perf.dueRefund)} className={perf.dueRefund > 0 ? "text-blue-600" : undefined} />
         </StatGroup>
       </div>
 
@@ -51,7 +51,7 @@ export default function EventPerformancePanel({ perf }: { perf: EventPerformance
           <span className={`text-base font-semibold tabular-nums ${profitPositive ? "text-emerald-600" : "text-red-600"}`}>
             {rp(perf.netProfit)}
           </span>
-          <span className="text-[11px] text-gray-400">
+          <span className="hidden sm:inline text-[11px] text-gray-400">
             paid {rp(perf.totalPaid)} − ops {rp(perf.opsExpenses)}
           </span>
         </span>
@@ -70,10 +70,15 @@ function StatGroup({ title, children }: { title: string; children: React.ReactNo
 }
 
 function Stat({ label, value, strong, className }: { label: string; value: string; strong?: boolean; className?: string }) {
+  // className (when given) carries its own text color — omit the default
+  // text-foreground so it can't lose a same-specificity cascade fight against
+  // an override color like text-blue-600/text-red-600 (Tailwind utility order
+  // isn't guaranteed to favor the one written last in the class string).
+  const colorCls = className ?? "text-foreground"
   return (
     <div className="flex items-baseline justify-between gap-2">
       <span className="text-xs text-gray-500">{label}</span>
-      <span className={`tabular-nums ${strong ? "text-sm font-semibold text-foreground" : "text-sm text-foreground"} ${className ?? ""}`}>
+      <span className={`tabular-nums ${strong ? "text-sm font-semibold" : "text-sm"} ${colorCls}`}>
         {value}
       </span>
     </div>

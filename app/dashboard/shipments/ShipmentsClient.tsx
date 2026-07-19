@@ -799,15 +799,12 @@ export default function ShipmentsClient() {
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-sm font-semibold text-foreground truncate">{displayIg(r.customer)}</span>
+            <span className="text-sm font-semibold text-foreground">{r.event}</span>
+            <span className="text-xs text-gray-400 uppercase truncate">{displayIg(r.customer)}</span>
             {r.mergedCount > 1 && (
               <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700">Gabung</span>
             )}
-            {r.isLastShipment && (
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-green-100 text-green-700">Terakhir</span>
-            )}
           </div>
-          <div className="text-xs text-gray-400 mt-0.5">{r.event} · <span className="font-mono">{r.shippingId}</span></div>
         </div>
         <div className="flex items-center gap-1 shrink-0">
           <CopyShipmentMessageButton record={r} />
@@ -821,64 +818,67 @@ export default function ShipmentsClient() {
         </div>
       </div>
       <div className="text-xs text-gray-500 tabular-nums">
-        {fmt(r.weightEstimation)} kg · Rp {fmt(r.ongkirTotal)}
+        {fmt(r.weightEstimation)} KG · Rp {fmt(r.ongkirTotal)}
       </div>
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); setEditResiRecord(r) }}
-        className="group flex items-center gap-1.5 text-left pt-2.5 border-t border-cream-border"
+        className="group flex items-center justify-between gap-1.5 text-left pt-2.5 border-t border-cream-border"
       >
-        <span className={`text-xs ${r.trackingNumber ? "text-foreground font-mono" : "text-gray-400 italic"}`}>
-          {r.trackingNumber || "Resi belum diisi"}
+        <span className="flex items-center gap-1.5 min-w-0">
+          <span className={`text-xs truncate ${r.trackingNumber ? "text-foreground font-mono" : "text-gray-400 italic"}`}>
+            {r.trackingNumber || "Resi belum diisi"}
+          </span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400 group-hover:text-brand transition-colors shrink-0">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
+          </svg>
         </span>
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400 group-hover:text-brand transition-colors shrink-0">
-          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
-        </svg>
+        <span className="text-xs text-gray-400 font-mono shrink-0">{r.shippingId}</span>
       </button>
     </div>
   ), [])
 
   const toolbarExtra = (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 shrink-0">
       <select
         value={windowDays}
         onChange={(e) => setWindowDays(e.target.value)}
         disabled={loading}
         title="Rentang waktu shipment yang dimuat"
-        className="text-xs text-gray-600 bg-white border border-cream-border rounded-lg px-2 py-1.5 hover:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand disabled:opacity-50 transition-colors"
+        className="text-sm text-gray-600 bg-white border border-cream-border rounded-lg px-2 py-1.5 hover:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand disabled:opacity-50 transition-colors"
       >
-        <option value="1">24 jam terakhir</option>
-        <option value="7">Minggu terakhir</option>
-        <option value="30">Bulan terakhir</option>
-        <option value="all">Semua</option>
+        <option value="1">Last 24 hours</option>
+        <option value="7">Last week</option>
+        <option value="30">Last month</option>
+        <option value="all">All shipments</option>
       </select>
-      {selectedCount > 0 && (
-        <button
-          type="button"
-          onClick={handlePrintPdf}
-          disabled={printingPdf}
-          className="inline-flex items-center gap-1.5 text-xs font-medium text-white bg-brand hover:bg-brand/90 disabled:opacity-50 transition-colors px-3 py-1.5 rounded-lg"
+      <button
+        type="button"
+        onClick={handlePrintPdf}
+        disabled={printingPdf || selectedCount === 0}
+        className="shrink-0 inline-flex items-center gap-1.5 text-sm font-medium text-white bg-brand hover:bg-brand/90 disabled:opacity-50 transition-colors px-3 py-1.5 rounded-lg whitespace-nowrap"
+      >
+        <svg
+          width="13"
+          height="13"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="shrink-0"
         >
-          <svg
-            width="13"
-            height="13"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <polyline points="6 9 6 2 18 2 18 9" />
-            <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-            <rect x="6" y="14" width="12" height="8" />
-          </svg>
-          {printingPdf
-            ? "Generating…"
-            : `Print ${selectedCount} Label${selectedCount === 1 ? "" : "s"}`}
-        </button>
-      )}
+          <polyline points="6 9 6 2 18 2 18 9" />
+          <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+          <rect x="6" y="14" width="12" height="8" />
+        </svg>
+        <span className="hidden sm:inline">
+          {printingPdf ? "Generating…" : `Print ${selectedCount} Label${selectedCount === 1 ? "" : "s"}`}
+        </span>
+        <span className="sm:hidden">{printingPdf ? "…" : selectedCount}</span>
+      </button>
     </div>
   )
 
