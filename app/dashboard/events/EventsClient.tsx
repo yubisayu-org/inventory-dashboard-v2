@@ -147,22 +147,17 @@ export default function EventsClient() {
       filterFn: "textContains",
       enableHiding: false,
       cell: ({ row }) => (
-        <span className="inline-flex items-center gap-1.5">
-          <span className="font-medium">{row.original.name}</span>
-          {!row.original.isActive && (
-            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-500 border border-gray-200">Inactive</span>
-          )}
-        </span>
+        <span className="font-medium">{row.original.name}</span>
       ),
     },
     {
       accessorKey: "eta",
       header: "ETA",
-      size: 120,
+      size: 160,
       filterFn: "textContains",
       cell: ({ getValue }) => {
         const v = getValue<string>()
-        return <span className={v ? "text-foreground" : "text-gray-400"}>{v || "—"}</span>
+        return <span className={`whitespace-nowrap ${v ? "text-foreground" : "text-gray-400"}`}>{v || "—"}</span>
       },
     },
     {
@@ -390,8 +385,8 @@ export default function EventsClient() {
                     <span className="min-w-0">
                       <span className="block text-sm font-semibold text-foreground truncate">{ev.name}</span>
                       <span className={`block text-xs mt-0.5 ${ev.eta ? "text-gray-500" : "text-gray-400"}`}>
-                        {ev.eta ? `ETA ${ev.eta}` : "No ETA"}
-                        {ev.countryName ? ` · ${ev.countryName} (${ev.currency})` : " · IDR"}
+                        {ev.countryName ? ev.currency : "IDR"}
+                        {` · ${ev.eta || "No ETA"}`}
                       </span>
                     </span>
                   </button>

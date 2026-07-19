@@ -949,8 +949,7 @@ function PaymentCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-sm font-semibold text-foreground truncate">{displayIg(row.customer)}</div>
-          <div className="text-xs text-gray-500 mt-0.5 truncate">{row.event}</div>
+          <div className="text-sm font-semibold text-foreground uppercase truncate">{displayIg(row.customer)}</div>
         </div>
         <div className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
           Rp {formatAmount(row.amount)}
@@ -959,28 +958,20 @@ function PaymentCard({
 
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-xs text-gray-500 min-w-0">
-          <span className="whitespace-nowrap">{formatDate(row.payDate)}</span>
-          {row.account && (
-            <>
-              <span className="text-gray-300">·</span>
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10.5px] font-medium bg-cream text-gray-600">
-                {row.account}
-              </span>
-            </>
-          )}
+          <span className="truncate">{row.event} · {formatDate(row.payDate)}{row.account ? ` · ${row.account}` : ""}</span>
         </div>
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); onToggleCheck() }}
           disabled={isAdmin}
           aria-label={row.isChecked ? "Tandai belum dicek" : "Tandai sudah dicek"}
-          className={`shrink-0 p-2 rounded-lg transition-colors ${
+          className={`shrink-0 p-1.5 rounded-lg transition-colors ${
             row.isChecked
               ? "bg-green-100 text-green-700 active:bg-green-200"
               : "text-gray-300 active:bg-cream"
           } ${isAdmin ? "cursor-default" : "cursor-pointer"}`}
         >
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="20 6 9 17 4 12" />
           </svg>
         </button>
