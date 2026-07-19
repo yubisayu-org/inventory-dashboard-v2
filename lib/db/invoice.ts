@@ -18,6 +18,7 @@ function buildInvoiceMessage(
   customer: string,
   template: string,
   profile: BusinessProfile,
+  extraVars: Record<string, string> = {},
 ): string {
   const { orders, totals, invoice } = event
   const handle = customer.startsWith("@") ? customer : `@${customer}`
@@ -49,6 +50,7 @@ function buildInvoiceMessage(
     bankAccountHolder: profile.bankAccountHolder,
     bankAccountLines: profile.bankAccountLines,
     publicSiteUrl: profile.publicSiteUrl,
+    ...extraVars,
   })
 }
 
@@ -250,12 +252,21 @@ export async function getInvoiceForCustomer(
       totals,
       invoice,
     }
-    return {
-      ...base,
-      message: templates && businessProfile
+    const dpThreshold = invoice.total * ((businessProfile?.dpPercent ?? 0) / 100)
+    const meetsDpThreshold = invoice.total === 0 || invoice.pembayaran >= dpThreshold
+
+    let message = ""
+    if (templates && businessProfile) {
+      message = meetsDpThreshold
         ? buildInvoiceMessage(base, customer, templates.invoice, businessProfile)
-        : "",
+        : buildInvoiceMessage(base, customer, templates.invoice_dp, businessProfile, {
+            dpPercent: String(businessProfile.dpPercent),
+            dpAmount: formatIdrNumber(Math.round(dpThreshold)),
+            dpShortfall: formatIdrNumber(Math.round(Math.max(0, dpThreshold - invoice.pembayaran))),
+          })
     }
+
+    return { ...base, message }
   })
 
   return { customer, customerDetail, events }

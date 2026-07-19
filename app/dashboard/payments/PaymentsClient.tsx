@@ -121,6 +121,13 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
   const fetchFilters = useMemo<Record<string, string>>(() => {
     const f: Record<string, string> = {}
     for (const cf of columnFilters) {
+      // Date column carries a {from,to} range object, not a plain string.
+      if (cf.id === "payDate") {
+        const { from, to } = (cf.value as { from?: string; to?: string } | undefined) ?? {}
+        if (from) f.dateFrom = from
+        if (to) f.dateTo = to
+        continue
+      }
       const v = String(cf.value ?? "").trim()
       if (!v) continue
       if (cf.id === "event") f.event = v
@@ -301,7 +308,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
       accessorKey: "payDate",
       header: "Date",
       size: 100,
-      enableColumnFilter: false,
+      filterFn: "dateRange",
       cell: ({ row }) => (
         <span className="text-gray-500 text-xs whitespace-nowrap">
           {formatDate(row.original.payDate)}

@@ -250,6 +250,7 @@ export interface EventPerformance {
   customerCount: number
   totalUnits: number
   revenue: number
+  kurs: number
   // Payments
   totalPaid: number
   outstanding: number
@@ -260,7 +261,8 @@ export interface EventPerformance {
   totalBought: number
   totalArrived: number
   totalShipped: number
-  // Profit — simple cash view: paid in minus operational expenses out.
+  // Profit — simple cash view: paid in minus operational expenses and money
+  // still owed back to customers (overpayment) out.
   opsExpenses: number
   netProfit: number
 }
@@ -355,6 +357,7 @@ export async function getEventPerformance(): Promise<EventPerformance[]> {
     )
     SELECT
       e.name,
+      COALESCE(co.kurs, 0)::numeric AS kurs,
       COALESCE(oa.order_count, 0)::int AS order_count,
       COALESCE(oa.customer_count, 0)::int AS customer_count,
       COALESCE(oa.total_units, 0)::int AS total_units,
@@ -369,6 +372,7 @@ export async function getEventPerformance(): Promise<EventPerformance[]> {
       COALESCE(op.ops_expenses, 0)::bigint AS ops_expenses,
       COALESCE(rd.due_refund, 0)::bigint AS due_refund
     FROM events e
+    LEFT JOIN countries co ON co.id = e.country_id
     LEFT JOIN order_agg oa ON oa.event = e.name
     LEFT JOIN sales s ON s.event = e.name
     LEFT JOIN pay_event pe ON pe.event = e.name
@@ -379,6 +383,7 @@ export async function getEventPerformance(): Promise<EventPerformance[]> {
   return rows.map((r) => {
     const totalPaid = Number(r.total_paid ?? 0)
     const opsExpenses = Number(r.ops_expenses ?? 0)
+    const dueRefund = Number(r.due_refund ?? 0)
     return {
       name: r.name as string,
       hasActivity: Number(r.order_count ?? 0) > 0,
@@ -386,16 +391,17 @@ export async function getEventPerformance(): Promise<EventPerformance[]> {
       customerCount: Number(r.customer_count ?? 0),
       totalUnits: Number(r.total_units ?? 0),
       revenue: Number(r.revenue ?? 0),
+      kurs: Number(r.kurs ?? 0),
       totalPaid,
       outstanding: Number(r.outstanding ?? 0),
       unpaidCount: Number(r.unpaid_count ?? 0),
       overpaidCount: Number(r.overpaid_count ?? 0),
-      dueRefund: Number(r.due_refund ?? 0),
+      dueRefund,
       totalBought: Number(r.total_bought ?? 0),
       totalArrived: Number(r.total_arrived ?? 0),
       totalShipped: Number(r.total_shipped ?? 0),
       opsExpenses,
-      netProfit: totalPaid - opsExpenses,
+      netProfit: totalPaid - opsExpenses - dueRefund,
     }
   })
 }

@@ -179,6 +179,8 @@ export async function getDuplicateFormRowsPaginated(opts: {
   event?: string
   customer?: string
   items?: string
+  dateFrom?: string
+  dateTo?: string
   sortKey?: string
   sortDir?: "asc" | "desc"
   newestFirst?: boolean
@@ -190,7 +192,7 @@ export async function getDuplicateFormRowsPaginated(opts: {
    */
   skipCount?: boolean
 }): Promise<PaginatedFormRows> {
-  const { page, pageSize, search, event, customer, items, newestFirst, skipCount } = opts
+  const { page, pageSize, search, event, customer, items, dateFrom, dateTo, newestFirst, skipCount } = opts
   const offset = (page - 1) * pageSize
 
   const conditions: string[] = []
@@ -209,6 +211,15 @@ export async function getDuplicateFormRowsPaginated(opts: {
   if (items) {
     params.push(`%${items.toLowerCase()}%`)
     conditions.push(`lower(p.name) LIKE $${params.length}`)
+  }
+  // Inclusive date range on the order's created_at day (timestamptz → ::date).
+  if (dateFrom) {
+    params.push(dateFrom)
+    conditions.push(`o.created_at::date >= $${params.length}`)
+  }
+  if (dateTo) {
+    params.push(dateTo)
+    conditions.push(`o.created_at::date <= $${params.length}`)
   }
   if (search) {
     params.push(`%${search.toLowerCase()}%`)

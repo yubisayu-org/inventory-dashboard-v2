@@ -7,23 +7,29 @@
 // required tokens would silently print "{token}" (or drop data) once sent, so
 // both the settings UI and the PATCH route reject a save that's missing any.
 
-export type TemplateKey = "invoice" | "shipment" | "refund_specific" | "refund_generic"
+export type TemplateKey = "invoice" | "invoice_dp" | "shipment" | "refund_specific" | "refund_generic"
 
-export const TEMPLATE_KEYS: TemplateKey[] = ["invoice", "shipment", "refund_specific", "refund_generic"]
+export const TEMPLATE_KEYS: TemplateKey[] = ["invoice", "invoice_dp", "shipment", "refund_specific", "refund_generic"]
 
 export const REQUIRED_TOKENS: Record<TemplateKey, string[]> = {
   invoice: [
     "{eventId}", "{handle}", "{produkLines}", "{subtotalBarang}", "{weightKg}", "{perKgRate}", "{sisaPelunasan}",
     "{bankAccountHolder}", "{bankAccountLines}", "{publicSiteUrl}",
   ],
+  invoice_dp: [
+    "{eventId}", "{handle}", "{produkLines}", "{subtotalBarang}", "{weightKg}", "{perKgRate}",
+    "{dpPercent}", "{dpAmount}", "{dpShortfall}", "{bankAccountHolder}", "{bankAccountLines}", "{publicSiteUrl}",
+  ],
   shipment: ["{event}", "{handle}", "{dataDiri}", "{items}", "{publicSiteUrl}"],
   refund_specific: ["{customer}", "{event}", "{itemsList}", "{refundAmount}"],
   refund_generic: ["{customer}", "{event}", "{refundAmount}"],
 }
 
-// Tokens allowed but not mandatory — currently only invoice's optional fee line.
+// Tokens allowed but not mandatory — currently the invoice/invoice_dp fee
+// line, plus invoice_dp's optional full-remaining-balance figure.
 export const OPTIONAL_TOKENS: Record<TemplateKey, string[]> = {
   invoice: ["{biayaLainnyaBlock}"],
+  invoice_dp: ["{biayaLainnyaBlock}", "{sisaPelunasan}"],
   shipment: [],
   refund_specific: [],
   refund_generic: [],
@@ -50,6 +56,27 @@ export const DEFAULT_TEMPLATES: Record<TemplateKey, string> = {
     "Cek rekapan mandiri {publicSiteUrl}",
     "",
     "Jika ada kesalahan/kekurangan rekap, mohon infokan kembali untuk direvisi.",
+  ].join("\n"),
+
+  invoice_dp: [
+    "INVOICE - DOWN PAYMENT",
+    "{eventId} {handle}",
+    "",
+    "Produk:",
+    "{produkLines}",
+    "",
+    "Subtotal Barang: Rp {subtotalBarang}",
+    "Estimasi Ongkir: {weightKg} kg x Rp {perKgRate}{biayaLainnyaBlock}",
+    "",
+    "Down Payment yang dibutuhkan: {dpPercent}% (Rp {dpAmount})",
+    "Kekurangan Down Payment: Rp {dpShortfall}",
+    "",
+    "Rekening an {bankAccountHolder}:",
+    "{bankAccountLines}",
+    "",
+    "Mohon lakukan pembayaran down payment agar pesanan diproses.",
+    "",
+    "Cek rekapan mandiri {publicSiteUrl}",
   ].join("\n"),
 
   shipment: [

@@ -34,6 +34,7 @@ export async function PATCH(req: NextRequest) {
       storeName: String(body.storeName ?? ""),
       phoneNumber: String(body.phoneNumber ?? ""),
       publicSiteUrl: String(body.publicSiteUrl ?? ""),
+      dpPercent: Number(body.dpPercent) || 0,
     }
 
     await withActor(session.user.email, (tx) => updateBusinessProfile(profile, tx))

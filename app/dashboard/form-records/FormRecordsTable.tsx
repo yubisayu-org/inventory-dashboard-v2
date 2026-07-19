@@ -94,8 +94,15 @@ export default function FormRecordsTable({ role }: { role: Role | null }) {
 
   // -- Convert TanStack state → usePaginatedFetch params --
   const fetchFilters = useMemo(() => {
-    const f = { event: "", customer: "", items: "" }
+    const f = { event: "", customer: "", items: "", dateFrom: "", dateTo: "" }
     for (const cf of columnFilters) {
+      // Date column carries a {from,to} range object, not a plain string.
+      if (cf.id === "createdAt") {
+        const { from, to } = (cf.value as { from?: string; to?: string } | undefined) ?? {}
+        f.dateFrom = from ?? ""
+        f.dateTo = to ?? ""
+        continue
+      }
       if (cf.id in f) f[cf.id as keyof typeof f] = String(cf.value ?? "")
     }
     return f
@@ -248,7 +255,7 @@ export default function FormRecordsTable({ role }: { role: Role | null }) {
       accessorKey: "createdAt",
       header: "Created At",
       size: 110,
-      enableColumnFilter: false,
+      filterFn: "dateRange",
       cell: ({ getValue }) => <span className="text-gray-400 text-xs whitespace-nowrap">{getValue<string>() || "—"}</span>,
     },
     {
@@ -313,7 +320,6 @@ export default function FormRecordsTable({ role }: { role: Role | null }) {
         unitShip: false,
         unitHold: false,
         note: false,
-        createdAt: false,
         updatedAt: false,
       }}
       serverSide={{
