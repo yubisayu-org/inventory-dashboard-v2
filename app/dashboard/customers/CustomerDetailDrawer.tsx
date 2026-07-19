@@ -132,6 +132,18 @@ export function CustomerDetailDrawer({
                 />
               </div>
 
+              {/* Customer detail */}
+              {data.invoices.customerDetail && (
+                <div className="rounded-xl border border-cream-border bg-white p-4 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                  <DetailField label="WhatsApp" value={data.invoices.customerDetail.whatsapp} />
+                  <DetailField label="Ekspedisi" value={data.invoices.customerDetail.ekspedisi} />
+                  <DetailField label="Alamat" value={data.invoices.customerDetail.dataDiri} className="col-span-2" valueClassName="whitespace-pre-line" />
+                  <DetailField label="Bank" value={data.invoices.customerDetail.bankName} />
+                  <DetailField label="No. Rekening" value={data.invoices.customerDetail.bankAccountNumber} />
+                  <DetailField label="Atas Nama" value={data.invoices.customerDetail.bankAccountHolder} />
+                </div>
+              )}
+
               {/* Invoices */}
               <Section title="Order history" count={events.length} empty="No invoices yet">
                 {events.map((ev) => (
@@ -200,6 +212,17 @@ export function CustomerDetailDrawer({
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+function DetailField({ label, value, className, valueClassName }: {
+  label: string; value: string; className?: string; valueClassName?: string
+}) {
+  return (
+    <div className={`flex flex-col gap-0.5 min-w-0 ${className ?? ""}`}>
+      <span className="text-[11px] font-medium uppercase tracking-wide text-gray-400">{label}</span>
+      <span className={`text-foreground ${valueClassName ?? "truncate"}`}>{value || "—"}</span>
     </div>
   )
 }

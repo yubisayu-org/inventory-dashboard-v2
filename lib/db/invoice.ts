@@ -135,10 +135,11 @@ function computeEventCore(
  */
 export async function getInvoiceForCustomer(
   instagramId: string,
-  // lean: skip customerDetail + the message-template/business-profile reads
-  // and return message: "" per event. The customer detail drawer renders
-  // neither, and dropping those three queries keeps its fan-out (this plus
-  // getCustomerLedger, doubled by dev StrictMode) inside the pool's max.
+  // lean: skip the message-template/business-profile reads and return
+  // message: "" per event. The customer detail drawer doesn't render the
+  // WhatsApp message text, and dropping those two queries keeps its fan-out
+  // (this plus getCustomerLedger, doubled by dev StrictMode) inside the
+  // pool's max. customerDetail is still fetched — the drawer does show it.
   //
   // ledger: payment/adjustment rows the caller already fetched (via
   // getCustomerLedger) — the per-event sums are computed from them in JS
@@ -174,7 +175,7 @@ export async function getInvoiceForCustomer(
       -- lines stable. NULLS LAST guards an orphaned event name.
       ORDER BY e.created_at DESC NULLS LAST, o.event, o.id
     `,
-    lean ? null : lookupCustomerDetail(instagramId),
+    lookupCustomerDetail(instagramId),
     // Only checked payments count toward the invoice's paid total; the JS
     // branch below must mirror the is_checked filter here.
     ledger ? null : sql`

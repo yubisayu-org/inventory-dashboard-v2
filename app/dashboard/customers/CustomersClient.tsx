@@ -393,7 +393,7 @@ export default function CustomersClient() {
         toolbarExtraAfterColumns
         hideRowCount
         toolbarExtra={toolbarExtra}
-        initialVisibility={{ updatedAt: false, dataDiri: false, bankName: false }}
+        initialVisibility={{ updatedAt: false, dataDiri: false, bankName: false, whatsapp: false }}
         renderMobileCard={renderMobileCard}
         onRowClick={(row) => setDetailCustomer(row.instagramId)}
         serverSide={{
