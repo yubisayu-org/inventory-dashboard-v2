@@ -218,7 +218,6 @@ function EventCard({ event }: { event: DashboardEvent }) {
       </div>
 
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
-        <span><span className="font-medium text-foreground">{event.orderCount}</span> orders</span>
         <span><span className="font-medium text-foreground">{event.customerCount}</span> customers</span>
         <span><span className="font-medium text-foreground">{event.totalUnits}</span> units</span>
         <span className="ml-auto whitespace-nowrap tabular-nums">

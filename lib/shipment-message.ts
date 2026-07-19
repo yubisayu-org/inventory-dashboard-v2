@@ -8,6 +8,7 @@
 // so we paste it verbatim instead of breaking it into labeled fields.
 
 import { displayIg } from "./format"
+import { fillTemplate, DEFAULT_TEMPLATES } from "./message-templates"
 
 export interface ShipmentConfirmMessageInput {
   /** Event id, or "EVT1 + EVT2" for a merged shipment. */
@@ -23,29 +24,16 @@ export interface ShipmentConfirmMessageInput {
   items: string[]
 }
 
-export function buildShipmentConfirmMessage(input: ShipmentConfirmMessageInput): string {
+export function buildShipmentConfirmMessage(
+  input: ShipmentConfirmMessageInput,
+  template: string = DEFAULT_TEMPLATES.shipment,
+): string {
   const { event, customer, dataDiri, items } = input
   const handle = displayIg(customer)
-  return [
-    "Konfirmasi Pengiriman Yubisayu",
-    `${event} ${handle}`,
-    "",
+  return fillTemplate(template, {
+    event,
+    handle,
     dataDiri,
-    "",
-    ...items,
-    "",
-    "Paket sedang dikemas dan akan segera dikirim.",
-    "",
-    "Cek kembali detail pesanan (jumlah, ukuran, warna jika ada) dan alamat, info jika ada perubahan alamat.",
-    "",
-    "Cek resi https://yubisayu-invoice.netlify.app/ atau WA Channel.",
-    "",
-    "Mohon konfirmasi jika paket sudah diterima.",
-    "",
-    "Sebelum dikirim, barang dicek dan dikirim dalam kondisi baik. Paket dikirim oleh ekspedisi, wajib video unboxing tanpa terputus.",
-    "",
-    "Tanpa video unboxing tidak terputus, mohon maaf claim jika ada kerusakan/kesalahan tidak bisa dibantu.",
-    "",
-    "Terima kasih.",
-  ].join("\n")
+    items: items.join("\n"),
+  })
 }

@@ -10,6 +10,7 @@ import { fetchJson } from "@/lib/api-fetch"
 import PurchaseModal from "./PurchaseModal"
 import EventSelect from "@/components/EventSelect"
 import SearchInput from "@/components/SearchInput"
+import SelectionActionBar from "@/components/SelectionActionBar"
 
 const INPUT_CLASS =
   "border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
@@ -267,6 +268,7 @@ export default function ShoppingListClient() {
   // Multi-select for marking several items purchased under one shared receipt.
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [oosConfirmOpen, setOosConfirmOpen] = useState(false)
 
   const fetchItems = useCallback((event?: string, silent = false) => {
     if (!silent) setLoading(true)
@@ -624,18 +626,33 @@ export default function ShoppingListClient() {
 
       {/* Multi-select action bar */}
       {selected.size > 0 && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 rounded-full bg-gray-900 text-white shadow-xl px-4 py-2.5">
-          <span className="text-sm tabular-nums">{selected.size} selected</span>
-          <button
-            onClick={() => setConfirmOpen(true)}
-            className="px-3 py-1.5 rounded-full bg-green-600 text-white text-xs font-medium hover:bg-green-700 transition-colors"
-          >
-            Mark purchased
-          </button>
-          <button onClick={clearSelection} aria-label="Clear selection" className="text-white/70 hover:text-white transition-colors">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-          </button>
-        </div>
+        <SelectionActionBar
+          count={selected.size}
+          onClear={clearSelection}
+          actions={[
+            {
+              label: "Purchased",
+              color: "green",
+              onClick: () => setConfirmOpen(true),
+              icon: (
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              ),
+            },
+            {
+              label: "Sold out",
+              color: "red",
+              onClick: () => setOosConfirmOpen(true),
+              icon: (
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="m9 9 6 6M15 9l-6 6" />
+                </svg>
+              ),
+            },
+          ]}
+        />
       )}
 
       {confirmOpen && (
@@ -650,6 +667,22 @@ export default function ShoppingListClient() {
                 const ev = key.slice(0, key.lastIndexOf("|"))
                 if (succeeded.includes(ev)) next.delete(key)
               }
+              return next
+            })
+            handleBoughtSuccess()
+          }}
+        />
+      )}
+
+      {oosConfirmOpen && (
+        <ConfirmOutOfStockPanel
+          items={selectedItems}
+          onClose={() => setOosConfirmOpen(false)}
+          onSuccess={() => { clearSelection(); setOosConfirmOpen(false); handleBoughtSuccess() }}
+          onPartial={(succeededKeys) => {
+            setSelected((prev) => {
+              const next = new Set(prev)
+              for (const key of succeededKeys) next.delete(key)
               return next
             })
             handleBoughtSuccess()
@@ -764,7 +797,7 @@ function ConfirmPurchasePanel({
           <p className="text-xs text-gray-500 mt-0.5">Adjust quantities if needed, then add one receipt for all of them.</p>
         </div>
 
-        <div className="px-5 py-4 overflow-y-auto flex flex-col gap-4">
+        <div className="px-5 py-4 overflow-y-auto min-h-0 flex flex-col gap-4">
           {[...byEvent.entries()].map(([event, evItems]) => (
             <div key={event} className="flex flex-col gap-2">
               <div className="text-xs font-semibold text-gray-500">{event}</div>
@@ -824,6 +857,148 @@ function ConfirmPurchasePanel({
               className="px-4 py-1.5 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700 disabled:opacity-50 transition-colors"
             >
               {submitting ? "Saving…" : "Mark purchased"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Confirm multi out-of-stock panel ───────────────────────────────────────
+
+function ConfirmOutOfStockPanel({
+  items,
+  onClose,
+  onSuccess,
+  onPartial,
+}: {
+  items: ShoppingListItem[]
+  onClose: () => void
+  onSuccess: () => void
+  onPartial: (succeededKeys: string[]) => void
+}) {
+  // Qty per selected item, defaulting to its pending units. Keyed by selKey.
+  const [qtys, setQtys] = useState<Record<string, string>>(() => {
+    const m: Record<string, string> = {}
+    for (const it of items) m[selKey(it)] = String(it.totalUnits)
+    return m
+  })
+  const [submitting, setSubmitting] = useState(false)
+  const [errors, setErrors] = useState<string[]>([])
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose() }
+    document.addEventListener("keydown", onKey)
+    return () => document.removeEventListener("keydown", onKey)
+  }, [onClose])
+
+  const anyQty = items.some((it) => (Number(qtys[selKey(it)]) || 0) > 0)
+  const totalQty = items.reduce((s, it) => s + (Number(qtys[selKey(it)]) || 0), 0)
+
+  // /api/sheets/shopping-list's out_of_stock action is per-item (unlike buy's
+  // per-event batch /api/sheets/purchasing), so fire one request per item.
+  async function handleSubmit() {
+    if (!anyQty || submitting) return
+    setSubmitting(true)
+    setErrors([])
+
+    const targets = items.filter((it) => (Number(qtys[selKey(it)]) || 0) > 0)
+    const settled = await Promise.allSettled(
+      targets.map((it) =>
+        fetch("/api/sheets/shopping-list", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "out_of_stock",
+            event: it.event,
+            productId: it.productId,
+            quantityOutOfStock: Number(qtys[selKey(it)]) || 0,
+          }),
+        }).then(async (res) => {
+          const data = await res.json()
+          if (!res.ok) throw new Error(data.error ?? `Failed for ${it.productName}`)
+          return selKey(it)
+        }),
+      ),
+    )
+
+    const succeeded: string[] = []
+    const failed: string[] = []
+    settled.forEach((r, i) => {
+      if (r.status === "fulfilled") succeeded.push(r.value)
+      else failed.push(`${targets[i].productName}: ${r.reason instanceof Error ? r.reason.message : "failed"}`)
+    })
+
+    setSubmitting(false)
+    if (failed.length === 0) {
+      onSuccess()
+    } else {
+      setErrors(failed)
+      if (succeeded.length > 0) onPartial(succeeded)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6" onClick={onClose}>
+      <div
+        className="bg-white rounded-xl shadow-xl border border-cream-border w-full max-w-lg flex flex-col max-h-[90vh]"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
+        <div className="px-5 py-4 border-b border-cream-border shrink-0">
+          <h3 className="text-sm font-semibold text-foreground">
+            Mark {totalQty} item{totalQty === 1 ? "" : "s"} out of stock
+          </h3>
+          <p className="text-xs text-gray-500 mt-0.5">Adjust quantities if needed. Affected pending orders are refunded if paid.</p>
+        </div>
+
+        <div className="px-5 py-4 overflow-y-auto min-h-0 flex flex-col gap-3">
+          {items.map((it) => {
+            const k = selKey(it)
+            return (
+              <div key={k} className="flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm text-foreground break-words">{it.productName}</div>
+                  <div className="text-[11px] text-gray-400">{it.event}{it.store ? ` · ${it.store}` : ""}</div>
+                </div>
+                <input
+                  type="number"
+                  min="1"
+                  value={qtys[k] ?? ""}
+                  onChange={(e) => setQtys((p) => ({ ...p, [k]: e.target.value }))}
+                  className="w-20 shrink-0 border border-cream-border rounded-lg px-2 py-1.5 text-sm text-right bg-white focus:outline-none focus:ring-2 focus:ring-red-300 focus:border-red-400 transition-colors"
+                />
+                <span className="text-[11px] text-gray-400 w-14 shrink-0">/ {it.totalUnits} left</span>
+              </div>
+            )
+          })}
+        </div>
+
+        <div className="px-5 py-4 border-t border-cream-border shrink-0 flex flex-col gap-3">
+          {errors.length > 0 && (
+            <div className="text-xs text-red-600">
+              <div className="font-medium">Some items failed (others were recorded):</div>
+              <ul className="list-disc pl-4">{errors.map((e, i) => <li key={i}>{e}</li>)}</ul>
+            </div>
+          )}
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={submitting}
+              className="px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={submitting || !anyQty}
+              className="px-4 py-1.5 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition-colors"
+            >
+              {submitting ? "Saving…" : "Mark out of stock"}
             </button>
           </div>
         </div>

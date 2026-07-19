@@ -9,6 +9,7 @@ import DataGrid, {
   type PaginationState,
 } from "@/components/DataGrid"
 import { usePaginatedFetch, type PageData } from "@/hooks/usePaginatedFetch"
+import MobileActionSheet from "@/components/MobileActionSheet"
 import { fmt, displayIg } from "@/lib/format"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import EventSelect from "@/components/EventSelect"
@@ -59,6 +60,7 @@ export default function ExcessTable() {
   const [mobileAddOpen, setMobileAddOpen] = useState(false)
   const [editRow, setEditRow] = useState<ExcessRow | null>(null)
   const [deleteRow, setDeleteRow] = useState<ExcessRow | null>(null)
+  const [sheetRow, setSheetRow] = useState<ExcessRow | null>(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
@@ -226,9 +228,10 @@ export default function ExcessTable() {
         header: "Receipt",
         filterFn: "textContains",
         size: 150,
-        cell: ({ getValue }) => (
-          <span className="text-gray-500">{getValue<string>() || "—"}</span>
-        ),
+        cell: ({ getValue }) => {
+          const v = getValue<string>()
+          return <span className="text-gray-500 block truncate" title={v || undefined}>{v || "—"}</span>
+        },
       },
       {
         accessorKey: "createdAt",
@@ -335,7 +338,7 @@ export default function ExcessTable() {
     const busy = busyRow === r.rowNumber
     const isPending = pendingRow === r.rowNumber
     return (
-      <div className="rounded-xl border border-cream-border bg-white p-3.5 flex flex-col gap-2">
+      <div className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] flex flex-col gap-2">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="text-sm text-foreground truncate">{r.items}</div>
@@ -349,7 +352,7 @@ export default function ExcessTable() {
             <span className="text-sm font-semibold tabular-nums text-foreground">{fmt(r.unitBuy)}</span>
           </div>
         </div>
-        <div className="flex items-center justify-end gap-3 pt-1 border-t border-cream-border/60">
+        <div className="flex items-center justify-end gap-3 pt-2.5 border-t border-cream-border">
           {r.reason === "broken" ? (
             <span className="text-[11px] text-gray-400 italic mr-auto">Not sellable</span>
           ) : (
@@ -362,15 +365,16 @@ export default function ExcessTable() {
               {busy ? "Applying…" : isPending ? "Cancel" : "Apply"}
             </button>
           )}
-          <button type="button" onClick={(e) => { e.stopPropagation(); setEditRow(r) }} title="Edit" className="text-gray-400 hover:text-brand transition-colors p-1">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
-            </svg>
-          </button>
-          <button type="button" onClick={(e) => { e.stopPropagation(); setDeleteRow(r); setDeleteError(null) }} title="Delete" className="text-gray-400 hover:text-red-500 transition-colors p-1">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
+          {/* Kebab opens the action sheet — Apply/Cancel above stays the
+              direct-tap primary action, unchanged. */}
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setSheetRow(r) }}
+            aria-label="More actions"
+            className="p-1.5 text-gray-400 hover:text-brand transition-colors"
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor">
+              <circle cx="12" cy="5" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="12" cy="19" r="1.5" />
             </svg>
           </button>
         </div>
@@ -472,6 +476,36 @@ export default function ExcessTable() {
           onConfirm={handleDelete}
         />
       )}
+
+      {/* Mobile row action sheet */}
+      <MobileActionSheet
+        open={sheetRow != null}
+        onClose={() => setSheetRow(null)}
+        title={sheetRow?.items}
+        subtitle={sheetRow?.event}
+        actions={sheetRow ? [
+          {
+            label: "Edit",
+            onClick: () => setEditRow(sheetRow),
+            icon: (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
+              </svg>
+            ),
+          },
+          {
+            label: "Delete",
+            destructive: true,
+            onClick: () => { setDeleteRow(sheetRow); setDeleteError(null) },
+            icon: (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
+              </svg>
+            ),
+          },
+        ] : []}
+      />
 
       <DataGrid
         data={rows}
@@ -684,38 +718,68 @@ function InventoryFields({
   inline?: boolean
   trailing?: React.ReactNode
 }) {
+  const eventField = (
+    <label className="flex flex-col gap-1" style={inline ? { width: "10rem" } : undefined}>
+      <span className="text-xs font-medium text-gray-500">Event</span>
+      <EventSelect value={event} onChange={setEvent} events={eventOptions} placeholder="Select event…" disabled={saving} />
+    </label>
+  )
+  const itemField = (
+    <label className="flex flex-col gap-1" style={inline ? { width: "12rem" } : undefined}>
+      <span className="text-xs font-medium text-gray-500">Item</span>
+      <SearchableSelect value={items} onChange={setItems} options={itemOptions} placeholder="Search item…" disabled={saving} />
+    </label>
+  )
+  const quantityField = (
+    <label className="flex flex-col gap-1" style={inline ? { width: "7rem" } : undefined}>
+      <span className="text-xs font-medium text-gray-500">Quantity</span>
+      <input
+        type="number"
+        min={1}
+        value={unitBuy}
+        onChange={(e) => setUnitBuy(e.target.value)}
+        disabled={saving}
+        className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+      />
+    </label>
+  )
+  // Bound to the excess row's `receipt` column, which despite the name is
+  // used as a free-text reference/note (e.g. "pre-dashboard stock") — not
+  // always an actual receipt number, hence the placeholder.
+  const receiptField = (
+    <label className={`flex flex-col gap-1 ${inline ? "flex-1 min-w-[10rem]" : "w-full"}`}>
+      <span className="text-xs font-medium text-gray-500">Receipt <span className="text-gray-400 font-normal">(optional)</span></span>
+      <input
+        type="text"
+        value={receipt}
+        onChange={(e) => setReceipt(e.target.value)}
+        disabled={saving}
+        placeholder="e.g. pre-dashboard stock"
+        className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+      />
+    </label>
+  )
+
+  if (inline) {
+    return (
+      <div className="flex items-end gap-3 flex-wrap">
+        {eventField}
+        {itemField}
+        {quantityField}
+        {receiptField}
+        {trailing}
+      </div>
+    )
+  }
+
   return (
-    <div className={inline ? "flex items-end gap-3 flex-wrap" : "grid grid-cols-2 gap-3 sm:grid-cols-4"}>
-      <label className="flex flex-col gap-1" style={inline ? { width: "10rem" } : undefined}>
-        <span className="text-xs font-medium text-gray-500">Event</span>
-        <EventSelect value={event} onChange={setEvent} events={eventOptions} placeholder="Select event…" disabled={saving} />
-      </label>
-      <label className="flex flex-col gap-1" style={inline ? { width: "12rem" } : undefined}>
-        <span className="text-xs font-medium text-gray-500">Item</span>
-        <SearchableSelect value={items} onChange={setItems} options={itemOptions} placeholder="Search item…" disabled={saving} />
-      </label>
-      <label className="flex flex-col gap-1" style={inline ? { width: "7rem" } : undefined}>
-        <span className="text-xs font-medium text-gray-500">Quantity</span>
-        <input
-          type="number"
-          min={1}
-          value={unitBuy}
-          onChange={(e) => setUnitBuy(e.target.value)}
-          disabled={saving}
-          className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
-        />
-      </label>
-      <label className={`flex flex-col gap-1 ${inline ? "flex-1 min-w-[10rem]" : ""}`}>
-        <span className="text-xs font-medium text-gray-500">Note <span className="text-gray-400 font-normal">(optional)</span></span>
-        <input
-          type="text"
-          value={receipt}
-          onChange={(e) => setReceipt(e.target.value)}
-          disabled={saving}
-          placeholder="e.g. pre-dashboard stock"
-          className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
-        />
-      </label>
+    <div className="flex flex-col gap-3">
+      <div className="grid grid-cols-3 gap-3">
+        {eventField}
+        {itemField}
+        {quantityField}
+      </div>
+      {receiptField}
       {trailing}
     </div>
   )

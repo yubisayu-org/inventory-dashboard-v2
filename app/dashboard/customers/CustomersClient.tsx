@@ -9,6 +9,7 @@ import DataGrid, {
   type PaginationState,
 } from "@/components/DataGrid"
 import { usePaginatedFetch, type PageData } from "@/hooks/usePaginatedFetch"
+import MobileActionSheet from "@/components/MobileActionSheet"
 import { fmt, displayIg } from "@/lib/format"
 import { CustomerDetailDrawer } from "./CustomerDetailDrawer"
 
@@ -70,6 +71,7 @@ export default function CustomersClient() {
 
   const [creating, setCreating] = useState(false)
   const [editRow, setEditRow] = useState<CustomerRow | null>(null)
+  const [sheetRow, setSheetRow] = useState<CustomerRow | null>(null)
   const [detailCustomer, setDetailCustomer] = useState<string | null>(null)
 
   // Server-side table state.
@@ -162,6 +164,7 @@ export default function CustomersClient() {
     {
       accessorKey: "instagramId",
       header: "Instagram ID",
+      size: 160,
       filterFn: "textContains",
       cell: ({ row }) => {
         const hasAddress = Boolean(row.original.dataDiri && row.original.dataDiri.trim())
@@ -183,6 +186,7 @@ export default function CustomersClient() {
     {
       accessorKey: "name",
       header: "Name",
+      size: 160,
       filterFn: "textContains",
       cell: ({ getValue }) => {
         const v = getValue<string>()
@@ -192,6 +196,7 @@ export default function CustomersClient() {
     {
       accessorKey: "whatsapp",
       header: "WhatsApp",
+      size: 140,
       filterFn: "textContains",
       cell: ({ getValue }) => {
         const v = getValue<string>()
@@ -201,6 +206,7 @@ export default function CustomersClient() {
     {
       accessorKey: "ekspedisi",
       header: "Ekspedisi",
+      size: 120,
       filterFn: "textContains",
       cell: ({ getValue }) => {
         const v = getValue<string>()
@@ -214,6 +220,7 @@ export default function CustomersClient() {
       id: `ongkir_${wh.id}`,
       accessorFn: (row) => row.ongkir?.[wh.id] ?? 0,
       header: `Ongkir ${wh.code}`,
+      size: 120,
       enableSorting: false,
       enableColumnFilter: false,
       meta: { align: "right" },
@@ -227,6 +234,7 @@ export default function CustomersClient() {
     {
       accessorKey: "dataDiri",
       header: "Alamat",
+      size: 220,
       filterFn: "textContains",
       cell: ({ getValue }) => {
         const v = getValue<string>()
@@ -241,6 +249,7 @@ export default function CustomersClient() {
     {
       accessorKey: "bankName",
       header: "Bank",
+      size: 180,
       filterFn: "textContains",
       cell: ({ row }) => {
         const { bankName, bankAccountNumber, bankAccountHolder } = row.original
@@ -259,6 +268,7 @@ export default function CustomersClient() {
     {
       accessorKey: "updatedAt",
       header: "Updated",
+      size: 110,
       enableColumnFilter: false,
       cell: ({ getValue }) => {
         const v = getValue<string | null>()
@@ -307,7 +317,7 @@ export default function CustomersClient() {
   const renderMobileCard = useCallback((row: CustomerRow) => {
     const hasAddress = Boolean(row.dataDiri && row.dataDiri.trim())
     return (
-      <div className="rounded-xl border border-cream-border bg-white p-3.5 flex items-center justify-between gap-3">
+      <div className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] flex items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">
             <span className="text-sm font-semibold text-foreground tabular-nums">{displayIg(row.instagramId)}</span>
@@ -322,21 +332,18 @@ export default function CustomersClient() {
           </div>
           <div className="text-xs text-gray-500 mt-0.5 truncate">{row.name || "—"}{row.whatsapp ? ` · ${row.whatsapp}` : ""}</div>
         </div>
-        <div className="flex items-center gap-3 shrink-0">
-          <button type="button" onClick={(e) => { e.stopPropagation(); setEditRow(row) }} title="Edit" className="text-gray-400 hover:text-brand transition-colors">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
-            </svg>
-          </button>
-          <button type="button" onClick={(e) => { e.stopPropagation(); handleDelete(row) }} title="Delete" className="text-gray-400 hover:text-red-500 transition-colors">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 6h18" />
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-              <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-            </svg>
-          </button>
-        </div>
+        {/* Kebab (not the row itself) opens the action sheet — tapping the row
+            already opens the customer detail drawer via DataGrid's onRowClick. */}
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setSheetRow(row) }}
+          aria-label="More actions"
+          className="shrink-0 p-1.5 text-gray-400 hover:text-brand transition-colors"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+            <circle cx="12" cy="5" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="12" cy="19" r="1.5" />
+          </svg>
+        </button>
       </div>
     )
   }, [])
@@ -418,6 +425,38 @@ export default function CustomersClient() {
       {detailCustomer && (
         <CustomerDetailDrawer customer={detailCustomer} onClose={() => setDetailCustomer(null)} />
       )}
+
+      {/* Mobile row action sheet */}
+      <MobileActionSheet
+        open={sheetRow != null}
+        onClose={() => setSheetRow(null)}
+        title={sheetRow ? displayIg(sheetRow.instagramId) : undefined}
+        subtitle={sheetRow?.name || undefined}
+        actions={sheetRow ? [
+          {
+            label: "Edit",
+            onClick: () => setEditRow(sheetRow),
+            icon: (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
+              </svg>
+            ),
+          },
+          {
+            label: "Delete",
+            destructive: true,
+            onClick: () => handleDelete(sheetRow),
+            icon: (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 6h18" />
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+              </svg>
+            ),
+          },
+        ] : []}
+      />
     </div>
   )
 }

@@ -11,6 +11,8 @@ import DataGrid, {
 } from "@/components/DataGrid"
 import { usePaginatedFetch, type PageData } from "@/hooks/usePaginatedFetch"
 import SearchableSelect from "@/components/SearchableSelect"
+import SearchInput from "@/components/SearchInput"
+import MobileActionSheet from "@/components/MobileActionSheet"
 import EventSelect from "@/components/EventSelect"
 
 const PAGE_SIZE = 25
@@ -118,6 +120,11 @@ export default function OperationalExpensesClient() {
 
   const [addOpen, setAddOpen] = useState(false)
   const [mobileAddOpen, setMobileAddOpen] = useState(false)
+  // Mobile row action sheet + the edit modal it can open — separate from
+  // ExpenseActions' own internal edit state (which desktop's inline icons use).
+  const [sheetExpense, setSheetExpense] = useState<OperationalExpenseRow | null>(null)
+  const [editingExpense, setEditingExpense] = useState<OperationalExpenseRow | null>(null)
+  const [mobileDeleting, setMobileDeleting] = useState(false)
   // Set when "Duplicate" is clicked on a row — seeds the Add form with that
   // row's fields (fresh date, unsettled) so a similar entry can be added fast.
   const [duplicateSeed, setDuplicateSeed] = useState<{ row: OperationalExpenseRow; version: number } | null>(null)
@@ -235,35 +242,57 @@ export default function OperationalExpensesClient() {
     addFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
   }, [])
 
+  // Mirrors ExpenseActions' own delete handler — used by the mobile action
+  // sheet, which triggers Delete without mounting an ExpenseActions instance.
+  const handleMobileDelete = useCallback(async (row: OperationalExpenseRow) => {
+    if (!confirm(`Delete this expense (${row.description || row.event})?`)) return
+    setMobileDeleting(true)
+    try {
+      const res = await fetch(`/api/sheets/operational-expenses/${row.rowNumber}`, { method: "DELETE" })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? "Failed")
+      refreshRef.current()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete")
+    } finally {
+      setMobileDeleting(false)
+    }
+  }, [])
+
   const columns = useMemo<ColumnDef<OperationalExpenseRow, unknown>[]>(() => [
     { accessorKey: "id", header: "ID", enableColumnFilter: false, size: 60 },
     {
       accessorKey: "event",
       header: "Event",
+      size: 130,
       filterFn: "textContains",
       cell: ({ row }) => <span className="font-medium whitespace-nowrap">{row.original.event}</span>,
     },
     {
       accessorKey: "expenseDate",
       header: "Date",
+      size: 100,
       enableColumnFilter: false,
       cell: ({ row }) => <span className="whitespace-nowrap text-gray-600">{formatDate(row.original.expenseDate)}</span>,
     },
     {
       accessorKey: "description",
       header: "Expenses",
+      size: 180,
       enableColumnFilter: false,
       cell: ({ row }) => <span className="whitespace-nowrap">{row.original.description || "—"}</span>,
     },
     {
       accessorKey: "category",
       header: "Category",
+      size: 120,
       filterFn: "textContains",
       cell: ({ row }) => <CategoryBadge category={row.original.category} />,
     },
     {
       accessorKey: "amountForeign",
       header: "VLS",
+      size: 100,
       filterFn: "numeric",
       enableColumnFilter: false,
       cell: ({ row }) => <span className="tabular-nums">{fmt(row.original.amountForeign)}</span>,
@@ -272,6 +301,7 @@ export default function OperationalExpensesClient() {
     {
       accessorKey: "rate",
       header: "Kurs",
+      size: 90,
       filterFn: "numeric",
       enableColumnFilter: false,
       cell: ({ row }) => <span className="tabular-nums">{fmt(row.original.rate)}</span>,
@@ -280,6 +310,7 @@ export default function OperationalExpensesClient() {
     {
       accessorKey: "amountIdr",
       header: "IDR",
+      size: 120,
       filterFn: "numeric",
       enableColumnFilter: false,
       cell: ({ row }) => <span className="tabular-nums font-medium">{fmt(row.original.amountIdr)}</span>,
@@ -288,6 +319,7 @@ export default function OperationalExpensesClient() {
     {
       accessorKey: "isSettled",
       header: "Settle",
+      size: 90,
       filterFn: "boolean",
       cell: ({ row }) => (
         <SettleToggle row={row.original} onToggled={() => refreshRef.current()} />
@@ -297,21 +329,24 @@ export default function OperationalExpensesClient() {
     {
       accessorKey: "method",
       header: "Method",
+      size: 120,
       filterFn: "textContains",
       cell: ({ row }) => <span className="whitespace-nowrap text-gray-600">{row.original.method || "—"}</span>,
     },
     {
       accessorKey: "remarks",
       header: "Remarks",
+      size: 180,
       enableColumnFilter: false,
       enableSorting: false,
       cell: ({ row }) => <InlineRemarks row={row.original} onSaved={() => refreshRef.current()} />,
     },
-    { accessorKey: "createdAt", header: "Created", enableColumnFilter: false },
-    { accessorKey: "updatedAt", header: "Updated", enableColumnFilter: false },
+    { accessorKey: "createdAt", header: "Created", size: 110, enableColumnFilter: false },
+    { accessorKey: "updatedAt", header: "Updated", size: 110, enableColumnFilter: false },
     {
       id: "actions",
       header: "",
+      size: 100,
       enableSorting: false,
       enableColumnFilter: false,
       enableHiding: false,
@@ -488,15 +523,12 @@ export default function OperationalExpensesClient() {
       {/* Mobile: search + sort + cards (server-driven) */}
       <div className="md:hidden flex flex-col gap-2.5">
         <div className="flex gap-2">
-          <div className="relative flex-1">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
-            <input
-              value={globalFilter}
-              onChange={(e) => handleGlobalFilterChange(e.target.value)}
-              placeholder="Search expenses…"
-              className="w-full border border-cream-border rounded-xl pl-9 pr-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
-            />
-          </div>
+          <SearchInput
+            value={globalFilter}
+            onChange={handleGlobalFilterChange}
+            placeholder="Search expenses…"
+            className="flex-1 min-w-0"
+          />
           <button
             type="button"
             onClick={() => handleSortingChange([{ id: "id", desc: !mobileIdDesc }])}
@@ -513,11 +545,15 @@ export default function OperationalExpensesClient() {
           <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">{fetchState.loading ? "Loading…" : "No expenses"}</div>
         )}
         {data.map((x) => (
-          <div key={x.rowNumber} className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+          <div
+            key={x.rowNumber}
+            onClick={() => setSheetExpense(x)}
+            className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] cursor-pointer active:bg-cream/40 transition-colors"
+          >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="font-semibold text-foreground truncate">{x.description || "—"}</div>
-                <div className="text-[12.5px] text-gray-400 mt-0.5">{x.event} · {formatDate(x.expenseDate)}</div>
+                <div className="text-sm font-semibold text-foreground truncate">{x.description || "—"}</div>
+                <div className="text-xs text-gray-500 mt-0.5">{x.event} · {formatDate(x.expenseDate)}</div>
               </div>
               <CategoryBadge category={x.category} />
             </div>
@@ -525,18 +561,9 @@ export default function OperationalExpensesClient() {
               <span className="text-xs text-gray-400 min-w-0 truncate">
                 {x.rate !== 1 ? `${fmt(x.amountForeign)} × ${fmt(x.rate)}` : ""}{x.method ? ` · ${x.method}` : ""}
               </span>
-              <div className="flex items-center gap-2.5 shrink-0">
+              <div className="flex items-center gap-2.5 shrink-0" onClick={(e) => e.stopPropagation()}>
                 <SettleToggle row={x} onToggled={() => refreshRef.current()} />
                 <span className="text-brand font-bold tabular-nums whitespace-nowrap">Rp {fmt(x.amountIdr)}</span>
-                <ExpenseActions
-                  row={x}
-                  events={events}
-                  methods={methods}
-                  categories={categoryOptions}
-                  onUpdated={() => refreshRef.current()}
-                  onDeleted={() => refreshRef.current()}
-                  onDuplicate={handleDuplicate}
-                />
               </div>
             </div>
           </div>
@@ -549,6 +576,58 @@ export default function OperationalExpensesClient() {
           </div>
         )}
       </div>
+
+      {/* Mobile row action sheet */}
+      <MobileActionSheet
+        open={sheetExpense != null}
+        onClose={() => setSheetExpense(null)}
+        title={sheetExpense?.description || sheetExpense?.event}
+        subtitle={sheetExpense?.event}
+        actions={sheetExpense ? [
+          {
+            label: "Edit",
+            onClick: () => setEditingExpense(sheetExpense),
+            icon: (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
+              </svg>
+            ),
+          },
+          {
+            label: "Duplicate",
+            onClick: () => handleDuplicate(sheetExpense),
+            icon: (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+              </svg>
+            ),
+          },
+          {
+            label: "Delete",
+            destructive: true,
+            disabled: mobileDeleting,
+            onClick: () => handleMobileDelete(sheetExpense),
+            icon: (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+              </svg>
+            ),
+          },
+        ] : []}
+      />
+
+      {editingExpense && (
+        <EditExpenseModal
+          row={editingExpense}
+          events={events}
+          methods={methods}
+          categories={categoryOptions}
+          onSave={() => { refreshRef.current(); setEditingExpense(null) }}
+          onCancel={() => setEditingExpense(null)}
+        />
+      )}
 
       {/* Mobile add FAB */}
       <button

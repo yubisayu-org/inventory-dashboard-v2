@@ -582,6 +582,7 @@ export async function updateRefund(
 export async function executeRefund(
   refundId: number,
   transferReference: string,
+  account: string,
   actor?: string | null,
 ): Promise<void> {
   const [refund] = await sql`SELECT * FROM refunds WHERE id = ${refundId}`
@@ -590,13 +591,16 @@ export async function executeRefund(
 
   await sql.begin(async (tx) => {
     await tx`SELECT set_config('app.actor', ${actor ?? ""}, true)`
+    // `account` is OUR bank the refund was sent from (BCA/JAGO/...), matching
+    // what the column means on every other payment row. The customer's
+    // receiving bank details stay on the refunds row.
     const [payment] = await tx`
       INSERT INTO payments (event, customer, amount, account, is_checked, remarks, kind, refund_id)
       VALUES (
         ${refund.event as string},
         ${refund.customer as string},
         ${-(refund.refund_amount as number)},
-        ${refund.bank_account_number as string},
+        ${account},
         true,
         ${`Refund: ${refund.reason}`},
         'refund',

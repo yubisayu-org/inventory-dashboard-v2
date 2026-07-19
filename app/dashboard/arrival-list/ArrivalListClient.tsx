@@ -12,6 +12,7 @@ import ArriveBulkModal from "./ArriveBulkModal"
 import EventSelect from "@/components/EventSelect"
 import SearchableSelect from "@/components/SearchableSelect"
 import SearchInput from "@/components/SearchInput"
+import SelectionActionBar from "@/components/SelectionActionBar"
 import { generateCargoDocument } from "@/lib/cargo-document-pdf"
 
 function computeFill(orders: ArrivalListOrder[], quantityArrived: number) {
@@ -375,7 +376,7 @@ export default function ArrivalListClient() {
         </div>
         <button
           onClick={() => setBulkOpen(true)}
-          className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors"
+          className="hidden md:inline-flex items-center gap-1.5 px-3 py-2 text-xs rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors"
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <path d="M12 5v14M5 12h14" />
@@ -607,24 +608,35 @@ export default function ArrivalListClient() {
 
       {/* Multi-select action bar */}
       {selected.size > 0 && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 rounded-full bg-gray-900 text-white shadow-xl px-4 py-2.5">
-          <span className="text-sm tabular-nums">{selected.size} selected</span>
-          <button
-            onClick={() => setCargoOpen(true)}
-            className="px-3 py-1.5 rounded-full bg-brand text-white text-xs font-medium hover:bg-brand-hover transition-colors"
-          >
-            Create cargo document
-          </button>
-          <button
-            onClick={() => setReceiveOpen(true)}
-            className="px-3 py-1.5 rounded-full bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 transition-colors"
-          >
-            Mark as received
-          </button>
-          <button onClick={clearSelection} aria-label="Clear selection" className="text-white/70 hover:text-white transition-colors">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-          </button>
-        </div>
+        <SelectionActionBar
+          count={selected.size}
+          onClear={clearSelection}
+          actions={[
+            {
+              label: "Cargo",
+              color: "brand",
+              onClick: () => setCargoOpen(true),
+              icon: (
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <path d="M14 2v6h6" />
+                </svg>
+              ),
+            },
+            {
+              label: "Received",
+              color: "blue",
+              onClick: () => setReceiveOpen(true),
+              icon: (
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="8" width="18" height="4" rx="1" />
+                  <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7" />
+                  <path d="M12 12v7" />
+                </svg>
+              ),
+            },
+          ]}
+        />
       )}
 
       {cargoOpen && (
@@ -757,7 +769,7 @@ function ConfirmReceivePanel({
           <p className="text-xs text-gray-500 mt-0.5">Adjust quantities if needed. Units are assigned to waiting customers, highest-priority first.</p>
         </div>
 
-        <div className="px-5 py-4 overflow-y-auto flex flex-col gap-4">
+        <div className="px-5 py-4 overflow-y-auto min-h-0 flex flex-col gap-4">
           {[...byEvent.entries()].map(([event, evItems]) => (
             <div key={event} className="flex flex-col gap-2">
               <div className="text-xs font-semibold text-gray-500">{event}</div>
@@ -923,7 +935,7 @@ function CargoDocPanel({
           <p className="text-xs text-gray-500 mt-0.5">Adjust quantities if needed. Items are grouped by currency, with a subtotal per currency.</p>
         </div>
 
-        <div className="px-5 py-4 overflow-y-auto flex flex-col gap-4">
+        <div className="px-5 py-4 overflow-y-auto min-h-0 flex flex-col gap-4">
           {[...byCurrency.entries()].map(([currency, curItems]) => {
             const subtotal = curItems.reduce(
               (s, it) => s + (Number(qtys[selKey(it)]) || 0) * it.valas,
@@ -1145,10 +1157,10 @@ function ArriveModal({
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-xl border border-cream-border shadow-xl w-full max-w-sm flex flex-col gap-5 p-6 max-h-[90vh] overflow-y-auto"
+        className="bg-white rounded-xl border border-cream-border shadow-xl w-full max-w-sm flex flex-col gap-4 p-6 h-[min(37rem,90vh)]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start justify-between gap-3 shrink-0">
           <div>
             <div className="text-sm font-semibold text-foreground">{item.productName}</div>
             <div className="text-xs text-gray-400 mt-0.5">
@@ -1162,12 +1174,16 @@ function ArriveModal({
           </button>
         </div>
 
+        {/* Fixed-height dialog: this is the only scrollable region, so the
+            modal itself is always the same height no matter which tab (and
+            its content length) is active. */}
+        <div className="flex-1 overflow-y-auto min-h-0 flex flex-col gap-5 -mr-2 pr-2">
         <div className="flex flex-col gap-1.5">
           <span className="text-xs font-medium text-gray-500">What happened?</span>
           <div className="flex rounded-lg border border-cream-border overflow-hidden text-xs">
             {([
-              ["arrive", "Arrived OK"],
-              ["wrong", "Wrong product"],
+              ["arrive", "Arrived"],
+              ["wrong", "Wrong"],
               ["broken", "Broken"],
               ["missing", "Missing"],
               ["cancelled", "Cancelled"],
@@ -1186,7 +1202,7 @@ function ArriveModal({
                     // to the all-selected behavior the delivery-problem modes use.
                     setCancelIds(m === "cancelled" ? new Set() : new Set(item.orders.map((o) => o.id)))
                   }}
-                  className={`flex-1 px-2 py-1.5 transition-colors ${active ? `${activeCls} font-medium` : "bg-white text-gray-600 hover:bg-cream"}`}
+                  className={`flex-1 px-2 py-1.5 whitespace-nowrap transition-colors ${active ? `${activeCls} font-medium` : "bg-white text-gray-600 hover:bg-cream"}`}
                 >
                   {label}
                 </button>
@@ -1195,14 +1211,22 @@ function ArriveModal({
           </div>
         </div>
 
-        {/* Missing logs nothing to inventory, and Cancelled derives its qty
-            from the checked orders' own unit_buy — neither needs a typed count. */}
-        {mode !== "missing" && mode !== "cancelled" && (
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-gray-500">
-              {mode === "wrong" ? "Units received (wrong product)" : mode === "broken" ? "Units broken" : "Units arrived"}{" "}
-              <span className="text-gray-400">(pending: {item.totalPending})</span>
-            </label>
+        {/* Missing and Cancelled derive their qty from the checked orders below
+            (pending / unit_buy) instead of a typed count — shown here read-only
+            so the row layout matches Wrong/Broken/Arrived OK. */}
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-medium text-gray-500">
+            {mode === "wrong" ? "Units received (wrong product)" : mode === "broken" ? "Units broken" : mode === "missing" ? "Units missing" : mode === "cancelled" ? "Units cancelled" : "Units arrived"}{" "}
+            <span className="text-gray-400">(pending: {item.totalPending})</span>
+          </label>
+          {mode === "missing" || mode === "cancelled" ? (
+            <div className="border border-cream-border rounded-lg px-3 py-2 text-sm bg-cream/50 text-gray-500 tabular-nums">
+              {mode === "missing"
+                ? item.orders.filter((o) => cancelIds.has(o.id)).reduce((s, o) => s + o.pending, 0)
+                : item.orders.filter((o) => cancelIds.has(o.id)).reduce((s, o) => s + o.unitBuy, 0)}{" "}
+              <span className="text-gray-400">(from checked orders below)</span>
+            </div>
+          ) : (
             <input
               type="number"
               min="1"
@@ -1212,28 +1236,26 @@ function ArriveModal({
               autoFocus
               className="border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
             />
-          </div>
-        )}
+          )}
+        </div>
 
         {mode !== "arrive" && (
           <>
-            {mode === "wrong" && (
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-medium text-yellow-700">Received item (what supplier sent)</label>
-                <SearchableSelect
-                  value={receivedItem}
-                  onChange={(v) => { setReceivedItem(v); setSaveError(null) }}
-                  options={itemOptions}
-                  placeholder="Search item…"
-                />
-                <p className="text-[11px] text-gray-400">Logged to Inventory as ready stock.</p>
-              </div>
-            )}
+            {/* Reserved even outside "wrong" mode (just hidden) so switching
+                tabs doesn't change the modal's height. */}
+            <div className={`flex flex-col gap-1.5 ${mode === "wrong" ? "" : "invisible"}`} aria-hidden={mode !== "wrong"}>
+              <label className="text-xs font-medium text-yellow-700">Received item (what supplier sent)</label>
+              <SearchableSelect
+                value={receivedItem}
+                onChange={(v) => { setReceivedItem(v); setSaveError(null) }}
+                options={itemOptions}
+                placeholder="Search item…"
+              />
+              <p className="text-[11px] text-gray-400">Logged to Inventory as ready stock.</p>
+            </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-yellow-700">
-                {mode === "cancelled" ? "Cancel & convert to Inventory" : "Cancel & refund affected orders"}
-              </label>
+              <label className="text-xs font-medium text-yellow-700">Affected orders</label>
               <div className="flex flex-col gap-0.5 max-h-40 overflow-y-auto pr-0.5">
                 {item.orders.map((o) => (
                   <label key={o.id} className="flex items-center justify-between gap-2 px-2 py-1 rounded-md bg-gray-50 cursor-pointer">
@@ -1259,12 +1281,13 @@ function ArriveModal({
               </div>
               <p className="text-[11px] text-gray-400">
                 {mode === "broken"
-                  ? "Broken units are logged to Inventory (flagged “broken”, not sellable). Checked orders are removed from the invoice and refunded if paid; unchecked stay pending."
+                  ? "Broken units are logged to Inventory (flagged “broken”, not sellable). "
                   : mode === "missing"
-                  ? "The item never arrived, so nothing is logged to Inventory. Checked orders are removed from the invoice and refunded if paid; unchecked stay pending."
+                  ? "The item never arrived, so nothing is logged to Inventory. "
                   : mode === "cancelled"
-                  ? `The units already bought for checked orders (${item.orders.filter((o) => cancelIds.has(o.id)).reduce((s, o) => s + o.unitBuy, 0)} total) are logged to Inventory as ready stock, assignable to the next customer who wants this item. Checked orders are removed from the invoice and refunded if paid.`
-                  : "Checked orders are removed from the customer’s invoice; a refund appears in the Refunds page if they already paid. Unchecked orders stay pending."}
+                  ? `The units already bought for checked orders (${item.orders.filter((o) => cancelIds.has(o.id)).reduce((s, o) => s + o.unitBuy, 0)} total) are logged to Inventory as ready stock, assignable to the next customer who wants this item. `
+                  : ""}
+                Checked orders are removed from the invoice and refunded if paid; unchecked orders stay pending.
               </p>
             </div>
           </>
@@ -1315,8 +1338,9 @@ function ArriveModal({
             )}
           </div>
         )}
+        </div>
 
-        <div className="flex items-center justify-end gap-2">
+        <div className="flex items-center justify-end gap-2 shrink-0 pt-3 border-t border-cream-border">
           {saveError && <p className="text-xs text-red-500 mr-auto">{saveError}</p>}
           <button
             type="button"
@@ -1340,7 +1364,7 @@ function ArriveModal({
             {saving
               ? "Saving…"
               : mode === "wrong"
-                ? "Log Wrong Product"
+                ? "Log Wrong Product & Cancel"
                 : mode === "broken"
                   ? "Log Broken & Cancel"
                   : mode === "missing"
