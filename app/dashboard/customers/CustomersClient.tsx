@@ -10,7 +10,6 @@ import DataGrid, {
   type PaginationState,
 } from "@/components/DataGrid"
 import { usePaginatedFetch, type PageData } from "@/hooks/usePaginatedFetch"
-import MobileActionSheet from "@/components/MobileActionSheet"
 import { fmt, displayIg } from "@/lib/format"
 import { CustomerDetailDrawer } from "./CustomerDetailDrawer"
 
@@ -72,7 +71,6 @@ export default function CustomersClient() {
 
   const [creating, setCreating] = useState(false)
   const [editRow, setEditRow] = useState<CustomerRow | null>(null)
-  const [sheetRow, setSheetRow] = useState<CustomerRow | null>(null)
   const [detailCustomer, setDetailCustomer] = useState<string | null>(null)
 
   // Server-side table state.
@@ -346,13 +344,13 @@ export default function CustomersClient() {
               </svg>
             )}
           </div>
-          <div className="text-xs text-gray-500 mt-0.5 truncate">{row.name || "—"}{row.whatsapp ? ` · ${row.whatsapp}` : ""}</div>
+          <div className="text-xs text-gray-500 mt-0.5 truncate uppercase">{row.whatsapp || "—"}{row.name ? ` · ${row.name}` : ""}</div>
         </div>
         {/* Kebab (not the row itself) opens the action sheet — tapping the row
             already opens the customer detail drawer via DataGrid's onRowClick. */}
         <button
           type="button"
-          onClick={(e) => { e.stopPropagation(); setSheetRow(row) }}
+          onClick={(e) => { e.stopPropagation(); setEditRow(row) }}
           aria-label="More actions"
           className="shrink-0 p-1.5 text-gray-400 hover:text-brand transition-colors"
         >
@@ -435,6 +433,7 @@ export default function CustomersClient() {
           initial={rowToDraft(editRow)}
           onSaved={() => { setEditRow(null); refreshRef.current() }}
           onCancel={() => setEditRow(null)}
+          onDelete={() => { const r = editRow; setEditRow(null); handleDelete(r) }}
         />
       )}
 
@@ -442,37 +441,6 @@ export default function CustomersClient() {
         <CustomerDetailDrawer customer={detailCustomer} onClose={() => setDetailCustomer(null)} />
       )}
 
-      {/* Mobile row action sheet */}
-      <MobileActionSheet
-        open={sheetRow != null}
-        onClose={() => setSheetRow(null)}
-        title={sheetRow ? displayIg(sheetRow.instagramId) : undefined}
-        subtitle={sheetRow?.name || undefined}
-        actions={sheetRow ? [
-          {
-            label: "Edit",
-            onClick: () => setEditRow(sheetRow),
-            icon: (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
-              </svg>
-            ),
-          },
-          {
-            label: "Delete",
-            destructive: true,
-            onClick: () => handleDelete(sheetRow),
-            icon: (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 6h18" />
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-                <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-              </svg>
-            ),
-          },
-        ] : []}
-      />
     </div>
   )
 }
@@ -717,12 +685,14 @@ function EditCustomerModal({
   initial,
   onSaved,
   onCancel,
+  onDelete,
 }: {
   rowId: number
   warehouses: WarehouseRow[]
   initial: DraftCustomer
   onSaved: () => void
   onCancel: () => void
+  onDelete: () => void
 }) {
   const [draft, setDraft] = useState<DraftCustomer>(initial)
   const [saving, setSaving] = useState(false)
@@ -774,12 +744,24 @@ function EditCustomerModal({
 
         {saveError && <p className="text-xs text-red-500">{saveError}</p>}
 
-        <div className="flex items-center justify-end gap-2 pt-2">
+        <div className="flex items-center gap-2 pt-2">
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={saving}
+            aria-label="Delete"
+            className="inline-flex items-center justify-center h-[38px] md:h-auto border border-cream-border md:border-transparent rounded-lg md:rounded-none px-3 md:px-0 md:py-2 text-sm text-gray-400 md:text-red-500 hover:border-brand md:hover:border-transparent md:hover:underline disabled:opacity-50 transition-colors"
+          >
+            <svg className="md:hidden" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M10 11v6" /><path d="M14 11v6" />
+            </svg>
+            <span className="hidden md:inline">Delete</span>
+          </button>
           <button
             type="button"
             onClick={onCancel}
             disabled={saving}
-            className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+            className="ml-auto px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
           >
             Cancel
           </button>

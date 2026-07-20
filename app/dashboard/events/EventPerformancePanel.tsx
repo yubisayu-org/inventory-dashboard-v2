@@ -21,14 +21,14 @@ export default function EventPerformancePanel({ perf }: { perf: EventPerformance
     <div className="flex flex-col gap-4 pt-4 pr-4 pb-4 pl-[38px] md:pl-12">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {/* Fulfillment */}
-        <StatGroup title="Fulfillment" accent="border-l-brand">
+        <StatGroup title="Fulfillment" accent="sm:border-l-brand">
           <Bar label="Bought" value={perf.totalBought} pct={pct(perf.totalBought)} />
           <Bar label="Arrived" value={perf.totalArrived} pct={pct(perf.totalArrived)} />
           <Bar label="Shipped" value={perf.totalShipped} pct={pct(perf.totalShipped)} />
         </StatGroup>
 
         {/* Sales */}
-        <StatGroup title="Sales" accent="border-l-amber-500">
+        <StatGroup title="Sales" accent="sm:border-l-amber-500">
           <Stat label="Customers" value={fmt(perf.customerCount)} />
           <Stat label="Items" value={fmt(perf.totalUnits)} />
           <Stat label="Unpaid invoices" value={fmt(perf.unpaidCount)} />
@@ -37,7 +37,7 @@ export default function EventPerformancePanel({ perf }: { perf: EventPerformance
         </StatGroup>
 
         {/* Finance */}
-        <StatGroup title="Finance" accent="border-l-rose-500">
+        <StatGroup title="Finance" accent="sm:border-l-rose-500">
           <Stat label="Paid" value={rp(perf.totalPaid)} />
           <Stat label="Outstanding" value={rp(perf.outstanding)} className={perf.outstanding > 0 ? "text-red-600" : undefined} />
           <Stat label="Overpayment" value={rp(perf.dueRefund)} className={perf.dueRefund > 0 ? "text-blue-600" : undefined} />
@@ -56,7 +56,7 @@ export default function EventPerformancePanel({ perf }: { perf: EventPerformance
 
 function StatGroup({ title, accent, children }: { title: string; accent: string; children: React.ReactNode }) {
   return (
-    <div className={`flex h-full flex-col gap-2 rounded-xl border border-cream-border border-l-4 ${accent} bg-white px-3 py-3 sm:px-5 sm:py-4`}>
+    <div className={`flex h-full flex-col gap-2 sm:rounded-xl sm:border sm:border-cream-border sm:border-l-4 ${accent} sm:bg-white sm:px-5 sm:py-4`}>
       <div className="text-xs font-medium uppercase tracking-wide text-gray-400">{title}</div>
       <div className="flex flex-1 flex-col justify-between gap-1.5">{children}</div>
     </div>

@@ -17,7 +17,6 @@ import DataGrid, {
 } from "@/components/DataGrid"
 import SearchableSelect from "@/components/SearchableSelect"
 import SearchInput from "@/components/SearchInput"
-import MobileActionSheet from "@/components/MobileActionSheet"
 import EventSelect from "@/components/EventSelect"
 
 // ---------------------------------------------------------------------------
@@ -68,6 +67,8 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
   const [sorting, setSorting] = useState<SortingState>([{ id: "createdAt", desc: true }])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [globalFilter, setGlobalFilter] = useState("")
+  // Mobile note filter: "" = all, "has" = only rows with a note, "none" = blank.
+  const [noteFilter, setNoteFilter] = useState<"" | "has" | "none">("")
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: PAGE_SIZE })
 
   // -- Data from server --
@@ -76,7 +77,6 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
 
   // -- UI state --
   const [editingRow, setEditingRow] = useState<FormRow | null>(null)
-  const [sheetRow, setSheetRow] = useState<FormRow | null>(null)
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
   const [bulkDeleting, setBulkDeleting] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
@@ -84,7 +84,7 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
 
   // -- Convert TanStack state → usePaginatedFetch params --
   const fetchFilters = useMemo(() => {
-    const f = { event: "", customer: "", items: "", dateFrom: "", dateTo: "" }
+    const f = { event: "", customer: "", items: "", dateFrom: "", dateTo: "", note: "" }
     for (const cf of columnFilters) {
       // Date column carries a {from,to} range object, not a plain string.
       if (cf.id === "createdAt") {
@@ -95,8 +95,9 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
       }
       if (cf.id in f) f[cf.id as keyof typeof f] = String(cf.value ?? "")
     }
+    if (noteFilter) f.note = noteFilter
     return f
-  }, [columnFilters])
+  }, [columnFilters, noteFilter])
 
   const fetchSort = useMemo(() => {
     if (sorting.length === 0) return null
@@ -461,6 +462,20 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
               {((sorting.find((s) => s.id === "createdAt")?.desc) ?? true) ? <path d="m6 9 6 6 6-6" /> : <path d="m18 15-6-6-6 6" />}
             </svg>
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              setNoteFilter((n) => (n === "" ? "has" : n === "has" ? "none" : ""))
+              setPagination((p) => ({ ...p, pageIndex: 0 }))
+            }}
+            aria-label="Filter by note"
+            className={`shrink-0 inline-flex items-center gap-1 px-3 rounded-xl border bg-white text-xs font-medium active:border-brand active:text-brand ${noteFilter ? "border-brand text-brand" : "border-cream-border text-gray-600"}`}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+            </svg>
+            {noteFilter === "has" ? "Has note" : noteFilter === "none" ? "No note" : "Note"}
+          </button>
         </div>
         {rows.length === 0 && (
           <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">
@@ -472,7 +487,7 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
           return (
             <div
               key={r.rowNumber}
-              onClick={() => setSheetRow(r)}
+              onClick={() => setEditingRow(r)}
               className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] cursor-pointer active:bg-cream/40 transition-colors"
             >
               <div className="flex items-center gap-1.5 flex-wrap min-w-0">
@@ -505,50 +520,14 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
         )}
       </div>
 
-      {/* Mobile row action sheet */}
-      <MobileActionSheet
-        open={sheetRow != null}
-        onClose={() => setSheetRow(null)}
-        title={sheetRow ? displayIg(sheetRow.customer) : undefined}
-        subtitle={sheetRow?.event}
-        actions={sheetRow ? [
-          {
-            label: "Edit",
-            onClick: () => setEditingRow(sheetRow),
-            icon: (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
-              </svg>
-            ),
-          },
-          {
-            label: "Delete",
-            destructive: true,
-            onClick: () => handleDelete(sheetRow.rowNumber),
-            icon: (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-              </svg>
-            ),
-          },
-        ] : []}
-      />
-
       {/* Mobile add FAB */}
       <button type="button" onClick={() => setMobileAddOpen(true)} aria-label="Add order" className="md:hidden fixed right-4 bottom-20 z-30 w-14 h-14 rounded-full bg-brand text-white text-3xl leading-none shadow-lg flex items-center justify-center active:bg-brand/90">+</button>
 
       {/* Mobile add sheet */}
       {mobileAddOpen && (
         <div className="md:hidden fixed inset-0 z-40 bg-black/40 flex flex-col justify-end" onClick={() => setMobileAddOpen(false)}>
-          <div className="bg-cream rounded-t-2xl max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-3 sticky top-0 bg-cream/95 backdrop-blur z-10">
-              <span className="font-semibold text-foreground">New Order</span>
-              <button type="button" onClick={() => setMobileAddOpen(false)} aria-label="Close" className="text-gray-400 p-1"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button>
-            </div>
-            <div className="px-3 pb-8">
-              <AddOrderForm options={options} onOrderAdded={() => { setMobileAddOpen(false); refreshRef.current() }} />
-            </div>
+          <div className="max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <AddOrderForm options={options} onOrderAdded={() => { setMobileAddOpen(false); refreshRef.current() }} onCancel={() => setMobileAddOpen(false)} />
           </div>
         </div>
       )}
@@ -766,6 +745,9 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
   // so the row reverts to "not bought" / "not arrived" instead of being forced to 0.
   const [unitBuy, setUnitBuy] = useState<string>(row.unitBuy == null ? "" : String(row.unitBuy))
   const [unitArrive, setUnitArrive] = useState<string>(row.unitArrive == null ? "" : String(row.unitArrive))
+  // Mobile: the owner-only correction fields collapse behind a chevron; on
+  // desktop (md+) they're always shown regardless of this flag.
+  const [ownerOpen, setOwnerOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
   const [confirmPriceOpen, setConfirmPriceOpen] = useState(false)
@@ -855,11 +837,11 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
 
   return (
     <>
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
-      <div className="bg-white rounded-xl border border-cream-border shadow-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 md:items-center" onClick={onClose}>
+      <div className="bg-white rounded-t-2xl md:rounded-xl border border-cream-border shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto md:max-h-none md:overflow-visible" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4 -mx-6 px-6 border-b border-cream-border pb-3 md:mx-0 md:px-0 md:border-b-0 md:pb-0">
           <h3 className="text-base font-semibold text-foreground">Edit Order</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-brand transition-colors">
+          <button onClick={onClose} className="hidden md:block text-gray-400 hover:text-brand transition-colors">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
           </button>
         </div>
@@ -917,40 +899,53 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
           </div>
 
           {isOwner && (
-            <div className="pt-2 border-t border-cream-border">
-              <div className="text-xs font-medium text-gray-500 mb-2">Owner only · manual correction</div>
-              <div className="flex gap-3">
-                <div className="flex-1">
-                  <label className="text-xs text-gray-500 mb-1 block">Buy</label>
-                  <input type="number" min="0" value={unitBuy} onChange={(e) => setUnitBuy(e.target.value)} placeholder="—" className={INPUT_CLS} />
+            <div className="flex flex-col gap-2 p-3 rounded-lg bg-gray-50 border border-cream-border">
+              <button
+                type="button"
+                onClick={() => setOwnerOpen((o) => !o)}
+                className="w-full flex items-center justify-between text-left md:cursor-default"
+              >
+                <span className="text-xs font-medium text-gray-600">Manual correction</span>
+                <svg className={`md:hidden w-4 h-4 text-gray-400 transition-transform ${ownerOpen ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+              </button>
+              <div className={ownerOpen ? "block" : "hidden md:block"}>
+                <div className="flex gap-3">
+                  <div className="flex-1">
+                    <label className="text-xs text-gray-500 mb-1 block">Buy</label>
+                    <input type="number" min="0" value={unitBuy} onChange={(e) => setUnitBuy(e.target.value)} placeholder="—" className={INPUT_CLS} />
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-xs text-gray-500 mb-1 block">Arrive</label>
+                    <input type="number" min="0" value={unitArrive} onChange={(e) => setUnitArrive(e.target.value)} placeholder="—" className={INPUT_CLS} />
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <label className="text-xs text-gray-500 mb-1 block">Arrive</label>
-                  <input type="number" min="0" value={unitArrive} onChange={(e) => setUnitArrive(e.target.value)} placeholder="—" className={INPUT_CLS} />
-                </div>
+                <p className="text-[11px] text-gray-400 mt-1.5">Leave blank to clear. Shipped and held units are managed from the Packing List page.</p>
+                {(row.unitBuy ?? 0) > 0 && (
+                  <ReturnToExcessControl row={row} onDone={() => { onSaved(); onClose() }} />
+                )}
               </div>
-              <p className="text-[11px] text-gray-400 mt-1.5">Leave blank to clear. Shipped and held units are managed from the Packing List page.</p>
-              {(row.unitBuy ?? 0) > 0 && (
-                <ReturnToExcessControl row={row} onDone={() => { onSaved(); onClose() }} />
-              )}
             </div>
           )}
 
           {error && <p className="text-xs text-red-600">{error}</p>}
 
           <div className="flex items-center gap-2 pt-2">
-            <button type="submit" disabled={saving} className="flex-1 py-2 text-sm font-medium rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors disabled:opacity-50">
+            <button type="submit" disabled={saving} className="order-3 md:order-none md:flex-1 px-4 md:px-0 py-2 text-sm font-medium rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors disabled:opacity-50">
               {saving ? "Saving…" : "Save"}
             </button>
-            <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-500 hover:text-foreground transition-colors">
+            <button type="button" onClick={onClose} className="order-2 md:order-none ml-auto md:ml-0 px-4 py-2 text-sm rounded-lg border border-cream-border text-gray-600 hover:border-brand hover:text-brand md:rounded-none md:border-0 md:text-gray-500 md:hover:border-transparent md:hover:text-foreground transition-colors">
               Cancel
             </button>
             <button
               type="button"
               onClick={() => { onClose(); onDelete(row.rowNumber) }}
-              className="px-3 py-2 text-sm text-red-400 hover:text-red-600 transition-colors"
+              aria-label="Delete"
+              className="order-1 md:order-none inline-flex items-center justify-center h-[38px] md:h-auto border border-cream-border md:border-transparent rounded-lg md:rounded-none px-3 md:px-0 md:py-2 text-sm text-gray-400 md:text-red-500 hover:border-brand md:hover:border-transparent md:hover:underline disabled:opacity-50 transition-colors"
             >
-              Delete
+              <svg className="md:hidden" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M10 11v6" /><path d="M14 11v6" />
+              </svg>
+              <span className="hidden md:inline">Delete</span>
             </button>
           </div>
         </form>
@@ -1100,9 +1095,10 @@ function ReturnToExcessControl({ row, onDone }: { row: FormRow; onDone: () => vo
 let _addLineId = 0
 function newAddLine() { return { id: _addLineId++, productId: "", unit: "", note: "" } }
 
-function AddOrderForm({ options, onOrderAdded }: {
+function AddOrderForm({ options, onOrderAdded, onCancel }: {
   options: SheetOptions | null
   onOrderAdded: () => void
+  onCancel?: () => void
 }) {
   const [event, setEvent] = useState("")
   const [customer, setCustomer] = useState("")
@@ -1165,8 +1161,10 @@ function AddOrderForm({ options, onOrderAdded }: {
   const LABEL = "text-xs text-gray-500 mb-1 block"
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-xl border border-cream-border bg-white p-5 flex flex-col gap-4">
-      <div className="text-sm font-semibold text-foreground">Add Order</div>
+    <form onSubmit={handleSubmit} className="rounded-t-2xl md:rounded-xl border border-cream-border bg-white p-5 pb-8 md:pb-5 flex flex-col gap-4">
+      <div className="flex items-center justify-between -mx-5 px-5 border-b border-cream-border pb-3 md:mx-0 md:px-0 md:border-b-0 md:pb-0">
+        <span className="text-base md:text-sm font-semibold text-foreground">Add Order</span>
+      </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
@@ -1203,13 +1201,15 @@ function AddOrderForm({ options, onOrderAdded }: {
                     placeholder="Search item..."
                   />
                 </div>
-                <div className="w-24">
-                  <label className={LABEL}>Qty</label>
-                  <input type="number" min="1" value={line.unit} onChange={(e) => updateLine(line.id, "unit", e.target.value)} placeholder="Qty" className={INPUT_CLS} />
-                </div>
-                <div className="w-32">
-                  <label className={LABEL}>Note</label>
-                  <input type="text" value={line.note} onChange={(e) => updateLine(line.id, "note", e.target.value)} placeholder="Optional" className={INPUT_CLS} />
+                <div className="grid grid-cols-2 gap-3 sm:contents">
+                  <div className="w-full sm:w-24">
+                    <label className={LABEL}>Qty</label>
+                    <input type="number" min="1" value={line.unit} onChange={(e) => updateLine(line.id, "unit", e.target.value)} placeholder="Qty" className={INPUT_CLS} />
+                  </div>
+                  <div className="w-full sm:w-32">
+                    <label className={LABEL}>Note</label>
+                    <input type="text" value={line.note} onChange={(e) => updateLine(line.id, "note", e.target.value)} placeholder="Optional" className={INPUT_CLS} />
+                  </div>
                 </div>
               </div>
               {lines.length > 1 && (
@@ -1229,14 +1229,19 @@ function AddOrderForm({ options, onOrderAdded }: {
         </div>
       </div>
 
-      <div className="flex items-center justify-end gap-3">
-        {feedback && <p className={`text-xs ${feedback.type === "success" ? "text-green-600" : "text-red-600"}`}>{feedback.message}</p>}
+      <div className="flex items-center justify-end gap-2">
+        {feedback && <p className={`mr-auto text-xs ${feedback.type === "success" ? "text-green-600" : "text-red-600"}`}>{feedback.message}</p>}
+        {onCancel && (
+          <button type="button" onClick={onCancel} disabled={submitting} className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
+            Cancel
+          </button>
+        )}
         <button
           type="submit"
           disabled={submitting || !canSubmit}
           className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
-          {submitting ? "Saving..." : `Submit ${lines.length > 1 ? `${lines.length} Orders` : "Order"}`}
+          {submitting ? "Saving..." : "Submit"}
         </button>
       </div>
     </form>

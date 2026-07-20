@@ -8,7 +8,6 @@ import { useSheetOptions } from "@/hooks/useSheetOptions"
 import { useModalDismiss } from "@/hooks/useModalDismiss"
 import SearchableSelect from "@/components/SearchableSelect"
 import SearchInput from "@/components/SearchInput"
-import MobileActionSheet from "@/components/MobileActionSheet"
 import EventSelect from "@/components/EventSelect"
 import DataGrid, {
   numericFilter,
@@ -105,7 +104,6 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
   const [addOpen, setAddOpen] = useState(false)
   const [mobileAddOpen, setMobileAddOpen] = useState(false)
   const [editingRow, setEditingRow] = useState<PaymentRow | null>(null)
-  const [sheetRow, setSheetRow] = useState<PaymentRow | null>(null)
 
   // Server-side table state.
   const [sorting, setSorting] = useState<SortingState>([])
@@ -113,6 +111,15 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
   const [globalFilter, setGlobalFilter] = useState("")
   const [checkedFilter, setCheckedFilter] = useState<CheckedFilter>("")
   const [kindFilter, setKindFilter] = useState<KindFilter>("deposit")
+  // Mobile: both filters (status + type) live behind one popover button.
+  const [filterOpen, setFilterOpen] = useState(false)
+  const filterRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!filterOpen) return
+    const h = (e: MouseEvent) => { if (!filterRef.current?.contains(e.target as Node)) setFilterOpen(false) }
+    document.addEventListener("mousedown", h)
+    return () => document.removeEventListener("mousedown", h)
+  }, [filterOpen])
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: PAGE_SIZE })
 
   // Only the text columns are server-filterable via column headers; amount/date
@@ -473,21 +480,44 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
             placeholder="Cari nama, nominal, akun…"
             className="flex-1 min-w-0"
           />
-          <CheckedFilterSelect
-            value={checkedFilter}
-            onChange={handleCheckedFilterChange}
-            className="shrink-0 border border-cream-border rounded-lg pl-2 pr-6 py-2 text-sm text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
-          />
-          <select
-            value={kindFilter}
-            onChange={(e) => handleKindFilterChange(e.target.value as KindFilter)}
-            aria-label="Filter by type"
-            className="shrink-0 border border-cream-border rounded-lg px-2 py-2 text-sm text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
-          >
-            {KIND_TABS.map(({ key, label }) => (
-              <option key={key || "all"} value={key}>{key ? label : "All types"}</option>
-            ))}
-          </select>
+          <div className="relative shrink-0" ref={filterRef}>
+            <button
+              type="button"
+              onClick={() => setFilterOpen((o) => !o)}
+              aria-label="Filters"
+              className="h-full border border-cream-border rounded-lg px-3 py-2 text-sm text-gray-600 bg-white flex items-center gap-1.5 hover:border-brand transition-colors"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+              </svg>
+              {(checkedFilter || kindFilter) && <span className="w-1.5 h-1.5 rounded-full bg-brand" />}
+            </button>
+            {filterOpen && (
+              <div className="absolute right-0 top-full mt-1 z-30 w-52 rounded-lg border border-cream-border bg-white shadow-lg p-3 flex flex-col gap-3">
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs font-medium text-gray-500">Status</span>
+                  <CheckedFilterSelect
+                    value={checkedFilter}
+                    onChange={handleCheckedFilterChange}
+                    className="w-full border border-cream-border rounded-lg pl-2 pr-6 py-2 text-sm text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs font-medium text-gray-500">Type</span>
+                  <select
+                    value={kindFilter}
+                    onChange={(e) => handleKindFilterChange(e.target.value as KindFilter)}
+                    aria-label="Filter by type"
+                    className="w-full border border-cream-border rounded-lg px-2 py-2 text-sm text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+                  >
+                    {KIND_TABS.map(({ key, label }) => (
+                      <option key={key || "all"} value={key}>{key ? label : "All types"}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            )}
+          </div>
         </div>
         {rows.length === 0 ? (
           <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">
@@ -500,7 +530,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
               row={row}
               isAdmin={isAdmin}
               onToggleCheck={() => handleToggleCheck(row)}
-              onOpenSheet={() => setSheetRow(row)}
+              onEdit={() => setEditingRow(row)}
             />
           ))
         )}
@@ -512,36 +542,6 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
           </div>
         )}
       </div>
-
-      {/* Mobile row action sheet */}
-      <MobileActionSheet
-        open={sheetRow != null}
-        onClose={() => setSheetRow(null)}
-        title={sheetRow ? displayIg(sheetRow.customer) : undefined}
-        subtitle={sheetRow?.event}
-        actions={sheetRow ? [
-          {
-            label: "Edit",
-            onClick: () => setEditingRow(sheetRow),
-            icon: (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
-              </svg>
-            ),
-          },
-          {
-            label: "Delete",
-            destructive: true,
-            onClick: () => handleDeleteRow(sheetRow),
-            icon: (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-              </svg>
-            ),
-          },
-        ] : []}
-      />
 
       {/* Mobile add FAB */}
       <button
@@ -557,7 +557,6 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
       {mobileAddOpen && (
         <MobileAddPaymentSheet
           options={options}
-          isAdmin={isAdmin}
           onClose={() => setMobileAddOpen(false)}
           onAdded={() => { refreshRef.current(); setMobileAddOpen(false) }}
         />
@@ -727,23 +726,20 @@ function EditPaymentModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 md:items-center md:px-4"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-xl shadow-xl border border-cream-border w-full max-w-md flex flex-col max-h-[90vh]"
+        className="bg-white rounded-t-2xl shadow-xl border border-cream-border w-full max-h-[90vh] overflow-y-auto md:max-w-md md:rounded-xl"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
       >
-        <div className="px-5 py-4 border-b border-cream-border shrink-0 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-foreground">Edit Payment</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-brand transition-colors p-0.5 rounded">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-          </button>
+        <div className="px-5 py-4 border-b border-cream-border flex items-center justify-between">
+          <h3 className="text-base md:text-sm font-semibold text-foreground">Edit Payment</h3>
         </div>
 
-        <div className="px-5 py-4 space-y-3 overflow-y-auto">
+        <div className="px-5 py-4 space-y-3">
           <div>
             <label className={LABEL}>Event</label>
             <EventSelect value={form.event} onChange={(v) => setForm({ ...form, event: v })} events={options?.events ?? []} />
@@ -758,52 +754,64 @@ function EditPaymentModal({
               allowNewValue
             />
           </div>
-          <div>
-            <label className={LABEL}>Amount</label>
-            <input type="number" min="0" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className={INPUT_CLASS} />
+          <div className="flex gap-3">
+            <div className="flex-1 min-w-0">
+              <label className={LABEL}>Amount</label>
+              <input type="number" min="0" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className={INPUT_CLASS} />
+            </div>
+            {/* Mobile: shrink the select trigger to py-1 so it matches the
+                Amount input's height; desktop keeps the default py-2. */}
+            <div className="flex-1 min-w-0 [&_input]:py-1 md:[&_input]:py-2">
+              <label className={LABEL}>Account</label>
+              <SearchableSelect
+                value={form.account}
+                onChange={(v) => setForm({ ...form, account: v })}
+                options={accountOptions}
+                placeholder="Account..."
+                allowNewValue
+              />
+            </div>
           </div>
-          <div>
-            <label className={LABEL}>Account</label>
-            <SearchableSelect
-              value={form.account}
-              onChange={(v) => setForm({ ...form, account: v })}
-              options={accountOptions}
-              placeholder="Account..."
-              allowNewValue
-            />
-          </div>
-          <div className="flex items-center gap-2">
+          <div className="hidden md:flex items-center gap-2">
             <input type="checkbox" checked={form.isChecked} onChange={(e) => setForm({ ...form, isChecked: e.target.checked })} disabled={isAdmin} id="edit-checked" className="accent-brand disabled:cursor-default" />
             <label htmlFor="edit-checked" className="text-xs text-gray-500">Checked</label>
           </div>
-          <div>
-            <label className={LABEL}>Pay Date</label>
-            <input type="date" value={form.payDate} onChange={(e) => setForm({ ...form, payDate: e.target.value })} className={INPUT_CLASS} />
-          </div>
-          <div>
-            <label className={LABEL}>Remarks</label>
-            <input type="text" value={form.remarks} onChange={(e) => setForm({ ...form, remarks: e.target.value })} placeholder="Optional" className={INPUT_CLASS} />
+          <div className="flex gap-3">
+            <div className="flex-1 min-w-0">
+              <label className={LABEL}>Date</label>
+              <input type="date" value={form.payDate} onChange={(e) => setForm({ ...form, payDate: e.target.value })} className={INPUT_CLASS} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <label className={LABEL}>Remarks</label>
+              <input type="text" value={form.remarks} onChange={(e) => setForm({ ...form, remarks: e.target.value })} placeholder="Optional" className={INPUT_CLASS} />
+            </div>
           </div>
 
           {error && <p className="text-xs text-red-500">{error}</p>}
         </div>
 
-        <div className="px-5 py-3 border-t border-cream-border shrink-0 flex items-center justify-between">
-          <button onClick={handleDelete} className="text-xs text-red-500 hover:underline">
-            Delete
+        <div className="px-5 pt-3 pb-8 md:py-3 md:border-t md:border-cream-border flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleDelete}
+            aria-label="Delete"
+            className="inline-flex items-center justify-center h-[38px] md:h-auto border border-cream-border md:border-transparent rounded-lg md:rounded-none px-3 md:px-0 md:py-2 text-sm text-gray-400 md:text-red-500 hover:border-brand md:hover:border-transparent md:hover:underline disabled:opacity-50 transition-colors"
+          >
+            <svg className="md:hidden" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M10 11v6" /><path d="M14 11v6" />
+            </svg>
+            <span className="hidden md:inline">Delete</span>
           </button>
-          <div className="flex items-center gap-2">
-            <button onClick={onClose} className="px-3 py-1.5 text-xs text-gray-500 hover:text-foreground transition-colors">
-              Cancel
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="px-4 py-1.5 text-xs font-medium rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors disabled:opacity-50"
-            >
-              {saving ? "Saving…" : "Save"}
-            </button>
-          </div>
+          <button onClick={onClose} disabled={saving} className="ml-auto px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
+          >
+            {saving ? "Saving…" : "Save"}
+          </button>
         </div>
       </div>
     </div>
@@ -942,46 +950,41 @@ function PaymentCard({
   row,
   isAdmin,
   onToggleCheck,
-  onOpenSheet,
+  onEdit,
 }: {
   row: PaymentRow
   isAdmin: boolean
   onToggleCheck: () => void
-  onOpenSheet: () => void
+  onEdit: () => void
 }) {
   return (
     <div
-      onClick={onOpenSheet}
+      onClick={onEdit}
       className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] flex flex-col gap-2 cursor-pointer active:bg-cream/40 transition-colors"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-sm font-semibold text-foreground uppercase truncate">{displayIg(row.customer)}</div>
+          <div className="text-xs text-gray-500 mt-2 truncate uppercase">{row.event} · {formatDate(row.payDate)}{row.account ? ` · ${row.account}` : ""}</div>
         </div>
-        <div className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
-          Rp {formatAmount(row.amount)}
+        <div className="shrink-0 flex flex-col items-end gap-1">
+          <span className="text-sm font-semibold tabular-nums text-foreground whitespace-nowrap">Rp {formatAmount(row.amount)}</span>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onToggleCheck() }}
+            disabled={isAdmin}
+            aria-label={row.isChecked ? "Tandai belum dicek" : "Tandai sudah dicek"}
+            className={`p-1.5 rounded-lg transition-colors ${
+              row.isChecked
+                ? "bg-green-100 text-green-700 active:bg-green-200"
+                : "text-gray-300 active:bg-cream"
+            } ${isAdmin ? "cursor-default" : "cursor-pointer"}`}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          </button>
         </div>
-      </div>
-
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-xs text-gray-500 min-w-0">
-          <span className="truncate">{row.event} · {formatDate(row.payDate)}{row.account ? ` · ${row.account}` : ""}</span>
-        </div>
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); onToggleCheck() }}
-          disabled={isAdmin}
-          aria-label={row.isChecked ? "Tandai belum dicek" : "Tandai sudah dicek"}
-          className={`shrink-0 p-1.5 rounded-lg transition-colors ${
-            row.isChecked
-              ? "bg-green-100 text-green-700 active:bg-green-200"
-              : "text-gray-300 active:bg-cream"
-          } ${isAdmin ? "cursor-default" : "cursor-pointer"}`}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="20 6 9 17 4 12" />
-          </svg>
-        </button>
       </div>
 
       {row.remarks && (
@@ -999,12 +1002,10 @@ function PaymentCard({
 
 function MobileAddPaymentSheet({
   options,
-  isAdmin,
   onClose,
   onAdded,
 }: {
   options: ReturnType<typeof useSheetOptions>
-  isAdmin: boolean
   onClose: () => void
   onAdded: () => void
 }) {
@@ -1012,7 +1013,9 @@ function MobileAddPaymentSheet({
   const [customer, setCustomer] = useState("")
   const [amount, setAmount] = useState("")
   const [account, setAccount] = useState("BCA")
-  const [isChecked, setIsChecked] = useState(false)
+  // New mobile-added payments default to unchecked (the checkbox was removed
+  // from this sheet); the value is still sent so the API shape is unchanged.
+  const isChecked = false
   const [payDate, setPayDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [remarks, setRemarks] = useState("")
   const [submitting, setSubmitting] = useState(false)
@@ -1059,11 +1062,8 @@ function MobileAddPaymentSheet({
         onClick={(e) => e.stopPropagation()}
         className="w-full bg-white rounded-t-2xl p-5 pb-8 flex flex-col gap-3 max-h-[88vh] overflow-y-auto"
       >
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between -mx-5 px-5 border-b border-cream-border pb-3">
           <span className="text-base font-semibold text-foreground">Add Payment</span>
-          <button type="button" onClick={onClose} aria-label="Close" className="text-gray-400 p-1">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-          </button>
         </div>
 
         <div>
@@ -1096,30 +1096,27 @@ function MobileAddPaymentSheet({
             />
           </div>
         </div>
-        <div>
-          <label className={LABEL}>Date</label>
-          <input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} className={INPUT_CLASS} />
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={LABEL}>Date</label>
+            <input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} className={INPUT_CLASS} />
+          </div>
+          <div>
+            <label className={LABEL}>Remarks</label>
+            <input type="text" value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Optional" className={INPUT_CLASS} />
+          </div>
         </div>
-        <div>
-          <label className={LABEL}>Remarks</label>
-          <input type="text" value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Optional" className={INPUT_CLASS} />
-        </div>
-        {!isAdmin && (
-          <label className="flex items-center gap-2 text-xs text-gray-600">
-            <input type="checkbox" checked={isChecked} onChange={(e) => setIsChecked(e.target.checked)} className="accent-brand" />
-            Sudah dicek
-          </label>
-        )}
 
         {error && <p className="text-xs text-red-500">{error}</p>}
 
-        <button
-          type="submit"
-          disabled={submitting || !canSubmit}
-          className="mt-1 px-4 py-3 rounded-xl bg-brand text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {submitting ? "Saving…" : "Save Payment"}
-        </button>
+        <div className="flex items-center justify-end gap-2 mt-1">
+          <button type="button" onClick={onClose} disabled={submitting} className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
+            Cancel
+          </button>
+          <button type="submit" disabled={submitting || !canSubmit} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+            {submitting ? "Saving…" : "Add"}
+          </button>
+        </div>
       </form>
     </div>
   )

@@ -78,9 +78,9 @@ const textareaCls = "w-full border border-cream-border rounded-lg px-3 py-2 text
 type Tab = "business" | "product-defaults" | "messages"
 
 const TABS: { key: Tab; label: string }[] = [
-  { key: "business", label: "Business Profile" },
-  { key: "product-defaults", label: "Product Defaults" },
-  { key: "messages", label: "Message Templates" },
+  { key: "business", label: "Profile" },
+  { key: "product-defaults", label: "Pricing" },
+  { key: "messages", label: "Templates" },
 ]
 
 export default function SettingsClient() {
