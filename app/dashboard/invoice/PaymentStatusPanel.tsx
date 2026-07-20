@@ -203,19 +203,21 @@ export function PaymentStatusPanel({
 
   const renderMobileCard = useCallback((r: PaymentStatusRow) => (
     <div className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-      <div className="flex items-start justify-between gap-3">
-        <button
-          type="button"
-          onClick={() => onOpenCustomer(r.customer)}
-          className="font-semibold text-sm text-foreground hover:text-brand transition-colors text-left min-w-0 truncate"
-        >
-          {displayIg(r.customer)}
-        </button>
+      <div className="flex items-baseline justify-between gap-3">
+        <div className="flex items-baseline gap-2 min-w-0">
+          <span className="font-semibold text-sm text-foreground shrink-0">{r.event}</span>
+          <button
+            type="button"
+            onClick={() => onOpenCustomer(r.customer)}
+            className="text-xs text-gray-400 hover:text-brand transition-colors text-left min-w-0 truncate uppercase"
+          >
+            {displayIg(r.customer)}
+          </button>
+        </div>
         <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${STATUS_COLORS[r.status]}`}>
           {STATUS_LABELS[r.status]}
         </span>
       </div>
-      <div className="text-xs text-gray-400 mt-0.5">{r.event}</div>
 
       <div className="mt-2.5 pt-2.5 border-t border-cream-border flex flex-col gap-1 text-xs">
         <div className="flex items-center justify-between">

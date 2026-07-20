@@ -241,10 +241,7 @@ export default function ShipClient() {
       {/* Results */}
       {!loading && !error && groups.length > 0 && (
         <>
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-sm text-gray-500">
-              <span className="font-semibold text-foreground">{groups.length}</span> customer
-            </p>
+          <div className="flex items-center justify-end gap-3">
             {readyFiltered.length > 0 && (
               <div className="flex items-center gap-2">
                 <button
@@ -291,6 +288,7 @@ export default function ShipClient() {
               <CustomerCard
                 key={key}
                 customer={c}
+                segment={segment}
                 isSelected={selected.has(key)}
                 onToggleSelect={c.totalToShip > 0 ? () => toggleSelect(key) : undefined}
                 onShipped={() => { setSegment("all"); refresh() }}
@@ -408,12 +406,14 @@ function CopyConfirmMessageButton({ customer: c }: { customer: ShipCustomer }) {
 
 function CustomerCard({
   customer: c,
+  segment,
   isSelected,
   onToggleSelect,
   onShipped,
   onOpenInvoice,
 }: {
   customer: ShipCustomer
+  segment: Segment
   isSelected?: boolean
   onToggleSelect?: () => void
   onShipped: () => void
@@ -450,7 +450,7 @@ function CustomerCard({
 
   return (
     <div className={`rounded-xl border bg-white overflow-hidden transition-colors ${isSelected ? "border-brand" : "border-cream-border"}`}>
-      <div className="px-5 py-4 bg-cream border-b border-cream-border flex items-start justify-between gap-4">
+      <div className={`px-5 py-4 bg-cream border-b border-cream-border flex justify-between gap-4 ${segment === "hold" ? "items-center md:items-start" : "items-start"}`}>
         <div className="flex items-start gap-3 min-w-0">
           {onToggleSelect && (
             <input
@@ -526,8 +526,10 @@ function CustomerCard({
             )}
             {totalHold > 0 && (
               <div className="flex flex-col items-end gap-1">
-                <div className="text-lg font-bold text-foreground leading-none">{totalHold}</div>
-                <div className="text-xs text-gray-500">on hold</div>
+                <div className={`flex-col items-end gap-1 ${segment === "hold" ? "hidden md:flex" : "flex"}`}>
+                  <div className="text-lg font-bold text-foreground leading-none">{totalHold}</div>
+                  <div className="text-xs text-gray-500">on hold</div>
+                </div>
                 <button
                   type="button"
                   onClick={() => postHoldAction("release", `Release this packing list for ${displayIg(c.customer).toUpperCase()} · ${c.event} back to ready?`)}

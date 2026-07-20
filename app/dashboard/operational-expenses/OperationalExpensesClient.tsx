@@ -12,7 +12,6 @@ import DataGrid, {
 import { usePaginatedFetch, type PageData } from "@/hooks/usePaginatedFetch"
 import SearchableSelect from "@/components/SearchableSelect"
 import SearchInput from "@/components/SearchInput"
-import MobileActionSheet from "@/components/MobileActionSheet"
 import EventSelect from "@/components/EventSelect"
 
 const PAGE_SIZE = 25
@@ -122,7 +121,6 @@ export default function OperationalExpensesClient() {
   const [mobileAddOpen, setMobileAddOpen] = useState(false)
   // Mobile row action sheet + the edit modal it can open — separate from
   // ExpenseActions' own internal edit state (which desktop's inline icons use).
-  const [sheetExpense, setSheetExpense] = useState<OperationalExpenseRow | null>(null)
   const [editingExpense, setEditingExpense] = useState<OperationalExpenseRow | null>(null)
   const [mobileDeleting, setMobileDeleting] = useState(false)
   // Set when "Duplicate" is clicked on a row — seeds the Add form with that
@@ -548,13 +546,13 @@ export default function OperationalExpensesClient() {
         {data.map((x) => (
           <div
             key={x.rowNumber}
-            onClick={() => setSheetExpense(x)}
+            onClick={() => setEditingExpense(x)}
             className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] cursor-pointer active:bg-cream/40 transition-colors"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="text-sm font-semibold text-foreground truncate">{x.description || "—"}</div>
-                <div className="text-xs text-gray-500 mt-2 truncate">{x.event} · {formatDate(x.expenseDate)}{x.method ? ` · ${x.method}` : ""}</div>
+                <div className="text-xs text-gray-500 mt-2 truncate uppercase">{x.event} · {formatDate(x.expenseDate)}{x.method ? ` · ${x.method}` : ""}</div>
               </div>
               <div className="shrink-0 flex flex-col items-end gap-1">
                 <span className="text-sm font-semibold tabular-nums text-foreground whitespace-nowrap">Rp {fmt(x.amountIdr)}</span>
@@ -578,46 +576,6 @@ export default function OperationalExpensesClient() {
         )}
       </div>
 
-      {/* Mobile row action sheet */}
-      <MobileActionSheet
-        open={sheetExpense != null}
-        onClose={() => setSheetExpense(null)}
-        title={sheetExpense?.description || sheetExpense?.event}
-        subtitle={sheetExpense?.event}
-        actions={sheetExpense ? [
-          {
-            label: "Edit",
-            onClick: () => setEditingExpense(sheetExpense),
-            icon: (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
-              </svg>
-            ),
-          },
-          {
-            label: "Duplicate",
-            onClick: () => handleDuplicate(sheetExpense),
-            icon: (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="9" y="9" width="13" height="13" rx="2" />
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-              </svg>
-            ),
-          },
-          {
-            label: "Delete",
-            destructive: true,
-            disabled: mobileDeleting,
-            onClick: () => handleMobileDelete(sheetExpense),
-            icon: (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-              </svg>
-            ),
-          },
-        ] : []}
-      />
 
       {editingExpense && (
         <EditExpenseModal
@@ -627,6 +585,8 @@ export default function OperationalExpensesClient() {
           categories={categoryOptions}
           onSave={() => { refreshRef.current(); setEditingExpense(null) }}
           onCancel={() => setEditingExpense(null)}
+          onDelete={() => { const r = editingExpense; setEditingExpense(null); handleMobileDelete(r) }}
+          onDuplicate={() => { const r = editingExpense; setEditingExpense(null); handleDuplicate(r) }}
         />
       )}
 
@@ -643,16 +603,8 @@ export default function OperationalExpensesClient() {
       {/* Mobile add sheet */}
       {mobileAddOpen && (
         <div className="md:hidden fixed inset-0 z-40 bg-black/40 flex flex-col justify-end" onClick={() => setMobileAddOpen(false)}>
-          <div className="bg-cream rounded-t-2xl max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-3 sticky top-0 bg-cream/95 backdrop-blur z-10">
-              <span className="font-semibold text-foreground">New Expense</span>
-              <button type="button" onClick={() => setMobileAddOpen(false)} aria-label="Close" className="text-gray-400 p-1">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-              </button>
-            </div>
-            <div className="px-3 pb-8">
-              <AddExpenseForm events={events} methods={methods} categories={categoryOptions} onAdded={() => { setMobileAddOpen(false); reloadAll() }} seed={duplicateSeed} />
-            </div>
+          <div className="max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <AddExpenseForm events={events} methods={methods} categories={categoryOptions} onAdded={() => { setMobileAddOpen(false); reloadAll() }} onCancel={() => setMobileAddOpen(false)} seed={duplicateSeed} />
           </div>
         </div>
       )}
@@ -788,12 +740,14 @@ function AddExpenseForm({
   methods,
   categories,
   onAdded,
+  onCancel,
   seed,
 }: {
   events: EventOption[]
   methods: string[]
   categories: string[]
   onAdded: () => void
+  onCancel?: () => void
   seed?: { row: OperationalExpenseRow; version: number } | null
 }) {
   const [draft, setDraft] = useState(emptyDraft)
@@ -877,8 +831,10 @@ function AddExpenseForm({
   }
 
   return (
-    <form onSubmit={handleAdd} className="rounded-xl border border-cream-border bg-white p-5 flex flex-col gap-4">
-      <span className="text-sm font-semibold text-foreground">Add Expense</span>
+    <form onSubmit={handleAdd} className="rounded-t-2xl md:rounded-xl border border-cream-border bg-white p-5 pb-8 md:pb-5 flex flex-col gap-4">
+      <div className="flex items-center justify-between -mx-5 px-5 border-b border-cream-border pb-3 md:mx-0 md:px-0 md:border-b-0 md:pb-0">
+        <span className="text-base md:text-sm font-semibold text-foreground">Add Expense</span>
+      </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Field label="Event">
@@ -940,8 +896,13 @@ function AddExpenseForm({
         </Field>
       </div>
 
-      <div className="flex items-center justify-end gap-3">
-        {addError && <p className="text-xs text-red-500">{addError}</p>}
+      <div className="flex items-center justify-end gap-2">
+        {addError && <p className="mr-auto text-xs text-red-500">{addError}</p>}
+        {onCancel && (
+          <button type="button" onClick={onCancel} disabled={adding} className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
+            Cancel
+          </button>
+        )}
         <button type="submit" disabled={adding} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors">
           {adding ? "Saving…" : "Add"}
         </button>
@@ -997,6 +958,8 @@ function ExpenseActions({
         categories={categories}
         onSave={() => { onUpdated(); setEditing(false) }}
         onCancel={() => setEditing(false)}
+        onDelete={() => { setEditing(false); handleDelete() }}
+        onDuplicate={() => { setEditing(false); onDuplicate(row) }}
       />
     )
   }
@@ -1034,6 +997,8 @@ function EditExpenseModal({
   categories,
   onSave,
   onCancel,
+  onDelete,
+  onDuplicate,
 }: {
   row: OperationalExpenseRow
   events: EventOption[]
@@ -1041,6 +1006,8 @@ function EditExpenseModal({
   categories: string[]
   onSave: () => void
   onCancel: () => void
+  onDelete: () => void
+  onDuplicate?: () => void
 }) {
   const [draft, setDraft] = useState({
     event: row.event,
@@ -1108,10 +1075,10 @@ function EditExpenseModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onCancel}>
-      <div className="bg-white rounded-xl border border-cream-border shadow-xl p-6 w-full max-w-lg flex flex-col gap-4" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-semibold text-foreground">Edit Expense</span>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 md:items-center md:px-4" onClick={onCancel}>
+      <div className="bg-white rounded-t-2xl md:rounded-xl border border-cream-border shadow-xl p-6 pb-8 md:pb-6 w-full max-h-[90vh] overflow-y-auto flex flex-col gap-4 md:max-w-lg" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between -mx-6 px-6 border-b border-cream-border pb-3 md:mx-0 md:px-0 md:border-b-0 md:pb-0">
+          <span className="text-base md:text-sm font-semibold text-foreground">Edit Expense</span>
           <span className="text-xs text-gray-400">ID: {row.rowNumber}</span>
         </div>
 
@@ -1180,19 +1147,46 @@ function EditExpenseModal({
           </Field>
         </div>
 
-        <div className="flex items-center justify-between pt-2 border-t border-cream-border">
-          <label className="flex items-center cursor-pointer" title="Settled">
-            <input type="checkbox" checked={draft.isSettled} onChange={(e) => setDraft((d) => ({ ...d, isSettled: e.target.checked }))} disabled={saving} className="h-4 w-4 rounded border-cream-border accent-brand" />
-          </label>
-          <div className="flex items-center gap-2">
-            {saveError && <p className="text-xs text-red-500">{saveError}</p>}
-            <button type="button" onClick={onCancel} disabled={saving} className="px-3 py-1.5 rounded-lg border border-cream-border text-gray-500 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
-              Cancel
+        <label className="flex items-center gap-2 cursor-pointer pt-2 border-t border-cream-border" title="Settled">
+          <input type="checkbox" checked={draft.isSettled} onChange={(e) => setDraft((d) => ({ ...d, isSettled: e.target.checked }))} disabled={saving} className="h-4 w-4 rounded border-cream-border accent-brand" />
+          <span className="text-xs text-gray-500">Settled</span>
+        </label>
+
+        {saveError && <p className="text-xs text-red-500">{saveError}</p>}
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={saving}
+            aria-label="Delete"
+            className="inline-flex items-center justify-center h-[38px] md:h-auto border border-cream-border md:border-transparent rounded-lg md:rounded-none px-3 md:px-0 md:py-2 text-sm text-gray-400 md:text-red-500 hover:border-brand md:hover:border-transparent md:hover:underline disabled:opacity-50 transition-colors"
+          >
+            <svg className="md:hidden" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M10 11v6" /><path d="M14 11v6" />
+            </svg>
+            <span className="hidden md:inline">Delete</span>
+          </button>
+          {onDuplicate && (
+            <button
+              type="button"
+              onClick={onDuplicate}
+              disabled={saving}
+              aria-label="Duplicate"
+              className="inline-flex items-center justify-center h-[38px] md:h-auto border border-cream-border md:border-transparent rounded-lg md:rounded-none px-3 md:px-0 md:py-2 text-sm text-gray-400 md:text-gray-500 hover:border-brand md:hover:border-transparent md:hover:text-brand disabled:opacity-50 transition-colors"
+            >
+              <svg className="md:hidden" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+              </svg>
+              <span className="hidden md:inline">Duplicate</span>
             </button>
-            <button type="button" onClick={handleSave} disabled={saving} className="px-4 py-1.5 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors">
-              {saving ? "Saving…" : "Save"}
-            </button>
-          </div>
+          )}
+          <button type="button" onClick={onCancel} disabled={saving} className="ml-auto px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
+            Cancel
+          </button>
+          <button type="button" onClick={handleSave} disabled={saving} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors">
+            {saving ? "Saving…" : "Save"}
+          </button>
         </div>
       </div>
     </div>

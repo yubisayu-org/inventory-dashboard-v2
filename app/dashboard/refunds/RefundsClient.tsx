@@ -3,7 +3,7 @@
 import { displayIg } from "@/lib/format"
 import TableSkeleton from "@/components/TableSkeleton"
 import DataGrid, { type ColumnDef } from "@/components/DataGrid"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import type { InvoiceEvent, InvoiceResult, RefundRow, RefundReason, RefundStatus } from "@/lib/db"
 import { REFUND_REASONS } from "@/lib/db/types"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
@@ -219,7 +219,6 @@ export default function RefundsClient() {
               </span>
             )}
           </div>
-          <div className="text-xs text-gray-500 mt-0.5">{reasonLabel(r.reason)}</div>
         </div>
         <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">{formatRp(displayAmount(r))}</span>
       </div>
@@ -416,12 +415,9 @@ function CreateRefundCard({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-xl border border-cream-border bg-white p-5 flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-semibold text-foreground">New Refund</span>
-        <button type="button" onClick={onClose} className="text-gray-400 hover:text-brand transition-colors">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-        </button>
+    <form onSubmit={handleSubmit} className="rounded-t-2xl md:rounded-xl border border-cream-border bg-white p-5 pb-8 md:pb-5 flex flex-col gap-4">
+      <div className="flex items-center justify-between -mx-5 px-5 border-b border-cream-border pb-3 md:mx-0 md:px-0 md:border-b-0 md:pb-0">
+        <span className="text-base md:text-sm font-semibold text-foreground">New Refund</span>
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -551,8 +547,6 @@ function RefundDetailModal({
   // in the common case — the old layout hid half the workflow below the fold.
   const [showMessage, setShowMessage] = useState(false)
   const [showEdit, setShowEdit] = useState(false)
-  const [menuOpen, setMenuOpen] = useState(false)
-  const menuRef = useRef<HTMLDivElement>(null)
   // Opens the full invoice as a drawer over this modal instead of navigating
   // away to /dashboard/invoice, so the refund list keeps its place.
   const [showFullInvoice, setShowFullInvoice] = useState(false)
@@ -581,15 +575,6 @@ function RefundDetailModal({
       .finally(() => { if (!cancelled) setInvoiceLoading(false) })
     return () => { cancelled = true }
   }, [row.customer, row.event])
-
-  useEffect(() => {
-    if (!menuOpen) return
-    function onPointerDown(e: PointerEvent) {
-      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false)
-    }
-    document.addEventListener("pointerdown", onPointerDown)
-    return () => document.removeEventListener("pointerdown", onPointerDown)
-  }, [menuOpen])
 
   const isReadOnly = row.status === "refunded" || row.status === "cancelled" || row.status === "applied_to_next_order"
 
@@ -752,22 +737,22 @@ function RefundDetailModal({
       <button
         onClick={handleExecute}
         disabled={saving || !transferRef.trim() || !refundAccount.trim()}
-        className="px-4 py-2 rounded-lg bg-orange-600 text-white text-sm font-medium hover:bg-orange-700 disabled:opacity-50 transition-colors"
+        className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
       >
         {saving ? "Processing…" : "Refund"}
       </button>
     ) : null
 
   const whatsAppCard = (
-    <div className="flex flex-col gap-2 p-3 rounded-lg bg-green-50 border border-green-200">
+    <div className="flex flex-col gap-2 p-3 rounded-lg bg-gray-50 border border-cream-border">
       <div className="flex items-center justify-between gap-2">
-        <div className="text-xs font-medium text-green-800">Refund message</div>
+        <div className="text-xs font-medium text-gray-600">Refund message</div>
         <div className="flex items-center gap-1.5">
           <button
             type="button"
             onClick={() => setShowMessage((v) => !v)}
             title={showMessage ? "Hide message" : "Preview message"}
-            className="inline-flex items-center justify-center w-6 h-6 rounded border border-green-300 text-green-700 hover:bg-green-100 transition-colors shrink-0"
+            className="inline-flex items-center justify-center w-6 h-6 rounded border border-cream-border text-gray-500 hover:bg-gray-100 transition-colors shrink-0"
           >
             {showMessage ? (
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -787,7 +772,7 @@ function RefundDetailModal({
             onClick={handleCopyMessage}
             disabled={!templates}
             title={copied ? "Copied" : "Copy message"}
-            className="inline-flex items-center justify-center w-6 h-6 rounded border border-green-300 text-green-700 hover:bg-green-100 transition-colors shrink-0 disabled:opacity-50"
+            className="inline-flex items-center justify-center w-6 h-6 rounded border border-cream-border text-gray-500 hover:bg-gray-100 transition-colors shrink-0 disabled:opacity-50"
           >
             {copied ? (
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -806,7 +791,7 @@ function RefundDetailModal({
             rel="noreferrer"
             onClick={(e) => { if (!templates) e.preventDefault() }}
             title="Open in WhatsApp"
-            className={`inline-flex items-center justify-center w-6 h-6 rounded border border-green-300 text-green-700 hover:bg-green-100 transition-colors shrink-0 ${templates ? "" : "opacity-50 pointer-events-none"}`}
+            className={`inline-flex items-center justify-center w-6 h-6 rounded border border-cream-border text-gray-500 hover:bg-gray-100 transition-colors shrink-0 ${templates ? "" : "opacity-50 pointer-events-none"}`}
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.44 1.32 4.94L2.05 22l5.29-1.38a9.9 9.9 0 0 0 4.7 1.2h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.85 9.85 0 0 0 12.04 2zm5.8 14.16c-.24.68-1.2 1.25-1.96 1.41-.52.11-1.2.2-3.5-.75-2.94-1.22-4.83-4.2-4.98-4.4-.15-.19-1.2-1.59-1.2-3.04 0-1.44.75-2.15 1.02-2.45.24-.26.55-.36.79-.36.2 0 .38.01.55.01.18.01.42-.07.65.5.24.6.82 2.06.89 2.21.07.15.12.33.02.53-.1.19-.15.31-.29.48-.15.17-.31.38-.44.51-.15.15-.3.31-.13.6.17.29.75 1.24 1.62 2.01 1.11.99 2.05 1.3 2.34 1.44.29.15.46.13.63-.08.17-.2.72-.84.92-1.13.19-.29.39-.24.65-.14.27.09 1.7.8 1.99.95.29.15.48.22.55.35.07.13.07.75-.17 1.43z" />
@@ -815,42 +800,55 @@ function RefundDetailModal({
         </div>
       </div>
       {showMessage ? (
-        <p className="text-xs text-green-700 whitespace-pre-wrap leading-relaxed">{waMessageText}</p>
+        <p className="text-xs text-gray-600 whitespace-pre-wrap leading-relaxed">{waMessageText}</p>
       ) : null}
     </div>
   )
 
   return (
     <>
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 md:items-center md:px-4" onClick={onClose}>
       <div
-        className="bg-white rounded-xl border border-cream-border shadow-xl w-full max-w-lg flex flex-col gap-0 overflow-hidden max-h-[90vh]"
+        className="bg-white rounded-t-2xl md:rounded-xl border border-cream-border shadow-xl w-full flex flex-col gap-0 overflow-hidden max-h-[96vh] md:max-h-[90vh] md:max-w-lg"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header — identity + the one number that matters */}
         <div className="shrink-0 flex items-start justify-between gap-3 px-6 py-4 border-b border-cream-border">
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-foreground truncate">{displayIg(row.customer)}</div>
-            <div className="text-xs text-gray-400 mt-0.5">{row.event} · {reasonLabel(row.reason)}</div>
+            <div className="flex flex-wrap items-center gap-x-2">
+              <span className="text-sm font-semibold text-foreground">{row.event}</span>
+              <span className="text-sm text-gray-400 truncate uppercase">{displayIg(row.customer)}</span>
+              {invoiceEvent && (
+                <button
+                  type="button"
+                  onClick={() => setShowFullInvoice(true)}
+                  aria-label="Open full invoice"
+                  title="Open full invoice"
+                  className="text-gray-400 hover:text-brand transition-colors shrink-0"
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M15 3h6v6" /><path d="M10 14 21 3" /><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                  </svg>
+                </button>
+              )}
+            </div>
             <div className="mt-1.5 flex items-baseline gap-2">
               <span className="text-lg font-bold text-foreground tabular-nums">{formatRp(displayAmount(row))}</span>
-              <span className="text-[11px] text-gray-400">
-                {isFullyAppliedAsCredit(row) ? "applied as credit" : "to refund"}
-              </span>
+              {isFullyAppliedAsCredit(row) && (
+                <span className="text-[11px] text-gray-400">applied as credit</span>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${STATUS_COLORS[row.status]}`}>
               {STATUS_LABELS[row.status]}
             </span>
-            <button onClick={onClose} className="text-gray-400 hover:text-brand transition-colors">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-            </button>
           </div>
         </div>
 
-        {/* Invoice — one line, expandable. Was a 6-row block eating the modal. */}
-        <div className="shrink-0 border-b border-cream-border">
+        {/* Invoice — one line, expandable. Was a 6-row block eating the modal.
+            Hidden on mobile: the open-invoice icon in the header covers it there. */}
+        <div className="hidden md:block shrink-0 border-b border-cream-border">
           {invoiceLoading ? (
             <div className="px-6 py-2.5 text-xs text-gray-400">Loading invoice…</div>
           ) : invoiceError ? (
@@ -865,12 +863,6 @@ function RefundDetailModal({
                 Invoice <span className="font-semibold text-foreground tabular-nums">{formatRp(invoiceEvent.invoice.total)}</span>
                 {" · "}Paid <span className="font-semibold text-foreground tabular-nums">{formatRp(invoiceEvent.invoice.pembayaran)}</span>
               </span>
-              <span className="text-gray-500 inline-flex items-center gap-1 shrink-0">
-                Open full invoice
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M5 12h14M13 5l7 7-7 7" />
-                </svg>
-              </span>
             </button>
           ) : null}
         </div>
@@ -878,7 +870,7 @@ function RefundDetailModal({
         {/* Pipeline position (cash flow only — terminal side-tracks skip it) */}
         {!isReadOnly && <StepIndicator status={row.status} />}
 
-        <div className="flex-1 min-h-0 flex flex-col gap-4 px-6 py-4 overflow-y-auto">
+        <div className="flex-1 min-h-0 flex flex-col gap-3 md:gap-4 px-6 py-3 md:py-4 overflow-y-auto">
           {/* Stale-amount review banner — the invoice changed after credit was
               applied, so the stored amount no longer matches the real overpayment
               and the auto-reconcile left it for a human. */}
@@ -904,53 +896,52 @@ function RefundDetailModal({
 
           {row.status === "awaiting_bank_info" && (
             <div className="flex flex-col gap-3">
-              <label className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-gray-500">Bank Name</span>
-                <input
-                  value={bankName}
-                  onChange={(e) => setBankName(e.target.value)}
-                  disabled={saving}
-                  placeholder="e.g. BCA, Mandiri"
-                  className={`${INPUT_CLASS} w-full`}
-                />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-gray-500">Account Number</span>
-                <input
-                  value={bankAccountNumber}
-                  onChange={(e) => setBankAccountNumber(e.target.value)}
-                  disabled={saving}
-                  placeholder="e.g. 1234567890"
-                  className={`${INPUT_CLASS} w-full`}
-                />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-gray-500">Account Holder Name</span>
-                <input
-                  value={bankAccountHolder}
-                  onChange={(e) => setBankAccountHolder(e.target.value)}
-                  disabled={saving}
-                  placeholder="Full name on account"
-                  className={`${INPUT_CLASS} w-full`}
-                />
-              </label>
+              <div className="flex flex-col gap-3 p-3 rounded-lg bg-gray-50 border border-cream-border">
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs font-medium text-gray-600">Bank Name</span>
+                  <input
+                    value={bankName}
+                    onChange={(e) => setBankName(e.target.value)}
+                    disabled={saving}
+                    placeholder="e.g. BCA, Mandiri"
+                    className={`${INPUT_CLASS} w-full`}
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs font-medium text-gray-600">Account Number</span>
+                  <input
+                    value={bankAccountNumber}
+                    onChange={(e) => setBankAccountNumber(e.target.value)}
+                    disabled={saving}
+                    placeholder="e.g. 1234567890"
+                    className={`${INPUT_CLASS} w-full`}
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs font-medium text-gray-600">Account Holder Name</span>
+                  <input
+                    value={bankAccountHolder}
+                    onChange={(e) => setBankAccountHolder(e.target.value)}
+                    disabled={saving}
+                    placeholder="Full name on account"
+                    className={`${INPUT_CLASS} w-full`}
+                  />
+                </label>
+              </div>
               {/* Customer hasn't replied yet? Message tools stay one click away. */}
-              <details className="text-xs text-gray-400">
-                <summary className="cursor-pointer hover:text-gray-600 transition-colors">Refund message (resend)</summary>
-                <div className="mt-2">{whatsAppCard}</div>
-              </details>
+              {whatsAppCard}
             </div>
           )}
 
           {row.status === "ready_to_refund" && (
-            <div className="flex flex-col gap-3 p-3 rounded-lg bg-orange-50 border border-orange-200">
-              <div className="text-xs font-semibold text-orange-800">Execute Transfer</div>
-              <div className="text-xs text-orange-700">
-                Transfer <span className="font-bold">{formatRp(row.refundAmount)}</span> to{" "}
-                <span className="font-medium">{row.bankName}</span> · {row.bankAccountNumber} · {row.bankAccountHolder}
+            <div className="flex flex-col gap-3 p-3 rounded-lg bg-gray-50 border border-cream-border">
+              <div className="text-xs font-medium text-gray-600">Execute transfer</div>
+              <div className="text-xs text-gray-500">
+                Transfer <span className="font-bold text-foreground">{formatRp(row.refundAmount)}</span> to{" "}
+                <span className="font-medium text-foreground">{row.bankName}</span> · {row.bankAccountNumber} · {row.bankAccountHolder}
               </div>
               <label className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-orange-800">Sent from account <span className="text-brand">*</span></span>
+                <span className="text-xs font-medium text-gray-600">Sent from account <span className="text-brand">*</span></span>
                 <SearchableSelect
                   value={refundAccount}
                   onChange={setRefundAccount}
@@ -961,7 +952,7 @@ function RefundDetailModal({
                 />
               </label>
               <label className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-orange-800">Transfer Reference</span>
+                <span className="text-xs font-medium text-gray-600">Transfer Reference</span>
                 <input
                   value={transferRef}
                   onChange={(e) => setTransferRef(e.target.value)}
@@ -975,11 +966,11 @@ function RefundDetailModal({
 
           {/* Refunded — show summary */}
           {row.status === "refunded" && (
-            <div className="flex flex-col gap-1.5 p-3 rounded-lg bg-green-50 border border-green-200 text-xs text-green-800">
-              <div className="font-semibold">Transfer Complete</div>
-              <div>Reference: <span className="font-medium">{row.transferReference || "—"}</span></div>
-              <div>Bank: <span className="font-medium">{row.bankName} · {row.bankAccountNumber}</span></div>
-              <div>Holder: <span className="font-medium">{row.bankAccountHolder}</span></div>
+            <div className="flex flex-col gap-1.5 p-3 rounded-lg bg-gray-50 border border-cream-border text-xs text-gray-500">
+              <div className="font-medium text-gray-600">Transfer complete</div>
+              <div>Reference: <span className="font-medium text-foreground">{row.transferReference || "—"}</span></div>
+              <div>Bank: <span className="font-medium text-foreground">{row.bankName} · {row.bankAccountNumber}</span></div>
+              <div>Holder: <span className="font-medium text-foreground">{row.bankAccountHolder}</span></div>
             </div>
           )}
 
@@ -1089,14 +1080,14 @@ function RefundDetailModal({
 
           {/* Apply as credit — pick which of the customer's other orders to credit */}
           {!isReadOnly && (
-            <div className="flex flex-col gap-2 p-3 rounded-lg bg-purple-50 border border-purple-200">
+            <div className="flex flex-col gap-2 p-3 rounded-lg bg-gray-50 border border-cream-border">
               <div className="flex items-center justify-between gap-2">
-                <div className="text-xs font-semibold text-purple-800">Apply as credit</div>
+                <div className="text-xs font-medium text-gray-600">Apply as credit</div>
                 <button
                   type="button"
                   onClick={() => setShowCredit((v) => !v)}
                   title={showCredit ? "Hide" : "Apply as credit"}
-                  className="inline-flex items-center justify-center w-6 h-6 rounded border border-purple-300 text-purple-700 hover:bg-purple-100 transition-colors shrink-0"
+                  className="inline-flex items-center justify-center w-6 h-6 rounded border border-cream-border text-gray-500 hover:bg-gray-100 transition-colors shrink-0"
                 >
                   {showCredit ? (
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
@@ -1202,37 +1193,34 @@ function RefundDetailModal({
           )}
         </div>
 
-        {/* Footer — secondary actions behind ⋯, primary CTA always visible */}
+        {/* Footer — Delete (when editable) on the left, Cancel + primary CTA right */}
         {error && <p className="shrink-0 text-xs text-red-500 px-6 pb-2">{error}</p>}
-        {!isReadOnly && (
-          <div className="shrink-0 flex items-center justify-between gap-2 px-6 py-4 border-t border-cream-border">
-            <div className="relative" ref={menuRef}>
-              <button
-                type="button"
-                onClick={() => setMenuOpen((v) => !v)}
-                disabled={saving}
-                title="More actions"
-                className="p-2 rounded-lg border border-cream-border text-gray-500 hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                  <circle cx="5" cy="12" r="1.8" /><circle cx="12" cy="12" r="1.8" /><circle cx="19" cy="12" r="1.8" />
-                </svg>
-              </button>
-              {menuOpen && (
-                <div className="absolute bottom-full left-0 mb-2 z-10 w-48 rounded-lg border border-cream-border bg-white shadow-lg py-1">
-                  <button
-                    type="button"
-                    onClick={() => { setMenuOpen(false); handleDelete() }}
-                    className="w-full text-left px-3 py-2 text-xs text-red-500 hover:bg-red-50 transition-colors"
-                  >
-                    Delete Refund
-                  </button>
-                </div>
-              )}
-            </div>
+        <div className="shrink-0 flex items-center justify-between gap-2 px-6 py-4 border-t border-cream-border">
+          {!isReadOnly ? (
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={saving}
+              aria-label="Delete"
+              className="inline-flex items-center justify-center h-[38px] border border-cream-border rounded-lg px-3 text-sm text-gray-400 hover:border-brand disabled:opacity-50 transition-colors"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M10 11v6" /><path d="M14 11v6" />
+              </svg>
+            </button>
+          ) : <span />}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+            >
+              Cancel
+            </button>
             {primaryAction}
           </div>
-        )}
+        </div>
       </div>
     </div>
     {showFullInvoice && (

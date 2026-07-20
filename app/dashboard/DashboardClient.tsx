@@ -217,9 +217,9 @@ function EventCard({ event }: { event: DashboardEvent }) {
         {event.eta && <span className="text-xs text-gray-400 shrink-0">{event.eta}</span>}
       </div>
 
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
-        <span><span className="font-medium text-foreground">{event.customerCount}</span> customers</span>
-        <span><span className="font-medium text-foreground">{event.totalUnits}</span> units</span>
+      <div className="flex flex-nowrap items-baseline gap-x-2 text-[11px] text-gray-500">
+        <span className="whitespace-nowrap"><span className="font-medium text-foreground">{event.customerCount}</span> customers</span>
+        <span className="whitespace-nowrap"><span className="font-medium text-foreground">{event.totalUnits}</span> units</span>
         <span className="ml-auto whitespace-nowrap tabular-nums">
           <span className="text-foreground font-medium">{formatRp(event.totalPaid)}</span>
           <span className="text-gray-400"> / {formatRp(event.totalSubtotal)}</span>

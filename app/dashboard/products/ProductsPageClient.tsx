@@ -10,7 +10,6 @@ import DataGrid, {
 } from "@/components/DataGrid"
 import { usePaginatedFetch, type PageData } from "@/hooks/usePaginatedFetch"
 import ToggleSwitch from "@/components/ToggleSwitch"
-import MobileActionSheet from "@/components/MobileActionSheet"
 import SearchableSelect from "@/components/SearchableSelect"
 import SearchInput from "@/components/SearchInput"
 import { calcAbroadPrice, calcDomesticPrice, abroadProfit } from "@/lib/pricing"
@@ -106,7 +105,6 @@ export default function ProductsPageClient() {
   const [mobileAddOpen, setMobileAddOpen] = useState(false)
   // Mobile row action sheet + the edit modal it can open — separate from
   // ProductActions' own internal edit state (which desktop's inline icons use).
-  const [sheetProduct, setSheetProduct] = useState<ProductRow | null>(null)
   const [editingProduct, setEditingProduct] = useState<ProductRow | null>(null)
   const [mobileDeleting, setMobileDeleting] = useState(false)
   // When set, the Add form pre-fills itself from this product (Duplicate flow).
@@ -559,7 +557,7 @@ export default function ProductsPageClient() {
           return (
             <div
               key={p.id}
-              onClick={() => setSheetProduct(p)}
+              onClick={() => setEditingProduct(p)}
               className={`rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] cursor-pointer active:bg-cream/40 transition-colors ${p.isActive ? "" : "opacity-60"}`}
             >
               <div className="flex items-start justify-between gap-3">
@@ -603,46 +601,6 @@ export default function ProductsPageClient() {
       </div>
 
       {/* Mobile row action sheet */}
-      <MobileActionSheet
-        open={sheetProduct != null}
-        onClose={() => setSheetProduct(null)}
-        title={sheetProduct?.name}
-        subtitle={sheetProduct?.store}
-        actions={sheetProduct ? [
-          {
-            label: "Edit",
-            onClick: () => setEditingProduct(sheetProduct),
-            icon: (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
-              </svg>
-            ),
-          },
-          {
-            label: "Duplicate",
-            onClick: () => handleDuplicate(sheetProduct),
-            icon: (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-              </svg>
-            ),
-          },
-          {
-            label: "Delete",
-            destructive: true,
-            disabled: mobileDeleting,
-            onClick: () => handleMobileDelete(sheetProduct),
-            icon: (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-              </svg>
-            ),
-          },
-        ] : []}
-      />
-
       {editingProduct && (
         <EditProductModal
           row={editingProduct}
@@ -650,6 +608,8 @@ export default function ProductsPageClient() {
           stores={stores}
           onSave={() => { refreshRef.current(); setEditingProduct(null) }}
           onCancel={() => setEditingProduct(null)}
+          onDelete={() => { const r = editingProduct; setEditingProduct(null); handleMobileDelete(r) }}
+          onDuplicate={() => { const r = editingProduct; setEditingProduct(null); handleDuplicate(r) }}
         />
       )}
 
@@ -666,22 +626,15 @@ export default function ProductsPageClient() {
       {/* Mobile add sheet */}
       {mobileAddOpen && (
         <div className="md:hidden fixed inset-0 z-40 bg-black/40 flex flex-col justify-end" onClick={() => setMobileAddOpen(false)}>
-          <div className="bg-cream rounded-t-2xl max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-3 sticky top-0 bg-cream/95 backdrop-blur z-10">
-              <span className="font-semibold text-foreground">New Product</span>
-              <button type="button" onClick={() => setMobileAddOpen(false)} aria-label="Close" className="text-gray-400 p-1">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-              </button>
-            </div>
-            <div className="px-3 pb-8">
-              <AddProductForm
-                countries={countries}
-                stores={stores}
-                onAdded={() => { setMobileAddOpen(false); reloadAll() }}
-                seed={seedProduct}
-                onConsumeSeed={consumeSeed}
-              />
-            </div>
+          <div className="max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <AddProductForm
+              countries={countries}
+              stores={stores}
+              onAdded={() => { setMobileAddOpen(false); reloadAll() }}
+              onCancel={() => setMobileAddOpen(false)}
+              seed={seedProduct}
+              onConsumeSeed={consumeSeed}
+            />
           </div>
         </div>
       )}
@@ -695,12 +648,14 @@ function AddProductForm({
   countries,
   stores,
   onAdded,
+  onCancel,
   seed,
   onConsumeSeed,
 }: {
   countries: CountryRow[]
   stores: string[]
   onAdded: () => void
+  onCancel?: () => void
   seed?: ProductRow | null
   onConsumeSeed?: () => void
 }) {
@@ -837,9 +792,9 @@ function AddProductForm({
   }
 
   return (
-    <form ref={formRef} onSubmit={handleAdd} className="rounded-xl border border-cream-border bg-white p-5 flex flex-col gap-4 scroll-mt-14">
-      <div className="flex items-center gap-4">
-        <span className="text-sm font-semibold text-foreground">Add Product</span>
+    <form ref={formRef} onSubmit={handleAdd} className="rounded-t-2xl md:rounded-xl border border-cream-border bg-white p-5 pb-8 md:pb-5 flex flex-col gap-4 scroll-mt-14">
+      <div className="flex items-center gap-4 -mx-5 px-5 border-b border-cream-border pb-3 md:mx-0 md:px-0 md:border-b-0 md:pb-0">
+        <span className="text-base md:text-sm font-semibold text-foreground">Add Product</span>
         <div className="flex rounded-lg border border-cream-border overflow-hidden text-xs">
           <button
             type="button"
@@ -858,67 +813,35 @@ function AddProductForm({
         </div>
       </div>
 
-      <Field label="Product Name">
-        <input ref={nameRef} value={name} onChange={(e) => setName(e.target.value)} placeholder="Product name" required disabled={adding} className={formInputCls} />
-      </Field>
-
-      <Field label="Store">
-        <SearchableSelect
-          value={store}
-          onChange={setStore}
-          options={stores.map((s) => ({ value: s, label: s }))}
-          placeholder="Select or type store…"
-          allowNewValue
-          disabled={adding}
-        />
-      </Field>
-
-      {type === "overseas" && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Field label="Country">
-            <select
-              value={countryId ?? ""}
-              onChange={(e) => setCountryId(e.target.value ? Number(e.target.value) : null)}
-              disabled={adding}
-              className={formInputCls}
-            >
-              <option value="">Select country</option>
-              {countries.map((c) => (
-                <option key={c.id} value={c.id}>{c.name} ({c.currency})</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Valas">
-            <input value={valas} onChange={(e) => setValas(e.target.value)} type="number" step="any" min="0" placeholder="0" disabled={adding} className={formInputCls} />
-          </Field>
+      {type === "domestic" ? (
+        <div className="grid grid-cols-3 gap-3">
+          <div className="col-span-2">
+            <Field label="Product Name">
+              <input ref={nameRef} value={name} onChange={(e) => setName(e.target.value)} placeholder="Product name" required disabled={adding} className={formInputCls} />
+            </Field>
+          </div>
           <Field label="Gram">
             <input value={gram} onChange={(e) => setGram(e.target.value)} type="number" min="0" placeholder="0" disabled={adding} className={formInputCls} />
           </Field>
-          <Field label="Profit %">
-            <input value={profitPct} onChange={(e) => setProfitPct(e.target.value)} type="number" min="0" max="99" placeholder="30" disabled={adding} className={formInputCls} />
-          </Field>
-          <Field label="Operational Fee">
-            <input value={opFee} onChange={(e) => setOpFee(e.target.value)} type="number" min="0" placeholder="5000" disabled={adding} className={formInputCls} />
-          </Field>
-          <Field label="Packing Fee">
-            <input value={packFee} onChange={(e) => setPackFee(e.target.value)} type="number" min="0" placeholder="5000" disabled={adding} className={formInputCls} />
-          </Field>
-
-          {selectedCountry && (
-            <div className="col-span-2 flex gap-4 text-xs text-gray-500 items-center">
-              <span>Kurs: {fmt(selectedCountry.kurs)}</span>
-              <span>Cargo/kg: {fmt(selectedCountry.cargoPerKg)}</span>
-              <span>COGS: {fmt(Math.round(pricePreview.cogs))}</span>
-              <span className="text-green-700 font-semibold">
-                Profit: Rp {fmt(abroadProfit({ price: pricePreview.price, cogs: pricePreview.cogs, operationalFee: Number(opFee) || 0, packingFee: Number(packFee) || 0 }))}
-              </span>
-            </div>
-          )}
         </div>
+      ) : (
+        <Field label="Product Name">
+          <input ref={nameRef} value={name} onChange={(e) => setName(e.target.value)} placeholder="Product name" required disabled={adding} className={formInputCls} />
+        </Field>
       )}
 
-      {type === "domestic" && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      {type === "domestic" ? (
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Store">
+            <SearchableSelect
+              value={store}
+              onChange={setStore}
+              options={stores.map((s) => ({ value: s, label: s }))}
+              placeholder="Select or type store…"
+              allowNewValue
+              disabled={adding}
+            />
+          </Field>
           <Field label="Base Cost (IDR)">
             <input
               value={cost}
@@ -932,6 +855,74 @@ function AddProductForm({
               type="number" min="0" placeholder="0" disabled={adding} className={formInputCls}
             />
           </Field>
+        </div>
+      ) : (
+        <Field label="Store">
+          <SearchableSelect
+            value={store}
+            onChange={setStore}
+            options={stores.map((s) => ({ value: s, label: s }))}
+            placeholder="Select or type store…"
+            allowNewValue
+            disabled={adding}
+          />
+        </Field>
+      )}
+
+      {type === "overseas" && (
+        <>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Field label="Country">
+              <select
+                value={countryId ?? ""}
+                onChange={(e) => setCountryId(e.target.value ? Number(e.target.value) : null)}
+                disabled={adding}
+                className={formInputCls}
+              >
+                <option value="">Select country</option>
+                {countries.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name} ({c.currency})</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Valas">
+              <input value={valas} onChange={(e) => setValas(e.target.value)} type="number" step="any" min="0" placeholder="0" disabled={adding} className={formInputCls} />
+            </Field>
+            <Field label="Gram">
+              <input value={gram} onChange={(e) => setGram(e.target.value)} type="number" min="0" placeholder="0" disabled={adding} className={formInputCls} />
+            </Field>
+            <Field label="Profit %">
+              <input value={profitPct} onChange={(e) => setProfitPct(e.target.value)} type="number" min="0" max="99" placeholder="30" disabled={adding} className={formInputCls} />
+            </Field>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="Operational Fee">
+              <input value={opFee} onChange={(e) => setOpFee(e.target.value)} type="number" min="0" placeholder="5000" disabled={adding} className={formInputCls} />
+            </Field>
+            <Field label="Packing Fee">
+              <input value={packFee} onChange={(e) => setPackFee(e.target.value)} type="number" min="0" placeholder="5000" disabled={adding} className={formInputCls} />
+            </Field>
+            <Field label="Price">
+              <div className={`${formInputCls} bg-gray-50 text-gray-500 flex items-center`}>Rp {fmt(pricePreview.price)}</div>
+            </Field>
+          </div>
+
+          {selectedCountry && (
+            <div className="flex items-center justify-between gap-1 flex-nowrap whitespace-nowrap rounded-lg bg-gray-50 border border-cream-border px-3 py-3 text-[9px] text-gray-500">
+              <span>RATE: {fmt(selectedCountry.kurs)}</span>
+              <span>SHIPPING/KG: {fmt(selectedCountry.cargoPerKg)}</span>
+              <span>COGS: {fmt(Math.round(pricePreview.cogs))}</span>
+              <span className="text-green-700 font-semibold">
+                PROFIT: Rp {fmt(abroadProfit({ price: pricePreview.price, cogs: pricePreview.cogs, operationalFee: Number(opFee) || 0, packingFee: Number(packFee) || 0 }))}
+              </span>
+            </div>
+          )}
+        </>
+      )}
+
+      {type === "domestic" && (
+        <div className="grid grid-cols-2 gap-3">
           <Field label="Fixed Profit (IDR)">
             <input
               value={profitFixed}
@@ -939,19 +930,20 @@ function AddProductForm({
               type="number" min="0" placeholder="0" disabled={adding} className={formInputCls}
             />
           </Field>
-          <Field label="Gram">
-            <input value={gram} onChange={(e) => setGram(e.target.value)} type="number" min="0" placeholder="0" disabled={adding} className={formInputCls} />
+          <Field label="Price">
+            <div className={`${formInputCls} bg-gray-50 text-gray-500 flex items-center`}>Rp {fmt(pricePreview.price)}</div>
           </Field>
         </div>
       )}
 
-      <div className="flex items-center justify-between">
-        <div className="text-sm">
-          <span className="text-gray-500">Price: </span>
-          <span className="font-semibold text-foreground">Rp {fmt(pricePreview.price)}</span>
-        </div>
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-end">
+        <div className="flex items-center gap-2">
           {addError && <p className="text-xs text-red-500">{addError}</p>}
+          {onCancel && (
+            <button type="button" onClick={onCancel} disabled={adding} className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
+              Cancel
+            </button>
+          )}
           <button
             type="submit"
             disabled={adding}
@@ -1117,12 +1109,16 @@ function EditProductModal({
   stores,
   onSave,
   onCancel,
+  onDelete,
+  onDuplicate,
 }: {
   row: ProductRow
   countries: CountryRow[]
   stores: string[]
   onSave: (updated: Partial<ProductRow>) => void
   onCancel: () => void
+  onDelete?: () => void
+  onDuplicate?: () => void
 }) {
   const [draft, setDraft] = useState({
     name: row.name,
@@ -1212,11 +1208,34 @@ function EditProductModal({
     }
   }
 
+  // Price/COGS/Profit readout — sits in the empty grid cell next to Pack Fee /
+  // Base Cost rather than crowding the button row.
+  const calcSummary = (
+    <div className="self-end inline-flex flex-col gap-0.5 rounded-lg border border-cream-border px-4 py-2 text-sm">
+      <div>
+        <span className="text-gray-500">Price: </span>
+        <span className="font-semibold text-foreground">Rp {fmt(editCalc.price)}</span>
+      </div>
+      {editCalc.cogs != null && (
+        <div>
+          <span className="text-gray-500">COGS: </span>
+          <span className="font-semibold text-foreground">Rp {fmt(editCalc.cogs)}</span>
+        </div>
+      )}
+      {editCalc.profit != null && (
+        <div>
+          <span className="text-gray-500">Profit: </span>
+          <span className="font-semibold text-green-700">Rp {fmt(editCalc.profit)}</span>
+        </div>
+      )}
+    </div>
+  )
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onCancel}>
-      <div className="bg-white rounded-xl border border-cream-border shadow-xl p-6 w-full max-w-lg flex flex-col gap-4" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-semibold text-foreground">Edit Product</span>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 md:items-center md:px-4" onClick={onCancel}>
+      <div className="bg-white rounded-t-2xl md:rounded-xl border border-cream-border shadow-xl p-6 pb-8 md:pb-6 w-full max-h-[90vh] overflow-y-auto flex flex-col gap-4 md:max-w-lg" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between -mx-6 px-6 border-b border-cream-border pb-3 md:mx-0 md:px-0 md:border-b-0 md:pb-0">
+          <span className="text-base md:text-sm font-semibold text-foreground">Edit Product</span>
           <span className="text-xs text-gray-400">ID: {row.id}</span>
         </div>
 
@@ -1224,17 +1243,34 @@ function EditProductModal({
           <input value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} disabled={saving} className={formInputCls} />
         </Field>
 
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Store">
-            <SearchableSelect
-              value={draft.store}
-              onChange={(v) => setDraft((d) => ({ ...d, store: v }))}
-              options={stores.map((s) => ({ value: s, label: s }))}
-              placeholder="Store…"
-              allowNewValue
-              disabled={saving}
-            />
-          </Field>
+        <Field label="Store">
+          <SearchableSelect
+            value={draft.store}
+            onChange={(v) => setDraft((d) => ({ ...d, store: v }))}
+            options={stores.map((s) => ({ value: s, label: s }))}
+            placeholder="Store…"
+            allowNewValue
+            disabled={saving}
+          />
+        </Field>
+        {draftAbroad ? (
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Type">
+              <select
+                value={draft.countryId ?? ""}
+                onChange={(e) => setDraft((d) => ({ ...d, countryId: e.target.value ? Number(e.target.value) : null }))}
+                disabled={saving}
+                className={formInputCls}
+              >
+                <option value="">Domestic</option>
+                {countries.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.currency})</option>)}
+              </select>
+            </Field>
+            <Field label="Valas">
+              <input value={draft.valas} onChange={(e) => setDraft((d) => ({ ...d, valas: e.target.value }))} type="number" step="any" min="0" disabled={saving} className={formInputCls} />
+            </Field>
+          </div>
+        ) : (
           <Field label="Type">
             <select
               value={draft.countryId ?? ""}
@@ -1246,46 +1282,54 @@ function EditProductModal({
               {countries.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.currency})</option>)}
             </select>
           </Field>
-        </div>
+        )}
 
         {draftAbroad ? (
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Valas">
-              <input value={draft.valas} onChange={(e) => setDraft((d) => ({ ...d, valas: e.target.value }))} type="number" step="any" min="0" disabled={saving} className={formInputCls} />
-            </Field>
-            <Field label="Gram">
-              <input value={draft.gram} onChange={(e) => setDraft((d) => ({ ...d, gram: e.target.value }))} type="number" min="0" disabled={saving} className={formInputCls} />
-            </Field>
-            <Field label="Profit %">
-              <input value={draft.profitPct} onChange={(e) => setDraft((d) => ({ ...d, profitPct: e.target.value }))} type="number" min="0" max="99" disabled={saving} className={formInputCls} />
-            </Field>
-            <Field label="Op Fee">
-              <input
-                value={draft.opFee}
-                type="number"
-                disabled
-                readOnly
-                title="Locked — set when the product is created. Re-create the product to change this."
-                className={`${formInputCls} bg-gray-50 text-gray-400 cursor-not-allowed`}
-              />
-            </Field>
-            <Field label="Pack Fee">
-              <input
-                value={draft.packFee}
-                type="number"
-                disabled
-                readOnly
-                title="Locked — set when the product is created. Re-create the product to change this."
-                className={`${formInputCls} bg-gray-50 text-gray-400 cursor-not-allowed`}
-              />
-            </Field>
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Gram">
+                <input value={draft.gram} onChange={(e) => setDraft((d) => ({ ...d, gram: e.target.value }))} type="number" min="0" disabled={saving} className={formInputCls} />
+              </Field>
+              <Field label="Profit %">
+                <input value={draft.profitPct} onChange={(e) => setDraft((d) => ({ ...d, profitPct: e.target.value }))} type="number" min="0" max="99" disabled={saving} className={formInputCls} />
+              </Field>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              <Field label="Op Fee">
+                <input
+                  value={draft.opFee}
+                  type="number"
+                  disabled
+                  readOnly
+                  title="Locked — set when the product is created. Re-create the product to change this."
+                  className={`${formInputCls} bg-gray-50 text-gray-400 cursor-not-allowed`}
+                />
+              </Field>
+              <Field label="Pack Fee">
+                <input
+                  value={draft.packFee}
+                  type="number"
+                  disabled
+                  readOnly
+                  title="Locked — set when the product is created. Re-create the product to change this."
+                  className={`${formInputCls} bg-gray-50 text-gray-400 cursor-not-allowed`}
+                />
+              </Field>
+              <Field label="Price">
+                <div className={`${formInputCls} bg-gray-50 text-gray-500 flex items-center`}>Rp {fmt(editCalc.price)}</div>
+              </Field>
+            </div>
+
             {draftCountry && (
-              <div className="col-span-2 flex gap-4 text-xs text-gray-500 items-center">
-                <span>Kurs: {fmt(draftCountry.kurs)}</span>
-                <span>Shipping/kg: {fmt(draftCountry.cargoPerKg)}</span>
+              <div className="flex items-center justify-between gap-1 flex-nowrap whitespace-nowrap rounded-lg bg-gray-50 border border-cream-border px-3 py-3 text-[9px] text-gray-500">
+                <span>RATE: {fmt(draftCountry.kurs)}</span>
+                <span>SHIPPING/KG: {fmt(draftCountry.cargoPerKg)}</span>
+                <span>COGS: Rp {fmt(editCalc.cogs ?? 0)}</span>
+                <span className="text-green-700 font-semibold">PROFIT: Rp {fmt(editCalc.profit ?? 0)}</span>
               </div>
             )}
-          </div>
+          </>
         ) : (
           <div className="grid grid-cols-2 gap-3">
             <Field label="Base Cost">
@@ -1297,31 +1341,28 @@ function EditProductModal({
             <Field label="Gram">
               <input value={draft.gram} onChange={(e) => setDraft((d) => ({ ...d, gram: e.target.value }))} type="number" min="0" disabled={saving} className={formInputCls} />
             </Field>
+            {calcSummary}
           </div>
         )}
 
-        <div className="flex items-center justify-between pt-2 border-t border-cream-border">
-          <div className="text-sm flex flex-col gap-0.5">
-            <div>
-              <span className="text-gray-500">Price: </span>
-              <span className="font-semibold text-foreground">Rp {fmt(editCalc.price)}</span>
-            </div>
-            {editCalc.cogs != null && (
-              <div>
-                <span className="text-gray-500">COGS: </span>
-                <span className="font-semibold text-foreground">Rp {fmt(editCalc.cogs)}</span>
-              </div>
-            )}
-            {editCalc.profit != null && (
-              <div>
-                <span className="text-gray-500">Profit: </span>
-                <span className="font-semibold text-green-700">Rp {fmt(editCalc.profit)}</span>
-              </div>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
+        <div className="flex items-center pt-2">
+          <div className="flex items-center gap-2 w-full">
             {saveError && <p className="text-xs text-red-500">{saveError}</p>}
-            <button type="button" onClick={onCancel} disabled={saving} className="px-3 py-1.5 rounded-lg border border-cream-border text-gray-500 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
+            {onDelete && (
+              <button type="button" onClick={onDelete} disabled={saving} aria-label="Delete" className="md:hidden inline-flex items-center justify-center h-[34px] border border-cream-border rounded-lg px-3 text-gray-500 hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M10 11v6" /><path d="M14 11v6" />
+                </svg>
+              </button>
+            )}
+            {onDuplicate && (
+              <button type="button" onClick={onDuplicate} disabled={saving} aria-label="Duplicate" className="md:hidden inline-flex items-center justify-center h-[34px] border border-cream-border rounded-lg px-3 text-gray-500 hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                </svg>
+              </button>
+            )}
+            <button type="button" onClick={onCancel} disabled={saving} className="ml-auto px-3 py-1.5 rounded-lg border border-cream-border text-gray-500 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
               Cancel
             </button>
             <button type="button" onClick={handleSave} disabled={saving} className="px-4 py-1.5 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors">

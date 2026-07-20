@@ -5,7 +5,6 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import type { EventRow, WarehouseRow, CountryRow, EventPerformance } from "@/lib/db"
 import DataGrid, { type ColumnDef } from "@/components/DataGrid"
 import ToggleSwitch from "@/components/ToggleSwitch"
-import MobileActionSheet from "@/components/MobileActionSheet"
 import EventPerformancePanel from "./EventPerformancePanel"
 
 const EMPTY_FORM = { name: "", eta: "", warehouseId: "", countryId: "" }
@@ -27,7 +26,6 @@ export default function EventsClient() {
   const [addError, setAddError] = useState<string | null>(null)
 
   const [editRow, setEditRow] = useState<EventRow | null>(null)
-  const [sheetRow, setSheetRow] = useState<EventRow | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [mobileAddOpen, setMobileAddOpen] = useState(false)
 
@@ -390,18 +388,25 @@ export default function EventsClient() {
                       </span>
                     </span>
                   </button>
-                  {/* Kebab opens the action sheet — tapping the row body still
+                  <div className="shrink-0 flex items-center gap-1">
+                  <ToggleSwitch
+                    checked={ev.isActive}
+                    onChange={(next) => handleToggleActive(ev, next)}
+                    label={`Toggle ${ev.name} active`}
+                  />
+                  {/* Kebab opens Edit directly — tapping the row body still
                       expands/collapses the performance panel, unchanged. */}
                   <button
                     type="button"
-                    onClick={() => setSheetRow(ev)}
-                    aria-label="More actions"
-                    className="shrink-0 p-2 rounded-lg text-gray-400 active:bg-cream active:text-brand transition-colors"
+                    onClick={() => setEditRow(ev)}
+                    aria-label="Edit"
+                    className="p-2 rounded-lg text-gray-400 active:bg-cream active:text-brand transition-colors"
                   >
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                       <circle cx="12" cy="5" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="12" cy="19" r="1.5" />
                     </svg>
                   </button>
+                  </div>
                 </div>
                 {isExpanded && (
                   <div className="border-t border-cream-border">
@@ -429,11 +434,8 @@ export default function EventsClient() {
       {mobileAddOpen && (
         <div className="md:hidden fixed inset-0 z-40 flex items-end bg-black/40" onClick={() => setMobileAddOpen(false)}>
           <form onSubmit={handleAdd} onClick={(e) => e.stopPropagation()} className="w-full bg-white rounded-t-2xl p-5 pb-8 flex flex-col gap-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between -mx-5 px-5 border-b border-cream-border pb-3">
               <span className="text-base font-semibold text-foreground">Add Event</span>
-              <button type="button" onClick={() => setMobileAddOpen(false)} aria-label="Close" className="text-gray-400 p-1">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-              </button>
             </div>
             <input {...field("name")} placeholder="Event name" required disabled={adding} className={modalInputCls} />
             <input {...field("eta")} placeholder="ETA (e.g. 2026-06-15)" disabled={adding} className={modalInputCls} />
@@ -461,9 +463,14 @@ export default function EventsClient() {
               ))}
             </select>
             {addError && <p className="text-xs text-red-500">{addError}</p>}
-            <button type="submit" disabled={adding} className="px-4 py-3 rounded-xl bg-brand text-white text-sm font-semibold disabled:opacity-50">
-              {adding ? "Saving…" : "Save Event"}
-            </button>
+            <div className="flex items-center justify-end gap-2">
+              <button type="button" onClick={() => setMobileAddOpen(false)} disabled={adding} className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
+                Cancel
+              </button>
+              <button type="submit" disabled={adding} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors">
+                {adding ? "Saving…" : "Add"}
+              </button>
+            </div>
           </form>
         </div>
       )}
@@ -481,37 +488,9 @@ export default function EventsClient() {
             setEditRow(null)
           }}
           onCancel={() => setEditRow(null)}
+          onDelete={() => { const r = editRow; setEditRow(null); handleDelete(r) }}
         />
       )}
-
-      {/* Mobile row action sheet */}
-      <MobileActionSheet
-        open={sheetRow != null}
-        onClose={() => setSheetRow(null)}
-        title={sheetRow?.name}
-        actions={sheetRow ? [
-          {
-            label: "Edit",
-            onClick: () => setEditRow(sheetRow),
-            icon: (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
-              </svg>
-            ),
-          },
-          {
-            label: "Delete",
-            destructive: true,
-            onClick: () => handleDelete(sheetRow),
-            icon: (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-              </svg>
-            ),
-          },
-        ] : []}
-      />
     </div>
   )
 }
@@ -524,12 +503,14 @@ function EditEventModal({
   countries,
   onSave,
   onCancel,
+  onDelete,
 }: {
   row: EventRow
   warehouses: WarehouseRow[]
   countries: CountryRow[]
   onSave: (updated: Partial<EventRow>) => void
   onCancel: () => void
+  onDelete: () => void
 }) {
   const [draft, setDraft] = useState({
     name: row.name,
@@ -591,13 +572,13 @@ function EditEventModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onCancel}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 md:items-center md:px-4" onClick={onCancel}>
       <div
-        className="bg-white rounded-xl border border-cream-border shadow-xl p-6 w-full max-w-md flex flex-col gap-4"
+        className="bg-white rounded-t-2xl md:rounded-xl border border-cream-border shadow-xl p-6 pb-8 md:pb-6 w-full max-h-[90vh] overflow-y-auto flex flex-col gap-4 md:max-w-md"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-semibold text-foreground">Edit Event</span>
+        <div className="flex items-center justify-between -mx-6 px-6 border-b border-cream-border pb-3 md:mx-0 md:px-0 md:border-b-0 md:pb-0">
+          <span className="text-base md:text-sm font-semibold text-foreground">Edit Event</span>
           <span className="text-xs text-gray-400">ID: {row.id}</span>
         </div>
 
@@ -652,12 +633,24 @@ function EditEventModal({
 
         {saveError && <p className="text-xs text-red-500">{saveError}</p>}
 
-        <div className="flex items-center justify-end gap-2 pt-2">
+        <div className="flex items-center gap-2 pt-2">
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={saving}
+            aria-label="Delete"
+            className="inline-flex items-center justify-center h-[38px] md:h-auto border border-cream-border md:border-transparent rounded-lg md:rounded-none px-3 md:px-0 md:py-2 text-sm text-gray-400 md:text-red-500 hover:border-brand md:hover:border-transparent md:hover:underline disabled:opacity-50 transition-colors"
+          >
+            <svg className="md:hidden" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M10 11v6" /><path d="M14 11v6" />
+            </svg>
+            <span className="hidden md:inline">Delete</span>
+          </button>
           <button
             type="button"
             onClick={onCancel}
             disabled={saving}
-            className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+            className="ml-auto px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
           >
             Cancel
           </button>

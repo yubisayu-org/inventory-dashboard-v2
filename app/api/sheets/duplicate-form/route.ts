@@ -23,6 +23,7 @@ export async function GET(req: NextRequest) {
         event: params.get("event") ?? undefined,
         customer: params.get("customer") ?? undefined,
         items: params.get("items") ?? undefined,
+        note: params.get("note") ?? undefined,
         dateFrom: params.get("dateFrom") ?? undefined,
         dateTo: params.get("dateTo") ?? undefined,
         sortKey: params.get("sortKey") ?? undefined,
