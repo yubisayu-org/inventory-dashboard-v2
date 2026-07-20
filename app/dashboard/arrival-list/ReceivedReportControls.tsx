@@ -83,7 +83,7 @@ export default function ReceivedReportControls() {
             max={today}
             onChange={(e) => setFrom(e.target.value)}
             aria-label="From date"
-            className={`${INPUT_CLASS} w-full`}
+            className={`${INPUT_CLASS} w-full min-w-0`}
           />
         </Field>
       </div>
@@ -95,7 +95,7 @@ export default function ReceivedReportControls() {
             max={today}
             onChange={(e) => setTo(e.target.value)}
             aria-label="To date"
-            className={`${INPUT_CLASS} w-full`}
+            className={`${INPUT_CLASS} w-full min-w-0`}
           />
         </Field>
       </div>

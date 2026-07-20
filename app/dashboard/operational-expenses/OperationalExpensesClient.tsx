@@ -399,25 +399,25 @@ export default function OperationalExpensesClient() {
 
       {/* Filters: date range + event, sit above the search bar (both layouts) */}
       <div className="rounded-xl border border-cream-border bg-white p-4 flex items-end gap-3 flex-wrap">
-        <div className="flex-1 min-w-[140px]">
+        <div className="flex-1 min-w-0 sm:min-w-[140px]">
           <Field label="Dari">
             <input
               type="date"
               value={dateFrom}
               onChange={(e) => handleDateFromChange(e.target.value)}
               aria-label="From date"
-              className={`${formInputCls} w-full`}
+              className={`${formInputCls} w-full min-w-0`}
             />
           </Field>
         </div>
-        <div className="flex-1 min-w-[140px]">
+        <div className="flex-1 min-w-0 sm:min-w-[140px]">
           <Field label="Sampai">
             <input
               type="date"
               value={dateTo}
               onChange={(e) => handleDateToChange(e.target.value)}
               aria-label="To date"
-              className={`${formInputCls} w-full`}
+              className={`${formInputCls} w-full min-w-0`}
             />
           </Field>
         </div>

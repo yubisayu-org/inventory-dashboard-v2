@@ -573,20 +573,20 @@ export default function ProductsPageClient() {
                 </div>
               </div>
               <div className="flex items-center justify-between gap-3 mt-2.5 pt-2.5 border-t border-cream-border">
-                <div className="flex items-center gap-2 min-w-0">
+                <span className="text-xs text-gray-400 min-w-0 truncate">
+                  {[
+                    abroad ? (countries.find((c) => c.id === p.countryId)?.currency || "—") + (p.valas ? ` ${fmt(p.valas)}` : "") : "",
+                    p.gram ? `${fmt(p.gram)} GR` : "",
+                  ].filter(Boolean).join(" · ")}
+                </span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-brand font-bold tabular-nums whitespace-nowrap">Rp {fmt(p.price)}</span>
                   <ToggleSwitch
                     checked={p.isActive}
                     onChange={(next) => handleToggleActive(p, next)}
                     label={`Toggle ${p.name} active`}
                   />
-                  <span className="text-xs text-gray-400 min-w-0 truncate">
-                    {[
-                      abroad ? (countries.find((c) => c.id === p.countryId)?.currency || "—") + (p.valas ? ` ${fmt(p.valas)}` : "") : "",
-                      p.gram ? `${fmt(p.gram)} GR` : "",
-                    ].filter(Boolean).join(" · ")}
-                  </span>
                 </div>
-                <span className="text-brand font-bold tabular-nums whitespace-nowrap shrink-0">Rp {fmt(p.price)}</span>
               </div>
             </div>
           )

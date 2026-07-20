@@ -207,14 +207,14 @@ export default function ShipClient() {
       </div>
 
       {/* Search + event filter */}
-      <div className="flex gap-2 flex-wrap">
+      <div className="flex gap-2 md:flex-wrap">
         <SearchInput
           value={search}
           onChange={setSearch}
           placeholder="Cari customer…"
-          className="flex-1 min-w-[160px]"
+          className="flex-1 min-w-0 md:min-w-[160px]"
         />
-        <div className="w-48">
+        <div className="w-36 md:w-48 shrink-0">
           <EventSelect
             value={eventFilter}
             onChange={setEventFilter}
@@ -223,6 +223,20 @@ export default function ShipClient() {
             clearable
           />
         </div>
+        {/* Mobile ship button — always visible (like the shipment print button),
+            disabled until customers are selected. */}
+        <button
+          type="button"
+          onClick={handleBulkShip}
+          disabled={bulkShipping || selected.size === 0}
+          aria-label="Ship selected customers"
+          className="md:hidden shrink-0 inline-flex items-center gap-1 px-3 rounded-lg bg-brand text-white text-sm font-semibold disabled:opacity-50 active:bg-brand/90 transition-colors"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M22 2 11 13" /><path d="M22 2 15 22l-4-9-9-4 20-7z" />
+          </svg>
+          <span className="inline-block min-w-[1.5rem] text-center tabular-nums">{selected.size}</span>
+        </button>
       </div>
 
       {/* States */}
@@ -248,7 +262,7 @@ export default function ShipClient() {
                   type="button"
                   onClick={toggleSelectAll}
                   disabled={bulkShipping}
-                  className="text-xs text-gray-500 hover:text-brand transition-colors disabled:opacity-50"
+                  className="hidden md:inline-flex text-xs text-gray-500 hover:text-brand transition-colors disabled:opacity-50"
                 >
                   {allSelected ? "Deselect All" : "Select All"}
                 </button>
@@ -267,7 +281,7 @@ export default function ShipClient() {
                     type="button"
                     onClick={handleBulkShip}
                     disabled={bulkShipping}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
+                    className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
                   >
                     {bulkShipping && bulkProgress
                       ? `Mengirim ${bulkProgress.done}/${bulkProgress.total}…`
@@ -277,6 +291,20 @@ export default function ShipClient() {
               </div>
             )}
           </div>
+          {/* Mobile select-all FAB — round icon button like the Events "+" FAB. */}
+          {readyFiltered.length > 0 && (
+            <button
+              type="button"
+              onClick={toggleSelectAll}
+              disabled={bulkShipping}
+              aria-label={allSelected ? "Deselect all" : "Select all"}
+              className="md:hidden fixed right-4 bottom-20 z-30 w-14 h-14 rounded-full bg-brand text-white shadow-lg flex items-center justify-center active:bg-brand/90 disabled:opacity-50"
+            >
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            </button>
+          )}
           {bulkError && (
             <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {bulkError}
@@ -343,7 +371,7 @@ type CopyState =
   | { status: "copied" }
   | { status: "error"; message: string }
 
-function CopyConfirmMessageButton({ customer: c }: { customer: ShipCustomer }) {
+function CopyConfirmMessageButton({ customer: c, className }: { customer: ShipCustomer; className?: string }) {
   const [state, setState] = useState<CopyState>({ status: "idle" })
   const templates = useMessageTemplates()
   const businessProfile = useBusinessProfile()
@@ -387,7 +415,7 @@ function CopyConfirmMessageButton({ customer: c }: { customer: ShipCustomer }) {
       onClick={handleClick}
       disabled={status === "loading" || !templates || !businessProfile}
       title={status === "error" ? state.message : "Copy pesan konfirmasi pengiriman"}
-      className={`p-1 transition-colors rounded disabled:opacity-50 ${
+      className={`${className ?? "p-1 rounded"} inline-flex items-center justify-center transition-colors disabled:opacity-50 ${
         status === "copied" ? "text-green-600"
         : status === "error" ? "text-red-500"
         : "text-gray-400 hover:text-brand"
@@ -462,12 +490,12 @@ function CustomerCard({
           )}
         <div className="flex flex-col gap-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="flex items-center gap-1.5 shrink-0">
+            <span className="flex flex-col md:flex-row md:items-center gap-0.5 md:gap-1.5 min-w-0">
               <span className="text-xs font-semibold text-foreground">{c.event}</span>
               <button
                 type="button"
                 onClick={onOpenInvoice}
-                className="text-xs text-gray-500 font-medium hover:text-brand hover:underline cursor-pointer text-left"
+                className="text-xs text-gray-500 font-medium hover:text-brand hover:underline cursor-pointer text-left truncate min-w-0"
                 title="Lihat invoice"
               >
                 {displayIg(c.customer).toUpperCase()}
@@ -488,7 +516,6 @@ function CustomerCard({
                 Hold
               </span>
             )}
-            {c.totalToShip > 0 && <CopyConfirmMessageButton customer={c} />}
           </div>
         </div>
         </div>
@@ -502,9 +529,8 @@ function CustomerCard({
           <div className="shrink-0 flex items-start gap-3">
             {c.totalToShip > 0 && (
               <div className="flex flex-col items-end gap-1">
-                <div className="text-lg font-bold text-foreground leading-none">{c.totalToShip}</div>
-                <div className="text-xs text-gray-500">to ship</div>
-                <div className="mt-1 flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5">
+                  <CopyConfirmMessageButton customer={c} className="px-3 py-1.5 rounded-lg border border-gray-300 hover:bg-gray-50" />
                   <button
                     type="button"
                     onClick={() => postHoldAction("hold", `Hold this packing list for ${displayIg(c.customer).toUpperCase()} · ${c.event}?`)}
@@ -522,6 +548,8 @@ function CustomerCard({
                     Ship
                   </button>
                 </div>
+                <div className="hidden md:block mt-1 text-lg font-bold text-foreground leading-none">{c.totalToShip}</div>
+                <div className="hidden md:block text-xs text-gray-500">to ship</div>
               </div>
             )}
             {totalHold > 0 && (

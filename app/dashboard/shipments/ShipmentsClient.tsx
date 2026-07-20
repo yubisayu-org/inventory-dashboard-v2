@@ -878,7 +878,7 @@ export default function ShipmentsClient() {
         <span className="hidden sm:inline">
           {printingPdf ? "Generating…" : `Print ${selectedCount} Label${selectedCount === 1 ? "" : "s"}`}
         </span>
-        <span className="sm:hidden">{printingPdf ? "…" : selectedCount}</span>
+        <span className="sm:hidden inline-block min-w-[1.5rem] text-center tabular-nums">{printingPdf ? "…" : selectedCount}</span>
       </button>
     </div>
   )

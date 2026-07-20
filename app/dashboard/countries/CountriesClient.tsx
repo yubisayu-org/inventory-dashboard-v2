@@ -7,6 +7,44 @@ import DataGrid, { type ColumnDef, numericFilter, textContainsFilter } from "@/c
 
 const EMPTY_FORM = { name: "", currency: "", kurs: "", cargoPerKg: "" }
 
+// Live mid-market rate for a 3-letter currency → IDR, via the free, keyless
+// open.er-api.com (CORS-friendly). Returns null until a valid code is entered.
+function useLiveIdrRate(currency: string) {
+  const [rate, setRate] = useState<number | null>(null)
+  const [loading, setLoading] = useState(false)
+  useEffect(() => {
+    const code = currency.trim().toUpperCase()
+    if (!/^[A-Z]{3}$/.test(code) || code === "IDR") { setRate(null); setLoading(false); return }
+    let cancelled = false
+    setLoading(true)
+    fetch(`https://open.er-api.com/v6/latest/${code}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return
+        setRate(d?.result === "success" && typeof d.rates?.IDR === "number" ? d.rates.IDR : null)
+      })
+      .catch(() => { if (!cancelled) setRate(null) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [currency])
+  return { rate, loading }
+}
+
+// Mobile-only read-only box showing the live 1-unit rate to IDR for the typed
+// currency. Styled to match the form's input boxes.
+function LiveIdrRate({ currency }: { currency: string }) {
+  const { rate, loading } = useLiveIdrRate(currency)
+  const code = currency.trim().toUpperCase()
+  return (
+    <div className="md:hidden flex flex-col gap-1">
+      <span className="text-xs font-medium text-gray-500">Live rate → IDR{/^[A-Z]{3}$/.test(code) ? ` (1 ${code})` : ""}</span>
+      <div className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-600">
+        {!/^[A-Z]{3}$/.test(code) ? "Enter a 3-letter currency" : loading ? "Loading…" : rate != null ? `Rp ${new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 }).format(rate)}` : "Unavailable"}
+      </div>
+    </div>
+  )
+}
+
 const formInputCls = "border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
 const modalInputCls = "w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors disabled:opacity-50"
 
@@ -353,6 +391,7 @@ export default function CountriesClient() {
             </div>
             <input {...field("name")} placeholder="Country name" required disabled={adding} className={modalInputCls} />
             <input {...field("currency")} placeholder="Currency (e.g. CNY)" disabled={adding} className={modalInputCls} />
+            <LiveIdrRate currency={form.currency} />
             <input {...field("kurs")} type="number" min="0" step="any" placeholder="Kurs (IDR)" disabled={adding} className={modalInputCls} />
             <input {...field("cargoPerKg")} type="number" min="0" placeholder="Shipping / kg (IDR)" disabled={adding} className={modalInputCls} />
             {addError && <p className="text-xs text-red-500">{addError}</p>}
@@ -467,6 +506,7 @@ function EditCountryModal({
               className={modalInputCls}
             />
           </label>
+          <LiveIdrRate currency={draft.currency} />
           <label className="flex flex-col gap-1">
             <span className="text-xs font-medium text-gray-500">Kurs (IDR)</span>
             <input
