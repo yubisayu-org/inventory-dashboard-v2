@@ -24,7 +24,7 @@ const STATUS_COLORS: Record<PaymentStatus, string> = {
   unpaid: "bg-red-50 text-red-700 border-red-200",
   partial: "bg-yellow-50 text-yellow-700 border-yellow-200",
   paid: "bg-green-50 text-green-700 border-green-200",
-  overpaid: "bg-purple-50 text-purple-700 border-purple-200",
+  overpaid: "bg-blue-50 text-blue-700 border-blue-200",
 }
 
 type StatusFilter = "all" | PaymentStatus
@@ -37,7 +37,7 @@ export function PaymentStatusPanel({
   const [rows, setRows] = useState<PaymentStatusRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [filter, setFilter] = useState<StatusFilter>("all")
+  const [filter, setFilter] = useState<StatusFilter>("unpaid")
   // Rows currently visible in the grid after the search box narrows them, so
   // the Outstanding/Overpaid totals track what the user is looking at. null
   // until the grid first reports (falls back to the full filtered set).
@@ -214,29 +214,32 @@ export function PaymentStatusPanel({
             {displayIg(r.customer)}
           </button>
         </div>
-        <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${STATUS_COLORS[r.status]}`}>
-          {STATUS_LABELS[r.status]}
-        </span>
       </div>
 
       <div className="mt-2.5 pt-2.5 border-t border-cream-border flex flex-col gap-1 text-xs">
         <div className="flex items-center justify-between">
+          <span className="text-gray-400">Items</span>
+          <span className="tabular-nums text-foreground">{fmt(r.totalItems)}</span>
+        </div>
+        <div className="flex items-center justify-between">
           <span className="text-gray-400">Invoice</span>
           <span className="tabular-nums text-foreground">Rp {fmt(r.invoiceTotal)}</span>
         </div>
-        <div className="flex items-center justify-between">
-          <span className="text-gray-400">Paid</span>
-          <span className="tabular-nums text-foreground">Rp {fmt(r.totalPaid)}</span>
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="text-gray-400">Outstanding</span>
-          <span className={`tabular-nums font-medium ${r.outstanding > 0 ? "text-red-600" : r.outstanding < 0 ? "text-purple-600" : "text-green-600"}`}>
-            {r.outstanding > 0 ? "Rp " + fmt(r.outstanding) : r.outstanding < 0 ? "−Rp " + fmt(Math.abs(r.outstanding)) : "—"}
-          </span>
-        </div>
+        {r.outstanding !== 0 && (
+          <div className="flex items-center justify-between">
+            <span className="text-gray-400">{r.outstanding > 0 ? "Outstanding" : "Overpayment"}</span>
+            <span className={`tabular-nums font-medium ${r.outstanding > 0 ? "text-red-600" : "text-blue-600"}`}>
+              {r.outstanding > 0 ? "Rp " + fmt(r.outstanding) : "−Rp " + fmt(Math.abs(r.outstanding))}
+            </span>
+          </div>
+        )}
       </div>
 
-      <div className="mt-2 flex items-center justify-end gap-1">
+      <div className="mt-2.5 pt-2.5 border-t border-cream-border flex items-center justify-between gap-3">
+        <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${STATUS_COLORS[r.status]}`}>
+          {STATUS_LABELS[r.status]}
+        </span>
+        <div className="flex items-center gap-1">
         <CopyInvoiceButton customer={r.customer} event={r.event} />
         <button
           type="button"
@@ -249,6 +252,7 @@ export function PaymentStatusPanel({
             <line x1="5" y1="12" x2="19" y2="12" />
           </svg>
         </button>
+        </div>
       </div>
     </div>
   ), [onOpenCustomer])
@@ -316,6 +320,7 @@ export function PaymentStatusPanel({
           initialSorting={[{ id: "outstanding", desc: true }]}
           renderMobileCard={renderMobileCard}
           renderExpandedRow={renderExpandedRow}
+          paginationVariant="simple"
         />
       </div>
 

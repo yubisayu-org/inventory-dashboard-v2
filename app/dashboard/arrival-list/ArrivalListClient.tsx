@@ -364,6 +364,7 @@ export default function ArrivalListClient() {
           onChange={setSearch}
           placeholder="Search receiving list…"
           className="flex-1 min-w-0 sm:min-w-[180px]"
+          dense
         />
         <div className="w-28 shrink-0 sm:w-[12rem]">
           <EventSelect
@@ -372,11 +373,12 @@ export default function ArrivalListClient() {
             events={options?.events ?? []}
             placeholder="All Events"
             clearable
+            dense
           />
         </div>
         <button
           onClick={() => setBulkOpen(true)}
-          className="hidden md:inline-flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors"
+          className="hidden md:inline-flex items-center gap-1.5 h-[34px] px-3 text-xs font-medium rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors"
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <path d="M12 5v14M5 12h14" />
@@ -557,7 +559,7 @@ export default function ArrivalListClient() {
                           />
                         )}
                         <div className="flex-1 min-w-0">
-                          <div className="text-sm text-foreground">{item.productName}</div>
+                          <div className="text-xs text-foreground">{item.productName}</div>
                           <div className="mt-0.5">
                             <CustomerBadge
                               orders={item.orders.map((o) => ({ customer: o.customer, qty: o.pending, paidStatus: o.paidStatus }))}
@@ -617,7 +619,7 @@ export default function ArrivalListClient() {
               color: "brand",
               onClick: () => setCargoOpen(true),
               icon: (
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                   <path d="M14 2v6h6" />
                 </svg>
@@ -628,10 +630,10 @@ export default function ArrivalListClient() {
               color: "blue",
               onClick: () => setReceiveOpen(true),
               icon: (
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="8" width="18" height="4" rx="1" />
-                  <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7" />
-                  <path d="M12 12v7" />
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
+                  <path d="m3.3 7 8.7 5 8.7-5" />
+                  <path d="M12 22V12" />
                 </svg>
               ),
             },

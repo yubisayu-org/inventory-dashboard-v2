@@ -291,6 +291,7 @@ export default function RefundsClient() {
           getRowId={(row) => String(row.id)}
           onRowClick={(row) => setEditRow(row)}
           renderMobileCard={renderMobileCard}
+          paginationVariant="simple"
           belowToolbar={
             creating ? (
               <div className="hidden md:block">
@@ -306,8 +307,8 @@ export default function RefundsClient() {
           toolbarExtra={
             <button
               onClick={() => setCreating((o) => !o)}
-              className={`hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg transition-colors ${
-                creating ? "bg-brand-light text-brand border border-brand/30" : "bg-brand text-white hover:bg-brand-hover"
+              className={`hidden md:inline-flex items-center gap-1.5 h-[34px] px-3 text-xs rounded-lg border transition-colors ${
+                creating ? "bg-brand-light text-brand border-brand/30" : "bg-brand text-white border-transparent hover:bg-brand-hover"
               }`}
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -336,7 +337,7 @@ export default function RefundsClient() {
             <CreateRefundCard
               events={options?.events ?? []}
               reasonOptions={reasonOptions}
-              onCreated={(row) => { handleCreated(row); setMobileCreating(false) }}
+              onCreated={(row) => { handleCreated(row); setMobileCreating(false); window.scrollTo({ top: 0, behavior: "smooth" }) }}
               onClose={() => setMobileCreating(false)}
             />
           </div>
@@ -415,7 +416,7 @@ function CreateRefundCard({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-t-2xl md:rounded-xl border border-cream-border bg-white p-5 pb-8 md:pb-5 flex flex-col gap-4">
+    <form onSubmit={handleSubmit} className="rounded-t-2xl md:rounded-xl border-x border-t border-cream-border md:border bg-white p-5 pb-8 md:pb-5 flex flex-col gap-4">
       <div className="flex items-center justify-between -mx-5 px-5 border-b border-cream-border pb-3 md:mx-0 md:px-0 md:border-b-0 md:pb-0">
         <span className="text-base md:text-sm font-semibold text-foreground">New Refund</span>
       </div>
@@ -809,7 +810,7 @@ function RefundDetailModal({
     <>
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 md:items-center md:px-4" onClick={onClose}>
       <div
-        className="bg-white rounded-t-2xl md:rounded-xl border border-cream-border shadow-xl w-full flex flex-col gap-0 overflow-hidden max-h-[96vh] md:max-h-[90vh] md:max-w-lg"
+        className="bg-white rounded-t-2xl md:rounded-xl border-x border-t border-cream-border md:border shadow-xl w-full flex flex-col gap-0 overflow-hidden max-h-[96vh] md:max-h-[90vh] md:max-w-lg"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header — identity + the one number that matters */}

@@ -207,6 +207,9 @@ interface DataGridProps<T> {
    *  desktop-only (`hidden md:block`) and this renders a `md:hidden` stacked
    *  card list instead, using the same filtered/sorted/paginated row set. */
   renderMobileCard?: (row: T) => React.ReactNode
+  /** "full" (default) = numbered pager with «/»/jump input; "simple" = a
+   *  Prev · Page X of Y · Next bar (matches the Order page's mobile pager). */
+  paginationVariant?: "full" | "simple"
   /** Optional expanded-row renderer. Adds a chevron column; clicking it
    *  toggles a full-width detail row below. Desktop table only — mobile
    *  cards ignore it (pair with onRowClick/renderMobileCard for mobile). */
@@ -246,6 +249,7 @@ export default function DataGrid<T>({
   rowClassName,
   serverSide,
   renderMobileCard,
+  paginationVariant = "simple",
   renderExpandedRow,
 }: DataGridProps<T>) {
   // Client-side state (ignored when serverSide is provided)
@@ -532,7 +536,9 @@ export default function DataGrid<T>({
 
       {/* Pagination */}
       {pageCount > 1 && (
-        <Pagination table={table} currentPage={currentPage} pageCount={pageCount} />
+        paginationVariant === "simple"
+          ? <SimplePagination table={table} currentPage={currentPage} pageCount={pageCount} />
+          : <Pagination table={table} currentPage={currentPage} pageCount={pageCount} />
       )}
     </div>
   )
@@ -880,7 +886,7 @@ export function ColumnVisibilityMenu<T>({
         ref={btnRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand transition-colors px-3 py-1.5 rounded-lg border border-cream-border hover:border-brand"
+        className="flex items-center gap-1.5 h-[34px] text-xs text-gray-500 hover:text-brand transition-colors px-3 rounded-lg border border-cream-border hover:border-brand"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
@@ -931,6 +937,17 @@ function Pagination<T>({ table, currentPage, pageCount }: { table: TanTable<T>; 
       <PgBtn onClick={() => table.setPageIndex(pageCount - 1)} disabled={!table.getCanNextPage()}>»</PgBtn>
       <JumpInput currentPage={currentPage} totalPages={pageCount} onJump={(p) => table.setPageIndex(p - 1)} />
       <span className="text-xs text-gray-400 ml-1">of {pageCount}</span>
+    </div>
+  )
+}
+
+// Order-page-style pager: Prev · Page X of Y · Next.
+function SimplePagination<T>({ table, currentPage, pageCount }: { table: TanTable<T>; currentPage: number; pageCount: number }) {
+  return (
+    <div className="flex items-center justify-between gap-3 pt-1">
+      <button type="button" disabled={!table.getCanPreviousPage()} onClick={() => table.previousPage()} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-gray-600 disabled:opacity-40">Prev</button>
+      <span className="text-xs text-gray-400">Page {currentPage} of {pageCount}</span>
+      <button type="button" disabled={!table.getCanNextPage()} onClick={() => table.nextPage()} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-gray-600 disabled:opacity-40">Next</button>
     </div>
   )
 }

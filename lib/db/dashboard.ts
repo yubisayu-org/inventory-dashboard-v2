@@ -344,7 +344,13 @@ export async function getEventPerformance(): Promise<EventPerformance[]> {
       GROUP BY o.event
     ),
     ops AS (
-      SELECT event, SUM(amount_idr)::bigint AS ops_expenses
+      -- avg_rate = amount-weighted average kurs actually paid on this event's
+      -- non-IDR expenses (total IDR ÷ total foreign), ignoring pure-IDR rows.
+      SELECT
+        event,
+        SUM(amount_idr)::bigint AS ops_expenses,
+        SUM(amount_idr) FILTER (WHERE rate <> 1)::numeric
+          / NULLIF(SUM(amount_foreign) FILTER (WHERE rate <> 1), 0) AS avg_rate
       FROM operational_expenses
       GROUP BY event
     ),
@@ -357,7 +363,7 @@ export async function getEventPerformance(): Promise<EventPerformance[]> {
     )
     SELECT
       e.name,
-      COALESCE(co.kurs, 0)::numeric AS kurs,
+      COALESCE(op.avg_rate, 0)::numeric AS kurs,
       COALESCE(oa.order_count, 0)::int AS order_count,
       COALESCE(oa.customer_count, 0)::int AS customer_count,
       COALESCE(oa.total_units, 0)::int AS total_units,
@@ -372,7 +378,6 @@ export async function getEventPerformance(): Promise<EventPerformance[]> {
       COALESCE(op.ops_expenses, 0)::bigint AS ops_expenses,
       COALESCE(rd.due_refund, 0)::bigint AS due_refund
     FROM events e
-    LEFT JOIN countries co ON co.id = e.country_id
     LEFT JOIN order_agg oa ON oa.event = e.name
     LEFT JOIN sales s ON s.event = e.name
     LEFT JOIN pay_event pe ON pe.event = e.name

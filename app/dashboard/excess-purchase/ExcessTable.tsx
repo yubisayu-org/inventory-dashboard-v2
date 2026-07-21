@@ -36,7 +36,7 @@ const REASON_CLASS: Record<ExcessReason, string> = {
 
 function ReasonBadge({ reason }: { reason: ExcessReason }) {
   return (
-    <span className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-medium border ${REASON_CLASS[reason]}`}>
+    <span className={`inline-flex items-center whitespace-nowrap px-2 py-0.5 rounded-full text-[10px] font-medium border ${REASON_CLASS[reason]}`}>
       {REASON_LABEL[reason]}
     </span>
   )
@@ -198,7 +198,7 @@ export default function ExcessTable() {
         accessorKey: "reason",
         header: "Reason",
         filterFn: "textContains",
-        size: 110,
+        size: 140,
         cell: ({ getValue }) => <ReasonBadge reason={getValue<ExcessReason>()} />,
       },
       {
@@ -226,7 +226,7 @@ export default function ExcessTable() {
         accessorKey: "receipt",
         header: "Receipt",
         filterFn: "textContains",
-        size: 150,
+        size: 120,
         cell: ({ getValue }) => {
           const v = getValue<string>()
           return <span className="text-gray-500 block truncate" title={v || undefined}>{v || "—"}</span>
@@ -462,7 +462,7 @@ export default function ExcessTable() {
               eventOptions={options?.events ?? []}
               itemOptions={(options?.items ?? []).map((it) => ({ value: it.name, label: it.name, meta: `Rp ${fmt(it.price)}` }))}
               onClose={() => setMobileAddOpen(false)}
-              onCreated={() => { refreshRef.current(); setMobileAddOpen(false) }}
+              onCreated={() => { refreshRef.current(); setMobileAddOpen(false); window.scrollTo({ top: 0, behavior: "smooth" }) }}
             />
           </div>
         </div>
@@ -503,6 +503,7 @@ export default function ExcessTable() {
         hideRowCount
         initialVisibility={{ createdAt: false, updatedAt: false }}
         renderMobileCard={renderMobileCard}
+        paginationVariant="simple"
         belowToolbar={
           addOpen ? (
             <div className="hidden md:block">
@@ -531,8 +532,8 @@ export default function ExcessTable() {
           <button
             type="button"
             onClick={() => setAddOpen((o) => !o)}
-            className={`hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors shrink-0 ${
-              addOpen ? "bg-brand-light text-brand border border-brand/30" : "bg-brand text-white hover:bg-brand-hover"
+            className={`hidden md:inline-flex items-center gap-1.5 h-[34px] px-3 text-xs font-medium rounded-lg border transition-colors shrink-0 ${
+              addOpen ? "bg-brand-light text-brand border-brand/30" : "bg-brand text-white border-transparent hover:bg-brand-hover"
             }`}
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -928,12 +929,11 @@ function EditInventoryModal({
             onClick={onRequestDelete}
             disabled={saving}
             aria-label="Delete"
-            className="inline-flex items-center justify-center h-[38px] md:h-auto border border-cream-border md:border-transparent rounded-lg md:rounded-none px-3 md:px-0 md:py-2 text-sm text-gray-400 md:text-red-500 hover:border-brand md:hover:border-transparent md:hover:underline disabled:opacity-50 transition-colors"
+            className="inline-flex items-center justify-center h-[38px] border border-cream-border rounded-lg px-3 text-sm text-gray-400 hover:border-brand disabled:opacity-50 transition-colors"
           >
-            <svg className="md:hidden" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M10 11v6" /><path d="M14 11v6" />
             </svg>
-            <span className="hidden md:inline">Delete</span>
           </button>
           <button type="button" onClick={onClose} disabled={saving} className="ml-auto px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
             Cancel

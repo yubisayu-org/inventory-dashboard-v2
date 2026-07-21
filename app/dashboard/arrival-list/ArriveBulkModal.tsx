@@ -121,31 +121,21 @@ export default function ArriveBulkModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 md:items-center md:px-4 md:py-6"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-xl shadow-xl border border-cream-border w-full max-w-2xl flex flex-col max-h-[90vh]"
+        className="bg-white rounded-t-2xl md:rounded-xl shadow-xl border border-cream-border w-full max-w-2xl flex flex-col max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
       >
         {/* Header */}
-        <div className="px-5 py-4 border-b border-cream-border shrink-0 flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-semibold text-foreground">Add Bulk Arrival</h3>
-            <p className="text-xs text-gray-500 mt-0.5">
-              Select an event, add items + quantities. Extra units beyond demand are logged as overship in Inventory. Toggle &ldquo;wrong product&rdquo; on a line if the supplier shipped a different SKU.
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-brand transition-colors p-0.5 rounded shrink-0"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <path d="M18 6 6 18M6 6l12 12" />
-            </svg>
-          </button>
+        <div className="px-5 py-4 border-b border-cream-border shrink-0">
+          <h3 className="text-base md:text-sm font-semibold text-foreground">Add Bulk Arrival</h3>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Select an event, add items + quantities. Extra units beyond demand are logged as overship in Inventory. Toggle &ldquo;wrong product&rdquo; on a line if the supplier shipped a different SKU.
+          </p>
         </div>
 
         {/* Body */}
@@ -349,16 +339,16 @@ export default function ArriveBulkModal({
           <button
             type="button"
             onClick={onClose}
-            className="px-3 py-1.5 text-xs text-gray-500 hover:text-foreground transition-colors"
+            className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand transition-colors"
           >
-            Close
+            Cancel
           </button>
           <button
             type="submit"
             form="arrive-bulk-form"
             disabled={submitting || !canSubmit}
             title={!canSubmit ? "Select an event and add at least one item with a quantity" : undefined}
-            className="px-4 py-1.5 text-xs font-medium rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 text-sm font-medium rounded-lg bg-brand text-white hover:bg-brand/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {submitting ? "Processing…" : result?.type === "success" ? "Process Another" : "Process Arrival"}
           </button>

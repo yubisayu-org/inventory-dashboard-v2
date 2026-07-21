@@ -63,22 +63,19 @@ export function AddAdjustmentFromInvoiceModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 md:items-center md:bg-black/30 md:px-4" onClick={onClose}>
       <form
-        className="bg-white rounded-xl border border-cream-border shadow-xl w-full max-w-sm flex flex-col gap-4 p-6"
+        className="bg-white rounded-t-2xl md:rounded-xl border-x border-t border-cream-border md:border shadow-xl w-full md:max-w-sm flex flex-col gap-4 p-5 pb-8 md:p-6"
         onClick={(e) => e.stopPropagation()}
         onSubmit={handleSubmit}
       >
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start justify-between gap-3 -mx-5 px-5 border-b border-cream-border pb-3 md:mx-0 md:px-0 md:border-b-0 md:pb-0">
           <div>
-            <div className="text-sm font-semibold text-foreground">Add Adjustment</div>
+            <div className="text-base md:text-sm font-semibold text-foreground">Add Adjustment</div>
             <div className="text-xs text-gray-400 mt-0.5">
               {displayIg(customer)} · {event}
             </div>
           </div>
-          <button type="button" onClick={onClose} className="text-gray-400 hover:text-brand transition-colors shrink-0">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-          </button>
         </div>
 
         {done ? (

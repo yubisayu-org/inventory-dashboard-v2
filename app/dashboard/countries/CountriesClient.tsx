@@ -30,16 +30,25 @@ function useLiveIdrRate(currency: string) {
   return { rate, loading }
 }
 
-// Mobile-only read-only box showing the live 1-unit rate to IDR for the typed
-// currency. Styled to match the form's input boxes.
+// Mobile-only read-only boxes: the live 1-unit rate to IDR for the typed
+// currency, plus a +5% markup rate. Styled to match the form's input boxes.
+const RATE_MARKUP = 1.05
 function LiveIdrRate({ currency }: { currency: string }) {
   const { rate, loading } = useLiveIdrRate(currency)
   const code = currency.trim().toUpperCase()
+  const valid = /^[A-Z]{3}$/.test(code)
+  const fmtRp = (n: number) => `Rp ${new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 }).format(n)}`
+  const body = (value: number | null) =>
+    !valid ? "Enter a 3-letter currency" : loading ? "Loading…" : value != null ? fmtRp(value) : "Unavailable"
   return (
-    <div className="md:hidden flex flex-col gap-1">
-      <span className="text-xs font-medium text-gray-500">Live rate → IDR{/^[A-Z]{3}$/.test(code) ? ` (1 ${code})` : ""}</span>
-      <div className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-600">
-        {!/^[A-Z]{3}$/.test(code) ? "Enter a 3-letter currency" : loading ? "Loading…" : rate != null ? `Rp ${new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 }).format(rate)}` : "Unavailable"}
+    <div className="grid grid-cols-2 gap-3">
+      <div className="flex flex-col gap-1">
+        <span className="text-xs font-medium text-gray-500">Live rate → IDR{valid ? ` (1 ${code})` : ""}</span>
+        <div className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-600">{body(rate)}</div>
+      </div>
+      <div className="flex flex-col gap-1">
+        <span className="text-xs font-medium text-gray-500">Markup rate (+5%)</span>
+        <div className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-600">{body(rate != null ? rate * RATE_MARKUP : null)}</div>
       </div>
     </div>
   )
@@ -123,6 +132,7 @@ export default function CountriesClient() {
       setForm(EMPTY_FORM)
       setMobileAddOpen(false)
       load()
+      if (window.innerWidth < 768) window.scrollTo({ top: 0, behavior: "smooth" })
     } catch (err) {
       setAddError(err instanceof Error ? err.message : "Failed to add")
     } finally {
@@ -271,41 +281,65 @@ export default function CountriesClient() {
   const addForm = (
     <form onSubmit={handleAdd} className="hidden md:flex rounded-xl border border-cream-border bg-white p-5 flex-col gap-4">
       <div className="text-sm font-semibold text-foreground">Add Country</div>
-      <div className="flex items-end gap-3 flex-wrap">
-        <input
-          {...field("name")}
-          placeholder="Country name"
-          required
+      <div className="flex items-end gap-3">
+        <label className="flex-1 min-w-0 flex flex-col gap-1">
+          <span className="text-xs font-medium text-gray-500">Country Name</span>
+          <input
+            {...field("name")}
+            placeholder="Country name"
+            required
+            disabled={adding}
+            className={`${formInputCls} w-full`}
+          />
+        </label>
+        <label className="flex-1 min-w-0 flex flex-col gap-1">
+          <span className="text-xs font-medium text-gray-500">Currency</span>
+          <input
+            {...field("currency")}
+            placeholder="Currency (e.g. CNY)"
+            disabled={adding}
+            className={`${formInputCls} w-full`}
+          />
+        </label>
+        <label className="flex-1 min-w-0 flex flex-col gap-1">
+          <span className="text-xs font-medium text-gray-500">Shipping / kg (IDR)</span>
+          <input
+            {...field("cargoPerKg")}
+            type="number"
+            min="0"
+            placeholder="Shipping / kg (IDR)"
+            disabled={adding}
+            className={`${formInputCls} w-full`}
+          />
+        </label>
+      </div>
+      <div className="flex items-end gap-3">
+        <div className="flex-[2] min-w-0">
+          <LiveIdrRate currency={form.currency} />
+        </div>
+        <label className="flex-1 min-w-0 flex flex-col gap-1">
+          <span className="text-xs font-medium text-gray-500">Kurs (IDR)</span>
+          <input
+            {...field("kurs")}
+            type="number"
+            min="0"
+            step="any"
+            placeholder="Kurs (IDR)"
+            disabled={adding}
+            className={`${formInputCls} w-full`}
+          />
+        </label>
+      </div>
+      <div className="flex items-center justify-end gap-2">
+        {addError && <p className="mr-auto text-xs text-red-500">{addError}</p>}
+        <button
+          type="button"
+          onClick={() => { setAddOpen(false); setAddError(null) }}
           disabled={adding}
-          className={`${formInputCls} flex-1 min-w-[10rem]`}
-        />
-        <input
-          {...field("currency")}
-          placeholder="Currency (e.g. CNY)"
-          disabled={adding}
-          className={formInputCls}
-          style={{ width: "9rem" }}
-        />
-        <input
-          {...field("kurs")}
-          type="number"
-          min="0"
-          step="any"
-          placeholder="Kurs (IDR)"
-          disabled={adding}
-          className={formInputCls}
-          style={{ width: "9rem" }}
-        />
-        <input
-          {...field("cargoPerKg")}
-          type="number"
-          min="0"
-          placeholder="Shipping / kg (IDR)"
-          disabled={adding}
-          className={formInputCls}
-          style={{ width: "9rem" }}
-        />
-        {addError && <p className="text-xs text-red-500">{addError}</p>}
+          className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+        >
+          Cancel
+        </button>
         <button
           type="submit"
           disabled={adding}
@@ -340,8 +374,8 @@ export default function CountriesClient() {
             <button
               type="button"
               onClick={() => setAddOpen((o) => !o)}
-              className={`hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg transition-colors ${
-                addOpen ? "bg-brand-light text-brand border border-brand/30" : "bg-brand text-white hover:bg-brand-hover"
+              className={`hidden md:inline-flex items-center gap-1.5 h-[34px] px-3 text-xs rounded-lg border transition-colors ${
+                addOpen ? "bg-brand-light text-brand border-brand/30" : "bg-brand text-white border-transparent hover:bg-brand-hover"
               }`}
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -389,11 +423,23 @@ export default function CountriesClient() {
             <div className="flex items-center justify-between -mx-5 px-5 border-b border-cream-border pb-3">
               <span className="text-base font-semibold text-foreground">Add Country</span>
             </div>
-            <input {...field("name")} placeholder="Country name" required disabled={adding} className={modalInputCls} />
-            <input {...field("currency")} placeholder="Currency (e.g. CNY)" disabled={adding} className={modalInputCls} />
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-gray-500">Country Name</span>
+              <input {...field("name")} placeholder="Country name" required disabled={adding} className={modalInputCls} />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-gray-500">Currency</span>
+              <input {...field("currency")} placeholder="Currency (e.g. CNY)" disabled={adding} className={modalInputCls} />
+            </label>
             <LiveIdrRate currency={form.currency} />
-            <input {...field("kurs")} type="number" min="0" step="any" placeholder="Kurs (IDR)" disabled={adding} className={modalInputCls} />
-            <input {...field("cargoPerKg")} type="number" min="0" placeholder="Shipping / kg (IDR)" disabled={adding} className={modalInputCls} />
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-gray-500">Kurs (IDR)</span>
+              <input {...field("kurs")} type="number" min="0" step="any" placeholder="Kurs (IDR)" disabled={adding} className={modalInputCls} />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-gray-500">Shipping / kg (IDR)</span>
+              <input {...field("cargoPerKg")} type="number" min="0" placeholder="Shipping / kg (IDR)" disabled={adding} className={modalInputCls} />
+            </label>
             {addError && <p className="text-xs text-red-500">{addError}</p>}
             <div className="flex items-center justify-end gap-2">
               <button type="button" onClick={() => setMobileAddOpen(false)} disabled={adding} className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
@@ -478,7 +524,7 @@ function EditCountryModal({
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 md:items-center md:px-4" onClick={onCancel}>
       <div
-        className="bg-white rounded-t-2xl md:rounded-xl border border-cream-border shadow-xl p-6 pb-8 md:pb-6 w-full max-h-[90vh] overflow-y-auto flex flex-col gap-4 md:max-w-md"
+        className="bg-white rounded-t-2xl md:rounded-xl border-x border-t border-cream-border md:border shadow-xl p-6 pb-8 md:pb-6 w-full max-h-[90vh] overflow-y-auto flex flex-col gap-4 md:max-w-md"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between -mx-6 px-6 border-b border-cream-border pb-3 md:mx-0 md:px-0 md:border-b-0 md:pb-0">
@@ -487,49 +533,53 @@ function EditCountryModal({
         </div>
 
         <div className="flex flex-col gap-3">
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-500">Country Name</span>
-            <input
-              ref={firstInputRef}
-              {...draftField("name")}
-              onKeyDown={handleKeyDown}
-              placeholder="Country"
-              className={modalInputCls}
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-500">Currency</span>
-            <input
-              {...draftField("currency")}
-              onKeyDown={handleKeyDown}
-              placeholder="Currency"
-              className={modalInputCls}
-            />
-          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-gray-500">Country Name</span>
+              <input
+                ref={firstInputRef}
+                {...draftField("name")}
+                onKeyDown={handleKeyDown}
+                placeholder="Country"
+                className={modalInputCls}
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-gray-500">Currency</span>
+              <input
+                {...draftField("currency")}
+                onKeyDown={handleKeyDown}
+                placeholder="Currency"
+                className={modalInputCls}
+              />
+            </label>
+          </div>
           <LiveIdrRate currency={draft.currency} />
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-500">Kurs (IDR)</span>
-            <input
-              {...draftField("kurs")}
-              onKeyDown={handleKeyDown}
-              type="number"
-              min="0"
-              step="any"
-              placeholder="Kurs"
-              className={modalInputCls}
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-500">Shipping / kg (IDR)</span>
-            <input
-              {...draftField("cargoPerKg")}
-              onKeyDown={handleKeyDown}
-              type="number"
-              min="0"
-              placeholder="Shipping per kg"
-              className={modalInputCls}
-            />
-          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-gray-500">Kurs (IDR)</span>
+              <input
+                {...draftField("kurs")}
+                onKeyDown={handleKeyDown}
+                type="number"
+                min="0"
+                step="any"
+                placeholder="Kurs"
+                className={modalInputCls}
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-gray-500">Shipping / kg (IDR)</span>
+              <input
+                {...draftField("cargoPerKg")}
+                onKeyDown={handleKeyDown}
+                type="number"
+                min="0"
+                placeholder="Shipping per kg"
+                className={modalInputCls}
+              />
+            </label>
+          </div>
         </div>
 
         {saveError && <p className="text-xs text-red-500">{saveError}</p>}
@@ -540,12 +590,11 @@ function EditCountryModal({
             onClick={onDelete}
             disabled={saving}
             aria-label="Delete"
-            className="inline-flex items-center justify-center h-[38px] md:h-auto border border-cream-border md:border-transparent rounded-lg md:rounded-none px-3 md:px-0 md:py-2 text-sm text-gray-400 md:text-red-500 hover:border-brand md:hover:border-transparent md:hover:underline disabled:opacity-50 transition-colors"
+            className="inline-flex items-center justify-center h-[38px] border border-cream-border rounded-lg px-3 text-sm text-gray-400 hover:border-brand disabled:opacity-50 transition-colors"
           >
-            <svg className="md:hidden" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M10 11v6" /><path d="M14 11v6" />
             </svg>
-            <span className="hidden md:inline">Delete</span>
           </button>
           <button
             type="button"
