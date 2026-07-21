@@ -22,10 +22,8 @@ import { usePaginatedFetch, type PageData } from "@/hooks/usePaginatedFetch"
 
 const PAGE_SIZE = 25
 
-const INPUT_CLASS =
-  "w-full border border-cream-border rounded-md px-2 py-1 text-sm text-foreground bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
-// Same as INPUT_CLASS but py-2 to match SearchableSelect's height (used in
-// AddPaymentForm so Amount/Account/Date/Remarks line up with Customer).
+// py-2 so plain inputs match the SearchableSelect's height across the payment
+// forms (Amount/Account/Date/Remarks line up with Event/Customer).
 const INPUT_CLASS_TALL =
   "w-full border border-cream-border rounded-md px-2 py-2 text-sm text-foreground bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
 const LABEL = "text-xs text-gray-500 mb-1 block"
@@ -757,11 +755,11 @@ function EditPaymentModal({
           <div className="flex gap-3">
             <div className="flex-1 min-w-0">
               <label className={LABEL}>Amount</label>
-              <input type="number" min="0" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className={INPUT_CLASS} />
+              <input type="number" min="0" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className={INPUT_CLASS_TALL} />
             </div>
             {/* Mobile: shrink the select trigger to py-1 so it matches the
                 Amount input's height; desktop keeps the default py-2. */}
-            <div className="flex-1 min-w-0 [&_input]:py-1 md:[&_input]:py-2">
+            <div className="flex-1 min-w-0">
               <label className={LABEL}>Account</label>
               <SearchableSelect
                 value={form.account}
@@ -779,11 +777,11 @@ function EditPaymentModal({
           <div className="flex gap-3">
             <div className="flex-1 min-w-0">
               <label className={LABEL}>Date</label>
-              <input type="date" value={form.payDate} onChange={(e) => setForm({ ...form, payDate: e.target.value })} className={INPUT_CLASS} />
+              <input type="date" value={form.payDate} onChange={(e) => setForm({ ...form, payDate: e.target.value })} className={INPUT_CLASS_TALL} />
             </div>
             <div className="flex-1 min-w-0">
               <label className={LABEL}>Remarks</label>
-              <input type="text" value={form.remarks} onChange={(e) => setForm({ ...form, remarks: e.target.value })} placeholder="Optional" className={INPUT_CLASS} />
+              <input type="text" value={form.remarks} onChange={(e) => setForm({ ...form, remarks: e.target.value })} placeholder="Optional" className={INPUT_CLASS_TALL} />
             </div>
           </div>
 
@@ -1083,7 +1081,7 @@ function MobileAddPaymentSheet({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className={LABEL}>Amount <span className="text-brand">*</span></label>
-            <input type="number" min="0" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" className={INPUT_CLASS} />
+            <input type="number" min="0" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" className={INPUT_CLASS_TALL} />
           </div>
           <div>
             <label className={LABEL}>Account</label>
@@ -1099,11 +1097,11 @@ function MobileAddPaymentSheet({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className={LABEL}>Date</label>
-            <input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} className={INPUT_CLASS} />
+            <input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} className={INPUT_CLASS_TALL} />
           </div>
           <div>
             <label className={LABEL}>Remarks</label>
-            <input type="text" value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Optional" className={INPUT_CLASS} />
+            <input type="text" value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Optional" className={INPUT_CLASS_TALL} />
           </div>
         </div>
 
