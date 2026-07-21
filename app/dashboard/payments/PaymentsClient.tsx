@@ -323,7 +323,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
     {
       accessorKey: "remarks",
       header: "Remarks",
-      size: 200,
+      size: 140,
       filterFn: "textContains",
       cell: ({ row }) => <InlineRemarks row={row.original} onSave={handleSaveRemarks} />,
     },
@@ -384,8 +384,8 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
     <>
       <button
         onClick={() => { setAddOpen((o) => !o); setEditingRow(null) }}
-        className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg transition-colors ${
-          addOpen ? "bg-brand-light text-brand border border-brand/30" : "bg-brand text-white hover:bg-brand-hover"
+        className={`inline-flex items-center gap-1.5 h-[34px] px-3 text-xs rounded-lg border transition-colors ${
+          addOpen ? "bg-brand-light text-brand border-brand/30" : "bg-brand text-white border-transparent hover:bg-brand-hover"
         }`}
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -440,8 +440,8 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
             addOpen ? (
               <AddPaymentForm
                 options={options}
-                onClose={() => setAddOpen(false)}
                 onAdded={() => refreshRef.current()}
+                onClose={() => setAddOpen(false)}
               />
             ) : undefined
           }
@@ -449,7 +449,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
             <CheckedFilterSelect
               value={checkedFilter}
               onChange={handleCheckedFilterChange}
-              className="w-32 border border-cream-border rounded-lg pl-2 pr-6 py-1.5 text-xs text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+              className="w-32 h-[34px] border border-cream-border rounded-lg pl-2 pr-6 text-xs text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
             />
           }
           toolbarExtraEnd={refreshButton}
@@ -556,7 +556,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
         <MobileAddPaymentSheet
           options={options}
           onClose={() => setMobileAddOpen(false)}
-          onAdded={() => { refreshRef.current(); setMobileAddOpen(false) }}
+          onAdded={() => { refreshRef.current(); setMobileAddOpen(false); window.scrollTo({ top: 0, behavior: "smooth" }) }}
         />
       )}
 
@@ -728,12 +728,12 @@ function EditPaymentModal({
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-t-2xl shadow-xl border border-cream-border w-full max-h-[90vh] overflow-y-auto md:max-w-md md:rounded-xl"
+        className="bg-white rounded-t-2xl shadow-xl border-x border-t border-cream-border md:border w-full max-h-[90vh] overflow-y-auto md:max-w-md md:rounded-xl"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
       >
-        <div className="px-5 py-4 border-b border-cream-border flex items-center justify-between">
+        <div className="px-5 py-4 border-b border-cream-border md:border-b-0 md:pb-0 flex items-center justify-between">
           <h3 className="text-base md:text-sm font-semibold text-foreground">Edit Payment</h3>
         </div>
 
@@ -770,7 +770,7 @@ function EditPaymentModal({
               />
             </div>
           </div>
-          <div className="hidden md:flex items-center gap-2">
+          <div className="hidden">
             <input type="checkbox" checked={form.isChecked} onChange={(e) => setForm({ ...form, isChecked: e.target.checked })} disabled={isAdmin} id="edit-checked" className="accent-brand disabled:cursor-default" />
             <label htmlFor="edit-checked" className="text-xs text-gray-500">Checked</label>
           </div>
@@ -788,17 +788,16 @@ function EditPaymentModal({
           {error && <p className="text-xs text-red-500">{error}</p>}
         </div>
 
-        <div className="px-5 pt-3 pb-8 md:py-3 md:border-t md:border-cream-border flex items-center gap-2">
+        <div className="px-5 pt-3 pb-8 md:py-3 flex items-center gap-2">
           <button
             type="button"
             onClick={handleDelete}
             aria-label="Delete"
-            className="inline-flex items-center justify-center h-[38px] md:h-auto border border-cream-border md:border-transparent rounded-lg md:rounded-none px-3 md:px-0 md:py-2 text-sm text-gray-400 md:text-red-500 hover:border-brand md:hover:border-transparent md:hover:underline disabled:opacity-50 transition-colors"
+            className="inline-flex items-center justify-center h-[38px] border border-cream-border rounded-lg px-3 text-sm text-gray-400 hover:border-brand disabled:opacity-50 transition-colors"
           >
-            <svg className="md:hidden" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M10 11v6" /><path d="M14 11v6" />
             </svg>
-            <span className="hidden md:inline">Delete</span>
           </button>
           <button onClick={onClose} disabled={saving} className="ml-auto px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
             Cancel
@@ -822,12 +821,12 @@ function EditPaymentModal({
 
 function AddPaymentForm({
   options,
-  onClose,
   onAdded,
+  onClose,
 }: {
   options: ReturnType<typeof useSheetOptions>
-  onClose: () => void
   onAdded: () => void
+  onClose: () => void
 }) {
   const [event, setEvent] = useState("")
   const [customer, setCustomer] = useState("")
@@ -878,11 +877,8 @@ function AddPaymentForm({
 
   return (
     <div className="rounded-xl border border-cream-border bg-white p-4">
-      <div className="flex items-center justify-between mb-3">
+      <div className="mb-3">
         <h3 className="text-sm font-semibold text-foreground">Add Payment</h3>
-        <button onClick={onClose} className="text-gray-400 hover:text-brand transition-colors p-0.5 rounded">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-        </button>
       </div>
       <form onSubmit={handleSubmit} className="flex items-end gap-3 flex-wrap">
         <div>
@@ -927,13 +923,23 @@ function AddPaymentForm({
           <label className={LABEL}>Remarks</label>
           <input type="text" value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Optional" className={INPUT_CLASS_TALL} />
         </div>
-        <button
-          type="submit"
-          disabled={submitting || !canSubmit}
-          className="px-4 py-2 text-sm font-medium rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-        >
-          {submitting ? "Saving…" : "Add"}
-        </button>
+        <div className="w-full flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={submitting}
+            className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={submitting || !canSubmit}
+            className="px-4 py-2 text-sm font-medium rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+          >
+            {submitting ? "Saving…" : "Add"}
+          </button>
+        </div>
       </form>
       {feedback && <p className={`text-xs mt-2 ${feedback.type === "success" ? "text-green-600" : "text-red-600"}`}>{feedback.message}</p>}
     </div>
@@ -963,33 +969,29 @@ function PaymentCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-sm font-semibold text-foreground uppercase truncate">{displayIg(row.customer)}</div>
-          <div className="text-xs text-gray-500 mt-2 truncate uppercase">{row.event} · {formatDate(row.payDate)}{row.account ? ` · ${row.account}` : ""}</div>
+          <div className="text-xs text-gray-500 mt-2 truncate uppercase">{row.remarks}</div>
         </div>
-        <div className="shrink-0 flex flex-col items-end gap-1">
-          <span className="text-sm font-semibold tabular-nums text-foreground whitespace-nowrap">Rp {formatAmount(row.amount)}</span>
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); onToggleCheck() }}
-            disabled={isAdmin}
-            aria-label={row.isChecked ? "Tandai belum dicek" : "Tandai sudah dicek"}
-            className={`p-1.5 rounded-lg transition-colors ${
-              row.isChecked
-                ? "bg-green-100 text-green-700 active:bg-green-200"
-                : "text-gray-300 active:bg-cream"
-            } ${isAdmin ? "cursor-default" : "cursor-pointer"}`}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onToggleCheck() }}
+          disabled={isAdmin}
+          aria-label={row.isChecked ? "Tandai belum dicek" : "Tandai sudah dicek"}
+          className={`shrink-0 p-1 rounded-md transition-colors ${
+            row.isChecked
+              ? "bg-green-100 text-green-700 active:bg-green-200"
+              : "text-gray-300 active:bg-cream"
+          } ${isAdmin ? "cursor-default" : "cursor-pointer"}`}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+        </button>
       </div>
 
-      {row.remarks && (
-        <div className="text-xs text-gray-500 uppercase leading-snug border-t border-cream-border pt-2 break-words">
-          {row.remarks}
-        </div>
-      )}
+      <div className="flex items-center justify-between gap-3 border-t border-cream-border pt-2">
+        <div className="text-xs text-gray-400 uppercase truncate min-w-0">{row.event} · {formatDate(row.payDate)}{row.account ? ` · ${row.account}` : ""}</div>
+        <span className="text-sm font-semibold tabular-nums text-foreground whitespace-nowrap shrink-0">Rp {formatAmount(row.amount)}</span>
+      </div>
     </div>
   )
 }

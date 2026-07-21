@@ -841,46 +841,52 @@ export default function ShipmentsClient() {
   ), [])
 
   const toolbarExtra = (
-    <div className="flex items-center gap-2 shrink-0">
+    <div className="relative shrink-0">
       <select
         value={windowDays}
         onChange={(e) => setWindowDays(e.target.value)}
         disabled={loading}
         title="Rentang waktu shipment yang dimuat"
-        className="text-sm text-gray-600 bg-white border border-cream-border rounded-lg px-2 py-1.5 hover:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand disabled:opacity-50 transition-colors"
+        className="appearance-none h-[34px] text-xs text-gray-600 bg-white border border-cream-border rounded-lg pl-2 pr-8 hover:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand disabled:opacity-50 transition-colors"
       >
         <option value="1">Last 24 hours</option>
         <option value="7">Last week</option>
         <option value="30">Last month</option>
         <option value="all">All shipments</option>
       </select>
-      <button
-        type="button"
-        onClick={handlePrintPdf}
-        disabled={printingPdf || selectedCount === 0}
-        className="shrink-0 inline-flex items-center gap-1.5 text-sm font-medium text-white bg-brand hover:bg-brand/90 disabled:opacity-50 transition-colors px-3 py-1.5 rounded-lg whitespace-nowrap"
-      >
-        <svg
-          width="13"
-          height="13"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="shrink-0"
-        >
-          <polyline points="6 9 6 2 18 2 18 9" />
-          <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-          <rect x="6" y="14" width="12" height="8" />
-        </svg>
-        <span className="hidden sm:inline">
-          {printingPdf ? "Generating…" : `Print ${selectedCount} Label${selectedCount === 1 ? "" : "s"}`}
-        </span>
-        <span className="sm:hidden inline-block min-w-[1.5rem] text-center tabular-nums">{printingPdf ? "…" : selectedCount}</span>
-      </button>
+      <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="m6 9 6 6 6-6" />
+      </svg>
     </div>
+  )
+
+  const printButton = (
+    <button
+      type="button"
+      onClick={handlePrintPdf}
+      disabled={printingPdf || selectedCount === 0}
+      className="shrink-0 inline-flex items-center gap-1.5 h-[34px] text-xs font-medium text-white bg-brand hover:bg-brand/90 disabled:opacity-50 transition-colors px-3 rounded-lg whitespace-nowrap"
+    >
+      <svg
+        width="13"
+        height="13"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="shrink-0"
+      >
+        <polyline points="6 9 6 2 18 2 18 9" />
+        <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+        <rect x="6" y="14" width="12" height="8" />
+      </svg>
+      <span className="hidden sm:inline">
+        {printingPdf ? "Generating…" : `Print ${selectedCount} Label${selectedCount === 1 ? "" : "s"}`}
+      </span>
+      <span className="sm:hidden inline-block min-w-[1.5rem] text-center tabular-nums">{printingPdf ? "…" : selectedCount}</span>
+    </button>
   )
 
   return (
@@ -902,6 +908,7 @@ export default function ShipmentsClient() {
           boldUppercaseHeader
           hideRowCount
           toolbarExtra={toolbarExtra}
+          toolbarExtraEnd={printButton}
           enableRowSelection
           rowSelection={rowSelection}
           onRowSelectionChange={setRowSelection}
@@ -909,6 +916,7 @@ export default function ShipmentsClient() {
           initialVisibility={{ updatedAt: false, isLastShipment: false, createdAt: false }}
           initialSorting={[{ id: "createdAt", desc: true }]}
           renderMobileCard={renderMobileCard}
+          paginationVariant="simple"
         />
       )}
       {!loading && !error && data && data.length === 0 && windowDays !== "all" && (

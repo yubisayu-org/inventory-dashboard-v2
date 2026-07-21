@@ -24,7 +24,7 @@ export function AmountSignHint({ value }: { value: string }) {
       ? <>Will display as <strong>Biaya Lainnya</strong> and <strong>add</strong> to the customer&apos;s total.</>
       : <>Will display as <strong>Diskon</strong> and <strong>reduce</strong> the customer&apos;s total.</>
   return (
-    <p className={`text-[11px] mt-1 leading-snug ${tone}`}>
+    <p className={`text-[11px] mt-4 leading-snug ${tone}`}>
       {message}
     </p>
   )

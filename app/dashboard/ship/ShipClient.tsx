@@ -67,6 +67,7 @@ export default function ShipClient() {
   const [bulkError, setBulkError] = useState<string | null>(null)
   const [merging, setMerging] = useState(false)
   const [invoiceCustomer, setInvoiceCustomer] = useState<string | null>(null)
+  const [page, setPage] = useState(0)
 
   // Debounce search
   useEffect(() => {
@@ -106,6 +107,14 @@ export default function ShipClient() {
   useEffect(() => {
     fetchData(segment, debouncedSearch, eventFilter)
   }, [segment, debouncedSearch, eventFilter, fetchData])
+
+  // Client-side simple pagination for the browsing tabs (not the selection tabs).
+  const SHIP_PAGE_SIZE = 25
+  const PAGINATED_SEGMENTS: Segment[] = ["all", "not_arrived", "partial", "shipped"]
+  const paginated = PAGINATED_SEGMENTS.includes(segment)
+  const pageCount = paginated ? Math.max(1, Math.ceil(groups.length / SHIP_PAGE_SIZE)) : 1
+  const pageGroups = paginated ? groups.slice(page * SHIP_PAGE_SIZE, page * SHIP_PAGE_SIZE + SHIP_PAGE_SIZE) : groups
+  useEffect(() => { setPage(0) }, [segment, debouncedSearch, eventFilter, groups.length])
 
   function refresh() {
     fetchData(segment, debouncedSearch, eventFilter)
@@ -213,6 +222,7 @@ export default function ShipClient() {
           onChange={setSearch}
           placeholder="Cari customer…"
           className="flex-1 min-w-0 md:min-w-[160px]"
+          dense
         />
         <div className="w-36 md:w-48 shrink-0">
           <EventSelect
@@ -221,6 +231,7 @@ export default function ShipClient() {
             events={sheetOptions?.events ?? []}
             placeholder="Semua Event"
             clearable
+            dense
           />
         </div>
         {/* Mobile ship button — always visible (like the shipment print button),
@@ -255,7 +266,7 @@ export default function ShipClient() {
       {/* Results */}
       {!loading && !error && groups.length > 0 && (
         <>
-          <div className="flex items-center justify-end gap-3">
+          <div className={`${mergeEligible ? "flex" : "hidden"} md:flex items-center justify-end gap-3`}>
             {readyFiltered.length > 0 && (
               <div className="flex items-center gap-2">
                 <button
@@ -310,7 +321,7 @@ export default function ShipClient() {
               {bulkError}
             </div>
           )}
-          {groups.map((c) => {
+          {pageGroups.map((c) => {
             const key = `${c.customer}|${c.event}`
             return (
               <CustomerCard
@@ -324,6 +335,13 @@ export default function ShipClient() {
               />
             )
           })}
+          {paginated && pageCount > 1 && (
+            <div className="flex items-center justify-between gap-3 pt-1">
+              <button type="button" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-gray-600 disabled:opacity-40">Prev</button>
+              <span className="text-xs text-gray-400">Page {page + 1} of {pageCount}</span>
+              <button type="button" disabled={page >= pageCount - 1} onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-gray-600 disabled:opacity-40">Next</button>
+            </div>
+          )}
         </>
       )}
 
@@ -478,7 +496,7 @@ function CustomerCard({
 
   return (
     <div className={`rounded-xl border bg-white overflow-hidden transition-colors ${isSelected ? "border-brand" : "border-cream-border"}`}>
-      <div className={`px-5 py-4 bg-cream border-b border-cream-border flex justify-between gap-4 ${segment === "hold" ? "items-center md:items-start" : "items-start"}`}>
+      <div className={`px-5 py-4 bg-gray-50 border-b border-cream-border flex justify-between gap-4 ${segment === "hold" ? "items-center md:items-start" : "items-start"}`}>
         <div className="flex items-start gap-3 min-w-0">
           {onToggleSelect && (
             <input

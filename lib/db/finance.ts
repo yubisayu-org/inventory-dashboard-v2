@@ -890,6 +890,7 @@ export interface PaymentStatusRow {
   invoiceTotal: number
   totalPaid: number
   outstanding: number
+  totalItems: number
   status: PaymentStatus
 }
 
@@ -924,6 +925,7 @@ export async function getPaymentStatus(event?: string): Promise<PaymentStatusRow
           SELECT o.event AS event,
                  lower(replace(o.customer, '@', '')) AS cust_key,
                  SUM(o.unit_price * o.unit) AS subtotal,
+                 SUM(o.unit) AS total_items,
                  SUM(COALESCE(p.gram, 0) * o.unit) AS total_gram
           FROM orders o
           JOIN products p ON p.id = o.product_id
@@ -964,7 +966,8 @@ export async function getPaymentStatus(event?: string): Promise<PaymentStatusRow
           (COALESCE(oa.subtotal, 0)
             + COALESCE(c.ongkos_kirim, 0) * CEIL(COALESCE(oa.total_gram, 0)::numeric / 1000)
             + COALESCE(adj.total_adj, 0))::int AS invoice_total,
-          COALESCE(pa.total_paid, 0)::int AS total_paid
+          COALESCE(pa.total_paid, 0)::int AS total_paid,
+          COALESCE(oa.total_items, 0)::int AS total_items
         FROM all_keys k
         LEFT JOIN order_aggregates oa ON oa.event = k.event AND oa.cust_key = k.cust_key
         LEFT JOIN customer_ongkir c ON c.cust_key = k.cust_key AND c.event = k.event
@@ -977,6 +980,7 @@ export async function getPaymentStatus(event?: string): Promise<PaymentStatusRow
           SELECT o.event AS event,
                  lower(replace(o.customer, '@', '')) AS cust_key,
                  SUM(o.unit_price * o.unit) AS subtotal,
+                 SUM(o.unit) AS total_items,
                  SUM(COALESCE(p.gram, 0) * o.unit) AS total_gram
           FROM orders o
           JOIN products p ON p.id = o.product_id
@@ -1015,7 +1019,8 @@ export async function getPaymentStatus(event?: string): Promise<PaymentStatusRow
           (COALESCE(oa.subtotal, 0)
             + COALESCE(c.ongkos_kirim, 0) * CEIL(COALESCE(oa.total_gram, 0)::numeric / 1000)
             + COALESCE(adj.total_adj, 0))::int AS invoice_total,
-          COALESCE(pa.total_paid, 0)::int AS total_paid
+          COALESCE(pa.total_paid, 0)::int AS total_paid,
+          COALESCE(oa.total_items, 0)::int AS total_items
         FROM all_keys k
         LEFT JOIN order_aggregates oa ON oa.event = k.event AND oa.cust_key = k.cust_key
         LEFT JOIN customer_ongkir c ON c.cust_key = k.cust_key AND c.event = k.event
@@ -1033,6 +1038,7 @@ export async function getPaymentStatus(event?: string): Promise<PaymentStatusRow
       invoiceTotal,
       totalPaid,
       outstanding: invoiceTotal - totalPaid,
+      totalItems: Number(r.total_items),
       status: paymentStatusFor(totalPaid, invoiceTotal),
     }
   })

@@ -330,7 +330,7 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
           <button
             onClick={() => setEditingRow(row.original)}
             title="Edit"
-            className="p-1 text-gray-400 hover:text-brand transition-colors rounded"
+            className="inline-flex items-center justify-center p-1 text-gray-400 hover:text-brand transition-colors rounded"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
@@ -340,7 +340,7 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
           <button
             onClick={() => handleDelete(row.original.rowNumber)}
             title="Delete"
-            className="p-1 text-gray-400 hover:text-red-500 transition-colors rounded"
+            className="inline-flex items-center justify-center p-1 text-gray-400 hover:text-red-500 transition-colors rounded"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
@@ -371,8 +371,8 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
       <button
         type="button"
         onClick={() => setAddOpen((o) => !o)}
-        className={`hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg transition-colors ${
-          addOpen ? "bg-brand-light text-brand border border-brand/30" : "bg-brand text-white hover:bg-brand-hover"
+        className={`hidden md:inline-flex items-center gap-1.5 h-[34px] px-3 text-xs rounded-lg border transition-colors ${
+          addOpen ? "bg-brand-light text-brand border-brand/30" : "bg-brand text-white border-transparent hover:bg-brand-hover"
         }`}
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -419,7 +419,7 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
           hideRowCount
           belowToolbar={
             addOpen ? (
-              <AddOrderForm options={options} onOrderAdded={() => refreshRef.current()} />
+              <AddOrderForm options={options} onOrderAdded={() => refreshRef.current()} onCancel={() => setAddOpen(false)} />
             ) : undefined
           }
           toolbarExtra={toolbarExtra}
@@ -491,21 +491,24 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
               className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] cursor-pointer active:bg-cream/40 transition-colors"
             >
               <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-                <span className="font-semibold text-sm text-foreground">{r.event}</span>
+                <span className="font-semibold text-sm text-foreground uppercase">{r.event}</span>
                 {!r.hasAddress && <NoAddressIcon />}
                 <span className="text-xs text-gray-400 uppercase truncate">{displayIg(r.customer)}</span>
               </div>
               <div className="flex items-start justify-between gap-3 mt-2">
                 <div className="text-sm text-foreground">{r.items}</div>
-                <span className="shrink-0 inline-block px-2 py-0.5 rounded-full text-[11px] font-bold bg-brand/10 text-brand">×{r.unit}</span>
+                <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
+                  <CopyInvoiceButton customer={r.customer} event={r.event} />
+                </div>
               </div>
               {r.note && <div className="text-xs text-gray-400 italic mt-1">Note: {r.note}</div>}
               <div className="flex items-center justify-between gap-2 mt-2.5 pt-2.5 border-t border-cream-border">
-                <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-medium border ${bought ? "bg-green-50 text-green-700 border-green-200" : "bg-gray-50 text-gray-500 border-cream-border"}`}>
+                <span className="text-xs text-gray-400 uppercase">
                   {bought ? "Purchased" : "Not purchased"}
                 </span>
-                <div onClick={(e) => e.stopPropagation()}>
-                  <CopyInvoiceButton customer={r.customer} event={r.event} />
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-foreground tabular-nums whitespace-nowrap">Rp {fmt(r.unitPrice * r.unit)}</span>
+                  <span className="shrink-0 inline-flex items-center justify-center h-5 w-9 rounded-full text-[11px] font-bold bg-brand text-white">× {r.unit}</span>
                 </div>
               </div>
             </div>
@@ -527,7 +530,7 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
       {mobileAddOpen && (
         <div className="md:hidden fixed inset-0 z-40 bg-black/40 flex flex-col justify-end" onClick={() => setMobileAddOpen(false)}>
           <div className="max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <AddOrderForm options={options} onOrderAdded={() => { setMobileAddOpen(false); refreshRef.current() }} onCancel={() => setMobileAddOpen(false)} />
+            <AddOrderForm options={options} onOrderAdded={() => { setMobileAddOpen(false); refreshRef.current(); window.scrollTo({ top: 0, behavior: "smooth" }) }} onCancel={() => setMobileAddOpen(false)} />
           </div>
         </div>
       )}
@@ -838,12 +841,9 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
   return (
     <>
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 md:items-center" onClick={onClose}>
-      <div className="bg-white rounded-t-2xl md:rounded-xl border border-cream-border shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto md:max-h-none md:overflow-visible" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white rounded-t-2xl md:rounded-xl border-x border-t border-cream-border md:border shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto md:max-h-none md:overflow-visible" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4 -mx-6 px-6 border-b border-cream-border pb-3 md:mx-0 md:px-0 md:border-b-0 md:pb-0">
           <h3 className="text-base font-semibold text-foreground">Edit Order</h3>
-          <button onClick={onClose} className="hidden md:block text-gray-400 hover:text-brand transition-colors">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-          </button>
         </div>
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
@@ -930,22 +930,21 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
           {error && <p className="text-xs text-red-600">{error}</p>}
 
           <div className="flex items-center gap-2 pt-2">
-            <button type="submit" disabled={saving} className="order-3 md:order-none md:flex-1 px-4 md:px-0 py-2 text-sm font-medium rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors disabled:opacity-50">
-              {saving ? "Saving…" : "Save"}
-            </button>
-            <button type="button" onClick={onClose} className="order-2 md:order-none ml-auto md:ml-0 px-4 py-2 text-sm rounded-lg border border-cream-border text-gray-600 hover:border-brand hover:text-brand md:rounded-none md:border-0 md:text-gray-500 md:hover:border-transparent md:hover:text-foreground transition-colors">
-              Cancel
-            </button>
             <button
               type="button"
               onClick={() => { onClose(); onDelete(row.rowNumber) }}
               aria-label="Delete"
-              className="order-1 md:order-none inline-flex items-center justify-center h-[38px] md:h-auto border border-cream-border md:border-transparent rounded-lg md:rounded-none px-3 md:px-0 md:py-2 text-sm text-gray-400 md:text-red-500 hover:border-brand md:hover:border-transparent md:hover:underline disabled:opacity-50 transition-colors"
+              className="inline-flex items-center justify-center h-[38px] border border-cream-border rounded-lg px-3 text-sm text-gray-400 hover:border-brand disabled:opacity-50 transition-colors"
             >
-              <svg className="md:hidden" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M10 11v6" /><path d="M14 11v6" />
               </svg>
-              <span className="hidden md:inline">Delete</span>
+            </button>
+            <button type="button" onClick={onClose} className="ml-auto px-4 py-2 text-sm rounded-lg border border-cream-border text-gray-600 hover:border-brand hover:text-brand transition-colors">
+              Cancel
+            </button>
+            <button type="submit" disabled={saving} className="px-4 py-2 text-sm font-medium rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors disabled:opacity-50">
+              {saving ? "Saving…" : "Save"}
             </button>
           </div>
         </form>
@@ -1161,7 +1160,7 @@ function AddOrderForm({ options, onOrderAdded, onCancel }: {
   const LABEL = "text-xs text-gray-500 mb-1 block"
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-t-2xl md:rounded-xl border border-cream-border bg-white p-5 pb-8 md:pb-5 flex flex-col gap-4">
+    <form onSubmit={handleSubmit} className="rounded-t-2xl md:rounded-xl border-x border-t border-cream-border md:border bg-white p-5 pb-8 md:pb-5 flex flex-col gap-4">
       <div className="flex items-center justify-between -mx-5 px-5 border-b border-cream-border pb-3 md:mx-0 md:px-0 md:border-b-0 md:pb-0">
         <span className="text-base md:text-sm font-semibold text-foreground">Add Order</span>
       </div>

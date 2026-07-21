@@ -269,7 +269,7 @@ export default function ProductsPageClient() {
     {
       accessorKey: "name",
       header: "Name",
-      size: 220,
+      size: 290,
       filterFn: "textContains",
       cell: ({ row }) => (
         <span className="inline-flex items-center gap-1">
@@ -321,7 +321,8 @@ export default function ProductsPageClient() {
     {
       accessorKey: "countryName",
       header: "Country",
-      size: 120,
+      size: 70,
+      enableSorting: false,
       filterFn: "textContains",
       cell: ({ row }) => <span className="text-gray-600">{row.original.countryName || "—"}</span>,
     },
@@ -483,6 +484,7 @@ export default function ProductsPageClient() {
                 countries={countries}
                 stores={stores}
                 onAdded={reloadAll}
+                onCancel={() => setAddOpen(false)}
                 seed={seedProduct}
                 onConsumeSeed={consumeSeed}
               />
@@ -492,8 +494,8 @@ export default function ProductsPageClient() {
             <button
               type="button"
               onClick={() => setAddOpen((o) => !o)}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg transition-colors ${
-                addOpen ? "bg-brand-light text-brand border border-brand/30" : "bg-brand text-white hover:bg-brand-hover"
+              className={`inline-flex items-center gap-1.5 h-[34px] px-3 text-xs rounded-lg border transition-colors ${
+                addOpen ? "bg-brand-light text-brand border-brand/30" : "bg-brand text-white border-transparent hover:bg-brand-hover"
               }`}
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -509,6 +511,8 @@ export default function ProductsPageClient() {
             cargoPerKg: false,
             operationalFee: false,
             packingFee: false,
+            cost: false,
+            profitFixed: false,
             createdAt: false,
             updatedAt: false,
           }}
@@ -562,14 +566,14 @@ export default function ProductsPageClient() {
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="font-semibold text-foreground text-sm flex items-start gap-1">
+                  <div className="font-semibold text-foreground text-sm uppercase">{p.store || "—"}</div>
+                  <div className="text-sm text-foreground flex items-start gap-1 mt-2">
                     <span className="min-w-0 break-words">{p.name}</span>
                     <CopyButton value={`${p.name} ${fmt(p.price)}`} label="Copy name & price" />
                     {!p.isActive && (
                       <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-500 border border-gray-200">Inactive</span>
                     )}
                   </div>
-                  <div className="text-xs text-gray-500 uppercase mt-0.5">{p.store || "—"}</div>
                 </div>
               </div>
               <div className="flex items-center justify-between gap-3 mt-2.5 pt-2.5 border-t border-cream-border">
@@ -580,7 +584,7 @@ export default function ProductsPageClient() {
                   ].filter(Boolean).join(" · ")}
                 </span>
                 <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-brand font-bold tabular-nums whitespace-nowrap">Rp {fmt(p.price)}</span>
+                  <span className="text-sm font-semibold text-foreground tabular-nums whitespace-nowrap">Rp {fmt(p.price)}</span>
                   <ToggleSwitch
                     checked={p.isActive}
                     onChange={(next) => handleToggleActive(p, next)}
@@ -630,7 +634,7 @@ export default function ProductsPageClient() {
             <AddProductForm
               countries={countries}
               stores={stores}
-              onAdded={() => { setMobileAddOpen(false); reloadAll() }}
+              onAdded={() => { setMobileAddOpen(false); reloadAll(); window.scrollTo({ top: 0, behavior: "smooth" }) }}
               onCancel={() => setMobileAddOpen(false)}
               seed={seedProduct}
               onConsumeSeed={consumeSeed}
@@ -792,7 +796,7 @@ function AddProductForm({
   }
 
   return (
-    <form ref={formRef} onSubmit={handleAdd} className="rounded-t-2xl md:rounded-xl border border-cream-border bg-white p-5 pb-8 md:pb-5 flex flex-col gap-4 scroll-mt-14">
+    <form ref={formRef} onSubmit={handleAdd} className="rounded-t-2xl md:rounded-xl border-x border-t border-cream-border md:border bg-white p-5 pb-8 md:pb-5 flex flex-col gap-4 scroll-mt-14">
       <div className="flex items-center gap-4 -mx-5 px-5 border-b border-cream-border pb-3 md:mx-0 md:px-0 md:border-b-0 md:pb-0">
         <span className="text-base md:text-sm font-semibold text-foreground">Add Product</span>
         <div className="flex rounded-lg border border-cream-border overflow-hidden text-xs">
@@ -909,7 +913,7 @@ function AddProductForm({
           </div>
 
           {selectedCountry && (
-            <div className="flex items-center justify-between gap-1 flex-nowrap whitespace-nowrap rounded-lg bg-gray-50 border border-cream-border px-3 py-3 text-[9px] text-gray-500">
+            <div className="flex items-center justify-between gap-1 flex-nowrap whitespace-nowrap rounded-lg bg-gray-50 border border-cream-border px-3 py-3 text-[9px] md:text-xs text-gray-500">
               <span>RATE: {fmt(selectedCountry.kurs)}</span>
               <span>SHIPPING/KG: {fmt(selectedCountry.cargoPerKg)}</span>
               <span>COGS: {fmt(Math.round(pricePreview.cogs))}</span>
@@ -1073,6 +1077,7 @@ function ProductActions({
         stores={stores}
         onSave={(updated) => { onUpdated(updated); setEditing(false) }}
         onCancel={() => setEditing(false)}
+        onDelete={handleDelete}
       />
     )
   }
@@ -1233,7 +1238,7 @@ function EditProductModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 md:items-center md:px-4" onClick={onCancel}>
-      <div className="bg-white rounded-t-2xl md:rounded-xl border border-cream-border shadow-xl p-6 pb-8 md:pb-6 w-full max-h-[90vh] overflow-y-auto flex flex-col gap-4 md:max-w-lg" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white rounded-t-2xl md:rounded-xl border-x border-t border-cream-border md:border shadow-xl p-6 pb-8 md:pb-6 w-full max-h-[90vh] overflow-y-auto flex flex-col gap-4 md:max-w-lg" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between -mx-6 px-6 border-b border-cream-border pb-3 md:mx-0 md:px-0 md:border-b-0 md:pb-0">
           <span className="text-base md:text-sm font-semibold text-foreground">Edit Product</span>
           <span className="text-xs text-gray-400">ID: {row.id}</span>
@@ -1349,8 +1354,8 @@ function EditProductModal({
           <div className="flex items-center gap-2 w-full">
             {saveError && <p className="text-xs text-red-500">{saveError}</p>}
             {onDelete && (
-              <button type="button" onClick={onDelete} disabled={saving} aria-label="Delete" className="md:hidden inline-flex items-center justify-center h-[34px] border border-cream-border rounded-lg px-3 text-gray-500 hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <button type="button" onClick={onDelete} disabled={saving} aria-label="Delete" className="inline-flex items-center justify-center h-[38px] border border-cream-border rounded-lg px-3 text-sm text-gray-400 hover:border-brand disabled:opacity-50 transition-colors">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M10 11v6" /><path d="M14 11v6" />
                 </svg>
               </button>

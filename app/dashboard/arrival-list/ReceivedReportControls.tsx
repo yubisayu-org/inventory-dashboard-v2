@@ -14,15 +14,6 @@ function jakartaToday(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date())
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="flex flex-col gap-1">
-      <span className="text-xs font-medium text-gray-500">{label}</span>
-      {children}
-    </label>
-  )
-}
-
 type Report = { from: string; to: string; items: ReceivedReportItem[]; totalUnits: number }
 
 export default function ReceivedReportControls() {
@@ -75,30 +66,23 @@ export default function ReceivedReportControls() {
 
   return (
     <div className="mb-6 rounded-xl border border-cream-border bg-white p-4 flex items-end gap-2 sm:gap-3 flex-wrap">
-      <div className="flex-1 min-w-0 sm:min-w-[140px]">
-        <Field label="From">
-          <input
-            type="date"
-            value={from}
-            max={today}
-            onChange={(e) => setFrom(e.target.value)}
-            aria-label="From date"
-            className={`${INPUT_CLASS} w-full min-w-0`}
-          />
-        </Field>
-      </div>
-      <div className="flex-1 min-w-0 sm:min-w-[140px]">
-        <Field label="To">
-          <input
-            type="date"
-            value={to}
-            max={today}
-            onChange={(e) => setTo(e.target.value)}
-            aria-label="To date"
-            className={`${INPUT_CLASS} w-full min-w-0`}
-          />
-        </Field>
-      </div>
+      <input
+        type="date"
+        value={from}
+        max={today}
+        onChange={(e) => setFrom(e.target.value)}
+        aria-label="From date"
+        className={`${INPUT_CLASS} flex-1 min-w-0 sm:min-w-[140px]`}
+      />
+      <span className="shrink-0 self-center text-gray-400">–</span>
+      <input
+        type="date"
+        value={to}
+        max={today}
+        onChange={(e) => setTo(e.target.value)}
+        aria-label="To date"
+        className={`${INPUT_CLASS} flex-1 min-w-0 sm:min-w-[140px]`}
+      />
       <button
         type="button"
         onClick={download}

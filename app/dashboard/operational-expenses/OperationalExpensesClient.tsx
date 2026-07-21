@@ -92,6 +92,32 @@ function CategoryBadge({ category }: { category: ExpenseCategory }) {
   )
 }
 
+// Per-category glyph for the mobile card's leading circle avatar.
+const CATEGORY_ICON: Record<ExpenseCategory, React.ReactNode> = {
+  Flight: <><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z" /></>,
+  Lodging: <><path d="M2 4v16" /><path d="M2 8h18a2 2 0 0 1 2 2v10" /><path d="M2 17h20" /><path d="M6 8v9" /></>,
+  Cargo: <><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" /></>,
+  Meal: <><path d="M5 2v5" /><path d="M8 2v5" /><path d="M6.5 7v14" /><path d="M5 7h3" /><path d="M17 2c-1.66 0-3 2.24-3 5v3a1 1 0 0 0 1 1h2Z" /><path d="M17 11v10" /></>,
+  Transport: <><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9L18.4 5c-.3-.6-.9-1-1.5-1H7c-.6 0-1.2.4-1.5 1l-2.1 6.1C2.7 11.3 2 12.1 2 13v3c0 .6.4 1 1 1h2" /><circle cx="7" cy="17" r="2" /><circle cx="17" cy="17" r="2" /></>,
+  Shop: <><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" /><path d="M3 6h18" /><path d="M16 10a4 4 0 0 1-8 0" /></>,
+  Supplies: <><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" /></>,
+  Delivery: <><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2" /><path d="M15 18H9" /><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62l-3.48-4.35A1 1 0 0 0 17.52 8H14" /><circle cx="17" cy="18" r="2" /><circle cx="7" cy="18" r="2" /></>,
+  Personal: <><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></>,
+  Payroll: <><rect x="2" y="5" width="20" height="14" rx="2" /><circle cx="12" cy="12" r="2" /><path d="M6 12h.01M18 12h.01" /></>,
+  Dividend: <><circle cx="8" cy="8" r="6" /><path d="M18.09 10.37A6 6 0 1 1 10.34 18" /><path d="M7 6h1v4" /></>,
+  Other: <><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z" /><circle cx="7.5" cy="7.5" r=".5" fill="currentColor" /></>,
+}
+
+function CategoryIcon({ category }: { category: ExpenseCategory }) {
+  return (
+    <div className={`w-11 h-11 rounded-full flex items-center justify-center shrink-0 ${CATEGORY_BADGE[category] ?? "bg-gray-100 text-gray-500"}`} title={category}>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        {CATEGORY_ICON[category] ?? CATEGORY_ICON.Other}
+      </svg>
+    </div>
+  )
+}
+
 // ─── Main component ──────────────────────────────────────────────────────────
 
 export default function OperationalExpensesClient() {
@@ -398,39 +424,35 @@ export default function OperationalExpensesClient() {
       </div>
 
       {/* Filters: date range + event, sit above the search bar (both layouts) */}
-      <div className="rounded-xl border border-cream-border bg-white p-4 flex items-end gap-3 flex-wrap">
+      <div className="rounded-xl border border-cream-border bg-white p-4 flex items-end gap-x-3 gap-y-1.5 flex-wrap">
         <div className="flex-1 min-w-0 sm:min-w-[140px]">
-          <Field label="Dari">
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => handleDateFromChange(e.target.value)}
-              aria-label="From date"
-              className={`${formInputCls} w-full min-w-0`}
-            />
-          </Field>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => handleDateFromChange(e.target.value)}
+            aria-label="From date"
+            className={`${formInputCls} w-full min-w-0 h-[38px]`}
+          />
         </div>
+        <span className="shrink-0 self-center text-gray-400 select-none">–</span>
         <div className="flex-1 min-w-0 sm:min-w-[140px]">
-          <Field label="Sampai">
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => handleDateToChange(e.target.value)}
-              aria-label="To date"
-              className={`${formInputCls} w-full min-w-0`}
-            />
-          </Field>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => handleDateToChange(e.target.value)}
+            aria-label="To date"
+            className={`${formInputCls} w-full min-w-0 h-[38px]`}
+          />
         </div>
-        <div className="flex-1 min-w-[160px]">
-          <Field label="Batch">
-            <EventSelect
-              value={eventFilterValue}
-              onChange={handleEventPickerChange}
-              events={events.map((e) => e.name)}
-              placeholder="Semua batch"
-              clearable
-            />
-          </Field>
+        <div className="basis-full h-0 md:hidden" />
+        <div className="flex-1 min-w-0 md:min-w-[160px] [&_input]:h-[38px]">
+          <EventSelect
+            value={eventFilterValue}
+            onChange={handleEventPickerChange}
+            events={events.map((e) => e.name)}
+            placeholder="All event"
+            clearable
+          />
         </div>
         {(() => {
           const active = Boolean(eventFilterValue || hasDateFilter)
@@ -447,7 +469,7 @@ export default function OperationalExpensesClient() {
               {active ? (
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M22 3H2l8 9.46V19l4 2v-8.54z" />
-                  <path d="m15 3 6 6M21 3l-6 6" />
+                  <path d="m15 3 6 6M21 3l-6 6" stroke="#ef4444" />
                 </svg>
               ) : (
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -484,6 +506,7 @@ export default function OperationalExpensesClient() {
                   methods={methods}
                   categories={categoryOptions}
                   onAdded={() => reloadAll()}
+                  onCancel={() => setAddOpen(false)}
                   seed={duplicateSeed}
                 />
               </div>
@@ -493,8 +516,8 @@ export default function OperationalExpensesClient() {
             <button
               type="button"
               onClick={() => setAddOpen((o) => !o)}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg transition-colors ${
-                addOpen ? "bg-brand-light text-brand border border-brand/30" : "bg-brand text-white hover:bg-brand-hover"
+              className={`inline-flex items-center gap-1.5 h-[34px] px-3 text-xs rounded-lg border transition-colors ${
+                addOpen ? "bg-brand-light text-brand border-brand/30" : "bg-brand text-white border-transparent hover:bg-brand-hover"
               }`}
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -550,20 +573,20 @@ export default function OperationalExpensesClient() {
             className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] cursor-pointer active:bg-cream/40 transition-colors"
           >
             <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="text-sm font-semibold text-foreground truncate">{x.description || "—"}</div>
-                <div className="text-xs text-gray-500 mt-2 truncate uppercase">{x.event} · {formatDate(x.expenseDate)}{x.method ? ` · ${x.method}` : ""}</div>
+              <div className="flex items-center gap-2.5 min-w-0">
+                <CategoryIcon category={x.category} />
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-foreground truncate">{x.description || "—"}</div>
+                  <div className="text-xs text-gray-500 mt-2 truncate uppercase tabular-nums">{x.rate !== 1 ? `${fmt(x.amountForeign)} × ${fmt(x.rate)}` : "—"}</div>
+                </div>
               </div>
-              <div className="shrink-0 flex flex-col items-end gap-1">
-                <span className="text-sm font-semibold tabular-nums text-foreground whitespace-nowrap">Rp {fmt(x.amountIdr)}</span>
-                <SettleToggle row={x} onToggled={() => refreshRef.current()} iconButton />
-              </div>
+              <SettleToggle row={x} onToggled={() => refreshRef.current()} iconButton />
             </div>
             <div className="flex items-center justify-between gap-3 mt-2.5 pt-2.5 border-t border-cream-border">
-              <span className="text-xs text-gray-400 min-w-0 truncate">
-                {x.rate !== 1 ? `${fmt(x.amountForeign)} × ${fmt(x.rate)}` : ""}
+              <span className="text-xs text-gray-400 min-w-0 truncate uppercase">
+                {x.event} · {formatDate(x.expenseDate)}{x.method ? ` · ${x.method}` : ""}
               </span>
-              <CategoryBadge category={x.category} />
+              <span className="text-sm font-semibold tabular-nums text-foreground whitespace-nowrap">Rp {fmt(x.amountIdr)}</span>
             </div>
           </div>
         ))}
@@ -604,7 +627,7 @@ export default function OperationalExpensesClient() {
       {mobileAddOpen && (
         <div className="md:hidden fixed inset-0 z-40 bg-black/40 flex flex-col justify-end" onClick={() => setMobileAddOpen(false)}>
           <div className="max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <AddExpenseForm events={events} methods={methods} categories={categoryOptions} onAdded={() => { setMobileAddOpen(false); reloadAll() }} onCancel={() => setMobileAddOpen(false)} seed={duplicateSeed} />
+            <AddExpenseForm events={events} methods={methods} categories={categoryOptions} onAdded={() => { setMobileAddOpen(false); reloadAll(); window.scrollTo({ top: 0, behavior: "smooth" }) }} onCancel={() => setMobileAddOpen(false)} seed={duplicateSeed} />
           </div>
         </div>
       )}
@@ -643,13 +666,13 @@ function SettleToggle({ row, onToggled, iconButton }: {
         onClick={(e) => { e.stopPropagation(); toggle() }}
         disabled={saving}
         aria-label={row.isSettled ? "Tandai belum settled" : "Tandai settled"}
-        className={`shrink-0 p-1.5 rounded-lg transition-colors ${
+        className={`shrink-0 p-1 rounded-md transition-colors ${
           row.isSettled
             ? "bg-green-100 text-green-700 active:bg-green-200"
             : "text-gray-300 active:bg-cream"
         } cursor-pointer disabled:opacity-50`}
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <polyline points="20 6 9 17 4 12" />
         </svg>
       </button>
@@ -831,7 +854,7 @@ function AddExpenseForm({
   }
 
   return (
-    <form onSubmit={handleAdd} className="rounded-t-2xl md:rounded-xl border border-cream-border bg-white p-5 pb-8 md:pb-5 flex flex-col gap-4">
+    <form onSubmit={handleAdd} className="rounded-t-2xl md:rounded-xl border-x border-t border-cream-border md:border bg-white p-5 pb-8 md:pb-5 flex flex-col gap-4">
       <div className="flex items-center justify-between -mx-5 px-5 border-b border-cream-border pb-3 md:mx-0 md:px-0 md:border-b-0 md:pb-0">
         <span className="text-base md:text-sm font-semibold text-foreground">Add Expense</span>
       </div>
@@ -1076,7 +1099,7 @@ function EditExpenseModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 md:items-center md:px-4" onClick={onCancel}>
-      <div className="bg-white rounded-t-2xl md:rounded-xl border border-cream-border shadow-xl p-6 pb-8 md:pb-6 w-full max-h-[90vh] overflow-y-auto flex flex-col gap-4 md:max-w-lg" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white rounded-t-2xl md:rounded-xl border-x border-t border-cream-border md:border shadow-xl p-6 pb-8 md:pb-6 w-full max-h-[90vh] overflow-y-auto flex flex-col gap-4 md:max-w-lg" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between -mx-6 px-6 border-b border-cream-border pb-3 md:mx-0 md:px-0 md:border-b-0 md:pb-0">
           <span className="text-base md:text-sm font-semibold text-foreground">Edit Expense</span>
           <span className="text-xs text-gray-400">ID: {row.rowNumber}</span>
@@ -1147,7 +1170,7 @@ function EditExpenseModal({
           </Field>
         </div>
 
-        <label className="flex items-center gap-2 cursor-pointer pt-2 border-t border-cream-border" title="Settled">
+        <label className="hidden" title="Settled">
           <input type="checkbox" checked={draft.isSettled} onChange={(e) => setDraft((d) => ({ ...d, isSettled: e.target.checked }))} disabled={saving} className="h-4 w-4 rounded border-cream-border accent-brand" />
           <span className="text-xs text-gray-500">Settled</span>
         </label>
@@ -1160,12 +1183,11 @@ function EditExpenseModal({
             onClick={onDelete}
             disabled={saving}
             aria-label="Delete"
-            className="inline-flex items-center justify-center h-[38px] md:h-auto border border-cream-border md:border-transparent rounded-lg md:rounded-none px-3 md:px-0 md:py-2 text-sm text-gray-400 md:text-red-500 hover:border-brand md:hover:border-transparent md:hover:underline disabled:opacity-50 transition-colors"
+            className="inline-flex items-center justify-center h-[38px] border border-cream-border rounded-lg px-3 text-sm text-gray-400 hover:border-brand disabled:opacity-50 transition-colors"
           >
-            <svg className="md:hidden" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M10 11v6" /><path d="M14 11v6" />
             </svg>
-            <span className="hidden md:inline">Delete</span>
           </button>
           {onDuplicate && (
             <button
@@ -1173,7 +1195,7 @@ function EditExpenseModal({
               onClick={onDuplicate}
               disabled={saving}
               aria-label="Duplicate"
-              className="inline-flex items-center justify-center h-[38px] md:h-auto border border-cream-border md:border-transparent rounded-lg md:rounded-none px-3 md:px-0 md:py-2 text-sm text-gray-400 md:text-gray-500 hover:border-brand md:hover:border-transparent md:hover:text-brand disabled:opacity-50 transition-colors"
+              className="md:hidden inline-flex items-center justify-center h-[38px] border border-cream-border rounded-lg px-3 text-sm text-gray-400 hover:border-brand disabled:opacity-50 transition-colors"
             >
               <svg className="md:hidden" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />

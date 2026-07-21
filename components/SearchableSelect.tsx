@@ -21,6 +21,8 @@ interface Props {
   allowNewValue?: boolean
   /** Show the full list when there's no query, even for large lists (no "type to search" gate) */
   alwaysShowAll?: boolean
+  /** Shorter trigger input (34px) instead of the default 38px */
+  dense?: boolean
 }
 
 export default function SearchableSelect({
@@ -32,6 +34,7 @@ export default function SearchableSelect({
   clearable = false,
   allowNewValue = false,
   alwaysShowAll = false,
+  dense = false,
 }: Props) {
   const selectedLabel = useMemo(
     () => options.find((o) => o.value === value)?.label ?? (allowNewValue ? value : ""),
@@ -243,7 +246,7 @@ export default function SearchableSelect({
         placeholder={placeholder}
         disabled={disabled}
         autoComplete="off"
-        className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors disabled:opacity-50 disabled:cursor-not-allowed pr-8"
+        className={`w-full border border-cream-border rounded-lg px-3 bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors disabled:opacity-50 disabled:cursor-not-allowed pr-8 ${dense ? "h-[34px] py-0 text-xs" : "py-2 text-sm"}`}
       />
       <svg
         className={`absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none transition-transform ${open ? "rotate-180" : ""}`}

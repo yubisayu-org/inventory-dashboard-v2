@@ -63,8 +63,9 @@ export default function SelectionActionBar({
         className="flex flex-col md:flex-row items-center justify-center gap-0.5 md:gap-2 px-2 py-0.5 rounded-xl hover:bg-cream transition-colors shrink-0"
       >
         <span className="w-7 h-7 rounded-full flex items-center justify-center bg-cream text-gray-500">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            <path d="M18 6 6 18M6 6l12 12" />
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="1 4 1 10 7 10" />
+            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
           </svg>
         </span>
         <span className="text-[10px] md:text-xs font-medium text-gray-500 leading-none whitespace-nowrap">Clear</span>

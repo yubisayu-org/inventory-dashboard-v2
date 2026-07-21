@@ -200,8 +200,17 @@ function BusinessProfileSection() {
         <h2 className="text-sm font-semibold text-foreground">Business profile</h2>
         <div className="flex items-center gap-3">
           {saved && <span className="text-xs text-green-600">Saved</span>}
-          <button type="button" onClick={handleReset} className="text-xs text-gray-500 hover:text-brand underline">
-            Reset to default
+          <button
+            type="button"
+            onClick={handleReset}
+            title="Reset to default"
+            aria-label="Reset to default"
+            className="inline-flex items-center justify-center h-[30px] w-[30px] rounded-lg border border-cream-border text-gray-500 hover:border-brand hover:text-brand transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="1 4 1 10 7 10" />
+              <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+            </svg>
           </button>
           <button
             type="button"
@@ -351,8 +360,17 @@ function ProductDefaultsSection() {
         <h2 className="text-sm font-semibold text-foreground">Product defaults</h2>
         <div className="flex items-center gap-3">
           {saved && <span className="text-xs text-green-600">Saved</span>}
-          <button type="button" onClick={handleReset} className="text-xs text-gray-500 hover:text-brand underline">
-            Reset to default
+          <button
+            type="button"
+            onClick={handleReset}
+            title="Reset to default"
+            aria-label="Reset to default"
+            className="inline-flex items-center justify-center h-[30px] w-[30px] rounded-lg border border-cream-border text-gray-500 hover:border-brand hover:text-brand transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="1 4 1 10 7 10" />
+              <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+            </svg>
           </button>
           <button
             type="button"
@@ -455,8 +473,17 @@ function TemplateSection({ templateKey, initialBody }: { templateKey: TemplateKe
         <h2 className="text-sm font-semibold text-foreground">{TEMPLATE_LABELS[templateKey]}</h2>
         <div className="flex items-center gap-3">
           {saved && <span className="text-xs text-green-600">Saved</span>}
-          <button type="button" onClick={handleReset} className="text-xs text-gray-500 hover:text-brand underline">
-            Reset to default
+          <button
+            type="button"
+            onClick={handleReset}
+            title="Reset to default"
+            aria-label="Reset to default"
+            className="inline-flex items-center justify-center h-[30px] w-[30px] rounded-lg border border-cream-border text-gray-500 hover:border-brand hover:text-brand transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="1 4 1 10 7 10" />
+              <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+            </svg>
           </button>
           <button
             type="button"

@@ -15,6 +15,7 @@ export default function EventSelect({
   placeholder = "Select event…",
   disabled = false,
   clearable = false,
+  dense = false,
 }: {
   value: string
   onChange: (value: string) => void
@@ -22,6 +23,7 @@ export default function EventSelect({
   placeholder?: string
   disabled?: boolean
   clearable?: boolean
+  dense?: boolean
 }) {
   const options = useMemo(() => events.map((e) => ({ value: e, label: e })), [events])
   return (
@@ -32,6 +34,7 @@ export default function EventSelect({
       placeholder={placeholder}
       disabled={disabled}
       clearable={clearable}
+      dense={dense}
       alwaysShowAll
     />
   )

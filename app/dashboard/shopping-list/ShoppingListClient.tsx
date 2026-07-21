@@ -379,6 +379,7 @@ export default function ShoppingListClient() {
           onChange={setSearch}
           placeholder="Search shopping list…"
           className="flex-1 min-w-0 sm:min-w-[180px]"
+          dense
         />
         <div className="w-28 shrink-0 sm:w-[12rem]">
           <EventSelect
@@ -387,11 +388,12 @@ export default function ShoppingListClient() {
             events={options?.events ?? []}
             placeholder="All Events"
             clearable
+            dense
           />
         </div>
         <button
           onClick={() => setPurchaseOpen(true)}
-          className="hidden md:inline-flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors"
+          className="hidden md:inline-flex items-center gap-1.5 h-[34px] px-3 text-xs font-medium rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors"
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <path d="M12 5v14M5 12h14" />
@@ -576,7 +578,7 @@ export default function ShoppingListClient() {
                             />
                           )}
                           <div className="flex-1 min-w-0">
-                            <div className="text-sm text-foreground">{item.productName}</div>
+                            <div className="text-xs text-foreground">{item.productName}</div>
                             {/* Same badge as desktop — tap to see who ordered. */}
                             <div className="mt-0.5">
                               <CustomerBadge
@@ -645,9 +647,8 @@ export default function ShoppingListClient() {
               color: "red",
               onClick: () => setOosConfirmOpen(true),
               icon: (
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="9" />
-                  <path d="m9 9 6 6M15 9l-6 6" />
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 6 6 18M6 6l12 12" />
                 </svg>
               ),
             },
@@ -1264,7 +1265,7 @@ function BuyModal({
             disabled={saving || quantity < 1}
             className={`px-4 py-1.5 rounded-lg text-white text-sm font-medium disabled:opacity-50 transition-colors ${isOos ? "bg-red-600 hover:bg-red-700" : "bg-green-600 hover:bg-green-700"}`}
           >
-            {saving ? "Saving…" : isOos ? "Mark Out of Stock" : "Mark as Bought"}
+            {saving ? "Saving…" : isOos ? "Mark sold out" : "Mark purchased"}
           </button>
         </div>
       </div>
