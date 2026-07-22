@@ -12,6 +12,7 @@ import { usePaginatedFetch, type PageData } from "@/hooks/usePaginatedFetch"
 import { fmt, displayIg } from "@/lib/format"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import EventSelect from "@/components/EventSelect"
+import CopyButton from "@/components/CopyButton"
 import SearchableSelect from "@/components/SearchableSelect"
 
 const PAGE_SIZE = 25
@@ -331,7 +332,10 @@ export default function ExcessTable() {
       <div className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] flex flex-col gap-2">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="text-sm text-foreground truncate">{r.items}</div>
+            <div className="flex items-center gap-1 min-w-0">
+              <span className="text-sm text-foreground truncate">{r.items}</span>
+              <CopyButton value={`${r.items}${r.price != null ? ` ${fmt(r.price)}` : ""}`} label="Copy name & price" />
+            </div>
             {r.expectedItem && r.reason !== "wrong_product" && (
               <div className="text-[11px] text-yellow-700 truncate">expected: {r.expectedItem}</div>
             )}

@@ -418,6 +418,15 @@ function ProductDefaultsSection() {
               className={fieldInputCls}
             />
           </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-gray-500">Markup rate %</span>
+            <input
+              type="number"
+              value={defaults.markupPct}
+              onChange={(e) => field("markupPct", e.target.value)}
+              className={fieldInputCls}
+            />
+          </label>
         </div>
       )}
     </div>

@@ -431,7 +431,7 @@ export default function OperationalExpensesClient() {
             value={dateFrom}
             onChange={(e) => handleDateFromChange(e.target.value)}
             aria-label="From date"
-            className={`${formInputCls} w-full min-w-0 h-[38px]`}
+            className={`${formInputCls} w-full min-w-0 h-[38px] appearance-none`}
           />
         </div>
         <span className="shrink-0 self-center text-gray-400 select-none">–</span>
@@ -441,7 +441,7 @@ export default function OperationalExpensesClient() {
             value={dateTo}
             onChange={(e) => handleDateToChange(e.target.value)}
             aria-label="To date"
-            className={`${formInputCls} w-full min-w-0 h-[38px]`}
+            className={`${formInputCls} w-full min-w-0 h-[38px] appearance-none`}
           />
         </div>
         <div className="basis-full h-0 md:hidden" />
@@ -1132,14 +1132,30 @@ function EditExpenseModal({
               disabled={saving}
             />
           </Field>
-          <Field label="Currency">
-            <select value={draft.currency} onChange={(e) => pickCurrency(e.target.value)} disabled={saving} className={formInputCls}>
-              {currencyOptions.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </Field>
-          <Field label={`Amount (${draft.currency})`}>
-            <input value={draft.amountForeign} onChange={(e) => setDraft((d) => ({ ...d, amountForeign: e.target.value }))} type="text" inputMode="decimal" disabled={saving} className={formInputCls} />
-          </Field>
+          {/* Currency + Amount + Kurs share one 3-col row (desktop + mobile). */}
+          <div className="col-span-2 grid grid-cols-3 gap-3">
+            <Field label="Currency">
+              <div className="relative">
+                <select value={draft.currency} onChange={(e) => pickCurrency(e.target.value)} disabled={saving} className={`${formInputCls} w-full appearance-none pr-8`}>
+                  {currencyOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </div>
+            </Field>
+            <Field label={`Amount (${draft.currency})`}>
+              <input value={draft.amountForeign} onChange={(e) => setDraft((d) => ({ ...d, amountForeign: e.target.value }))} type="text" inputMode="decimal" disabled={saving} className={formInputCls} />
+            </Field>
+            <Field label="Kurs">
+              <input
+                value={isIdr ? "1" : (foreignNum > 0 && idrNum > 0 ? String(derivedRate) : "")}
+                type="number" readOnly disabled placeholder="—"
+                title={isIdr ? "IDR expense — kurs is always 1" : "Auto: IDR ÷ amount (the real rate paid)"}
+                className={`${formInputCls} bg-gray-50 text-gray-400`}
+              />
+            </Field>
+          </div>
           <Field label="IDR">
             <input
               value={isIdr ? draft.amountForeign : draft.amountIdr}
@@ -1148,14 +1164,6 @@ function EditExpenseModal({
               disabled={saving || isIdr}
               title={isIdr ? "IDR expense — same as the amount" : "Actual rupiah paid (used to derive the kurs)"}
               className={`${formInputCls} ${isIdr ? "bg-gray-50 text-gray-400" : ""}`}
-            />
-          </Field>
-          <Field label="Kurs">
-            <input
-              value={isIdr ? "1" : (foreignNum > 0 && idrNum > 0 ? String(derivedRate) : "")}
-              type="number" readOnly disabled placeholder="—"
-              title={isIdr ? "IDR expense — kurs is always 1" : "Auto: IDR ÷ amount (the real rate paid)"}
-              className={`${formInputCls} bg-gray-50 text-gray-400`}
             />
           </Field>
           <Field label="Method">

@@ -259,7 +259,7 @@ export default function PurchaseModal({
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-3 border-t border-cream-border shrink-0 flex items-center justify-end gap-2">
+        <div className="px-5 pt-3 pb-8 md:py-3 border-t border-cream-border shrink-0 flex items-center justify-end gap-2">
           <button
             type="button"
             onClick={onClose}

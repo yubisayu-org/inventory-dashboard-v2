@@ -841,7 +841,7 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
   return (
     <>
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 md:items-center" onClick={onClose}>
-      <div className="bg-white rounded-t-2xl md:rounded-xl border-x border-t border-cream-border md:border shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto md:max-h-none md:overflow-visible" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white rounded-t-2xl md:rounded-xl border-x border-t border-cream-border md:border shadow-xl w-full max-w-md p-6 pb-8 md:pb-6 max-h-[90vh] overflow-y-auto md:max-h-none md:overflow-visible" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4 -mx-6 px-6 border-b border-cream-border pb-3 md:mx-0 md:px-0 md:border-b-0 md:pb-0">
           <h3 className="text-base font-semibold text-foreground">Edit Order</h3>
         </div>

@@ -98,6 +98,7 @@ export default function RefundsClient() {
   const [creating, setCreating] = useState(false)
   const [mobileCreating, setMobileCreating] = useState(false)
   const [editRow, setEditRow] = useState<RefundRow | null>(null)
+  const [eventFilter, setEventFilter] = useState("")
 
   const reasonOptions = useMemo(() => toReasonOptions(dbReasons), [dbReasons])
 
@@ -124,10 +125,11 @@ export default function RefundsClient() {
   // sort & filter over the resulting set.
   const tabFiltered = useMemo(() => {
     return rows.filter((r) =>
-      tab === "refunded" ? doneStatuses.includes(r.status) : r.status === tab,
+      (tab === "refunded" ? doneStatuses.includes(r.status) : r.status === tab) &&
+      (!eventFilter || r.event === eventFilter),
     )
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, tab])
+  }, [rows, tab, eventFilter])
 
   const counts = useMemo(() => {
     const c: Partial<Record<RefundStatus | "done", number>> = {}
@@ -292,6 +294,7 @@ export default function RefundsClient() {
           onRowClick={(row) => setEditRow(row)}
           renderMobileCard={renderMobileCard}
           paginationVariant="simple"
+          initialSorting={[{ id: "amount", desc: true }]}
           belowToolbar={
             creating ? (
               <div className="hidden md:block">
@@ -305,17 +308,29 @@ export default function RefundsClient() {
             ) : undefined
           }
           toolbarExtra={
-            <button
-              onClick={() => setCreating((o) => !o)}
-              className={`hidden md:inline-flex items-center gap-1.5 h-[34px] px-3 text-xs rounded-lg border transition-colors ${
-                creating ? "bg-brand-light text-brand border-brand/30" : "bg-brand text-white border-transparent hover:bg-brand-hover"
-              }`}
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                <path d="M12 5v14M5 12h14" />
-              </svg>
-              New Refund
-            </button>
+            <>
+              <div className="md:hidden w-40 shrink-0 [&_input]:h-[34px]">
+                <EventSelect
+                  value={eventFilter}
+                  onChange={setEventFilter}
+                  events={options?.events ?? []}
+                  placeholder="All event"
+                  clearable
+                  dense
+                />
+              </div>
+              <button
+                onClick={() => setCreating((o) => !o)}
+                className={`hidden md:inline-flex items-center gap-1.5 h-[34px] px-3 text-xs rounded-lg border transition-colors ${
+                  creating ? "bg-brand-light text-brand border-brand/30" : "bg-brand text-white border-transparent hover:bg-brand-hover"
+                }`}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+                New Refund
+              </button>
+            </>
           }
         />
       </div>

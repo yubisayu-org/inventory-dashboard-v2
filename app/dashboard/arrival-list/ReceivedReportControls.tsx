@@ -72,7 +72,7 @@ export default function ReceivedReportControls() {
         max={today}
         onChange={(e) => setFrom(e.target.value)}
         aria-label="From date"
-        className={`${INPUT_CLASS} flex-1 min-w-0 sm:min-w-[140px]`}
+        className={`${INPUT_CLASS} h-[38px] appearance-none flex-1 min-w-0 sm:min-w-[140px]`}
       />
       <span className="shrink-0 self-center text-gray-400">–</span>
       <input
@@ -81,7 +81,7 @@ export default function ReceivedReportControls() {
         max={today}
         onChange={(e) => setTo(e.target.value)}
         aria-label="To date"
-        className={`${INPUT_CLASS} flex-1 min-w-0 sm:min-w-[140px]`}
+        className={`${INPUT_CLASS} h-[38px] appearance-none flex-1 min-w-0 sm:min-w-[140px]`}
       />
       <button
         type="button"

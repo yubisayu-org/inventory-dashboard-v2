@@ -523,7 +523,8 @@ function EditEventModal({
   const [saveError, setSaveError] = useState<string | null>(null)
   const firstInputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => { firstInputRef.current?.focus() }, [])
+  // Autofocus on desktop only — on mobile it pops the keyboard over the sheet.
+  useEffect(() => { if (window.innerWidth >= 768) firstInputRef.current?.focus() }, [])
 
   function draftField(key: keyof typeof draft) {
     return {

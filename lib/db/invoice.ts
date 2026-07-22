@@ -252,8 +252,10 @@ export async function getInvoiceForCustomer(
       totals,
       invoice,
     }
-    const dpThreshold = invoice.total * ((businessProfile?.dpPercent ?? 0) / 100)
-    const meetsDpThreshold = invoice.total === 0 || invoice.pembayaran >= dpThreshold
+    // DP is a percentage of the goods subtotal (subtotal barang) — excludes
+    // ongkir and adjustments.
+    const dpThreshold = invoice.subtotalBarang * ((businessProfile?.dpPercent ?? 0) / 100)
+    const meetsDpThreshold = invoice.subtotalBarang === 0 || invoice.pembayaran >= dpThreshold
 
     let message = ""
     if (templates && businessProfile) {
