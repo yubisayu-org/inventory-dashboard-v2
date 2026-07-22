@@ -354,6 +354,10 @@ export default function ShoppingListClient() {
     [grouped, collapsedEvents, collapsedStores],
   )
 
+  // Select-all over the currently-visible (search-filtered) items.
+  const allSelected = filteredItems.length > 0 && filteredItems.every((i) => selected.has(selKey(i)))
+  const toggleSelectAll = () => setSelected(() => (allSelected ? new Set() : new Set(filteredItems.map(selKey))))
+
   if (loading) return <TableSkeleton />
 
   if (error) {
@@ -391,6 +395,21 @@ export default function ShoppingListClient() {
             dense
           />
         </div>
+        {/* Select-all toggle, right of the event filter (both layouts). */}
+        <button
+          type="button"
+          onClick={toggleSelectAll}
+          aria-label={allSelected ? "Deselect all" : "Select all"}
+          title={allSelected ? "Deselect all" : "Select all"}
+          className={`inline-flex items-center justify-center h-[34px] w-[34px] shrink-0 rounded-lg border transition-colors ${
+            allSelected ? "border-brand text-brand bg-brand-light" : "border-cream-border text-gray-500 hover:border-brand hover:text-brand"
+          }`}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 11l3 3L22 4" />
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+          </svg>
+        </button>
         <button
           onClick={() => setPurchaseOpen(true)}
           className="hidden md:inline-flex items-center gap-1.5 h-[34px] px-3 text-xs font-medium rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors"
@@ -629,6 +648,7 @@ export default function ShoppingListClient() {
       {/* Multi-select action bar */}
       {selected.size > 0 && (
         <SelectionActionBar
+          reserveFab
           count={selected.size}
           onClear={clearSelection}
           actions={[

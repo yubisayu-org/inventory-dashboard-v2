@@ -345,12 +345,17 @@ export async function getEventPerformance(): Promise<EventPerformance[]> {
     ),
     ops AS (
       -- avg_rate = amount-weighted average kurs actually paid on this event's
-      -- non-IDR expenses (total IDR ÷ total foreign), ignoring pure-IDR rows.
+      -- non-IDR expenses (total IDR ÷ total foreign). Only rows with a genuine
+      -- conversion rate count (rate NOT IN (0, 1)): pure-IDR rows (rate = 1) and
+      -- rows with no rate set (rate = 0) are excluded — a rate-0 row would
+      -- otherwise add its foreign amount to the denominator with ~no IDR on top,
+      -- dragging the average below the real kurs. Sub-1 rates (e.g. VND ~0.86)
+      -- are kept.
       SELECT
         event,
         SUM(amount_idr)::bigint AS ops_expenses,
-        SUM(amount_idr) FILTER (WHERE rate <> 1)::numeric
-          / NULLIF(SUM(amount_foreign) FILTER (WHERE rate <> 1), 0) AS avg_rate
+        SUM(amount_idr) FILTER (WHERE rate NOT IN (0, 1))::numeric
+          / NULLIF(SUM(amount_foreign) FILTER (WHERE rate NOT IN (0, 1)), 0) AS avg_rate
       FROM operational_expenses
       GROUP BY event
     ),
