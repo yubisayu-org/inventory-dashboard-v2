@@ -33,7 +33,7 @@ export default function EventPerformancePanel({ perf }: { perf: EventPerformance
           <Stat label="Items" value={fmt(perf.totalUnits)} />
           <Stat label="Unpaid invoices" value={fmt(perf.unpaidCount)} />
           <Stat label="Overpaid invoices" value={fmt(perf.overpaidCount)} />
-          <Stat label="Average rate" value={fmt(perf.kurs)} />
+          <Stat label="Average rate" value={perf.kurs > 0 ? fmt(perf.kurs) : "—"} />
         </StatGroup>
 
         {/* Finance */}

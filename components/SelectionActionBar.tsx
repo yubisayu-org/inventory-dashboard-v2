@@ -25,13 +25,18 @@ export default function SelectionActionBar({
   count,
   onClear,
   actions,
+  reserveFab = false,
 }: {
   count: number
   onClear: () => void
   actions: SelectionAction[]
+  /** Keep the original mobile position offset to the left (left-4 right-20) so
+   *  the bar clears a bottom-right FAB. Off = centered on mobile. Desktop is
+   *  always centered. */
+  reserveFab?: boolean
 }) {
   return (
-    <div className="fixed bottom-20 left-4 right-20 md:left-1/2 md:right-auto md:-translate-x-1/2 md:bottom-4 z-40 h-14 flex items-center justify-center gap-3 md:gap-2 rounded-2xl bg-white/90 backdrop-blur border border-cream-border text-foreground shadow-xl px-2 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+    <div className={`fixed z-40 h-14 flex items-center justify-center gap-3 md:gap-2 rounded-2xl bg-white/90 backdrop-blur border border-cream-border text-foreground shadow-xl px-2 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden bottom-20 md:bottom-4 md:left-1/2 md:right-auto md:-translate-x-1/2 ${reserveFab ? "left-4 right-20" : "left-1/2 -translate-x-1/2 max-w-[calc(100vw-2rem)]"}`}>
       <div className="flex flex-col md:flex-row items-center justify-center gap-0.5 md:gap-2 px-2 shrink-0">
         <span className="w-7 h-7 rounded-full flex items-center justify-center bg-brand/10 text-brand font-bold text-xs tabular-nums">
           {count}

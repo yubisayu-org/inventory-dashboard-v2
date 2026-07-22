@@ -238,8 +238,9 @@ export default function ShipClient() {
             dense
           />
         </div>
-        {/* Desktop select-all toggle (mobile uses the round FAB). */}
-        {!loading && !error && readyFiltered.length > 0 && (
+        {/* Desktop select-all toggle (mobile uses the round FAB). Shown on the
+            "Siap Dikirim" tab even when empty. */}
+        {!loading && !error && segment === "ready" && (
           <button
             type="button"
             onClick={toggleSelectAll}
@@ -274,8 +275,9 @@ export default function ShipClient() {
       {/* Results */}
       {!loading && !error && groups.length > 0 && (
         <>
-          {/* Mobile select-all FAB — round icon button like the Events "+" FAB. */}
-          {readyFiltered.length > 0 && (
+          {/* Mobile select-all FAB — round icon button like the Events "+" FAB.
+              Only on the "Siap Dikirim" tab, matching desktop. */}
+          {segment === "ready" && readyFiltered.length > 0 && (
             <button
               type="button"
               onClick={toggleSelectAll}
@@ -298,6 +300,7 @@ export default function ShipClient() {
           {selected.size > 0 && (
             <div className="contents">
               <SelectionActionBar
+                reserveFab={segment === "ready"}
                 count={selected.size}
                 onClear={() => setSelected(new Set())}
                 actions={[
