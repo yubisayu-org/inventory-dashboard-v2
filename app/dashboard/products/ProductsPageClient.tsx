@@ -877,17 +877,13 @@ function AddProductForm({
         <>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Field label="Country">
-              <select
-                value={countryId ?? ""}
-                onChange={(e) => setCountryId(e.target.value ? Number(e.target.value) : null)}
+              <SearchableSelect
+                value={countryId != null ? String(countryId) : ""}
+                onChange={(v) => setCountryId(v ? Number(v) : null)}
+                options={countries.map((c) => ({ value: String(c.id), label: `${c.name} (${c.currency})` }))}
+                placeholder="Select country…"
                 disabled={adding}
-                className={formInputCls}
-              >
-                <option value="">Select country</option>
-                {countries.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name} ({c.currency})</option>
-                ))}
-              </select>
+              />
             </Field>
             <Field label="Valas">
               <input value={valas} onChange={(e) => setValas(e.target.value)} type="number" step="any" min="0" placeholder="0" disabled={adding} className={formInputCls} />

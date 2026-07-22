@@ -251,6 +251,26 @@ export default function OperationalExpensesClient() {
   // Current "event" column-filter value, so the Event picker above the search
   // bar stays in sync with the (shared) column header filter.
   const eventFilterValue = (columnFilters.find((cf) => cf.id === "event")?.value as string) ?? ""
+  // Method + settled-status filters share the columnFilters store (ids "method"
+  // / "isSettled"), driven by the mobile filter popover.
+  const methodFilterValue = (columnFilters.find((cf) => cf.id === "method")?.value as string) ?? ""
+  const settledFilterValue = (columnFilters.find((cf) => cf.id === "isSettled")?.value as string) ?? ""
+  const upsertColumnFilter = useCallback((id: string, value: string) => {
+    handleColumnFiltersChange((prev) => {
+      const rest = prev.filter((cf) => cf.id !== id)
+      return value ? [...rest, { id, value }] : rest
+    })
+  }, [handleColumnFiltersChange])
+
+  // Mobile filter popover (settled status + method), like the Payments page.
+  const [filterOpen, setFilterOpen] = useState(false)
+  const filterRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!filterOpen) return
+    const h = (e: MouseEvent) => { if (!filterRef.current?.contains(e.target as Node)) setFilterOpen(false) }
+    document.addEventListener("mousedown", h)
+    return () => document.removeEventListener("mousedown", h)
+  }, [filterOpen])
 
   // Suggested categories + whatever's actually in the DB, deduped.
   const categoryOptions = useMemo(
@@ -391,6 +411,8 @@ export default function OperationalExpensesClient() {
   const hasDateFilter = Boolean(dateFrom || dateTo)
   const clearFilters = () => {
     handleEventPickerChange("")
+    upsertColumnFilter("method", "")
+    upsertColumnFilter("isSettled", "")
     setDateFrom("")
     setDateTo("")
     setPagination((p) => ({ ...p, pageIndex: 0 }))
@@ -425,24 +447,30 @@ export default function OperationalExpensesClient() {
 
       {/* Filters: date range + event, sit above the search bar (both layouts) */}
       <div className="rounded-xl border border-cream-border bg-white p-4 flex items-end gap-x-3 gap-y-1.5 flex-wrap">
-        <div className="flex-1 min-w-0 sm:min-w-[140px]">
+        <div className="relative flex-1 min-w-0 sm:min-w-[140px]">
           <input
             type="date"
             value={dateFrom}
             onChange={(e) => handleDateFromChange(e.target.value)}
             aria-label="From date"
-            className={`${formInputCls} w-full min-w-0 h-[38px] appearance-none`}
+            className={`${formInputCls} w-full min-w-0 h-[38px] appearance-none ${dateFrom ? "" : "[&::-webkit-datetime-edit]:opacity-0"}`}
           />
+          {!dateFrom && (
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 select-none">From</span>
+          )}
         </div>
         <span className="shrink-0 self-center text-gray-400 select-none">–</span>
-        <div className="flex-1 min-w-0 sm:min-w-[140px]">
+        <div className="relative flex-1 min-w-0 sm:min-w-[140px]">
           <input
             type="date"
             value={dateTo}
             onChange={(e) => handleDateToChange(e.target.value)}
             aria-label="To date"
-            className={`${formInputCls} w-full min-w-0 h-[38px] appearance-none`}
+            className={`${formInputCls} w-full min-w-0 h-[38px] appearance-none ${dateTo ? "" : "[&::-webkit-datetime-edit]:opacity-0"}`}
           />
+          {!dateTo && (
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 select-none">To</span>
+          )}
         </div>
         <div className="basis-full h-0 md:hidden" />
         <div className="flex-1 min-w-0 md:min-w-[160px] [&_input]:h-[38px]">
@@ -454,8 +482,50 @@ export default function OperationalExpensesClient() {
             clearable
           />
         </div>
+        <div className="relative shrink-0" ref={filterRef}>
+          <button
+            type="button"
+            onClick={() => setFilterOpen((o) => !o)}
+            aria-label="Filters"
+            className="relative h-[38px] w-[38px] flex items-center justify-center rounded-lg border border-cream-border text-gray-500 hover:bg-gray-50 transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M22 3H2l8 9.46V19l4 2v-8.54z" />
+            </svg>
+            {(methodFilterValue || settledFilterValue) && <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-brand" />}
+          </button>
+          {filterOpen && (
+            <div className="absolute right-0 top-full mt-1 z-30 w-52 rounded-lg border border-cream-border bg-white shadow-lg p-3 flex flex-col gap-3">
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-gray-500">Status</span>
+                <select
+                  value={settledFilterValue}
+                  onChange={(e) => upsertColumnFilter("isSettled", e.target.value)}
+                  className="w-full border border-cream-border rounded-lg px-2 py-2 text-sm text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+                >
+                  <option value="">All status</option>
+                  <option value="true">Settled</option>
+                  <option value="false">Unsettled</option>
+                </select>
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-gray-500">Method</span>
+                <select
+                  value={methodFilterValue}
+                  onChange={(e) => upsertColumnFilter("method", e.target.value)}
+                  className="w-full border border-cream-border rounded-lg px-2 py-2 text-sm text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+                >
+                  <option value="">All methods</option>
+                  {methods.map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
+        </div>
         {(() => {
-          const active = Boolean(eventFilterValue || hasDateFilter)
+          const active = Boolean(eventFilterValue || hasDateFilter || methodFilterValue || settledFilterValue)
           return (
             <button
               type="button"
@@ -466,16 +536,10 @@ export default function OperationalExpensesClient() {
                 active ? "hover:bg-gray-50 cursor-pointer" : "text-gray-300 cursor-default"
               }`}
             >
-              {active ? (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M22 3H2l8 9.46V19l4 2v-8.54z" />
-                  <path d="m15 3 6 6M21 3l-6 6" stroke="#ef4444" />
-                </svg>
-              ) : (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M22 3H2l8 9.46V19l4 2v-8.54z" />
-                </svg>
-              )}
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="1 4 1 10 7 10" />
+                <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+              </svg>
             </button>
           )
         })()}
@@ -870,7 +934,7 @@ function AddExpenseForm({
           />
         </Field>
         <Field label="Date">
-          <input type="date" value={draft.expenseDate} onChange={(e) => setDraft((d) => ({ ...d, expenseDate: e.target.value }))} disabled={adding} className={formInputCls} />
+          <input type="date" value={draft.expenseDate} onChange={(e) => setDraft((d) => ({ ...d, expenseDate: e.target.value }))} disabled={adding} className={`${formInputCls} h-[38px] appearance-none`} />
         </Field>
         <Field label="Expenses">
           <input value={draft.description} onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))} placeholder="Vendor / description" disabled={adding} className={formInputCls} />
@@ -1116,7 +1180,7 @@ function EditExpenseModal({
             />
           </Field>
           <Field label="Date">
-            <input type="date" value={draft.expenseDate} onChange={(e) => setDraft((d) => ({ ...d, expenseDate: e.target.value }))} disabled={saving} className={formInputCls} />
+            <input type="date" value={draft.expenseDate} onChange={(e) => setDraft((d) => ({ ...d, expenseDate: e.target.value }))} disabled={saving} className={`${formInputCls} h-[38px] appearance-none`} />
           </Field>
           <Field label="Expenses">
             <input value={draft.description} onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))} disabled={saving} className={formInputCls} />
