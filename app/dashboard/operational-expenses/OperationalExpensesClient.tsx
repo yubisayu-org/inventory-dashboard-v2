@@ -954,9 +954,15 @@ function AddExpenseForm({
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Field label="Currency">
-          <select value={draft.currency} onChange={(e) => pickCurrency(e.target.value)} disabled={adding} className={formInputCls}>
-            {currencyOptions.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
+          <SearchableSelect
+            value={draft.currency}
+            onChange={pickCurrency}
+            options={currencyOptions.map((c) => ({ value: c, label: c }))}
+            placeholder="Currency"
+            disabled={adding}
+            searchable={false}
+            alwaysShowAll
+          />
         </Field>
         <Field label={`Amount (${draft.currency})`}>
           <input value={draft.amountForeign} onChange={(e) => setDraft((d) => ({ ...d, amountForeign: e.target.value }))} type="text" inputMode="decimal" placeholder="0" disabled={adding} className={formInputCls} />
@@ -1199,14 +1205,15 @@ function EditExpenseModal({
           {/* Currency + Amount + Kurs share one 3-col row (desktop + mobile). */}
           <div className="col-span-2 grid grid-cols-3 gap-3">
             <Field label="Currency">
-              <div className="relative">
-                <select value={draft.currency} onChange={(e) => pickCurrency(e.target.value)} disabled={saving} className={`${formInputCls} w-full appearance-none pr-8`}>
-                  {currencyOptions.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-                <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="m6 9 6 6 6-6" />
-                </svg>
-              </div>
+              <SearchableSelect
+                value={draft.currency}
+                onChange={pickCurrency}
+                options={currencyOptions.map((c) => ({ value: c, label: c }))}
+                placeholder="Currency"
+                disabled={saving}
+                searchable={false}
+                alwaysShowAll
+              />
             </Field>
             <Field label={`Amount (${draft.currency})`}>
               <input value={draft.amountForeign} onChange={(e) => setDraft((d) => ({ ...d, amountForeign: e.target.value }))} type="text" inputMode="decimal" disabled={saving} className={formInputCls} />

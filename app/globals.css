@@ -22,8 +22,15 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* Cream root so iOS Safari's rubber-band overscroll matches the app shell
+   (PageShell is bg-cream); without this the body's white shows as a blank gap
+   at the top/bottom when overscrolling. */
+html {
+  background: var(--cream);
+}
+
 body {
-  background: var(--background);
+  background: var(--cream);
   color: var(--foreground);
   font-family: var(--font-sans);
 }

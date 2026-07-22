@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import type { EventRow, WarehouseRow, CountryRow, EventPerformance } from "@/lib/db"
 import DataGrid, { type ColumnDef } from "@/components/DataGrid"
 import ToggleSwitch from "@/components/ToggleSwitch"
+import SearchableSelect from "@/components/SearchableSelect"
 import EventPerformancePanel from "./EventPerformancePanel"
 
 const EMPTY_FORM = { name: "", eta: "", warehouseId: "", countryId: "" }
@@ -274,35 +275,29 @@ export default function EventsClient() {
           className={formInputCls}
           style={{ width: "10rem" }}
         />
-        <select
-          value={form.warehouseId}
-          onChange={(e) => setForm((f) => ({ ...f, warehouseId: e.target.value }))}
-          disabled={adding || warehouses.length === 0}
-          className={formInputCls}
-          aria-label="Gudang"
-          style={{ width: "10rem" }}
-        >
-          {warehouses.map((w) => (
-            <option key={w.id} value={String(w.id)}>
-              {w.name} ({w.code})
-            </option>
-          ))}
-        </select>
-        <select
-          value={form.countryId}
-          onChange={(e) => setForm((f) => ({ ...f, countryId: e.target.value }))}
-          disabled={adding}
-          className={formInputCls}
-          aria-label="Country"
-          style={{ width: "10rem" }}
-        >
-          <option value="">No country (IDR)</option>
-          {countries.map((c) => (
-            <option key={c.id} value={String(c.id)}>
-              {c.name} ({c.currency})
-            </option>
-          ))}
-        </select>
+        <div style={{ width: "10rem" }}>
+          <SearchableSelect
+            value={form.warehouseId}
+            onChange={(v) => setForm((f) => ({ ...f, warehouseId: v }))}
+            options={warehouses.map((w) => ({ value: String(w.id), label: `${w.name} (${w.code})` }))}
+            placeholder="Select gudang…"
+            disabled={adding || warehouses.length === 0}
+            searchable={false}
+                alwaysShowAll
+          />
+        </div>
+        <div style={{ width: "10rem" }}>
+          <SearchableSelect
+            value={form.countryId}
+            onChange={(v) => setForm((f) => ({ ...f, countryId: v }))}
+            options={countries.map((c) => ({ value: String(c.id), label: `${c.name} (${c.currency})` }))}
+            placeholder="No country (IDR)"
+            disabled={adding}
+            searchable={false}
+            clearable
+            alwaysShowAll
+          />
+        </div>
         {addError && <p className="text-xs text-red-500">{addError}</p>}
         <button
           type="submit"
@@ -448,30 +443,28 @@ export default function EventsClient() {
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-xs font-medium text-gray-500">Gudang</span>
-              <select
+              <SearchableSelect
                 value={form.warehouseId}
-                onChange={(e) => setForm((f) => ({ ...f, warehouseId: e.target.value }))}
+                onChange={(v) => setForm((f) => ({ ...f, warehouseId: v }))}
+                options={warehouses.map((w) => ({ value: String(w.id), label: `${w.name} (${w.code})` }))}
+                placeholder="Select gudang…"
                 disabled={adding || warehouses.length === 0}
-                className={modalInputCls}
-              >
-                {warehouses.map((w) => (
-                  <option key={w.id} value={String(w.id)}>{w.name} ({w.code})</option>
-                ))}
-              </select>
+                searchable={false}
+                alwaysShowAll
+              />
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-xs font-medium text-gray-500">Country (sets expense currency &amp; kurs)</span>
-              <select
+              <SearchableSelect
                 value={form.countryId}
-                onChange={(e) => setForm((f) => ({ ...f, countryId: e.target.value }))}
+                onChange={(v) => setForm((f) => ({ ...f, countryId: v }))}
+                options={countries.map((c) => ({ value: String(c.id), label: `${c.name} (${c.currency})` }))}
+                placeholder="No country (IDR)"
                 disabled={adding}
-                className={modalInputCls}
-              >
-                <option value="">No country (IDR)</option>
-                {countries.map((c) => (
-                  <option key={c.id} value={String(c.id)}>{c.name} ({c.currency})</option>
-                ))}
-              </select>
+                searchable={false}
+                clearable
+                alwaysShowAll
+              />
             </label>
             {addError && <p className="text-xs text-red-500">{addError}</p>}
             <div className="flex items-center justify-end gap-2">
@@ -616,30 +609,28 @@ function EditEventModal({
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-xs font-medium text-gray-500">Gudang</span>
-            <select
+            <SearchableSelect
               value={draft.warehouseId}
-              onChange={(e) => setDraft((d) => ({ ...d, warehouseId: e.target.value }))}
+              onChange={(v) => setDraft((d) => ({ ...d, warehouseId: v }))}
+              options={warehouses.map((w) => ({ value: String(w.id), label: `${w.name} (${w.code})` }))}
+              placeholder="Select gudang…"
               disabled={saving || warehouses.length === 0}
-              className={modalInputCls}
-            >
-              {warehouses.map((w) => (
-                <option key={w.id} value={String(w.id)}>{w.name} ({w.code})</option>
-              ))}
-            </select>
+              searchable={false}
+                alwaysShowAll
+            />
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-xs font-medium text-gray-500">Country (sets expense currency &amp; kurs)</span>
-            <select
+            <SearchableSelect
               value={draft.countryId}
-              onChange={(e) => setDraft((d) => ({ ...d, countryId: e.target.value }))}
+              onChange={(v) => setDraft((d) => ({ ...d, countryId: v }))}
+              options={countries.map((c) => ({ value: String(c.id), label: `${c.name} (${c.currency})` }))}
+              placeholder="No country (IDR)"
               disabled={saving}
-              className={modalInputCls}
-            >
-              <option value="">No country (IDR)</option>
-              {countries.map((c) => (
-                <option key={c.id} value={String(c.id)}>{c.name} ({c.currency})</option>
-              ))}
-            </select>
+              searchable={false}
+              clearable
+              alwaysShowAll
+            />
           </label>
         </div>
 
