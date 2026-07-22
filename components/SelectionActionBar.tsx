@@ -31,7 +31,7 @@ export default function SelectionActionBar({
   actions: SelectionAction[]
 }) {
   return (
-    <div className="fixed bottom-20 left-4 right-20 md:left-1/2 md:right-auto md:-translate-x-1/2 md:bottom-4 z-40 h-14 flex items-center justify-center gap-4 md:gap-2 rounded-2xl bg-white/90 backdrop-blur border border-cream-border text-foreground shadow-xl px-2 overflow-x-auto">
+    <div className="fixed bottom-20 left-4 right-20 md:left-1/2 md:right-auto md:-translate-x-1/2 md:bottom-4 z-40 h-14 flex items-center justify-center gap-3 md:gap-2 rounded-2xl bg-white/90 backdrop-blur border border-cream-border text-foreground shadow-xl px-2 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
       <div className="flex flex-col md:flex-row items-center justify-center gap-0.5 md:gap-2 px-2 shrink-0">
         <span className="w-7 h-7 rounded-full flex items-center justify-center bg-brand/10 text-brand font-bold text-xs tabular-nums">
           {count}

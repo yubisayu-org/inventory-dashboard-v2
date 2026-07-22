@@ -104,7 +104,7 @@ export default function PurchaseModal({
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-t-2xl md:rounded-xl shadow-xl border border-cream-border w-full max-w-2xl flex flex-col max-h-[90vh]"
+        className="bg-white rounded-t-2xl md:rounded-xl shadow-xl border-x border-t border-cream-border md:border w-full max-w-2xl flex flex-col max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"

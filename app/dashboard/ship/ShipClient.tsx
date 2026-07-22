@@ -67,6 +67,9 @@ export default function ShipClient() {
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null)
   const [bulkError, setBulkError] = useState<string | null>(null)
   const [merging, setMerging] = useState(false)
+  // Gate the bulk-ship action behind a confirmation, mirroring the single-card
+  // ShipConfirmModal.
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false)
   const [invoiceCustomer, setInvoiceCustomer] = useState<string | null>(null)
   const [page, setPage] = useState(0)
 
@@ -235,6 +238,24 @@ export default function ShipClient() {
             dense
           />
         </div>
+        {/* Desktop select-all toggle (mobile uses the round FAB). */}
+        {!loading && !error && readyFiltered.length > 0 && (
+          <button
+            type="button"
+            onClick={toggleSelectAll}
+            disabled={bulkShipping}
+            aria-label={allSelected ? "Deselect all" : "Select all"}
+            title={allSelected ? "Deselect all" : "Select all"}
+            className={`hidden md:inline-flex items-center justify-center h-[34px] w-[34px] shrink-0 rounded-lg border transition-colors disabled:opacity-50 ${
+              allSelected ? "border-brand text-brand bg-brand-light" : "border-cream-border text-gray-500 hover:border-brand hover:text-brand"
+            }`}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 11l3 3L22 4" />
+              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+            </svg>
+          </button>
+        )}
       </div>
 
       {/* States */}
@@ -253,42 +274,6 @@ export default function ShipClient() {
       {/* Results */}
       {!loading && !error && groups.length > 0 && (
         <>
-          <div className="hidden md:flex items-center justify-end gap-3">
-            {readyFiltered.length > 0 && (
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={toggleSelectAll}
-                  disabled={bulkShipping}
-                  className="hidden md:inline-flex text-xs text-gray-500 hover:text-brand transition-colors disabled:opacity-50"
-                >
-                  {allSelected ? "Deselect All" : "Select All"}
-                </button>
-                {mergeEligible && (
-                  <button
-                    type="button"
-                    onClick={() => setMerging(true)}
-                    disabled={bulkShipping}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-brand text-brand text-xs font-medium hover:bg-brand/5 disabled:opacity-50 transition-colors"
-                  >
-                    Gabung Pengiriman
-                  </button>
-                )}
-                {selected.size > 0 && (
-                  <button
-                    type="button"
-                    onClick={handleBulkShip}
-                    disabled={bulkShipping}
-                    className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
-                  >
-                    {bulkShipping && bulkProgress
-                      ? `Mengirim ${bulkProgress.done}/${bulkProgress.total}…`
-                      : `Ship ${selected.size} Customer${selected.size === 1 ? "" : "s"} →`}
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
           {/* Mobile select-all FAB — round icon button like the Events "+" FAB. */}
           {readyFiltered.length > 0 && (
             <button
@@ -308,10 +293,10 @@ export default function ShipClient() {
               {bulkError}
             </div>
           )}
-          {/* Mobile: floating action bar (like shopping/receiving) for the
-              selection actions — Gabung + Ship. */}
+          {/* Floating action bar (like shopping/receiving) for the selection
+              actions — Combine + Ship. Shown on desktop and mobile. */}
           {selected.size > 0 && (
-            <div className="contents md:hidden">
+            <div className="contents">
               <SelectionActionBar
                 count={selected.size}
                 onClear={() => setSelected(new Set())}
@@ -332,7 +317,7 @@ export default function ShipClient() {
                   {
                     label: bulkShipping && bulkProgress ? `${bulkProgress.done}/${bulkProgress.total}` : "Ship",
                     color: "brand" as const,
-                    onClick: handleBulkShip,
+                    onClick: () => setBulkConfirmOpen(true),
                     disabled: bulkShipping,
                     icon: (
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -368,6 +353,14 @@ export default function ShipClient() {
         </>
       )}
 
+      {bulkConfirmOpen && selectedGroups.length > 0 && (
+        <BulkShipConfirmModal
+          groups={selectedGroups}
+          busy={bulkShipping}
+          onClose={() => setBulkConfirmOpen(false)}
+          onConfirm={() => { setBulkConfirmOpen(false); handleBulkShip() }}
+        />
+      )}
       {merging && mergeEligible && (
         <MergeShipConfirmModal
           customer={selectedGroups[0].customer}
@@ -729,6 +722,71 @@ function CustomerCard({
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// Confirmation gate for bulk shipping — lists the selected packages and asks
+// before firing handleBulkShip (mirrors the single-card ShipConfirmModal's
+// "confirm first" behaviour, minus the per-package label preview).
+function BulkShipConfirmModal({
+  groups,
+  busy,
+  onConfirm,
+  onClose,
+}: {
+  groups: ShipCustomer[]
+  busy: boolean
+  onConfirm: () => void
+  onClose: () => void
+}) {
+  useModalDismiss(onClose)
+  const total = groups.length
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 md:items-center md:px-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-t-2xl md:rounded-xl border-x border-t border-cream-border md:border shadow-xl w-full max-w-md flex flex-col max-h-[90vh]"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
+        <div className="px-5 py-4 border-b border-cream-border shrink-0">
+          <h3 className="text-base md:text-sm font-semibold text-foreground">Konfirmasi Pengiriman</h3>
+          <p className="text-xs text-gray-500 mt-0.5">Kirim {total} paket sekaligus?</p>
+        </div>
+        <div className="px-5 py-4 overflow-y-auto flex flex-col gap-1.5">
+          {groups.map((c) => (
+            <div key={`${c.customer}|${c.event}`} className="flex items-center justify-between gap-3 text-sm">
+              <span className="min-w-0 truncate">
+                <span className="font-medium text-foreground uppercase">{displayIg(c.customer)}</span>
+                <span className="text-gray-400"> · {c.event}</span>
+              </span>
+              <span className="tabular-nums text-gray-500 shrink-0">{c.totalToShip}</span>
+            </div>
+          ))}
+        </div>
+        <div className="px-5 pt-3 pb-8 md:py-3 border-t border-cream-border shrink-0 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+          >
+            Batal
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={busy}
+            className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
+          >
+            {busy ? "Mengirim…" : `Kirim ${total} Paket`}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

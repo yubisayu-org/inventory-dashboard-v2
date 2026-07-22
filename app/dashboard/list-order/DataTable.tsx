@@ -1228,7 +1228,7 @@ function AddOrderForm({ options, onOrderAdded, onCancel }: {
         </div>
       </div>
 
-      <div className="flex items-center justify-end gap-2">
+      <div className="flex items-center justify-end gap-2 -mx-5 px-5 pt-4 border-t border-cream-border md:mx-0 md:px-0 md:pt-0 md:border-t-0">
         {feedback && <p className={`mr-auto text-xs ${feedback.type === "success" ? "text-green-600" : "text-red-600"}`}>{feedback.message}</p>}
         {onCancel && (
           <button type="button" onClick={onCancel} disabled={submitting} className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">

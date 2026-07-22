@@ -438,31 +438,41 @@ export default function EventsClient() {
             <div className="flex items-center justify-between -mx-5 px-5 border-b border-cream-border pb-3">
               <span className="text-base font-semibold text-foreground">Add Event</span>
             </div>
-            <input {...field("name")} placeholder="Event name" required disabled={adding} className={modalInputCls} />
-            <input {...field("eta")} placeholder="ETA (e.g. 2026-06-15)" disabled={adding} className={modalInputCls} />
-            <select
-              value={form.warehouseId}
-              onChange={(e) => setForm((f) => ({ ...f, warehouseId: e.target.value }))}
-              disabled={adding || warehouses.length === 0}
-              className={modalInputCls}
-              aria-label="Gudang"
-            >
-              {warehouses.map((w) => (
-                <option key={w.id} value={String(w.id)}>{w.name} ({w.code})</option>
-              ))}
-            </select>
-            <select
-              value={form.countryId}
-              onChange={(e) => setForm((f) => ({ ...f, countryId: e.target.value }))}
-              disabled={adding}
-              className={modalInputCls}
-              aria-label="Country"
-            >
-              <option value="">No country (IDR)</option>
-              {countries.map((c) => (
-                <option key={c.id} value={String(c.id)}>{c.name} ({c.currency})</option>
-              ))}
-            </select>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-gray-500">Event Name</span>
+              <input {...field("name")} placeholder="Event name" required disabled={adding} className={modalInputCls} />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-gray-500">ETA</span>
+              <input {...field("eta")} placeholder="ETA (e.g. 2026-06-15)" disabled={adding} className={modalInputCls} />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-gray-500">Gudang</span>
+              <select
+                value={form.warehouseId}
+                onChange={(e) => setForm((f) => ({ ...f, warehouseId: e.target.value }))}
+                disabled={adding || warehouses.length === 0}
+                className={modalInputCls}
+              >
+                {warehouses.map((w) => (
+                  <option key={w.id} value={String(w.id)}>{w.name} ({w.code})</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-gray-500">Country (sets expense currency &amp; kurs)</span>
+              <select
+                value={form.countryId}
+                onChange={(e) => setForm((f) => ({ ...f, countryId: e.target.value }))}
+                disabled={adding}
+                className={modalInputCls}
+              >
+                <option value="">No country (IDR)</option>
+                {countries.map((c) => (
+                  <option key={c.id} value={String(c.id)}>{c.name} ({c.currency})</option>
+                ))}
+              </select>
+            </label>
             {addError && <p className="text-xs text-red-500">{addError}</p>}
             <div className="flex items-center justify-end gap-2">
               <button type="button" onClick={() => setMobileAddOpen(false)} disabled={adding} className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">

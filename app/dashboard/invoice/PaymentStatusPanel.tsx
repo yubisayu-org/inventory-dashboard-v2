@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObjec
 import { displayIg, fmt } from "@/lib/format"
 import type { InvoiceResult, PaymentStatus, PaymentStatusRow } from "@/lib/db"
 import DataGrid, { type ColumnDef } from "@/components/DataGrid"
+import EventSelect from "@/components/EventSelect"
 import CopyInvoiceButton from "@/components/CopyInvoiceButton"
 import InvoiceSummary from "@/components/InvoiceSummary"
 import { AddAdjustmentFromInvoiceModal } from "./AddAdjustmentFromInvoiceModal"
@@ -38,6 +39,8 @@ export function PaymentStatusPanel({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<StatusFilter>("unpaid")
+  // Mobile-only event picker (next to the search bar); "" = all events.
+  const [eventFilter, setEventFilter] = useState("")
   // Rows currently visible in the grid after the search box narrows them, so
   // the Outstanding/Overpaid totals track what the user is looking at. null
   // until the grid first reports (falls back to the full filtered set).
@@ -73,11 +76,23 @@ export function PaymentStatusPanel({
     return c
   }, [rows])
 
-  // The status chips pre-filter the rows fed to the grid; the grid's own
-  // search box then narrows further and reports back via onFilteredRowsChange.
+  // Distinct events for the mobile event picker, in first-seen order.
+  const eventOptions = useMemo(() => {
+    const seen = new Set<string>()
+    const out: string[] = []
+    for (const r of rows) if (r.event && !seen.has(r.event)) { seen.add(r.event); out.push(r.event) }
+    return out
+  }, [rows])
+
+  // The status chips + event picker pre-filter the rows fed to the grid; the
+  // grid's own search box then narrows further and reports back via
+  // onFilteredRowsChange.
   const gridRows = useMemo(
-    () => (filter === "all" ? rows : rows.filter((r) => r.status === filter)),
-    [rows, filter],
+    () => rows.filter((r) =>
+      (filter === "all" || r.status === filter) &&
+      (!eventFilter || r.event === eventFilter),
+    ),
+    [rows, filter, eventFilter],
   )
 
   const totals = useMemo(() => {
@@ -209,9 +224,12 @@ export function PaymentStatusPanel({
           <button
             type="button"
             onClick={() => onOpenCustomer(r.customer)}
-            className="text-xs text-gray-400 hover:text-brand transition-colors text-left min-w-0 truncate uppercase"
+            className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-brand transition-colors text-left min-w-0 uppercase"
           >
-            {displayIg(r.customer)}
+            <span className="truncate">{displayIg(r.customer)}</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+              <path d="M15 3h6v6" /><path d="M10 14 21 3" /><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+            </svg>
           </button>
         </div>
       </div>
@@ -318,6 +336,18 @@ export function PaymentStatusPanel({
           onFilteredRowsChange={setSearchedRows}
           pageSize={50}
           initialSorting={[{ id: "outstanding", desc: true }]}
+          toolbarExtra={
+            <div className="md:hidden w-36 shrink-0">
+              <EventSelect
+                value={eventFilter}
+                onChange={setEventFilter}
+                events={eventOptions}
+                placeholder="All events"
+                clearable
+                dense
+              />
+            </div>
+          }
           renderMobileCard={renderMobileCard}
           renderExpandedRow={renderExpandedRow}
           paginationVariant="simple"
