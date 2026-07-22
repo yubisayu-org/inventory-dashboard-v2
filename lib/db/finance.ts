@@ -35,6 +35,10 @@ export interface PaginatedPayments {
   rows: PaymentRow[]
   totalCount: number
   filteredSum: number | null  // null when skipCount=true (use cached value client-side)
+  // Per-kind sums for the stat cards. Break down by type under the active
+  // filters, ignoring the type-tab filter. null when skipCount=true.
+  depositSum: number | null
+  refundSum: number | null
   page: number
   pageSize: number
   totalPages: number
@@ -96,7 +100,6 @@ export async function getPaymentsPaginated(opts: {
     [opts.customer, "customer"],
     [opts.account, "account"],
     [opts.remarks, "remarks"],
-    [opts.kind, "kind"],
   ]
   for (const [value, col] of textFilters) {
     if (value) {
@@ -116,6 +119,18 @@ export async function getPaymentsPaginated(opts: {
   if (opts.dateTo) {
     params.push(opts.dateTo)
     conditions.push(`pay_date <= $${params.length}`)
+  }
+
+  // Snapshot the WHERE *before* the kind filter so the deposit/credit/refund
+  // stat cards always break down across all three types under the other active
+  // filters — switching the type tab must not zero out two of the cards.
+  const conditionsNoKind = [...conditions]
+  const paramsNoKind = [...params]
+  const whereNoKind = conditionsNoKind.length > 0 ? `WHERE ${conditionsNoKind.join(" AND ")}` : ""
+
+  if (opts.kind) {
+    params.push(`%${opts.kind.toLowerCase()}%`)
+    conditions.push(`lower(COALESCE(kind,'')) LIKE $${params.length}`)
   }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""
@@ -140,16 +155,28 @@ export async function getPaymentsPaginated(opts: {
   const rows = dataRows.map(mapPaymentRow)
 
   if (skipCount) {
-    return { rows, totalCount: PAYMENTS_TOTAL_COUNT_UNCHANGED, filteredSum: null, page, pageSize, totalPages: PAYMENTS_TOTAL_COUNT_UNCHANGED }
+    return { rows, totalCount: PAYMENTS_TOTAL_COUNT_UNCHANGED, filteredSum: null, depositSum: null, refundSum: null, page, pageSize, totalPages: PAYMENTS_TOTAL_COUNT_UNCHANGED }
   }
 
-  const [countRows, sumRows] = await Promise.all([
+  const [countRows, sumRows, kindSumRows] = await Promise.all([
     sql.unsafe(`SELECT COUNT(*)::int AS c FROM payments ${where}`, params),
     sql.unsafe(`SELECT COALESCE(SUM(amount), 0)::bigint AS s FROM payments ${where}`, params),
+    // Per-kind breakdown ignores the type-tab filter (whereNoKind). "deposit" is
+    // the default/fallback kind, so anything not credit/refund counts as deposit.
+    sql.unsafe(
+      `SELECT
+         COALESCE(SUM(amount) FILTER (WHERE lower(COALESCE(kind,'')) NOT IN ('credit','refund')), 0)::bigint AS deposit,
+         COALESCE(SUM(amount) FILTER (WHERE lower(kind) = 'refund'), 0)::bigint AS refund
+       FROM payments ${whereNoKind}`,
+      paramsNoKind,
+    ),
   ])
   const totalCount = Number((countRows as Record<string, unknown>[])[0]?.c ?? 0)
   const filteredSum = Number((sumRows as Record<string, unknown>[])[0]?.s ?? 0)
-  return { rows, totalCount, filteredSum, page, pageSize, totalPages: Math.max(1, Math.ceil(totalCount / pageSize)) }
+  const kindRow = (kindSumRows as Record<string, unknown>[])[0]
+  const depositSum = Number(kindRow?.deposit ?? 0)
+  const refundSum = Number(kindRow?.refund ?? 0)
+  return { rows, totalCount, filteredSum, depositSum, refundSum, page, pageSize, totalPages: Math.max(1, Math.ceil(totalCount / pageSize)) }
 }
 
 export async function addPayment(data: {

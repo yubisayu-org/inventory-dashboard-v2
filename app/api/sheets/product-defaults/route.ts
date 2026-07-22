@@ -30,13 +30,14 @@ export async function PATCH(req: NextRequest) {
     const profitPct = Number(body.profitPct)
     const operationalFee = Number(body.operationalFee)
     const packingFee = Number(body.packingFee)
+    const markupPct = Number(body.markupPct)
 
-    if (!Number.isFinite(profitPct) || !Number.isFinite(operationalFee) || !Number.isFinite(packingFee)) {
-      return NextResponse.json({ error: "profitPct, operationalFee and packingFee must be numbers" }, { status: 400 })
+    if (!Number.isFinite(profitPct) || !Number.isFinite(operationalFee) || !Number.isFinite(packingFee) || !Number.isFinite(markupPct)) {
+      return NextResponse.json({ error: "profitPct, operationalFee, packingFee and markupPct must be numbers" }, { status: 400 })
     }
 
     await withActor(session.user.email, (tx) =>
-      updateProductDefaults({ profitPct, operationalFee, packingFee }, tx),
+      updateProductDefaults({ profitPct, operationalFee, packingFee, markupPct }, tx),
     )
     return NextResponse.json({ ok: true })
   } catch (err) {

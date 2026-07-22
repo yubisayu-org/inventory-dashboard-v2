@@ -2,6 +2,7 @@
 
 import { displayIg } from "@/lib/format"
 import TableSkeleton from "@/components/TableSkeleton"
+import SelectionActionBar from "@/components/SelectionActionBar"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import type { ShipCustomer, ShipOrdersParams, ShipSegment, ShipStatus, ShipOrdersFiltered, PaymentStatus } from "@/lib/db"
@@ -234,20 +235,6 @@ export default function ShipClient() {
             dense
           />
         </div>
-        {/* Mobile ship button — always visible (like the shipment print button),
-            disabled until customers are selected. */}
-        <button
-          type="button"
-          onClick={handleBulkShip}
-          disabled={bulkShipping || selected.size === 0}
-          aria-label="Ship selected customers"
-          className="md:hidden shrink-0 inline-flex items-center gap-1 px-3 rounded-lg bg-brand text-white text-sm font-semibold disabled:opacity-50 active:bg-brand/90 transition-colors"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M22 2 11 13" /><path d="M22 2 15 22l-4-9-9-4 20-7z" />
-          </svg>
-          <span className="inline-block min-w-[1.5rem] text-center tabular-nums">{selected.size}</span>
-        </button>
       </div>
 
       {/* States */}
@@ -266,7 +253,7 @@ export default function ShipClient() {
       {/* Results */}
       {!loading && !error && groups.length > 0 && (
         <>
-          <div className={`${mergeEligible ? "flex" : "hidden"} md:flex items-center justify-end gap-3`}>
+          <div className="hidden md:flex items-center justify-end gap-3">
             {readyFiltered.length > 0 && (
               <div className="flex items-center gap-2">
                 <button
@@ -319,6 +306,42 @@ export default function ShipClient() {
           {bulkError && (
             <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {bulkError}
+            </div>
+          )}
+          {/* Mobile: floating action bar (like shopping/receiving) for the
+              selection actions — Gabung + Ship. */}
+          {selected.size > 0 && (
+            <div className="contents md:hidden">
+              <SelectionActionBar
+                count={selected.size}
+                onClear={() => setSelected(new Set())}
+                actions={[
+                  ...(mergeEligible
+                    ? [{
+                        label: "Combine",
+                        color: "blue" as const,
+                        onClick: () => setMerging(true),
+                        disabled: bulkShipping,
+                        icon: (
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="6" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><path d="M6 9v6" /><path d="M18 6a9 9 0 0 1-9 9" /><circle cx="18" cy="6" r="3" />
+                          </svg>
+                        ),
+                      }]
+                    : []),
+                  {
+                    label: bulkShipping && bulkProgress ? `${bulkProgress.done}/${bulkProgress.total}` : "Ship",
+                    color: "brand" as const,
+                    onClick: handleBulkShip,
+                    disabled: bulkShipping,
+                    icon: (
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M22 2 11 13" /><path d="M22 2 15 22l-4-9-9-4 20-7z" />
+                      </svg>
+                    ),
+                  },
+                ]}
+              />
             </div>
           )}
           {pageGroups.map((c) => {

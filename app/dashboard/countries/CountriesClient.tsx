@@ -32,23 +32,26 @@ function useLiveIdrRate(currency: string) {
 
 // Mobile-only read-only boxes: the live 1-unit rate to IDR for the typed
 // currency, plus a +5% markup rate. Styled to match the form's input boxes.
-const RATE_MARKUP = 1.05
-function LiveIdrRate({ currency }: { currency: string }) {
+// Markup % is configured in Settings → Pricing; falls back to +5% until loaded.
+function LiveIdrRate({ currency, markupPct = 5 }: { currency: string; markupPct?: number }) {
   const { rate, loading } = useLiveIdrRate(currency)
   const code = currency.trim().toUpperCase()
   const valid = /^[A-Z]{3}$/.test(code)
+  const markup = 1 + markupPct / 100
   const fmtRp = (n: number) => `Rp ${new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 }).format(n)}`
   const body = (value: number | null) =>
     !valid ? "Enter a 3-letter currency" : loading ? "Loading…" : value != null ? fmtRp(value) : "Unavailable"
+  // Shrink only the placeholder/hint so it fits one line; keep the value at text-sm.
+  const sizeCls = (value: number | null) => (valid && !loading && value != null ? "text-sm" : "text-xs")
   return (
     <div className="grid grid-cols-2 gap-3">
       <div className="flex flex-col gap-1">
-        <span className="text-xs font-medium text-gray-500">Live rate → IDR{valid ? ` (1 ${code})` : ""}</span>
-        <div className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-600">{body(rate)}</div>
+        <span className="text-xs font-medium text-gray-500">Live rate</span>
+        <div className={`w-full h-[38px] flex items-center border border-cream-border rounded-lg px-3 bg-gray-50 text-gray-600 ${sizeCls(rate)}`}>{body(rate)}</div>
       </div>
       <div className="flex flex-col gap-1">
-        <span className="text-xs font-medium text-gray-500">Markup rate (+5%)</span>
-        <div className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-600">{body(rate != null ? rate * RATE_MARKUP : null)}</div>
+        <span className="text-xs font-medium text-gray-500">Markup rate</span>
+        <div className={`w-full h-[38px] flex items-center border border-cream-border rounded-lg px-3 bg-gray-50 text-gray-600 ${sizeCls(rate != null ? rate * markup : null)}`}>{body(rate != null ? rate * markup : null)}</div>
       </div>
     </div>
   )
@@ -94,6 +97,14 @@ export default function CountriesClient() {
   const [mobileAddOpen, setMobileAddOpen] = useState(false)
 
   const [editRow, setEditRow] = useState<CountryRow | null>(null)
+  const [markupPct, setMarkupPct] = useState(5)
+
+  useEffect(() => {
+    fetch("/api/sheets/product-defaults")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d?.defaults?.markupPct != null) setMarkupPct(Number(d.defaults.markupPct)) })
+      .catch(() => {})
+  }, [])
 
   async function load() {
     setLoading(true)
@@ -315,10 +326,10 @@ export default function CountriesClient() {
       </div>
       <div className="flex items-end gap-3">
         <div className="flex-[2] min-w-0">
-          <LiveIdrRate currency={form.currency} />
+          <LiveIdrRate currency={form.currency} markupPct={markupPct} />
         </div>
         <label className="flex-1 min-w-0 flex flex-col gap-1">
-          <span className="text-xs font-medium text-gray-500">Kurs (IDR)</span>
+          <span className="text-xs font-medium text-gray-500">Rate</span>
           <input
             {...field("kurs")}
             type="number"
@@ -403,6 +414,7 @@ export default function CountriesClient() {
           }}
           onCancel={() => setEditRow(null)}
           onDelete={() => { const r = editRow; setEditRow(null); handleDelete(r) }}
+          markupPct={markupPct}
         />
       )}
 
@@ -431,9 +443,9 @@ export default function CountriesClient() {
               <span className="text-xs font-medium text-gray-500">Currency</span>
               <input {...field("currency")} placeholder="Currency (e.g. CNY)" disabled={adding} className={modalInputCls} />
             </label>
-            <LiveIdrRate currency={form.currency} />
+            <LiveIdrRate currency={form.currency} markupPct={markupPct} />
             <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-gray-500">Kurs (IDR)</span>
+              <span className="text-xs font-medium text-gray-500">Rate</span>
               <input {...field("kurs")} type="number" min="0" step="any" placeholder="Kurs (IDR)" disabled={adding} className={modalInputCls} />
             </label>
             <label className="flex flex-col gap-1">
@@ -463,11 +475,13 @@ function EditCountryModal({
   onSave,
   onCancel,
   onDelete,
+  markupPct = 5,
 }: {
   row: CountryRow
   onSave: (updated: Partial<CountryRow>) => void
   onCancel: () => void
   onDelete: () => void
+  markupPct?: number
 }) {
   const [draft, setDraft] = useState({
     name: row.name,
@@ -479,7 +493,9 @@ function EditCountryModal({
   const [saveError, setSaveError] = useState<string | null>(null)
   const firstInputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => { firstInputRef.current?.focus() }, [])
+  // Autofocus the name field on desktop only — on mobile it pops the keyboard
+  // over the sheet before the user has chosen to edit anything.
+  useEffect(() => { if (window.innerWidth >= 768) firstInputRef.current?.focus() }, [])
 
   function draftField(key: keyof typeof draft) {
     return {
@@ -554,10 +570,10 @@ function EditCountryModal({
               />
             </label>
           </div>
-          <LiveIdrRate currency={draft.currency} />
+          <LiveIdrRate currency={draft.currency} markupPct={markupPct} />
           <div className="grid grid-cols-2 gap-3">
             <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-gray-500">Kurs (IDR)</span>
+              <span className="text-xs font-medium text-gray-500">Rate</span>
               <input
                 {...draftField("kurs")}
                 onKeyDown={handleKeyDown}

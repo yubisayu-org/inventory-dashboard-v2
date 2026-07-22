@@ -7,10 +7,12 @@ export interface ProductDefaults {
   profitPct: number
   operationalFee: number
   packingFee: number
+  markupPct: number
 }
 
 export const DEFAULT_PRODUCT_DEFAULTS: ProductDefaults = {
   profitPct: 30,
   operationalFee: 5000,
   packingFee: 5000,
+  markupPct: 5,
 }

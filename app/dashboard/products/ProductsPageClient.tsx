@@ -900,16 +900,18 @@ function AddProductForm({
             </Field>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
-            <Field label="Operational Fee">
+          <div className="grid grid-cols-4 gap-3">
+            <Field label="Op Fee">
               <input value={opFee} onChange={(e) => setOpFee(e.target.value)} type="number" min="0" placeholder="5000" disabled={adding} className={formInputCls} />
             </Field>
-            <Field label="Packing Fee">
+            <Field label="Pack Fee">
               <input value={packFee} onChange={(e) => setPackFee(e.target.value)} type="number" min="0" placeholder="5000" disabled={adding} className={formInputCls} />
             </Field>
-            <Field label="Price">
-              <div className={`${formInputCls} bg-gray-50 text-gray-500 flex items-center`}>Rp {fmt(pricePreview.price)}</div>
-            </Field>
+            <div className="col-span-2">
+              <Field label="Price">
+                <div className={`${formInputCls} bg-gray-50 text-gray-500 flex items-center`}>Rp {fmt(pricePreview.price)}</div>
+              </Field>
+            </div>
           </div>
 
           {selectedCountry && (
@@ -1300,7 +1302,7 @@ function EditProductModal({
               </Field>
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-4 gap-3">
               <Field label="Op Fee">
                 <input
                   value={draft.opFee}
@@ -1321,13 +1323,15 @@ function EditProductModal({
                   className={`${formInputCls} bg-gray-50 text-gray-400 cursor-not-allowed`}
                 />
               </Field>
-              <Field label="Price">
-                <div className={`${formInputCls} bg-gray-50 text-gray-500 flex items-center`}>Rp {fmt(editCalc.price)}</div>
-              </Field>
+              <div className="col-span-2">
+                <Field label="Price">
+                  <div className={`${formInputCls} bg-gray-50 text-gray-500 flex items-center`}>Rp {fmt(editCalc.price)}</div>
+                </Field>
+              </div>
             </div>
 
             {draftCountry && (
-              <div className="flex items-center justify-between gap-1 flex-nowrap whitespace-nowrap rounded-lg bg-gray-50 border border-cream-border px-3 py-3 text-[9px] text-gray-500">
+              <div className="flex items-center justify-between gap-1 flex-nowrap whitespace-nowrap rounded-lg bg-gray-50 border border-cream-border px-3 py-3 text-[8px] md:text-[9px] text-gray-500">
                 <span>RATE: {fmt(draftCountry.kurs)}</span>
                 <span>SHIPPING/KG: {fmt(draftCountry.cargoPerKg)}</span>
                 <span>COGS: Rp {fmt(editCalc.cogs ?? 0)}</span>
@@ -1361,8 +1365,8 @@ function EditProductModal({
               </button>
             )}
             {onDuplicate && (
-              <button type="button" onClick={onDuplicate} disabled={saving} aria-label="Duplicate" className="md:hidden inline-flex items-center justify-center h-[34px] border border-cream-border rounded-lg px-3 text-gray-500 hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <button type="button" onClick={onDuplicate} disabled={saving} aria-label="Duplicate" className="md:hidden inline-flex items-center justify-center h-[38px] border border-cream-border rounded-lg px-3 text-sm text-gray-400 hover:border-brand disabled:opacity-50 transition-colors">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                 </svg>
               </button>

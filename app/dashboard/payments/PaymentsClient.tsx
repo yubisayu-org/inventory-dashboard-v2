@@ -26,6 +26,9 @@ const PAGE_SIZE = 25
 // forms (Amount/Account/Date/Remarks line up with Event/Customer).
 const INPUT_CLASS_TALL =
   "w-full border border-cream-border rounded-md px-2 py-2 text-sm text-foreground bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+// Native <input type="date"> renders taller than a text input on iOS Safari;
+// pin the height and drop the native chrome so it matches the Remarks box.
+const DATE_INPUT_CLASS = `${INPUT_CLASS_TALL} h-[38px] appearance-none`
 const LABEL = "text-xs text-gray-500 mb-1 block"
 // Fallback while options are still loading — the real list comes from
 // useSheetOptions().accounts (distinct values already in use, autocompleted
@@ -99,6 +102,8 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
   const options = useSheetOptions()
   const [rows, setRows] = useState<PaymentRow[]>([])
   const [totalCount, setTotalCount] = useState(0)
+  const [depositSum, setDepositSum] = useState<number | null>(null)
+  const [refundSum, setRefundSum] = useState<number | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [mobileAddOpen, setMobileAddOpen] = useState(false)
   const [editingRow, setEditingRow] = useState<PaymentRow | null>(null)
@@ -152,9 +157,12 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
     return { key: sorting[0].id, direction: sorting[0].desc ? ("desc" as const) : ("asc" as const) }
   }, [sorting])
 
-  const onData = useCallback((d: PageData) => {
+  const onData = useCallback((d: PageData & { depositSum?: number | null; refundSum?: number | null }) => {
     setRows(d.rows as PaymentRow[])
     setTotalCount(d.totalCount)
+    // skipCount responses omit the sums (undefined) — keep the last known values.
+    if (d.depositSum !== undefined) setDepositSum(d.depositSum)
+    if (d.refundSum !== undefined) setRefundSum(d.refundSum)
   }, [])
 
   const { fetchState, refresh } = usePaginatedFetch({
@@ -407,6 +415,23 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
 
   return (
     <div className="space-y-3">
+      {/* Stat cards: Deposit (cash in, 2/3 width) + Refund (cash out, 1/3 width)
+          on one row. Sums honour the active filters but ignore the type tab. */}
+      <div className="grid grid-cols-[53fr_47fr] gap-2 sm:gap-4">
+        <div className="rounded-xl border border-cream-border border-l-4 border-l-brand bg-white px-3 py-3 sm:px-5 sm:py-4">
+          <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Deposit</div>
+          <div className="text-lg sm:text-2xl font-bold text-foreground mt-1 tabular-nums whitespace-nowrap">
+            {depositSum !== null ? `Rp ${formatAmount(depositSum)}` : "—"}
+          </div>
+        </div>
+        <div className="rounded-xl border border-cream-border border-l-4 border-l-orange-500 bg-white px-3 py-3 sm:px-5 sm:py-4">
+          <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Refund</div>
+          <div className="text-lg sm:text-2xl font-bold text-foreground mt-1 tabular-nums whitespace-nowrap">
+            {refundSum !== null ? `Rp ${formatAmount(refundSum)}` : "—"}
+          </div>
+        </div>
+      </div>
+
       {/* Type filter tabs */}
       <div className="hidden md:flex items-center gap-1 w-full rounded-xl border border-cream-border bg-white p-1 overflow-x-auto">
         {KIND_TABS.map(({ key, label }) => {
@@ -777,7 +802,7 @@ function EditPaymentModal({
           <div className="flex gap-3">
             <div className="flex-1 min-w-0">
               <label className={LABEL}>Date</label>
-              <input type="date" value={form.payDate} onChange={(e) => setForm({ ...form, payDate: e.target.value })} className={INPUT_CLASS_TALL} />
+              <input type="date" value={form.payDate} onChange={(e) => setForm({ ...form, payDate: e.target.value })} className={DATE_INPUT_CLASS} />
             </div>
             <div className="flex-1 min-w-0">
               <label className={LABEL}>Remarks</label>
@@ -1099,7 +1124,7 @@ function MobileAddPaymentSheet({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className={LABEL}>Date</label>
-            <input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} className={INPUT_CLASS_TALL} />
+            <input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} className={DATE_INPUT_CLASS} />
           </div>
           <div>
             <label className={LABEL}>Remarks</label>
