@@ -107,6 +107,10 @@ function mapCustomerRow(r: Record<string, unknown>, ongkir: OngkirByWarehouse): 
     bankName: (r.bank_name as string) ?? "",
     bankAccountNumber: (r.bank_account_number as string) ?? "",
     bankAccountHolder: (r.bank_account_holder as string) ?? "",
+    // Present only when the query joined customer_invoice_summary; otherwise 0.
+    invoiceCount: Number(r.invoice_count ?? 0),
+    totalInvoiced: Number(r.total_invoiced ?? 0),
+    totalOutstanding: Number(r.total_outstanding ?? 0),
     createdAt: r.created_at ? new Date(r.created_at as string).toISOString() : null,
     updatedAt: r.updated_at ? new Date(r.updated_at as string).toISOString() : null,
   }
@@ -163,6 +167,9 @@ export async function getCustomersPaginated(opts: {
   sortKey?: string
   sortDir?: "asc" | "desc"
   skipCount?: boolean
+  /** Balance-status filter over the invoice roll-up. Only customers with at
+   *  least one (non-void) invoice qualify. */
+  balanceStatus?: "outstanding" | "overpayment" | "settled"
   /** Filter one warehouse's ongkir column (the grid's dynamic `ongkir_<id>`
    *  columns), e.g. "only customers whose ongkir to warehouse 3 is >= 20000". */
   ongkirWarehouseId?: number
@@ -238,12 +245,26 @@ export async function getCustomersPaginated(opts: {
     conditions.push(`${filterOngkirExpr} ${OP_SQL[opts.ongkirOp]} $${params.length}`)
   }
 
+  // Invoice roll-up join — always present so the grid can sort by total invoiced
+  // and filter by balance status. No params (keyed on the canonical handle).
+  joinSql += ` LEFT JOIN customer_invoice_summary cis ON cis.cust_key = lower(replace(c.instagram_id, '@', ''))`
+  if (opts.balanceStatus === "outstanding") {
+    conditions.push(`COALESCE(cis.invoice_count, 0) > 0 AND COALESCE(cis.total_outstanding, 0) > 0`)
+  } else if (opts.balanceStatus === "overpayment") {
+    conditions.push(`COALESCE(cis.invoice_count, 0) > 0 AND COALESCE(cis.total_outstanding, 0) < 0`)
+  } else if (opts.balanceStatus === "settled") {
+    conditions.push(`COALESCE(cis.invoice_count, 0) > 0 AND COALESCE(cis.total_outstanding, 0) = 0`)
+  }
+
   const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""
 
   const SORT_COLUMNS: Record<string, string> = {
     instagramId: "c.instagram_id", name: "c.name", whatsapp: "c.whatsapp",
     ekspedisi: "c.ekspedisi", dataDiri: "c.data_diri", bankName: "c.bank_name",
     createdAt: "c.created_at", updatedAt: "c.updated_at",
+    totalInvoiced: "COALESCE(cis.total_invoiced, 0)",
+    invoiceCount: "COALESCE(cis.invoice_count, 0)",
+    totalOutstanding: "COALESCE(cis.total_outstanding, 0)",
   }
   const sortCol = sortOngkirExpr ?? ((opts.sortKey && SORT_COLUMNS[opts.sortKey]) || "c.instagram_id")
   const sortDir = opts.sortDir === "desc" ? "DESC" : "ASC"
@@ -251,7 +272,10 @@ export async function getCustomersPaginated(opts: {
   const dataRows = await sql.unsafe(
     `SELECT c.id, c.instagram_id, c.name, c.whatsapp, c.data_diri, c.ekspedisi,
             c.bank_name, c.bank_account_number, c.bank_account_holder,
-            c.created_at, c.updated_at
+            c.created_at, c.updated_at,
+            COALESCE(cis.invoice_count, 0) AS invoice_count,
+            COALESCE(cis.total_invoiced, 0) AS total_invoiced,
+            COALESCE(cis.total_outstanding, 0) AS total_outstanding
      FROM customers c
      ${joinSql}
      ${where}

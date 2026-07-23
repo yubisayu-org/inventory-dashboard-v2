@@ -21,6 +21,8 @@ interface Props {
   allowNewValue?: boolean
   /** Show the full list when there's no query, even for large lists (no "type to search" gate) */
   alwaysShowAll?: boolean
+  /** Click-only mode: no typing/filtering, just open the list and pick. */
+  searchable?: boolean
   /** Shorter trigger input (34px) instead of the default 38px */
   dense?: boolean
 }
@@ -34,6 +36,7 @@ export default function SearchableSelect({
   clearable = false,
   allowNewValue = false,
   alwaysShowAll = false,
+  searchable = true,
   dense = false,
 }: Props) {
   const selectedLabel = useMemo(
@@ -80,10 +83,12 @@ export default function SearchableSelect({
 
   const hasQuery = inputValue.trim().length > 0
   const filtered = useMemo(() => {
+    // Click-only mode never filters — always show the full list.
+    if (!searchable) return options
     if (debouncedQuery) return options.filter((o) => o.label.toLowerCase().includes(debouncedQuery))
     if (LARGE_LIST && !alwaysShowAll) return []
     return options
-  }, [debouncedQuery, options, LARGE_LIST, alwaysShowAll])
+  }, [debouncedQuery, options, LARGE_LIST, alwaysShowAll, searchable])
 
   useEffect(() => { setHighlightIdx((i) => (i === -1 ? i : -1)) }, [filtered])
 
@@ -171,6 +176,21 @@ export default function SearchableSelect({
     return () => document.removeEventListener("keydown", handleKeyDown)
   }, [open, closeDropdown])
 
+  // The popup is position:fixed, positioned from the input's rect at open time.
+  // Re-run that positioning on scroll/resize so it tracks the field instead of
+  // floating free (capture phase catches scrolling in any ancestor container).
+  useEffect(() => {
+    if (!open) return
+    const reposition = () => positionPopup()
+    window.addEventListener("scroll", reposition, true)
+    window.addEventListener("resize", reposition)
+    return () => {
+      window.removeEventListener("scroll", reposition, true)
+      window.removeEventListener("resize", reposition)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
   // ---------- Input handlers ----------
 
   function handleFocus() {
@@ -242,11 +262,13 @@ export default function SearchableSelect({
         value={inputValue}
         onChange={handleInputChange}
         onFocus={handleFocus}
+        onClick={() => { if (!searchable) openDropdown() }}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
         disabled={disabled}
+        readOnly={!searchable}
         autoComplete="off"
-        className={`w-full border border-cream-border rounded-lg px-3 bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors disabled:opacity-50 disabled:cursor-not-allowed pr-8 ${dense ? "h-[34px] py-0 text-xs" : "py-2 text-sm"}`}
+        className={`w-full border border-cream-border rounded-lg px-3 bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors disabled:opacity-50 disabled:cursor-not-allowed pr-8 ${!searchable ? "cursor-pointer" : ""} ${dense ? "h-[34px] py-0 text-xs" : "py-2 text-sm"}`}
       />
       <svg
         className={`absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none transition-transform ${open ? "rotate-180" : ""}`}

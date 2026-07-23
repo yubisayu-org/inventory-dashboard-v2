@@ -883,6 +883,8 @@ function AddProductForm({
                 options={countries.map((c) => ({ value: String(c.id), label: `${c.name} (${c.currency})` }))}
                 placeholder="Select country…"
                 disabled={adding}
+                searchable={false}
+                alwaysShowAll
               />
             </Field>
             <Field label="Valas">
@@ -1259,15 +1261,16 @@ function EditProductModal({
         {draftAbroad ? (
           <div className="grid grid-cols-2 gap-3">
             <Field label="Type">
-              <select
-                value={draft.countryId ?? ""}
-                onChange={(e) => setDraft((d) => ({ ...d, countryId: e.target.value ? Number(e.target.value) : null }))}
+              <SearchableSelect
+                value={draft.countryId != null ? String(draft.countryId) : ""}
+                onChange={(v) => setDraft((d) => ({ ...d, countryId: v ? Number(v) : null }))}
+                options={countries.map((c) => ({ value: String(c.id), label: `${c.name} (${c.currency})` }))}
+                placeholder="Domestic"
                 disabled={saving}
-                className={formInputCls}
-              >
-                <option value="">Domestic</option>
-                {countries.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.currency})</option>)}
-              </select>
+                searchable={false}
+                clearable
+                alwaysShowAll
+              />
             </Field>
             <Field label="Valas">
               <input value={draft.valas} onChange={(e) => setDraft((d) => ({ ...d, valas: e.target.value }))} type="number" step="any" min="0" disabled={saving} className={formInputCls} />
@@ -1275,15 +1278,16 @@ function EditProductModal({
           </div>
         ) : (
           <Field label="Type">
-            <select
-              value={draft.countryId ?? ""}
-              onChange={(e) => setDraft((d) => ({ ...d, countryId: e.target.value ? Number(e.target.value) : null }))}
+            <SearchableSelect
+              value={draft.countryId != null ? String(draft.countryId) : ""}
+              onChange={(v) => setDraft((d) => ({ ...d, countryId: v ? Number(v) : null }))}
+              options={countries.map((c) => ({ value: String(c.id), label: `${c.name} (${c.currency})` }))}
+              placeholder="Domestic"
               disabled={saving}
-              className={formInputCls}
-            >
-              <option value="">Domestic</option>
-              {countries.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.currency})</option>)}
-            </select>
+              searchable={false}
+              clearable
+              alwaysShowAll
+            />
           </Field>
         )}
 

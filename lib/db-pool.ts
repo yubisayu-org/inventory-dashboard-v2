@@ -14,7 +14,13 @@ const sql = globalForDb.__dbPool ?? postgres(connectionString, {
   // Bumped from 5 → 10 because pages like the dashboard fan out 6 queries
   // in parallel via Promise.all and could starve the pool with multiple tabs.
   max: 10,
-  idle_timeout: 20,
+  // Keep pooled client connections warm for 5 min between bursts. At the old
+  // 20s, quiet gaps closed connections constantly, and every reopen re-ran the
+  // pooler auth (pgbouncer.get_auth) plus a driver type-introspection query —
+  // which showed up in pg_stat_statements as tens of thousands of
+  // connection-churn calls and real egress. Longer idle = far fewer
+  // reopen→reauth→reintrospect cycles.
+  idle_timeout: 300,
   max_lifetime: 60 * 30,
   connect_timeout: 10,
   ssl: "require",

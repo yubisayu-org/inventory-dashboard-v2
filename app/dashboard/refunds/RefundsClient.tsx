@@ -202,6 +202,13 @@ export default function RefundsClient() {
         </span>
       ),
     },
+    {
+      // Hidden by default — exists only so the Done tab can sort by completion
+      // time (updatedAt = when the refund reached its terminal status).
+      accessorKey: "updatedAt",
+      header: "Updated",
+      enableColumnFilter: false,
+    },
   ], [])
 
   const renderMobileCard = useCallback((r: RefundRow) => {
@@ -281,6 +288,7 @@ export default function RefundsClient() {
 
       <div className="mt-3">
         <DataGrid
+          key={tab}
           data={tabFiltered}
           columns={columns}
           pageSize={25}
@@ -294,7 +302,10 @@ export default function RefundsClient() {
           onRowClick={(row) => setEditRow(row)}
           renderMobileCard={renderMobileCard}
           paginationVariant="simple"
-          initialSorting={[{ id: "amount", desc: true }]}
+          initialVisibility={{ updatedAt: false }}
+          // Done tab sorts by completion time (newest first); other tabs by
+          // amount. key={tab} remounts so this re-seeds on tab change.
+          initialSorting={tab === "refunded" ? [{ id: "updatedAt", desc: true }] : [{ id: "amount", desc: true }]}
           belowToolbar={
             creating ? (
               <div className="hidden md:block">

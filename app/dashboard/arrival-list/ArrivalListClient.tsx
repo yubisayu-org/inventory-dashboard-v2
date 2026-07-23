@@ -861,12 +861,6 @@ function jakartaToday(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date())
 }
 
-// Turn a document name into a safe-ish filename slug; falls back to a default.
-function fileSlug(name: string): string {
-  const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
-  return slug || "cargo-document"
-}
-
 function CargoDocPanel({
   items,
   onClose,
@@ -916,6 +910,9 @@ function CargoDocPanel({
     if (!anyQty || generating) return
     setGenerating(true)
     setError(null)
+    // Open the tab now, inside the click gesture, so popup blockers don't kill
+    // it after the async PDF build. We point it at the blob once it's ready.
+    const win = window.open("", "_blank")
     try {
       const lines = items
         .map((it) => ({
@@ -928,18 +925,13 @@ function CargoDocPanel({
       const trimmedName = name.trim()
       const blob = await generateCargoDocument({ name: trimmedName || undefined, date: jakartaToday(), lines })
       const url = URL.createObjectURL(blob)
-      try {
-        const a = document.createElement("a")
-        a.href = url
-        a.download = `${fileSlug(trimmedName)}.pdf`
-        document.body.appendChild(a)
-        a.click()
-        document.body.removeChild(a)
-      } finally {
-        URL.revokeObjectURL(url)
-      }
+      if (win) win.location.href = url
+      else window.open(url, "_blank") // fallback if the pre-open was blocked
+      // Revoke later so the new tab has time to load the blob.
+      setTimeout(() => URL.revokeObjectURL(url), 60000)
       onGenerated()
     } catch (err) {
+      win?.close()
       setError(err instanceof Error ? err.message : "Failed to generate document")
       setGenerating(false)
     }
@@ -1031,7 +1023,7 @@ function CargoDocPanel({
               disabled={generating || !anyQty}
               className="px-4 py-1.5 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-hover disabled:opacity-50 transition-colors"
             >
-              {generating ? "Preparing…" : "Download PDF"}
+              {generating ? "Preparing…" : "Open PDF"}
             </button>
           </div>
         </div>
@@ -1389,14 +1381,14 @@ function ArriveModal({
             {saving
               ? "Saving…"
               : mode === "wrong"
-                ? "Log Wrong Product & Cancel"
+                ? "Log wrong & cancel"
                 : mode === "broken"
-                  ? "Log Broken & Cancel"
+                  ? "Log broken & cancel"
                   : mode === "missing"
-                    ? "Mark Missing & Cancel"
+                    ? "Mark missing & cancel"
                     : mode === "cancelled"
-                      ? "Log to Inventory & Cancel"
-                      : "Mark as Arrived"}
+                      ? "Log to inventory & cancel"
+                      : "Mark arrived"}
           </button>
         </div>
       </div>

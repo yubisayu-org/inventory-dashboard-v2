@@ -9,7 +9,9 @@ const connectionString = process.env.INVOICE_READER_DATABASE_URL!
 const publicSql = postgres(connectionString, {
   // Low ceiling: this is a single read per request on a low-traffic path.
   max: 3,
-  idle_timeout: 20,
+  // Keep connections warm between bursts to cut reconnect churn (auth +
+  // type-introspection re-runs). See lib/db-pool.ts for the full rationale.
+  idle_timeout: 300,
   max_lifetime: 60 * 30,
   connect_timeout: 10,
   ssl: "require",

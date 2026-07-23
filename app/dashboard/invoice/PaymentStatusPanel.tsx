@@ -359,7 +359,7 @@ export function PaymentStatusPanel({
           event={adjustingRow.event}
           customer={adjustingRow.customer}
           onClose={() => setAdjustingRow(null)}
-          onSaved={fetchRows}
+          onSaved={() => { setAdjustingRow(null); fetchRows() }}
         />
       )}
     </>
