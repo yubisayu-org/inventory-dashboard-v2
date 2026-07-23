@@ -536,7 +536,7 @@ export default function ExcessTable() {
           <button
             type="button"
             onClick={() => setAddOpen((o) => !o)}
-            className={`hidden md:inline-flex items-center gap-1.5 h-[34px] px-3 text-xs font-medium rounded-lg border transition-colors shrink-0 ${
+            className={`hidden md:inline-flex items-center gap-1.5 h-[38px] px-3 text-sm font-medium rounded-lg border transition-colors shrink-0 ${
               addOpen ? "bg-brand-light text-brand border-brand/30" : "bg-brand text-white border-transparent hover:bg-brand-hover"
             }`}
           >

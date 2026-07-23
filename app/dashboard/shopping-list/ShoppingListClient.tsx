@@ -409,7 +409,7 @@ export default function ShoppingListClient() {
         </button>
         <button
           onClick={() => setPurchaseOpen(true)}
-          className="hidden md:inline-flex items-center gap-1.5 h-[34px] px-3 text-xs font-medium rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors"
+          className="hidden md:inline-flex items-center gap-1.5 h-[38px] px-3 text-sm font-medium rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors"
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <path d="M12 5v14M5 12h14" />

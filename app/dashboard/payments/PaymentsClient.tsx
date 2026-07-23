@@ -37,6 +37,11 @@ const FALLBACK_ACCOUNT_OPTIONS = ["BCA", "JAGO", "QRIS", "TRANSFER"]
 
 // Checked-status filter: "" = all, "true" = checked only, "false" = unchecked.
 type CheckedFilter = "" | "true" | "false"
+const CHECKED_FILTER_OPTIONS = [
+  { value: "", label: "All status" },
+  { value: "true", label: "Checked" },
+  { value: "false", label: "Unchecked" },
+]
 
 // Payment kind filter, driven by the type tabs. "" = all.
 type KindFilter = "" | "deposit" | "credit" | "refund"
@@ -46,6 +51,11 @@ const KIND_TABS: { key: KindFilter; label: string }[] = [
   { key: "credit", label: "Credit" },
   { key: "refund", label: "Refund" },
 ]
+// Same options as the type tabs, for the mobile popover's click-only dropdown.
+const KIND_FILTER_OPTIONS = KIND_TABS.map(({ key, label }) => ({
+  value: key,
+  label: key ? label : "All types",
+}))
 
 type EditForm = {
   event: string
@@ -65,36 +75,6 @@ function formatDate(iso: string): string {
   if (!iso) return "—"
   const d = new Date(iso + "T00:00:00")
   return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
-}
-
-// Tri-state checked-status filter used on both desktop toolbar and mobile.
-function CheckedFilterSelect({
-  value,
-  onChange,
-  className,
-}: {
-  value: CheckedFilter
-  onChange: (v: CheckedFilter) => void
-  className: string
-}) {
-  return (
-    <div className="relative inline-block">
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value as CheckedFilter)}
-        title="Filter by checked status"
-        aria-label="Filter by checked status"
-        className={`appearance-none ${className}`}
-      >
-        <option value="">All status</option>
-        <option value="true">Checked</option>
-        <option value="false">Unchecked</option>
-      </select>
-      <svg className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" viewBox="0 0 20 20" fill="currentColor">
-        <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
-      </svg>
-    </div>
-  )
 }
 
 export default function PaymentsClient({ role }: { role: Role | null }) {
@@ -392,7 +372,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
     <>
       <button
         onClick={() => { setAddOpen((o) => !o); setEditingRow(null) }}
-        className={`inline-flex items-center gap-1.5 h-[34px] px-3 text-xs rounded-lg border transition-colors ${
+        className={`inline-flex items-center gap-1.5 h-[38px] px-3 text-sm rounded-lg border transition-colors ${
           addOpen ? "bg-brand-light text-brand border-brand/30" : "bg-brand text-white border-transparent hover:bg-brand-hover"
         }`}
       >
@@ -471,11 +451,14 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
             ) : undefined
           }
           toolbarExtra={
-            <CheckedFilterSelect
-              value={checkedFilter}
-              onChange={handleCheckedFilterChange}
-              className="w-32 h-[34px] border border-cream-border rounded-lg pl-2 pr-6 text-xs text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
-            />
+            <div className="w-36 shrink-0">
+              <SearchableSelect
+                value={checkedFilter}
+                onChange={(v) => handleCheckedFilterChange(v as CheckedFilter)}
+                options={CHECKED_FILTER_OPTIONS}
+                searchable={false}
+              />
+            </div>
           }
           toolbarExtraEnd={refreshButton}
           initialVisibility={{ createdAt: false, updatedAt: false }}
@@ -519,24 +502,21 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
               <div className="absolute right-0 top-full mt-1 z-30 w-52 rounded-lg border border-cream-border bg-white shadow-lg p-3 flex flex-col gap-3">
                 <label className="flex flex-col gap-1">
                   <span className="text-xs font-medium text-gray-500">Status</span>
-                  <CheckedFilterSelect
+                  <SearchableSelect
                     value={checkedFilter}
-                    onChange={handleCheckedFilterChange}
-                    className="w-full border border-cream-border rounded-lg pl-2 pr-6 py-2 text-sm text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+                    onChange={(v) => handleCheckedFilterChange(v as CheckedFilter)}
+                    options={CHECKED_FILTER_OPTIONS}
+                    searchable={false}
                   />
                 </label>
                 <label className="flex flex-col gap-1">
                   <span className="text-xs font-medium text-gray-500">Type</span>
-                  <select
+                  <SearchableSelect
                     value={kindFilter}
-                    onChange={(e) => handleKindFilterChange(e.target.value as KindFilter)}
-                    aria-label="Filter by type"
-                    className="w-full border border-cream-border rounded-lg px-2 py-2 text-sm text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
-                  >
-                    {KIND_TABS.map(({ key, label }) => (
-                      <option key={key || "all"} value={key}>{key ? label : "All types"}</option>
-                    ))}
-                  </select>
+                    onChange={(v) => handleKindFilterChange(v as KindFilter)}
+                    options={KIND_FILTER_OPTIONS}
+                    searchable={false}
+                  />
                 </label>
               </div>
             )}

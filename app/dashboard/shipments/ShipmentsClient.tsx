@@ -19,8 +19,17 @@ import DataGrid, {
   type RowSelectionState,
 } from "@/components/DataGrid"
 import { InvoiceDetailDrawer } from "@/app/dashboard/invoice/InvoiceDetailDrawer"
+import SearchableSelect from "@/components/SearchableSelect"
 
 const fmt = (n: number) => n.toLocaleString("id-ID")
+
+// Time-window options for the shipments filter (click-only dropdown).
+const WINDOW_OPTIONS = [
+  { value: "1", label: "Last 24 hours" },
+  { value: "7", label: "Last week" },
+  { value: "30", label: "Last month" },
+  { value: "all", label: "All shipments" },
+]
 
 // A grid row may represent several DB shipment rows that were shipped together
 // (same merge_group). It carries the underlying rowNumbers so actions (resi
@@ -499,6 +508,14 @@ export default function ShipmentsClient() {
   // Bound the default fetch to recent shipments so the payload stays small as
   // history grows; "all" loads everything on demand.
   const [windowDays, setWindowDays] = useState<string>("1")
+  const [windowFilterOpen, setWindowFilterOpen] = useState(false)
+  const windowFilterRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!windowFilterOpen) return
+    const h = (e: MouseEvent) => { if (!windowFilterRef.current?.contains(e.target as Node)) setWindowFilterOpen(false) }
+    document.addEventListener("mousedown", h)
+    return () => document.removeEventListener("mousedown", h)
+  }, [windowFilterOpen])
 
   async function load(days: string = windowDays) {
     setLoading(true)
@@ -841,23 +858,46 @@ export default function ShipmentsClient() {
   ), [])
 
   const toolbarExtra = (
-    <div className="relative shrink-0">
-      <select
-        value={windowDays}
-        onChange={(e) => setWindowDays(e.target.value)}
-        disabled={loading}
-        title="Rentang waktu shipment yang dimuat"
-        className="appearance-none h-[38px] text-xs text-gray-600 bg-white border border-cream-border rounded-lg pl-2 pr-8 hover:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand disabled:opacity-50 transition-colors"
-      >
-        <option value="1">Last 24 hours</option>
-        <option value="7">Last week</option>
-        <option value="30">Last month</option>
-        <option value="all">All shipments</option>
-      </select>
-      <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="m6 9 6 6 6-6" />
-      </svg>
-    </div>
+    <>
+      {/* Desktop: full dropdown. */}
+      <div className="hidden md:block w-40 shrink-0" title="Rentang waktu shipment yang dimuat">
+        <SearchableSelect
+          value={windowDays}
+          onChange={setWindowDays}
+          options={WINDOW_OPTIONS}
+          disabled={loading}
+          searchable={false}
+        />
+      </div>
+      {/* Mobile: icon-only trigger + options popover, so the row stays compact. */}
+      <div className="md:hidden relative shrink-0" ref={windowFilterRef}>
+        <button
+          type="button"
+          onClick={() => setWindowFilterOpen((o) => !o)}
+          disabled={loading}
+          aria-label="Filter time window"
+          className="inline-flex items-center h-[38px] px-3 rounded-lg border border-cream-border bg-white text-sm text-gray-600 active:border-brand active:text-brand disabled:opacity-50"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+          </svg>
+        </button>
+        {windowFilterOpen && (
+          <div className="absolute right-0 top-full mt-1 z-30 w-40 rounded-lg border border-cream-border bg-white shadow-lg p-1.5 flex flex-col">
+            {WINDOW_OPTIONS.map(({ value, label }) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => { setWindowDays(value); setWindowFilterOpen(false) }}
+                className={`text-left px-2.5 py-1.5 rounded-md text-sm transition-colors ${windowDays === value ? "bg-brand-light text-brand font-medium" : "text-gray-600 hover:bg-cream"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
   )
 
   const printButton = (
@@ -865,7 +905,7 @@ export default function ShipmentsClient() {
       type="button"
       onClick={handlePrintPdf}
       disabled={printingPdf || selectedCount === 0}
-      className="shrink-0 inline-flex items-center gap-1.5 h-[38px] text-xs font-medium text-white bg-brand hover:bg-brand/90 disabled:opacity-50 transition-colors px-3 rounded-lg whitespace-nowrap"
+      className="shrink-0 inline-flex items-center gap-1.5 h-[38px] text-sm font-medium text-white bg-brand hover:bg-brand/90 disabled:opacity-50 transition-colors px-3 rounded-lg whitespace-nowrap"
     >
       <svg
         width="13"

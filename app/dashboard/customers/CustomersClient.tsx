@@ -520,7 +520,7 @@ export default function CustomersClient() {
       <button
         type="button"
         onClick={() => setCreating(true)}
-        className="hidden md:inline-flex px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 transition-colors"
+        className="hidden md:inline-flex items-center h-[38px] px-3 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 transition-colors"
       >
         + Add Customer
       </button>

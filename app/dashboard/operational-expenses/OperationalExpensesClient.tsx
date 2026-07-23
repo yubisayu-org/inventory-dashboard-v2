@@ -580,7 +580,7 @@ export default function OperationalExpensesClient() {
             <button
               type="button"
               onClick={() => setAddOpen((o) => !o)}
-              className={`inline-flex items-center gap-1.5 h-[34px] px-3 text-xs rounded-lg border transition-colors ${
+              className={`inline-flex items-center gap-1.5 h-[38px] px-3 text-sm rounded-lg border transition-colors ${
                 addOpen ? "bg-brand-light text-brand border-brand/30" : "bg-brand text-white border-transparent hover:bg-brand-hover"
               }`}
             >
@@ -619,7 +619,7 @@ export default function OperationalExpensesClient() {
             type="button"
             onClick={() => handleSortingChange([{ id: "id", desc: !mobileIdDesc }])}
             aria-label="Toggle sort order"
-            className="shrink-0 inline-flex items-center gap-1 px-3 rounded-lg border border-cream-border bg-white text-xs font-medium text-gray-600 active:border-brand active:text-brand"
+            className="shrink-0 inline-flex items-center gap-1 px-3 rounded-lg border border-cream-border bg-white text-sm font-medium text-gray-600 active:border-brand active:text-brand"
           >
             {mobileIdDesc ? "Newest" : "Oldest"}
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
