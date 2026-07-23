@@ -28,6 +28,7 @@ export async function GET(req: NextRequest) {
         bankName: params.get("bankName") ?? undefined,
         sortKey: params.get("sortKey") ?? undefined,
         sortDir: (params.get("sortDir") as "asc" | "desc") ?? undefined,
+        balanceStatus: (params.get("balanceStatus") as "outstanding" | "overpayment" | "settled") ?? undefined,
         skipCount: params.get("skipCount") === "true",
         ongkirWarehouseId: params.get("ongkirWarehouseId") ? Number(params.get("ongkirWarehouseId")) : undefined,
         ongkirOp: (params.get("ongkirOp") as "eq" | "gt" | "lt" | "gte" | "lte") ?? undefined,

@@ -166,6 +166,12 @@ export interface CustomerRow {
   bankName: string
   bankAccountNumber: string
   bankAccountHolder: string
+  // Invoice roll-up from customer_invoice_summary (0 for callers that don't
+  // join it, e.g. the full getCustomers list). totalOutstanding > 0 = owes,
+  // < 0 = overpaid, 0 = settled. Voids excluded from invoiceCount.
+  invoiceCount: number
+  totalInvoiced: number
+  totalOutstanding: number
   createdAt: string | null
   updatedAt: string | null
 }
