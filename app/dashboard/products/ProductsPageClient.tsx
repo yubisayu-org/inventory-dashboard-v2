@@ -545,7 +545,7 @@ export default function ProductsPageClient() {
             type="button"
             onClick={() => handleSortingChange([{ id: "id", desc: !mobileIdDesc }])}
             aria-label="Toggle sort order"
-            className="shrink-0 inline-flex items-center gap-1 px-3 rounded-xl border border-cream-border bg-white text-xs font-medium text-gray-600 active:border-brand active:text-brand"
+            className="shrink-0 inline-flex items-center gap-1 px-3 rounded-lg border border-cream-border bg-white text-xs font-medium text-gray-600 active:border-brand active:text-brand"
           >
             {mobileIdDesc ? "Newest" : "Oldest"}
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

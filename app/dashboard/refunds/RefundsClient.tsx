@@ -320,14 +320,13 @@ export default function RefundsClient() {
           }
           toolbarExtra={
             <>
-              <div className="md:hidden w-40 shrink-0 [&_input]:h-[34px]">
+              <div className="md:hidden w-40 shrink-0">
                 <EventSelect
                   value={eventFilter}
                   onChange={setEventFilter}
                   events={options?.events ?? []}
                   placeholder="All event"
                   clearable
-                  dense
                 />
               </div>
               <button

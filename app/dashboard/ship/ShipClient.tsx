@@ -226,7 +226,6 @@ export default function ShipClient() {
           onChange={setSearch}
           placeholder="Cari customer…"
           className="flex-1 min-w-0 md:min-w-[160px]"
-          dense
         />
         <div className="w-36 md:w-48 shrink-0">
           <EventSelect
@@ -235,7 +234,6 @@ export default function ShipClient() {
             events={sheetOptions?.events ?? []}
             placeholder="Semua Event"
             clearable
-            dense
           />
         </div>
         {/* Desktop select-all toggle (mobile uses the round FAB). Shown on the

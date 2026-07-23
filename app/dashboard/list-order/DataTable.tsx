@@ -455,7 +455,7 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
             type="button"
             onClick={() => handleSortingChange([{ id: "createdAt", desc: !((sorting.find((s) => s.id === "createdAt")?.desc) ?? true) }])}
             aria-label="Toggle sort order"
-            className="shrink-0 inline-flex items-center gap-1 px-3 rounded-xl border border-cream-border bg-white text-xs font-medium text-gray-600 active:border-brand active:text-brand"
+            className="shrink-0 inline-flex items-center gap-1 px-3 rounded-lg border border-cream-border bg-white text-xs font-medium text-gray-600 active:border-brand active:text-brand"
           >
             {((sorting.find((s) => s.id === "createdAt")?.desc) ?? true) ? "Newest" : "Oldest"}
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -469,7 +469,7 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
               setPagination((p) => ({ ...p, pageIndex: 0 }))
             }}
             aria-label="Filter by note"
-            className={`shrink-0 inline-flex items-center gap-1 px-3 rounded-xl border bg-white text-xs font-medium active:border-brand active:text-brand ${noteFilter ? "border-brand text-brand" : "border-cream-border text-gray-600"}`}
+            className={`shrink-0 inline-flex items-center gap-1 px-3 rounded-lg border bg-white text-xs font-medium active:border-brand active:text-brand ${noteFilter ? "border-brand text-brand" : "border-cream-border text-gray-600"}`}
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />

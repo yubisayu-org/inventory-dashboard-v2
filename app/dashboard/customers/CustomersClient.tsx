@@ -481,22 +481,19 @@ export default function CustomersClient() {
         onClick={cycleInvSort}
         aria-label="Sort by total invoiced"
         title={invSort === "desc" ? "Invoiced: high → low" : invSort === "asc" ? "Invoiced: low → high" : "Sort by total invoiced"}
-        className={`md:hidden shrink-0 h-[34px] w-[34px] flex items-center justify-center rounded-lg border transition-colors ${
-          invSort ? "border-brand text-brand bg-brand-light" : "border-cream-border text-gray-500 hover:border-brand hover:text-brand"
-        }`}
+        className="md:hidden shrink-0 relative border border-cream-border rounded-lg h-[38px] px-3 text-sm text-gray-600 bg-white flex items-center gap-1.5 hover:border-brand transition-colors"
       >
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="m3 16 4 4 4-4" /><path d="M7 20V4" /><path d="m21 8-4-4-4 4" /><path d="M17 4v16" />
         </svg>
+        {invSort && <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-brand" />}
       </button>
       <div className="relative md:hidden shrink-0" ref={balanceFilterRef}>
         <button
           type="button"
           onClick={() => setBalanceFilterOpen((o) => !o)}
           aria-label="Filter by balance status"
-          className={`relative h-[34px] w-[34px] flex items-center justify-center rounded-lg border transition-colors ${
-            balanceFilter ? "border-brand text-brand bg-brand-light" : "border-cream-border text-gray-500 hover:border-brand hover:text-brand"
-          }`}
+          className="relative border border-cream-border rounded-lg h-[38px] px-3 text-sm text-gray-600 bg-white flex items-center gap-1.5 hover:border-brand transition-colors"
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M22 3H2l8 9.46V19l4 2v-8.54z" />

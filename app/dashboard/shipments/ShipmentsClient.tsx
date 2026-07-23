@@ -847,7 +847,7 @@ export default function ShipmentsClient() {
         onChange={(e) => setWindowDays(e.target.value)}
         disabled={loading}
         title="Rentang waktu shipment yang dimuat"
-        className="appearance-none h-[34px] text-xs text-gray-600 bg-white border border-cream-border rounded-lg pl-2 pr-8 hover:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand disabled:opacity-50 transition-colors"
+        className="appearance-none h-[38px] text-xs text-gray-600 bg-white border border-cream-border rounded-lg pl-2 pr-8 hover:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand disabled:opacity-50 transition-colors"
       >
         <option value="1">Last 24 hours</option>
         <option value="7">Last week</option>
@@ -865,7 +865,7 @@ export default function ShipmentsClient() {
       type="button"
       onClick={handlePrintPdf}
       disabled={printingPdf || selectedCount === 0}
-      className="shrink-0 inline-flex items-center gap-1.5 h-[34px] text-xs font-medium text-white bg-brand hover:bg-brand/90 disabled:opacity-50 transition-colors px-3 rounded-lg whitespace-nowrap"
+      className="shrink-0 inline-flex items-center gap-1.5 h-[38px] text-xs font-medium text-white bg-brand hover:bg-brand/90 disabled:opacity-50 transition-colors px-3 rounded-lg whitespace-nowrap"
     >
       <svg
         width="13"
