@@ -197,8 +197,10 @@ export default function SearchableSelect({
     if (disabled) return
     openDropdown()
     // Select the displayed label so the user can type to search (replacing it)
-    // without the field ever appearing empty.
-    inputRef.current?.select()
+    // without the field ever appearing empty. Only in searchable mode — in
+    // click-only mode the input is readOnly, so selecting would leave a
+    // pointless blue text highlight on the trigger.
+    if (searchable) inputRef.current?.select()
   }
 
   function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {

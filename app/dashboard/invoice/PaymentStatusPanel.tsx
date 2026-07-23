@@ -344,7 +344,6 @@ export function PaymentStatusPanel({
                 events={eventOptions}
                 placeholder="All events"
                 clearable
-                dense
               />
             </div>
           }

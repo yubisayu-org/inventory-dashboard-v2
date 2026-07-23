@@ -383,7 +383,6 @@ export default function ShoppingListClient() {
           onChange={setSearch}
           placeholder="Search shopping list…"
           className="flex-1 min-w-0 sm:min-w-[180px]"
-          dense
         />
         <div className="w-40 shrink-0 sm:w-[12rem]">
           <EventSelect
@@ -392,7 +391,6 @@ export default function ShoppingListClient() {
             events={options?.events ?? []}
             placeholder="All Events"
             clearable
-            dense
           />
         </div>
         {/* Select-all toggle, right of the event filter (both layouts). */}
@@ -401,18 +399,17 @@ export default function ShoppingListClient() {
           onClick={toggleSelectAll}
           aria-label={allSelected ? "Deselect all" : "Select all"}
           title={allSelected ? "Deselect all" : "Select all"}
-          className={`inline-flex items-center justify-center h-[34px] w-[34px] shrink-0 rounded-lg border transition-colors ${
-            allSelected ? "border-brand text-brand bg-brand-light" : "border-cream-border text-gray-500 hover:border-brand hover:text-brand"
-          }`}
+          className="inline-flex items-center gap-1.5 shrink-0 rounded-lg border border-cream-border h-[38px] px-3 text-sm text-gray-600 bg-white hover:border-brand transition-colors"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M9 11l3 3L22 4" />
             <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
           </svg>
+          {allSelected && <span className="w-1.5 h-1.5 rounded-full bg-brand" />}
         </button>
         <button
           onClick={() => setPurchaseOpen(true)}
-          className="hidden md:inline-flex items-center gap-1.5 h-[34px] px-3 text-xs font-medium rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors"
+          className="hidden md:inline-flex items-center gap-1.5 h-[38px] px-3 text-sm font-medium rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors"
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <path d="M12 5v14M5 12h14" />

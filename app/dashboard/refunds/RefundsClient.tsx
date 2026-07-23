@@ -320,19 +320,18 @@ export default function RefundsClient() {
           }
           toolbarExtra={
             <>
-              <div className="md:hidden w-40 shrink-0 [&_input]:h-[34px]">
+              <div className="md:hidden w-40 shrink-0">
                 <EventSelect
                   value={eventFilter}
                   onChange={setEventFilter}
                   events={options?.events ?? []}
                   placeholder="All event"
                   clearable
-                  dense
                 />
               </div>
               <button
                 onClick={() => setCreating((o) => !o)}
-                className={`hidden md:inline-flex items-center gap-1.5 h-[34px] px-3 text-xs rounded-lg border transition-colors ${
+                className={`hidden md:inline-flex items-center gap-1.5 h-[38px] px-3 text-sm rounded-lg border transition-colors ${
                   creating ? "bg-brand-light text-brand border-brand/30" : "bg-brand text-white border-transparent hover:bg-brand-hover"
                 }`}
               >

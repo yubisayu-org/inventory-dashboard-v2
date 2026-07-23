@@ -69,6 +69,14 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
   const [globalFilter, setGlobalFilter] = useState("")
   // Mobile note filter: "" = all, "has" = only rows with a note, "none" = blank.
   const [noteFilter, setNoteFilter] = useState<"" | "has" | "none">("")
+  const [noteFilterOpen, setNoteFilterOpen] = useState(false)
+  const noteFilterRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!noteFilterOpen) return
+    const h = (e: MouseEvent) => { if (!noteFilterRef.current?.contains(e.target as Node)) setNoteFilterOpen(false) }
+    document.addEventListener("mousedown", h)
+    return () => document.removeEventListener("mousedown", h)
+  }, [noteFilterOpen])
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: PAGE_SIZE })
 
   // -- Data from server --
@@ -291,6 +299,19 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
       ),
     },
     {
+      // Read-only: unit_ship is set by the Ship flow, not editable here.
+      accessorKey: "unitShip",
+      header: "Ship",
+      enableColumnFilter: false,
+      enableSorting: true,
+      size: 80,
+      meta: { align: "right" },
+      cell: ({ getValue }) => {
+        const v = getValue<number | null>()
+        return <span className="tabular-nums">{v == null ? <span className="text-gray-300">—</span> : fmt(v)}</span>
+      },
+    },
+    {
       accessorKey: "note",
       header: "Note",
       enableColumnFilter: false,
@@ -371,7 +392,7 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
       <button
         type="button"
         onClick={() => setAddOpen((o) => !o)}
-        className={`hidden md:inline-flex items-center gap-1.5 h-[34px] px-3 text-xs rounded-lg border transition-colors ${
+        className={`hidden md:inline-flex items-center gap-1.5 h-[38px] px-3 text-sm rounded-lg border transition-colors ${
           addOpen ? "bg-brand-light text-brand border-brand/30" : "bg-brand text-white border-transparent hover:bg-brand-hover"
         }`}
       >
@@ -423,7 +444,7 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
             ) : undefined
           }
           toolbarExtra={toolbarExtra}
-          initialVisibility={{ unitPrice: false, unitBuy: false, unitArrive: false, note: false, updatedAt: false }}
+          initialVisibility={{ unitPrice: false, unitBuy: false, unitArrive: false, unitShip: false, note: false, updatedAt: false }}
           enableRowSelection
           rowSelection={rowSelection}
           onRowSelectionChange={setRowSelection}
@@ -455,27 +476,47 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
             type="button"
             onClick={() => handleSortingChange([{ id: "createdAt", desc: !((sorting.find((s) => s.id === "createdAt")?.desc) ?? true) }])}
             aria-label="Toggle sort order"
-            className="shrink-0 inline-flex items-center gap-1 px-3 rounded-xl border border-cream-border bg-white text-xs font-medium text-gray-600 active:border-brand active:text-brand"
+            className="shrink-0 inline-flex items-center gap-1 px-3 rounded-lg border border-cream-border bg-white text-sm font-medium text-gray-600 active:border-brand active:text-brand"
           >
             {((sorting.find((s) => s.id === "createdAt")?.desc) ?? true) ? "Newest" : "Oldest"}
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               {((sorting.find((s) => s.id === "createdAt")?.desc) ?? true) ? <path d="m6 9 6 6 6-6" /> : <path d="m18 15-6-6-6 6" />}
             </svg>
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              setNoteFilter((n) => (n === "" ? "has" : n === "has" ? "none" : ""))
-              setPagination((p) => ({ ...p, pageIndex: 0 }))
-            }}
-            aria-label="Filter by note"
-            className={`shrink-0 inline-flex items-center gap-1 px-3 rounded-xl border bg-white text-xs font-medium active:border-brand active:text-brand ${noteFilter ? "border-brand text-brand" : "border-cream-border text-gray-600"}`}
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
-            </svg>
-            {noteFilter === "has" ? "Has note" : noteFilter === "none" ? "No note" : "Note"}
-          </button>
+          <div className="relative shrink-0" ref={noteFilterRef}>
+            <button
+              type="button"
+              onClick={() => setNoteFilterOpen((o) => !o)}
+              aria-label="Filter by note"
+              className={`inline-flex items-center h-[38px] px-3 rounded-lg border bg-white text-sm font-medium active:border-brand active:text-brand ${noteFilter ? "border-brand text-brand" : "border-cream-border text-gray-600"}`}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+              </svg>
+            </button>
+            {noteFilterOpen && (
+              <div className="absolute right-0 top-full mt-1 z-30 w-36 rounded-lg border border-cream-border bg-white shadow-lg p-1.5 flex flex-col">
+                {[
+                  { key: "" as const, label: "All" },
+                  { key: "has" as const, label: "Has note" },
+                  { key: "none" as const, label: "No note" },
+                ].map(({ key, label }) => (
+                  <button
+                    key={key || "all"}
+                    type="button"
+                    onClick={() => {
+                      setNoteFilter(key)
+                      setPagination((p) => ({ ...p, pageIndex: 0 }))
+                      setNoteFilterOpen(false)
+                    }}
+                    className={`text-left px-2.5 py-1.5 rounded-md text-sm transition-colors ${noteFilter === key ? "bg-brand-light text-brand font-medium" : "text-gray-600 hover:bg-cream"}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
         {rows.length === 0 && (
           <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">
