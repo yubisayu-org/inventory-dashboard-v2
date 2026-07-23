@@ -17,10 +17,6 @@ const publicSql = postgres(connectionString, {
   ssl: "require",
   // Same transaction-mode pooler constraint as the main pool.
   prepare: false,
-  // Skip per-connection type introspection — it re-shipped catalog rows over
-  // the pooler on every reconnect. This path only SELECTs built-in types.
-  // See lib/db-pool.ts for the full rationale.
-  fetch_types: false,
   connection: {
     statement_timeout: 15000,
   },

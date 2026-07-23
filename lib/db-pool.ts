@@ -28,14 +28,6 @@ const sql = globalForDb.__dbPool ?? postgres(connectionString, {
   // requests and doesn't support prepared statements. Disabling prepares
   // avoids "prepared statement does not exist" (SQLSTATE 26000) errors.
   prepare: false,
-  // Skip postgres.js's per-connection type-introspection query, which fetches
-  // pg_catalog type/array OIDs on every new connection. Under transaction-mode
-  // pooling it re-ran on every reconnect and shipped millions of catalog rows
-  // over the pooler — a large slice of pure-overhead egress. Our schema uses
-  // only built-in types (int/text/bool/timestamp/numeric), so the default
-  // parsers suffice. Array *inputs* (unnest ::int[]/::text[] bulk ops in
-  // lib/db/orders.ts) are unaffected — this only disables result-type fetching.
-  fetch_types: false,
   // Hard 15s ceiling on individual queries. A poorly-indexed query no longer
   // holds a connection forever — it fails fast and the pool stays healthy.
   connection: {
