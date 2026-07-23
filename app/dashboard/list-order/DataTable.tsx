@@ -299,6 +299,19 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
       ),
     },
     {
+      // Read-only: unit_ship is set by the Ship flow, not editable here.
+      accessorKey: "unitShip",
+      header: "Ship",
+      enableColumnFilter: false,
+      enableSorting: true,
+      size: 80,
+      meta: { align: "right" },
+      cell: ({ getValue }) => {
+        const v = getValue<number | null>()
+        return <span className="tabular-nums">{v == null ? <span className="text-gray-300">—</span> : fmt(v)}</span>
+      },
+    },
+    {
       accessorKey: "note",
       header: "Note",
       enableColumnFilter: false,
@@ -431,7 +444,7 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
             ) : undefined
           }
           toolbarExtra={toolbarExtra}
-          initialVisibility={{ unitPrice: false, unitBuy: false, unitArrive: false, note: false, updatedAt: false }}
+          initialVisibility={{ unitPrice: false, unitBuy: false, unitArrive: false, unitShip: false, note: false, updatedAt: false }}
           enableRowSelection
           rowSelection={rowSelection}
           onRowSelectionChange={setRowSelection}
