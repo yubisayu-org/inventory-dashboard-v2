@@ -26,6 +26,7 @@
 .claude/
 .continue/
 .agents/
+.superpowers/
 skills-lock.json
 
 # debug
