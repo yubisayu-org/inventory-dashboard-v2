@@ -498,7 +498,7 @@ git commit -m "feat(db): add catalogue post read/write functions"
   - `createCatalogueRequest(data: { customerHandle: string; productId: number; qty: number; note: string }, db: postgres.Sql): Promise<void>` — public insert, explicit db param
   - `getCatalogueRequestsByHandle(handle: string, db: postgres.Sql): Promise<CatalogueRequest[]>` — public status lookup, explicit db param
   - `getCatalogueRequests(onlyPending: boolean, db: DBExecutor = sql): Promise<CatalogueRequest[]>` — staff read
-  - `convertCatalogueRequest(id: number, event: string, actor: string | null, db: DBExecutor = sql): Promise<{ orderId: number }>` — staff action, wraps `appendOrders` + status update in one transaction
+  - `convertCatalogueRequest(id: number, event: string, actor: string | null): Promise<{ orderId: number }>` — staff action, wraps `appendOrders` + status update in one transaction (no `db` param — see rationale below the implementation)
   - `rejectCatalogueRequest(id: number, staffNote: string, db: DBExecutor = sql): Promise<void>` — staff action
 
 - [ ] **Step 1: Write the file**
@@ -591,9 +591,8 @@ export async function convertCatalogueRequest(
   id: number,
   event: string,
   actor: string | null,
-  db: DBExecutor = sql,
 ): Promise<{ orderId: number }> {
-  return withActorOn(db, actor, async (tx) => {
+  return withActor(actor, async (tx) => {
     const [request] = await tx`
       SELECT customer_handle, product_id, qty, note FROM catalogue_requests
       WHERE id = ${id} AND status = 'pending'
@@ -632,22 +631,16 @@ export async function rejectCatalogueRequest(
     WHERE id = ${id} AND status = 'pending'
   `
 }
-
-// withActor (lib/db/actor.ts:21) always opens its own transaction via
-// sql.begin — convertCatalogueRequest needs that same actor-stamping
-// behavior, so it's called through here rather than duplicating the
-// set_config call.
-function withActorOn<T>(db: DBExecutor, actor: string | null, fn: (tx: postgres.TransactionSql) => Promise<T>): Promise<T> {
-  return withActor(actor, fn)
-}
 ```
+
+`convertCatalogueRequest` takes no `db`/`DBExecutor` parameter, unlike the other functions in this file — `withActor` (`lib/db/actor.ts:21`) always opens its own fresh transaction via `sql.begin`, so it can never honor an externally-supplied executor anyway. A `db` parameter here would be silently ignored, which is worse than not having one.
 
 **Note on `unitPrice: 0`:** a converted order's `unit_price` is intentionally not carried from anywhere — the catalogue never shows or asks for pricing (see the spec's `catalogue_public` grant: `products(id, name, store, price)` is readable, but nothing in the request-submission flow uses it). Staff sets the real price by editing the order after conversion, same as any manually-added order where the picked product's live price wasn't what was actually charged. This is a deliberate simplification, not an oversight — flag to the user if a "carry the product's current price" behavior turns out to be expected instead.
 
 - [ ] **Step 2: Typecheck**
 
 Run: `npx tsc --noEmit`
-Expected: no errors. Pay attention to `withActorOn`'s `db` parameter — it's currently unused (the real transaction always comes from `withActor`'s own `sql.begin`), which the TS compiler may flag as an unused parameter depending on `tsconfig.json`'s `noUnusedParameters`. If it errors, remove the `db` parameter from `withActorOn` and drop it from the one call site in `convertCatalogueRequest` — `withActor` doesn't need an existing executor, it always starts a fresh transaction from the pool.
+Expected: no errors.
 
 - [ ] **Step 3: Commit**
 
