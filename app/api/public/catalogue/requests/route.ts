@@ -21,13 +21,19 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  // Body-size guard (cheap rejection before parsing).
   const declaredLen = Number(req.headers.get("content-length") ?? 0)
   if (declaredLen > MAX_BODY_BYTES) {
     return NextResponse.json({ error: "Payload too large" }, { status: 413 })
   }
 
+  const raw = await req.text()
+  if (raw.length > MAX_BODY_BYTES) {
+    return NextResponse.json({ error: "Payload too large" }, { status: 413 })
+  }
+
   try {
-    const body = await req.json()
+    const body = JSON.parse(raw)
     const customerHandle = String(body.customerHandle ?? "").trim()
     const productId = Number(body.productId)
     const qty = Number(body.qty)
