@@ -27,6 +27,7 @@
 .continue/
 .agents/
 .superpowers/
+.worktrees/
 skills-lock.json
 
 # debug
