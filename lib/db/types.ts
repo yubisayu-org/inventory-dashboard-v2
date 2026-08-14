@@ -565,3 +565,28 @@ export interface OperationalExpenseRow {
   updatedAt: string
 }
 
+export interface CataloguePost {
+  id: number
+  mediaUrl: string
+  mediaType: "photo" | "video"
+  caption: string
+  visible: boolean
+  createdAt: string
+  updatedAt: string
+  /** Products tagged in this post. */
+  productIds: number[]
+}
+
+export interface CatalogueRequest {
+  id: number
+  customerHandle: string
+  productId: number
+  productName: string
+  qty: number
+  note: string
+  status: "pending" | "converted" | "rejected"
+  staffNote: string
+  convertedOrderId: number | null
+  createdAt: string
+}
+
