@@ -763,8 +763,11 @@ git commit -m "feat(storage): add Supabase Storage upload helper for catalogue m
 
 **Interfaces:**
 - Consumes: `getVisibleCataloguePosts` (Task 7), `catalogueSql` (Task 5)
+- Produces: `GET /api/public/catalogue` → `{ posts: (CataloguePost & { products: { id: number; name: string; store: string; price: number }[] })[] }` — Task 13's browse page consumes this exact shape (a resolved `products` array per post, not just `productIds`)
 
 - [ ] **Step 1: Write the route**
+
+`getVisibleCataloguePosts` (Task 7) returns each post's tagged products as bare `productIds: number[]` — the browse page needs the actual name/store/price to render, so this route resolves them in one extra query rather than pushing that join into the DB layer function (keeping `getVisibleCataloguePosts` a simple, reusable "which posts, which product ids" read).
 
 ```typescript
 import { NextResponse } from "next/server"
@@ -777,7 +780,16 @@ import catalogueSql from "@/lib/db-catalogue-public"
 export async function GET() {
   try {
     const posts = await getVisibleCataloguePosts(catalogueSql)
-    return NextResponse.json({ posts }, { headers: { "Cache-Control": "no-store" } })
+    const productIds = [...new Set(posts.flatMap((p) => p.productIds))]
+    const products = productIds.length
+      ? await catalogueSql`SELECT id, name, store, price FROM products WHERE id IN ${catalogueSql(productIds)}`
+      : []
+    const byId = new Map(products.map((p) => [p.id as number, { id: p.id as number, name: p.name as string, store: p.store as string, price: p.price as number }]))
+    const withProducts = posts.map((post) => ({
+      ...post,
+      products: post.productIds.map((id) => byId.get(id)).filter((p): p is NonNullable<typeof p> => p != null),
+    }))
+    return NextResponse.json({ posts: withProducts }, { headers: { "Cache-Control": "no-store" } })
   } catch (err) {
     console.error("Failed to load catalogue posts:", err)
     return NextResponse.json({ error: "Failed to load catalogue" }, { status: 500 })
@@ -1093,29 +1105,7 @@ function StatusLookup() {
 }
 ```
 
-Note: `PostWithProducts` (a post with its tagged products resolved to `{id, name, store, price}`) is what Task 11's route is expected to return, but `getVisibleCataloguePosts` (Task 7) only returns `productIds: number[]`, not resolved product objects. **This is a gap — fix it now, before this task's build check, not later:** go back and adjust Task 11's route to resolve `productIds` into full product objects before responding (join against `products` for `id, name, store, price` per post). Simplest fix, applied here: extend `app/api/public/catalogue/route.ts` (Task 11) to do this resolution inline rather than pushing it into the DB layer:
-
-```typescript
-// In app/api/public/catalogue/route.ts, replace the GET body:
-export async function GET() {
-  try {
-    const posts = await getVisibleCataloguePosts(catalogueSql)
-    const productIds = [...new Set(posts.flatMap((p) => p.productIds))]
-    const products = productIds.length
-      ? await catalogueSql`SELECT id, name, store, price FROM products WHERE id IN ${catalogueSql(productIds)}`
-      : []
-    const byId = new Map(products.map((p) => [p.id as number, { id: p.id as number, name: p.name as string, store: p.store as string, price: p.price as number }]))
-    const withProducts = posts.map((post) => ({
-      ...post,
-      products: post.productIds.map((id) => byId.get(id)).filter((p): p is NonNullable<typeof p> => p != null),
-    }))
-    return NextResponse.json({ posts: withProducts }, { headers: { "Cache-Control": "no-store" } })
-  } catch (err) {
-    console.error("Failed to load catalogue posts:", err)
-    return NextResponse.json({ error: "Failed to load catalogue" }, { status: 500 })
-  }
-}
-```
+Note: `PostWithProducts` (a post with its tagged products resolved to `{id, name, store, price}`) matches what `GET /api/public/catalogue` returns — Task 11's route already resolves `productIds` into full product objects (folded into that task directly during plan review, so there's nothing to patch here).
 
 - [ ] **Step 3: Typecheck and manual check**
 
@@ -1128,7 +1118,7 @@ Expected: page loads without a login redirect, shows "Nothing here yet." until T
 - [ ] **Step 4: Commit**
 
 ```bash
-git add app/catalogue/page.tsx app/catalogue/CatalogueClient.tsx app/api/public/catalogue/route.ts
+git add app/catalogue/page.tsx app/catalogue/CatalogueClient.tsx
 git commit -m "feat(catalogue): public browse page with one-tap Fix request"
 ```
 
