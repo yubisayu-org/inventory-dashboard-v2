@@ -334,8 +334,11 @@ function mapFormRow(r: Record<string, unknown>): FormRow {
   }
 }
 
-export async function appendOrders(orders: OrderRow[], db: DBExecutor = sql): Promise<void> {
-  if (orders.length === 0) return
+export async function appendOrders(
+  orders: OrderRow[],
+  db: DBExecutor = sql,
+): Promise<{ id: number; productId: number }[]> {
+  if (orders.length === 0) return []
 
   const normalized = orders.map((o) => ({
     ...o,
@@ -350,7 +353,7 @@ export async function appendOrders(orders: OrderRow[], db: DBExecutor = sql): Pr
     ON CONFLICT (instagram_id) DO NOTHING
   `
 
-  await db`
+  const inserted = await db`
     INSERT INTO orders ${db(
       normalized.map((o) => ({
         event: o.event,
@@ -361,7 +364,9 @@ export async function appendOrders(orders: OrderRow[], db: DBExecutor = sql): Pr
         note: o.note,
       }))
     )}
+    RETURNING id, product_id
   `
+  return inserted.map((r) => ({ id: r.id as number, productId: r.product_id as number }))
 }
 
 export async function updateFormRow(
