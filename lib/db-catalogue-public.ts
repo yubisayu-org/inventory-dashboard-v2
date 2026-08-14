@@ -1,11 +1,14 @@
 import postgres from "postgres"
 
 // Dedicated connection for the PUBLIC, no-login catalogue endpoints
-// (app/api/public/catalogue/*). Uses the `catalogue_public` role — scoped to
-// visible posts, public-safe product columns, and the requester's own rows
-// in catalogue_requests (see supabase/migrations/059_catalogue_public_role.sql)
-// — so this path can never read cost/profit data or another customer's
-// requests even if a query is wrong.
+// (app/api/public/catalogue/*). Uses the `catalogue_public` role, which enforces
+// column-level grants: SELECT on (id, name, store, price) only on products
+// (never cost/profit), and SELECT/INSERT on catalogue_requests
+// (see supabase/migrations/059_catalogue_public_role.sql).
+// NOTE: The role prevents reading product cost/profit (real DB-layer guarantee
+// via column grants), but does NOT enforce per-customer row scoping on
+// catalogue_requests — that responsibility lives in the API route's WHERE clause
+// (WHERE customer_handle = $1), not in this connection or role.
 const connectionString = process.env.CATALOGUE_PUBLIC_DATABASE_URL!
 
 // Local dev DB (127.0.0.1) is plaintext; require SSL only for remote hosts.
