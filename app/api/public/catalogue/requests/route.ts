@@ -67,6 +67,9 @@ export async function POST(req: NextRequest) {
     if (!customerHandle || customerHandle.length > MAX_HANDLE_LEN) {
       return NextResponse.json({ error: "A valid customerHandle is required" }, { status: 400, headers: corsHeaders() })
     }
+    if (!/^@?[a-zA-Z0-9._]{1,30}$/.test(customerHandle)) {
+      return NextResponse.json({ error: "Invalid customerHandle" }, { status: 400, headers: corsHeaders() })
+    }
     if (!Number.isInteger(productId) || productId < 1) {
       return NextResponse.json({ error: "productId must be a positive integer" }, { status: 400, headers: corsHeaders() })
     }
