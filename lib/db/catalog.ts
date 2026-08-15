@@ -213,6 +213,12 @@ export async function getProductsPaginated(opts: {
     // "markup" is tier_fee's label since it was renamed from "Tier Fee"; "mark" is enough to
     // match it and cannot be confused with "margin", which has no "k".
     if (t.includes("mark")) conditions.push("p.pricing_method = 'tier_fee'")
+    // Both words name exactly one method (migration 061): no other label contains "target",
+    // and "price" is a word only this method's label uses — every other one names what the
+    // price is BUILT from (a margin, a fee, a rate) rather than the price itself.
+    else if (t.includes("target") || t.includes("price")) {
+      conditions.push("p.pricing_method = 'target_price'")
+    }
     // "rate" is the user-facing label for the family, "kurs" the stored vocabulary. Same set.
     else if (t.includes("rate") || t.includes("kurs")) {
       conditions.push("p.pricing_method IN ('tier_kurs', 'flat_kurs')")
