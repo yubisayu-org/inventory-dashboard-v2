@@ -31,3 +31,22 @@ export async function uploadCatalogueMedia(file: File): Promise<{ url: string; m
   const { data } = supabase.storage.from(BUCKET).getPublicUrl(path)
   return { url: data.publicUrl, mediaType: isVideo ? "video" : "photo" }
 }
+
+/** Best-effort cleanup for a file that was uploaded via uploadCatalogueMedia
+ *  but whose DB row never got created (e.g. createCataloguePost failed after
+ *  a successful upload). Never throws — logs and returns on failure, so a
+ *  cleanup problem never masks the original error the caller is handling. */
+export async function deleteCatalogueMedia(url: string): Promise<void> {
+  const marker = `/public/${BUCKET}/`
+  const idx = url.indexOf(marker)
+  if (idx === -1) {
+    console.error(`deleteCatalogueMedia: could not parse storage path from URL: ${url}`)
+    return
+  }
+  const path = url.slice(idx + marker.length)
+
+  const { error } = await supabase.storage.from(BUCKET).remove([path])
+  if (error) {
+    console.error(`Failed to delete orphaned catalogue media at ${path}:`, error.message)
+  }
+}

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireOwner } from "@/lib/api"
 import { getAllCataloguePosts, createCataloguePost } from "@/lib/db"
-import { uploadCatalogueMedia } from "@/lib/storage"
+import { uploadCatalogueMedia, deleteCatalogueMedia } from "@/lib/storage"
 
 export async function GET() {
   const { session, error: authError } = await requireSession()
@@ -42,7 +42,16 @@ export async function POST(req: NextRequest) {
     }
 
     const { url, mediaType } = await uploadCatalogueMedia(file)
-    const result = await createCataloguePost({ mediaUrl: url, mediaType, caption, productIds })
+
+    let result: { id: number }
+    try {
+      result = await createCataloguePost({ mediaUrl: url, mediaType, caption, productIds })
+    } catch (err) {
+      // Don't leave an orphaned file in storage if the DB insert fails
+      // (e.g. a stale productId trips the FK on catalogue_post_products).
+      await deleteCatalogueMedia(url)
+      throw err
+    }
 
     return NextResponse.json({ success: true, id: result.id })
   } catch (err) {
