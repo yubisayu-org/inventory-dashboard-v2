@@ -78,9 +78,15 @@ export async function getCatalogueRequests(
 
 /** Converts one request into a real order — the request's product/qty/note
  *  become the order's, staff supplies the event (the one field a request
- *  never carries). Calls the same appendOrders every other order goes
- *  through; both the order insert and the request's status flip happen in
- *  one transaction so they can't half-apply. */
+ *  never carries), and the order snapshots the product's current price
+ *  (same convention as every other order-creation path). Calls the same
+ *  appendOrders every other order goes through; both the order insert and
+ *  the request's status flip happen in one transaction so they can't
+ *  half-apply. The initial SELECT locks the row (`FOR UPDATE`) and the final
+ *  UPDATE re-checks `status = 'pending'`, so two concurrent conversions of
+ *  the same request can't both create an order — the loser's SELECT blocks
+ *  until the winner commits, then sees the already-flipped status and gets
+ *  zero rows, throwing before any order is created. */
 export async function convertCatalogueRequest(
   id: number,
   event: string,
@@ -88,8 +94,11 @@ export async function convertCatalogueRequest(
 ): Promise<{ orderId: number }> {
   return withActor(actor, async (tx) => {
     const [request] = await tx`
-      SELECT customer_handle, product_id, qty, note FROM catalogue_requests
-      WHERE id = ${id} AND status = 'pending'
+      SELECT r.customer_handle, r.product_id, r.qty, r.note, p.price
+      FROM catalogue_requests r
+      JOIN products p ON p.id = r.product_id
+      WHERE r.id = ${id} AND r.status = 'pending'
+      FOR UPDATE OF r
     `
     if (!request) throw new Error("Request not found or already handled")
 
@@ -98,18 +107,20 @@ export async function convertCatalogueRequest(
         event,
         customer: request.customer_handle as string,
         productId: request.product_id as number,
-        unitPrice: 0,
+        unitPrice: (request.price as number) ?? 0,
         unit: request.qty as number,
         note: request.note as string,
       }],
       tx,
     )
 
-    await tx`
+    const rows = await tx`
       UPDATE catalogue_requests
       SET status = 'converted', converted_order_id = ${created.id}, updated_at = NOW()
-      WHERE id = ${id}
+      WHERE id = ${id} AND status = 'pending'
+      RETURNING id
     `
+    if (rows.length === 0) throw new Error("Request not found or already handled")
     return { orderId: created.id }
   })
 }
