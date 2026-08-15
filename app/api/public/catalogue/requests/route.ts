@@ -57,12 +57,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Payload too large" }, { status: 413, headers: corsHeaders() })
   }
 
+  let body: unknown
   try {
-    const body = JSON.parse(raw)
-    const customerHandle = String(body.customerHandle ?? "").trim()
-    const productId = Number(body.productId)
-    const qty = Number(body.qty)
-    const note = String(body.note ?? "").trim()
+    body = JSON.parse(raw)
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400, headers: corsHeaders() })
+  }
+
+  try {
+    const b = body as Record<string, unknown>
+    const customerHandle = String(b.customerHandle ?? "").trim()
+    const productId = Number(b.productId)
+    const qty = Number(b.qty)
+    const note = String(b.note ?? "").trim()
 
     if (!customerHandle || customerHandle.length > MAX_HANDLE_LEN) {
       return NextResponse.json({ error: "A valid customerHandle is required" }, { status: 400, headers: corsHeaders() })
