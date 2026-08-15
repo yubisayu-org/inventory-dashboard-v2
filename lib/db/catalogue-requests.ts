@@ -119,9 +119,11 @@ export async function rejectCatalogueRequest(
   staffNote: string,
   db: DBExecutor = sql,
 ): Promise<void> {
-  await db`
+  const rows = await db`
     UPDATE catalogue_requests
     SET status = 'rejected', staff_note = ${staffNote}, updated_at = NOW()
     WHERE id = ${id} AND status = 'pending'
+    RETURNING id
   `
+  if (rows.length === 0) throw new Error("Request not found or already handled")
 }
