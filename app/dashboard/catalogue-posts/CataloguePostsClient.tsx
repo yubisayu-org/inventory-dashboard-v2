@@ -8,12 +8,21 @@ export default function CataloguePostsClient() {
   const options = useSheetOptions()
   const [posts, setPosts] = useState<CataloguePost[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   async function reload() {
-    const res = await fetch("/api/sheets/catalogue-posts", { cache: "no-store" })
-    const data = await res.json()
-    setPosts(data.posts ?? [])
-    setLoading(false)
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch("/api/sheets/catalogue-posts", { cache: "no-store" })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "Failed to load")
+      setPosts(data.posts ?? [])
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load")
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => { reload() }, [])
@@ -30,6 +39,9 @@ export default function CataloguePostsClient() {
   return (
     <div className="flex flex-col gap-6">
       <UploadForm options={options} onCreated={reload} />
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+      )}
       {loading ? (
         <p className="text-sm text-gray-400">Loading…</p>
       ) : (
@@ -38,7 +50,7 @@ export default function CataloguePostsClient() {
             <div key={post.id} className="flex items-center justify-between rounded-xl border border-cream-border bg-white p-3">
               <div className="flex items-center gap-3">
                 {post.mediaType === "video" ? (
-                  <video src={post.mediaUrl} className="w-16 h-16 object-cover rounded-lg bg-black" />
+                  <video src={post.mediaUrl} controls muted playsInline className="w-16 h-16 object-cover rounded-lg bg-black" />
                 ) : (
                   <img src={post.mediaUrl} alt="" className="w-16 h-16 object-cover rounded-lg" />
                 )}
