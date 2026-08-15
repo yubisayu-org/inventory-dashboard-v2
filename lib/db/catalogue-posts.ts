@@ -71,8 +71,10 @@ export async function setCataloguePostVisible(
   visible: boolean,
   db: DBExecutor = sql,
 ): Promise<void> {
-  await db`
+  const rows = await db`
     UPDATE catalogue_posts SET visible = ${visible}, updated_at = NOW()
     WHERE id = ${id}
+    RETURNING id
   `
+  if (rows.length === 0) throw new Error("Catalogue post not found")
 }

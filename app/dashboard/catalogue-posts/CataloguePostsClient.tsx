@@ -29,11 +29,20 @@ export default function CataloguePostsClient() {
 
   async function toggleVisible(post: CataloguePost) {
     setPosts((prev) => prev.map((p) => p.id === post.id ? { ...p, visible: !p.visible } : p))
-    await fetch(`/api/sheets/catalogue-posts/${post.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ visible: !post.visible }),
-    })
+    try {
+      const res = await fetch(`/api/sheets/catalogue-posts/${post.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ visible: !post.visible }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error ?? "Failed to update visibility")
+      }
+    } catch (err) {
+      setPosts((prev) => prev.map((p) => p.id === post.id ? { ...p, visible: post.visible } : p))
+      setError(err instanceof Error ? err.message : "Failed to update visibility")
+    }
   }
 
   return (
