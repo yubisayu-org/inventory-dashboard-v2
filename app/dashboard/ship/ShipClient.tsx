@@ -26,29 +26,49 @@ const SEGMENTS: { id: Segment; label: string }[] = [
   { id: "not_arrived", label: "Belum Tiba" },
   { id: "partial", label: "Tiba Sebagian" },
   { id: "ready_unpaid", label: "Belum Bayar" },
-  { id: "ready", label: "Siap Dikirim" },
-  { id: "hold", label: "Hold" },
+  { id: "ready", label: "Siap Kirim" },
+  { id: "hold", label: "Tunda Kirim" },
   { id: "shipped", label: "Sudah Dikirim" },
 ]
+
+// Per-line hold marker. Icon rather than a "Hold" pill so it doesn't compete
+// with the product name for width; title/aria carry the label for hover and
+// screen readers.
+function HoldIcon() {
+  return (
+    <svg
+      role="img"
+      aria-label="Tunda Kirim"
+      className="ml-1.5 inline-block align-[-0.15em] text-purple-600 shrink-0"
+      width="14" height="14" viewBox="0 0 24 24"
+      fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+    >
+      <title>Tunda Kirim</title>
+      <circle cx="12" cy="12" r="10" />
+      <line x1="10" y1="15" x2="10" y2="9" />
+      <line x1="14" y1="15" x2="14" y2="9" />
+    </svg>
+  )
+}
 
 // Card badge styling per arrival/ship status (mirrors SEGMENTS labels).
 const STATUS_BADGE: Record<ShipStatus, { label: string; cls: string }> = {
   not_arrived: { label: "Belum Tiba", cls: "bg-gray-100 text-gray-500" },
   partial: { label: "Tiba Sebagian", cls: "bg-amber-100 text-amber-700" },
-  ready: { label: "Siap Dikirim", cls: "bg-brand/10 text-brand" },
+  ready: { label: "Siap Kirim", cls: "bg-brand/10 text-brand" },
   ready_unpaid: { label: "Belum Bayar", cls: "bg-orange-100 text-orange-700" },
-  hold: { label: "Hold", cls: "bg-purple-100 text-purple-700" },
+  hold: { label: "Tunda Kirim", cls: "bg-purple-100 text-purple-700" },
   shipped: { label: "Sudah Dikirim", cls: "bg-green-100 text-green-700" },
 }
 
 // Payment-status chip rendered on every ship card so the new "paid/overpaid"
 // criterion is visible at a glance.
 const PAYMENT_BADGE: Record<PaymentStatus, { label: string; cls: string }> = {
-  paid:     { label: "Lunas",    cls: "bg-green-100 text-green-700" },
-  overpaid: { label: "Lebih",    cls: "bg-blue-100 text-blue-700" },
-  partial:  { label: "Sebagian", cls: "bg-amber-100 text-amber-700" },
-  unpaid:   { label: "Belum",    cls: "bg-rose-100 text-rose-700" },
-  void:     { label: "Void",     cls: "bg-gray-100 text-gray-500" },
+  paid:     { label: "Lunas",          cls: "bg-green-100 text-green-700" },
+  overpaid: { label: "Lebih Bayar",    cls: "bg-blue-100 text-blue-700" },
+  partial:  { label: "Bayar Sebagian", cls: "bg-amber-100 text-amber-700" },
+  unpaid:   { label: "Belum Bayar",    cls: "bg-rose-100 text-rose-700" },
+  void:     { label: "Void",           cls: "bg-gray-100 text-gray-500" },
 }
 
 export default function ShipClient() {
@@ -512,14 +532,17 @@ function CustomerCard({
 
   return (
     <div className={`rounded-xl border bg-white overflow-hidden transition-colors ${isSelected ? "border-brand" : "border-cream-border"}`}>
-      <div className={`px-5 py-4 bg-gray-50 border-b border-cream-border flex justify-between gap-4 ${segment === "hold" ? "items-center md:items-start" : "items-start"}`}>
-        <div className="flex items-start gap-3 min-w-0">
+      {/* items-center: both sides are a single row now that the ship/hold counts
+          live inside their buttons, so the identity line and the buttons should
+          sit on the same axis. */}
+      <div className="px-5 py-4 bg-gray-50 border-b border-cream-border flex justify-between gap-4 items-center">
+        <div className="flex items-center gap-3 min-w-0">
           {onToggleSelect && (
             <input
               type="checkbox"
               checked={isSelected ?? false}
               onChange={onToggleSelect}
-              className="mt-1 rounded border-gray-300 text-brand focus:ring-brand/30 cursor-pointer shrink-0"
+              className="rounded border-gray-300 text-brand focus:ring-brand/30 cursor-pointer shrink-0"
             />
           )}
         <div className="flex flex-col gap-1 min-w-0">
@@ -535,9 +558,15 @@ function CustomerCard({
                 {displayIg(c.customer).toUpperCase()}
               </button>
             </span>
-            <span className={`hidden md:inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[c.status].cls}`}>
-              {STATUS_BADGE[c.status].label}
-            </span>
+            {/* Two reasons to drop the status badge: the "Belum Bayar" tab
+                already says it in the tab itself, and anywhere the two chips
+                would render the identical label (ready_unpaid + unpaid both
+                read "Belum Bayar") it'd just print twice in a row. */}
+            {segment !== "ready_unpaid" && STATUS_BADGE[c.status].label !== PAYMENT_BADGE[c.paymentStatus].label && (
+              <span className={`hidden md:inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[c.status].cls}`}>
+                {STATUS_BADGE[c.status].label}
+              </span>
+            )}
             <span className={`hidden md:inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${PAYMENT_BADGE[c.paymentStatus].cls}`}>
               {PAYMENT_BADGE[c.paymentStatus].label}
             </span>
@@ -546,8 +575,8 @@ function CustomerCard({
                 line has arrived, so without this a held unit on a partial event
                 would show no sign it's being held back. */}
             {totalHold > 0 && c.status !== "hold" && (
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
-                Hold
+              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE.hold.cls}`}>
+                {STATUS_BADGE.hold.label}
               </span>
             )}
           </div>
@@ -560,7 +589,7 @@ function CustomerCard({
             held unit whose siblings haven't arrived would be stranded with no
             checkbox, Ship, or Release control. */}
         {(c.totalToShip > 0 || totalHold > 0) && (
-          <div className="shrink-0 flex items-start gap-3">
+          <div className="shrink-0 flex items-center gap-3">
             {c.totalToShip > 0 && (
               <div className="flex flex-col items-end gap-1">
                 <div className="flex items-center gap-1.5">
@@ -577,28 +606,31 @@ function CustomerCard({
                     type="button"
                     onClick={() => setConfirming(true)}
                     disabled={holdBusy}
-                    className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
+                    className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors inline-flex items-center gap-1.5"
                   >
                     Ship
+                    {/* Count lives in the button instead of a stacked
+                        "N / to ship" block below it — that block forced every
+                        card header to be three rows tall, leaving a big empty
+                        gap next to short item lists. */}
+                    <span className="px-1.5 py-0.5 rounded bg-white/20 tabular-nums font-semibold">{c.totalToShip}</span>
                   </button>
                 </div>
-                <div className="hidden md:block mt-1 text-lg font-bold text-foreground leading-none">{c.totalToShip}</div>
-                <div className="hidden md:block text-xs text-gray-500">to ship</div>
               </div>
             )}
             {totalHold > 0 && (
               <div className="flex flex-col items-end gap-1">
-                <div className={`flex-col items-end gap-1 ${segment === "hold" ? "hidden md:flex" : "flex"}`}>
-                  <div className="text-lg font-bold text-foreground leading-none">{totalHold}</div>
-                  <div className="text-xs text-gray-500">on hold</div>
-                </div>
                 <button
                   type="button"
                   onClick={() => postHoldAction("release", `Release this packing list for ${displayIg(c.customer).toUpperCase()} · ${c.event} back to ready?`)}
                   disabled={holdBusy}
-                  className="mt-1 px-3 py-1.5 rounded-lg bg-green-600 text-white text-xs font-medium hover:bg-green-700 disabled:opacity-50 transition-colors"
+                  className="px-3 py-1.5 rounded-lg bg-green-600 text-white text-xs font-medium hover:bg-green-700 disabled:opacity-50 transition-colors inline-flex items-center gap-1.5"
                 >
                   {holdBusy ? "…" : "Release"}
+                  {/* Held count sits in the button for the same reason the ship
+                      count does — the stacked "N / on hold" block above it made
+                      the card header three rows tall. */}
+                  {!holdBusy && <span className="px-1.5 py-0.5 rounded bg-white/20 tabular-nums font-semibold">{totalHold}</span>}
                 </button>
               </div>
             )}
@@ -648,11 +680,7 @@ function CustomerCard({
               <tr key={o.rowNumber} className="border-b border-cream-border/60">
                 <td className="px-4 py-2">
                   {o.productName}
-                  {o.unitHold > 0 && (
-                    <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-purple-100 text-purple-700 align-middle">
-                      Hold
-                    </span>
-                  )}
+                  {o.unitHold > 0 && <HoldIcon />}
                 </td>
                 <td className="px-4 py-2 text-right">{o.unit}</td>
                 <td className="px-4 py-2 text-right">{o.unitArrive}</td>
@@ -673,11 +701,7 @@ function CustomerCard({
             <div className="min-w-0">
               <div className="text-xs text-foreground truncate">
                 {o.productName}
-                {o.unitHold > 0 && (
-                  <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-purple-100 text-purple-700 align-middle">
-                    Hold
-                  </span>
-                )}
+                {o.unitHold > 0 && <HoldIcon />}
               </div>
               <div className="text-xs text-gray-400 tabular-nums mt-0.5">
                 Order {o.unit} · Tiba {o.unitArrive} · Kirim {o.unitShip}
@@ -1211,7 +1235,7 @@ function MergeShipConfirmModal({
           <div className="text-xs text-gray-500 mt-0.5">
             {displayIg(customer).toUpperCase()}
             {result
-              ? <> · {checkedGroups.map((g) => g.event).join(" + ")}<span className="ml-2 font-mono">#{result.shippingId}</span></>
+              ? <> · {checkedGroups.map((g) => g.event).join(", ")}<span className="ml-2 font-mono">#{result.shippingId}</span></>
               : <> · pilih event yang digabung</>}
           </div>
         </div>

@@ -15,6 +15,10 @@
 //                       distinguishing this method from Tier Fee. If the body could
 //                       supply it, the two would be the same method with different
 //                       labels.
+//   target_price      — its PRICE is typed and kept verbatim, but its cost (in valas
+//                       mode) and the margin snapshot derived from it are not: a client
+//                       free to send both price and cost could store a margin that
+//                       contradicts the inputs shown beside it.
 //
 // tier_fee — in EITHER mode — keeps the client-computed fee: it has always been
 // typed on the product, with the relevant bracket set (rupiah or the shared valas
@@ -33,7 +37,7 @@
 
 import {
   calcKursPrice, calcRupiahFeePrice, calcTierFeeValasPrice,
-  flatFeeAmount, landedCost,
+  flatFeeAmount, landedCost, targetMargin,
 } from "./pricing"
 import { isKursMethod } from "./pricing"
 import type { FlatFeeMode, PricingMethod } from "./pricing"
@@ -253,6 +257,43 @@ export async function computeProductPrice(opts: {
     // the bracketed one — so the Tier Rate column reads the same column whichever member
     // priced the row.
     return { price: computed, tieredKurs: chargedKurs, profitFixed: null, cost: null }
+  }
+
+  // The one method whose PRICE is an input rather than an output (migration 061). The
+  // typed price is stored exactly as sent — no rounding step, no fee — so this branch
+  // exists for the two things around it that are still derived: the landed cost in valas
+  // mode, and the margin that falls out of price − cost.
+  if (pricingMethod === "target_price") {
+    // Same discriminator as the two fee methods: with a country the base is bought abroad
+    // and cost is landed cost; without one it is the rupiah figure the owner typed.
+    const valasMode = countryId != null
+    const cost = valasMode
+      ? Math.round(landedCost(landedInputs(body)))
+      : Math.round(Number(body.cost)) || 0
+    const submitted = Math.round(Number(body.price)) || 0
+
+    // The same Sheets-import guard every other path carries. It bites differently here:
+    // the price is typed, so a 0 can only mean an empty field or a body that omitted it,
+    // never a formula that could not resolve. Keeping the stored price also keeps the
+    // margin that explains it, rather than restating it against a cost it never used.
+    const stored = current?.price ?? 0
+    if (submitted === 0 && stored > 0) {
+      return {
+        price: Math.round(stored),
+        tieredKurs: null,
+        profitFixed: current?.profitFixed ?? targetMargin({ price: stored, cost }),
+        cost: valasMode ? cost : null,
+      }
+    }
+
+    // cost returned only in valas mode, as in flat_fee: in rupiah mode the body's typed
+    // value is the authority and returning it here would be a no-op with a second source.
+    return {
+      price: submitted,
+      tieredKurs: null,
+      profitFixed: targetMargin({ price: submitted, cost }),
+      cost: valasMode ? cost : null,
+    }
   }
 
   if (pricingMethod !== "tier_kurs") {

@@ -458,7 +458,7 @@ export default function ArrivalListClient() {
               <th className="text-left px-4 py-2.5 font-medium text-gray-500 w-44">Event</th>
               <th className="text-left px-4 py-2.5 font-medium text-gray-500 w-36">Store</th>
               <th className="text-left px-4 py-2.5 font-medium text-gray-500">Product</th>
-              <th className="text-left px-4 py-2.5 font-medium text-gray-500 w-24">Receipt</th>
+              <th className="text-left px-4 py-2.5 font-medium text-gray-500 w-28">Receipt</th>
               <th className="text-right px-4 py-2.5 font-medium text-gray-500 w-14">Qty</th>
               <th className="px-4 py-2.5 w-10" />
             </tr>
