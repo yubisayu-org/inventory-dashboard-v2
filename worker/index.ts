@@ -56,6 +56,28 @@ export function quotedId(message: WAMessage): string {
  */
 const DEBUG = Boolean(process.env.WA_DEBUG)
 
+/**
+ * How old a message may be and still be acted on, in seconds.
+ *
+ * Messages arrive as "notify" when the socket is healthy and "append" when it is
+ * catching up — after a reconnect, or when the phone hands over a backlog. Both
+ * carry real claims, so both are processed; ignoring "append" meant a flaky
+ * connection silently swallowed everything, which is how this was found.
+ *
+ * The age check is what makes that safe. A history replay would otherwise
+ * re-ingest weeks of shelves and claims. An hour is long enough to recover a
+ * worker restart mid-trip and short enough that no genuine backlog is lost.
+ */
+const MAX_MESSAGE_AGE_SECONDS = 3600
+
+/** Seconds since a message was sent, or 0 when it carries no timestamp. */
+function messageAge(message: WAMessage): number {
+  const raw = message.messageTimestamp
+  const seconds = typeof raw === "number" ? raw : Number(raw?.toString() ?? 0)
+  if (!seconds) return 0
+  return Math.floor(Date.now() / 1000) - seconds
+}
+
 async function trace(sock: WASocket, message: WAMessage) {
   if (!DEBUG) return
   const jid = senderJid(message.key)
@@ -76,6 +98,14 @@ async function trace(sock: WASocket, message: WAMessage) {
     isAdmin: number ? await isBotAdmin(number) : false,
     isCommand: Boolean(parseCommand(text)),
     kind: Object.keys(message.message ?? {})[0] ?? "(empty)",
+    // Empty on a reply means the quote is not where quotedId() looks for it,
+    // which sends the message down the "fresh image" branch and drops it.
+    quoted: quotedId(message) || "(none)",
+    contextKeys: Object.keys(
+      (message.message?.imageMessage?.contextInfo ??
+        message.message?.extendedTextMessage?.contextInfo ??
+        {}) as object,
+    ),
   })
 }
 
@@ -197,9 +227,13 @@ async function main() {
 
     sock.ev.on("messages.upsert", async ({ messages, type }) => {
       if (DEBUG) console.log("[wa] upsert", { type, count: messages.length })
-      if (type !== "notify") return
       for (const message of messages) {
         try {
+          const age = messageAge(message)
+          if (age > MAX_MESSAGE_AGE_SECONDS) {
+            if (DEBUG) console.log("[wa] skipped, too old", { age })
+            continue
+          }
           await trace(sock, message)
           await onMessage(sock, message)
         } catch (err) {

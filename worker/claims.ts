@@ -3,6 +3,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { downloadMediaMessage } from "baileys"
 import type { WAMessage, WASocket } from "baileys"
+import sql from "@/lib/db-pool"
 import { normalizeSize } from "@/lib/claims"
 import { addClaim, findPostByMessage, listClaims, type WaPost } from "@/lib/db/claims"
 import { ingestImageReply, recluster } from "@/lib/whatsapp/ingest"
@@ -30,6 +31,13 @@ export async function captureClaim(input: {
   text: string
   isImage: boolean
 }): Promise<string | null> {
+  // Same reason as capturePost: a redelivered message must not become a second
+  // order for the same customer.
+  const [seen] = await sql`
+    SELECT 1 FROM wa_claims WHERE message_id = ${input.messageId} LIMIT 1
+  `
+  if (seen) return null
+
   if (input.isImage) return captureImageClaim(input)
 
   const size = normalizeSize(input.text)

@@ -4,7 +4,7 @@ import { join } from "node:path"
 import { downloadMediaMessage } from "baileys"
 import type { WAMessage, WASocket } from "baileys"
 import { hueHistogram, loadRgb, safePenHues } from "@/lib/claims"
-import { createPost } from "@/lib/db/claims"
+import { createPost, findPostByMessage } from "@/lib/db/claims"
 import { getProductDefaults } from "@/lib/db/settings"
 import { currentCapture, isBotAdmin } from "@/lib/db/whatsapp-groups"
 import { uploadPostImage } from "@/lib/storage"
@@ -36,6 +36,10 @@ export async function capturePost(input: {
   sender: string
   caption: string
 }): Promise<number | null> {
+  // The same message can arrive twice — once live, once as catch-up after a
+  // reconnect. Without this a flaky connection quietly doubles the shelf.
+  if (await findPostByMessage(input.groupJid, input.messageId)) return null
+
   const capture = await currentCapture(input.groupJid)
   if (capture === null) return null
   if (!(await isBotAdmin(senderNumber(input.sender)))) return null
