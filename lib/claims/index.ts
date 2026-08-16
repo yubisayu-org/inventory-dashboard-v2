@@ -16,6 +16,7 @@ export { classifyAnswer } from "./answer"
 export type { Verdict } from "./answer"
 export { clusterPoints, DEFAULT_CLUSTER_RADIUS } from "./cluster"
 export type { Cluster } from "./cluster"
+export { normalizeSize } from "./size"
 
 export type ImageReply =
   | { kind: "marks"; marks: Mark[] }
