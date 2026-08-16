@@ -63,6 +63,27 @@ export async function loadGrayWithin(
 }
 
 /**
+ * Colour decode that fits *within* a box, preserving aspect ratio.
+ *
+ * The RGB counterpart of loadGrayWithin, and used for the same reason by the
+ * difference detector: two images can only be subtracted if they came out the
+ * same shape, and fitting both into one box makes a mismatched aspect ratio
+ * visible as differing dimensions rather than silently stretching one to match.
+ */
+export async function loadRgbWithin(
+  path: string,
+  width: number,
+  height: number,
+): Promise<RgbRaster> {
+  const { data, info } = await sharp(path)
+    .resize({ width, height, fit: "inside" })
+    .removeAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true })
+  return { data: new Uint8Array(data), width: info.width, height: info.height }
+}
+
+/**
  * RGB to HSV. Hue in degrees, saturation and value in 0..1.
  *
  * Hue and saturation are what separate pen ink from photographed goods: pen is

@@ -55,6 +55,23 @@ export function detectMarks(
     if (isInk(hsv.h, hsv.s, hsv.v, hues)) mask[p] = 1
   }
 
+  return blobsFromMask(mask, w, h, minPixels)
+}
+
+/**
+ * Group a boolean mask into blobs, largest first.
+ *
+ * Shared by the two detectors: hue matching marks a pixel as ink because of its
+ * colour, difference matching marks it because it changed. What happens next —
+ * joining touching pixels into a stroke and discarding specks — is the same
+ * question either way.
+ */
+export function blobsFromMask(
+  mask: Uint8Array,
+  w: number,
+  h: number,
+  minPixels: number = DEFAULT_MIN_PIXELS,
+): Mark[] {
   // Connected components, 8-neighbour. An explicit stack rather than recursion:
   // a long stroke is thousands of pixels deep and would overflow the call stack.
   const seen = new Uint8Array(w * h)
