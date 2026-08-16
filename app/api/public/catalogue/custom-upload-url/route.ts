@@ -11,6 +11,10 @@ import { createCatalogueUploadUrl } from "@/lib/storage"
 // TODO: swap for the real domain once the catalogue site is deployed.
 const ALLOWED_ORIGIN = "https://yubisayu-catalogue.netlify.app"
 
+// A `{"contentType": "..."}` body is tiny — this is just a guard against an
+// oversized payload, same pattern as custom-requests/route.ts.
+const MAX_BODY_BYTES = 1024
+
 function corsHeaders(): Record<string, string> {
   return {
     "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
@@ -24,10 +28,24 @@ export async function OPTIONS() {
 }
 
 export async function POST(req: NextRequest) {
+  const declaredLen = Number(req.headers.get("content-length") ?? 0)
+  if (declaredLen > MAX_BODY_BYTES) {
+    return NextResponse.json({ error: "Payload too large" }, { status: 413, headers: corsHeaders() })
+  }
+
+  const raw = await req.text()
+  if (raw.length > MAX_BODY_BYTES) {
+    return NextResponse.json({ error: "Payload too large" }, { status: 413, headers: corsHeaders() })
+  }
+
   let body: unknown
   try {
-    body = await req.json()
+    body = JSON.parse(raw)
   } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400, headers: corsHeaders() })
+  }
+
+  if (typeof body !== "object" || body === null) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400, headers: corsHeaders() })
   }
 

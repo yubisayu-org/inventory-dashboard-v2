@@ -46,6 +46,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400, headers: corsHeaders() })
   }
 
+  if (typeof body !== "object" || body === null) {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400, headers: corsHeaders() })
+  }
+
   // The only URL shape this endpoint accepts as a reference image — anything
   // else would make this route an open relay for arbitrary attacker-supplied
   // URLs stored in our own DB and rendered in the staff dashboard.
