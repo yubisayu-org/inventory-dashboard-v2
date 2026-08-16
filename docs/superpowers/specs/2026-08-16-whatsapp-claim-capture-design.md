@@ -100,11 +100,28 @@ automatic path, and go to review.
 
 Every claim message gets an emoji reaction from the bot:
 
-| Reaction | Meaning |
-|---|---|
-| ✅ | Understood and recorded |
-| ❓ | Partly understood — a dimension is missing (size but no colour). The only case that also earns a text reply. |
-| ❌ | Could not be read; the customer should retype |
+| Phase | Reaction | Meaning |
+|---|---|---|
+| Capture | ✅ | Understood and recorded |
+| | ❓ | Partly understood — a dimension is missing (size but no colour). The only case that also earns a text reply. |
+| | ❌ | Could not be read; the customer should retype |
+| After buying | 🛒 | Secured for this customer |
+| | 😢 | Not obtained — sold out, or lost the allocation when short |
+
+WhatsApp permits one reaction per message per sender, and a new reaction
+replaces the old, so a claim **advances** through these states rather than
+accumulating them. A customer gets ✅ within seconds of claiming; days later,
+when the owner taps counts in the store, the same message flips to 🛒 or 😢.
+
+This is what makes the fulfilment result deliverable at zero cost: nobody
+receives a DM, the owner writes nothing, and each customer learns their outcome
+by looking at their own message. The 😢 case matters most — when a short
+purchase is allocated by priority, the customer who missed out is told without
+anyone having to compose an awkward message.
+
+Both states are visible to the whole group, which is consistent with the claim
+itself having been public. Making the outcome private would require a DM per
+customer, and therefore a message per customer.
 
 Reactions are preferred over text acknowledgements: they carry no notification
 weight, do not clutter the group, and are a much smaller activity signature on
@@ -113,6 +130,11 @@ the bot number than a message would be.
 They are also **mutable**. A claim that resolved to ❌, or one corrected in the
 review queue, has its reaction updated to ✅ afterwards — the customer sees
 their claim accepted without the owner writing anything.
+
+Recording a purchase updates many reactions at once: buying forty items flips
+forty claims. That burst must be **throttled and spread out**, since a rapid
+volley of reactions is precisely the automated signature the bot number should
+not exhibit.
 
 Quantity is the one thing a checkmark cannot confirm. Number-emoji reactions
 (2️⃣) are an option if customers turn out to be unsure what quantity was
