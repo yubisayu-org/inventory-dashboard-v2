@@ -106,7 +106,7 @@ image/* only — no video for a reference photo, unlike catalogue posts).
   Validates identically to the existing `.../catalogue/requests` POST
   (handle regex, qty bounds, note length) plus: `description` required,
   1-500 chars; `referenceImageUrl`, if present, must actually point into
-  the `catalogue-media` bucket (reject anything else — this endpoint must
+  the `catalogue-reference` bucket (reject anything else — this endpoint must
   not become an open URL-accepting relay). Calls `createCatalogueRequest`
   with `productId: null`.
 - `GET /api/public/catalogue/requests?handle=...` (existing route,
