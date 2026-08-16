@@ -161,6 +161,39 @@ A slot carries:
 - **bought** — how many were actually purchased
 - the list of claims behind it, each with its sender
 
+### Shelf claims carry free text
+
+A shelf claim is a position, but customers routinely attach a detail the photo
+cannot express — most often a size: "bunny pajama, size 90". A shelf has no
+declared variant list to resolve that against, so the text is stored **raw on
+the claim** and surfaced to the owner at buy time. No parsing, no guessing at
+what a size means for an item nobody has named yet.
+
+### Substitution asks
+
+The size on a claim frequently cannot be met — the shelf has 80 and 100, the
+customer asked for 90. The owner taps *ask* on that claim and the bot quotes the
+customer's original claim message in the group:
+
+> size 90 habis, mau 80 atau 100?
+
+**This is the one exception to reply-only.** Everywhere else the bot speaks only
+in direct response to a customer's own message; this is owner-triggered, hours
+or days after the claim. It keeps the safest available shape — a threaded reply
+to that customer's own message, inside a group they are active in, sent one at a
+time and throttled — but it is not strictly reactive, and the exception is
+recorded here rather than being discovered during implementation.
+
+No new reaction is needed: ❔ already means *we need something from you*, which
+covers both a missing colour at capture and an unavailable size at buy time. The
+claim waits at ❔, then moves to 📝 if the customer accepts a substitute, or ❌ if
+they decline.
+
+**Asking never blocks buying.** Answers arrive in minutes or in hours, and the
+owner is standing in a shop. Certain items get bought and recorded immediately;
+pending ones stay at ❔ and settle as answers come in. Anything still unanswered
+when the trip ends closes as ❌.
+
 ### Duplicate claims
 
 A customer claiming the same slot in two messages is ambiguous: it may mean "I
@@ -311,11 +344,12 @@ of chatter that draws spam attention.
 - **Number.** A dedicated SIM, never the business number. Whatever number joins
   the groups carries the ToS risk; if it is banned, the loss is that number, not
   the customer relationships.
-- **Bot speech.** Reply-only — the bot messages someone only in response to
-  their own message, throttled. Cold DMs are what get numbers banned. Both
-  features that need it (asking for an IG handle, asking for a missing colour)
-  fit inside reply-only, and reactions carry most of the acknowledgement load
-  without sending messages at all.
+- **Bot speech.** Reply-only, with one exception. The bot messages someone only
+  in response to their own message, throttled; cold DMs are what get numbers
+  banned. Asking for an IG handle and asking for a missing colour both fit
+  inside reply-only, and reactions carry most of the acknowledgement load with
+  no messages at all. The exception is the owner-triggered substitution ask —
+  see that section for why it stays close to the safe shape.
 - **Storage.** Posted photos and reply images. Given the existing work on
   Supabase egress, retention needs an explicit decision: likely discard reply
   images once their claim is confirmed, keep the original post.
@@ -328,8 +362,9 @@ New tables (migrations from **062** upward — 058–060 are taken by the
 - **whatsapp_groups** — JID, cached name, refreshed-at, active event.
 - **posts** — the image, the group, the event, the note (variant list), price.
 - **claims** — post, sender number, resolved customer, source
-  (`ink` | `crop` | `text`), point or variant, quantity, confidence, review
-  state, and the source message id (needed to update its reaction later).
+  (`ink` | `crop` | `text`), point or variant, quantity, free-text note (a size
+  request on a shelf claim), confidence, review state, and the source message id
+  (needed to update its reaction and to quote it in a substitution ask).
 - **slots** — post, position or variant, claimed qty, bought qty, assigned
   product once named.
 
