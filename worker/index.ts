@@ -9,6 +9,8 @@ import { applyOwnerReaction, outcomeFor } from "./outcomes"
 import { listClaims } from "@/lib/db/claims"
 import { renderShoppingList } from "@/lib/whatsapp/render"
 import sql from "@/lib/db-pool"
+import { isBotAdmin } from "@/lib/db/whatsapp-groups"
+import { senderNumber } from "./handle-command"
 
 /**
  * One queue for the whole process, not one per message.
@@ -40,6 +42,44 @@ export function quotedId(message: WAMessage): string {
     content?.imageMessage?.contextInfo?.stanzaId ??
     ""
   )
+}
+
+/**
+ * Opt-in tracing for "the bot did nothing and I cannot tell why".
+ *
+ * Every rejection in this worker is silent by design — an unknown sender, a
+ * closed window, an unrecognised word — which makes a real fault look exactly
+ * like correct behaviour. This prints the few fields that distinguish them.
+ *
+ * Off unless WA_DEBUG is set, and it never prints message text: knowing the
+ * shape of a sender's JID is a debugging need, reading the group's chat is not.
+ */
+const DEBUG = Boolean(process.env.WA_DEBUG)
+
+async function trace(sock: WASocket, message: WAMessage) {
+  if (!DEBUG) return
+  const jid = message.key.participant ?? ""
+  const text = messageText(message)
+  const number = senderNumber(jid)
+  console.log("[wa]", {
+    // fromMe true on a message YOU sent means the linked device is your own
+    // number rather than the bot's — the worker drops those to avoid reacting
+    // to itself, so nothing else would ever print.
+    fromMe: message.key.fromMe,
+    linkedAs: sock.user?.id ?? "(unknown)",
+    chat: message.key.remoteJid,
+    participant: jid || "(none)",
+    // participantAlt/participantPn carry the real number when WhatsApp hands
+    // out a privacy id (@lid) as the participant.
+    alt:
+      (message.key as { participantAlt?: string; participantPn?: string }).participantAlt ??
+      (message.key as { participantPn?: string }).participantPn ??
+      "(none)",
+    parsedNumber: number || "(empty)",
+    isAdmin: number ? await isBotAdmin(number) : false,
+    isCommand: Boolean(parseCommand(text)),
+    kind: Object.keys(message.message ?? {})[0] ?? "(empty)",
+  })
 }
 
 async function onMessage(sock: WASocket, message: WAMessage) {
@@ -159,9 +199,11 @@ async function main() {
     })
 
     sock.ev.on("messages.upsert", async ({ messages, type }) => {
+      if (DEBUG) console.log("[wa] upsert", { type, count: messages.length })
       if (type !== "notify") return
       for (const message of messages) {
         try {
+          await trace(sock, message)
           await onMessage(sock, message)
         } catch (err) {
           // One bad message must not take the socket down with it.
