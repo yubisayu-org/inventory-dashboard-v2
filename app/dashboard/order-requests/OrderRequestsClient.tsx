@@ -55,13 +55,13 @@ export default function OrderRequestsClient() {
               <div>
                 <div className="text-sm text-foreground">
                   {displayIg(r.customerHandle)} —{" "}
-                  {r.productName ? (
-                    <>{r.productName} × {r.qty}</>
-                  ) : (
+                  {r.productId === null ? (
                     <>
                       <span className="inline-block px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-[10px] font-medium mr-1 align-middle">Custom</span>
                       {r.description} × {r.qty}
                     </>
+                  ) : (
+                    <>{r.productName} × {r.qty}</>
                   )}
                 </div>
                 {r.note && <div className="text-xs text-gray-400">{r.note}</div>}
