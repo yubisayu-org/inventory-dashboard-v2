@@ -40,19 +40,28 @@ export async function applyOwnerReaction(input: {
   if (intent === null) return false
   if (!(await isBotAdmin(senderNumber(input.reactorJid)))) return false
 
-  const [claim] = await sql`
+  // One message can carry several claims: a customer who ticks three things in
+  // one photo produces three. A reaction applies to the message, so it applies
+  // to all of them — taking only the first marked one item bought out of three
+  // and left the other two looking unfound.
+  const claims = await sql`
     SELECT id, quantity FROM wa_claims
     WHERE message_id = ${input.messageId} AND state <> 'rejected'
     ORDER BY id ASC
   `
-  if (!claim) return false
+  if (claims.length === 0) return false
 
-  await markClaimObtained(
-    claim.id as number,
-    intent === "bought" ? (claim.quantity as number) : 0,
-  )
+  for (const claim of claims) {
+    await markClaimObtained(
+      claim.id as number,
+      intent === "bought" ? (claim.quantity as number) : 0,
+    )
+  }
   if (intent === "missed") {
-    await sql`UPDATE wa_claims SET state = 'rejected', updated_at = NOW() WHERE id = ${claim.id}`
+    await sql`
+      UPDATE wa_claims SET state = 'rejected', updated_at = NOW()
+      WHERE message_id = ${input.messageId} AND state <> 'rejected'
+    `
   }
   return true
 }
