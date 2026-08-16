@@ -6,7 +6,7 @@ import { capturePost } from "./capture"
 import { captureClaim, postForReply } from "./claims"
 import { ReactionQueue } from "./reactions"
 import { applyOwnerReaction, outcomeFor } from "./outcomes"
-import { listClaims } from "@/lib/db/claims"
+import { findPostByMessage, listClaims } from "@/lib/db/claims"
 import { renderShoppingList } from "@/lib/whatsapp/render"
 import sql from "@/lib/db-pool"
 import { isBotAdmin } from "@/lib/db/whatsapp-groups"
@@ -132,7 +132,7 @@ async function onMessage(sock: WASocket, message: WAMessage) {
       await sock.sendMessage(groupJid, { react: { text: result.react, key: message.key } })
     }
     if (result.reply) await sock.sendMessage(groupJid, { text: result.reply })
-    if (result.rekap) await sendRekap(sock, groupJid)
+    if (result.rekap) await sendRekap(sock, groupJid, quotedId(message))
     return
   }
 
@@ -160,16 +160,24 @@ async function onMessage(sock: WASocket, message: WAMessage) {
 }
 
 /**
- * Post the shopping list for this group's newest shelf.
+ * Post the shopping list for a shelf.
  *
- * Newest rather than a chosen one: `/rekap` is typed one-handed in a shop, and
- * the shelf in front of the owner is the one they just posted. Older shelves are
- * a scroll away in the dashboard.
+ * Send /rekap as a reply to a shelf photo and that is the shelf rendered;
+ * otherwise it falls back to the newest in the group, which is usually the one
+ * the owner just posted.
+ *
+ * The reply form exists because "newest" is only right when nothing else has
+ * been posted since — and by the time a trip is under way, several shelves are
+ * in the chat and the interesting one is rarely the last.
  */
-async function sendRekap(sock: WASocket, groupJid: string) {
-  const [post] = await sql`
-    SELECT id FROM wa_posts WHERE group_jid = ${groupJid} ORDER BY id DESC LIMIT 1
-  `
+async function sendRekap(sock: WASocket, groupJid: string, quoted: string) {
+  const quotedPost = quoted ? await findPostByMessage(groupJid, quoted) : null
+
+  const [post] = quotedPost
+    ? [{ id: quotedPost.id }]
+    : await sql`
+        SELECT id FROM wa_posts WHERE group_jid = ${groupJid} ORDER BY id DESC LIMIT 1
+      `
   if (!post) {
     await sock.sendMessage(groupJid, { text: "No shelf posted here yet." })
     return
