@@ -14,14 +14,22 @@ import { calcAbroadPrice, ceilTo } from "@/lib/pricing"
 // is an affine function of kurs with publicly known coefficients, so an
 // attacker who controls valas's magnitude can drive the relative rounding
 // error to near zero and solve for kurs algebraically from ONE request (no
-// bisection needed). Closed three ways: input bounds (VALAS_MIN/MAX,
+// bisection needed). Mitigated three ways: input bounds (VALAS_MIN/MAX,
 // GRAM_MIN/MAX below), server-side input quantization (quantizeSigFigs /
-// quantizeGram — collapses the reachable input space so there's no fine
-// boundary left to search), and relative-precision output rounding
-// (roundEstimate — bounds single-response disclosure to ~1% regardless of
-// input magnitude, honest for something labelled "not a final price").
-// Per-IP rate limiting below is now a secondary/belt-and-braces layer, not
-// the primary control.
+// quantizeGram — shrinks the reachable input space), and relative-precision
+// output rounding (roundEstimate — bounds a SINGLE response to disclosing
+// kurs within roughly ±0.3%, regardless of input magnitude).
+//
+// This bounds one request, not sustained probing: the reachable
+// (valas, gram) grid is finite (currently ~450 x ~5000 cells), and an
+// attacker issuing many requests across that grid narrows the feasible
+// range further, converging roughly as 1/N — a few hundred requests can
+// still reach single-digit-percent precision. Per-IP rate limiting below
+// remains load-bearing for that sustained case, not merely
+// belt-and-braces. Fully closing sustained-request narrowing (e.g. a
+// shared secret between the video-catalog proxy and this route, so it
+// can't be called directly at volume) is deferred — see
+// .superpowers/sdd/2026-08-16-custom-request-price-estimate-backend/progress.md.
 // See docs/superpowers/specs/2026-08-16-custom-request-price-estimate-design.md.
 //
 // TODO: swap for the real domain once the catalogue site is deployed.
@@ -32,7 +40,12 @@ const PROFIT_PCT = 15
 const ROUND_TO = 1000
 
 const VALAS_MIN = 1
-const VALAS_MAX = 100_000
+// Currency-agnostic on purpose — valas is in whatever the country's own
+// currency is (JPY/KRW/VND-scale orders can legitimately be six-plus
+// figures). Raising this buys an attacker nothing: the disclosure bound
+// comes from the relative output rounding in roundEstimate(), not from
+// valas's magnitude.
+const VALAS_MAX = 100_000_000
 const GRAM_MIN = 1
 const GRAM_MAX = 50_000
 
@@ -43,9 +56,13 @@ function quantizeSigFigs(n: number, sigFigs: number): number {
   return Math.round(n / step) * step
 }
 
-// Snaps gram to 100g buckets, never below the bucket size.
+// Snaps gram to 10g buckets, never below the bucket size. A coarser
+// bucket (previously 100g) meaningfully distorted realistic small-item
+// estimates (e.g. a 40g item quoting ~34% high) for little extra
+// disclosure resistance, since the output rounding is the dominant
+// disclosure bound, not this quantization step.
 function quantizeGram(g: number): number {
-  return Math.max(100, Math.round(g / 100) * 100)
+  return Math.max(10, Math.round(g / 10) * 10)
 }
 
 // Rounds an estimate to ~3 significant figures (never coarser than the
@@ -67,12 +84,23 @@ const rateLimitMap = new Map<string, { windowStart: number; count: number }>()
 const RATE_LIMIT_WINDOW = 60_000 // 1 minute
 const RATE_LIMIT_MAX = 20
 const RATE_LIMIT_MAP_SWEEP_THRESHOLD = 1000
+// Hard cap below the sweep threshold: a script rotating its IP/XFF header
+// faster than entries expire would otherwise keep the map growing forever
+// even with the sweep, since sweeping only removes already-expired
+// entries. If still over threshold post-sweep, drop oldest-inserted
+// entries (Map iterates in insertion order) until back under it.
+const RATE_LIMIT_MAP_HARD_CAP = 1000
 
 function isRateLimited(ip: string): boolean {
   const now = Date.now()
   if (rateLimitMap.size > RATE_LIMIT_MAP_SWEEP_THRESHOLD) {
     for (const [key, entry] of rateLimitMap) {
       if (now - entry.windowStart > RATE_LIMIT_WINDOW) rateLimitMap.delete(key)
+    }
+    if (rateLimitMap.size > RATE_LIMIT_MAP_HARD_CAP) {
+      const excess = rateLimitMap.size - RATE_LIMIT_MAP_HARD_CAP
+      const oldestKeys = Array.from(rateLimitMap.keys()).slice(0, excess)
+      for (const key of oldestKeys) rateLimitMap.delete(key)
     }
   }
   let entry = rateLimitMap.get(ip)
@@ -86,13 +114,21 @@ function isRateLimited(ip: string): boolean {
 }
 
 function clientIp(req: NextRequest): string {
-  const envoyIp = req.headers.get("x-envoy-external-address")
-  if (envoyIp) return envoyIp
+  // The last X-Forwarded-For hop is safe by construction on this app's
+  // deployment (Railway/Envoy appends the real client IP as the final
+  // entry) regardless of how many fake entries a client prepends, so it's
+  // checked first. x-envoy-external-address is only a fallback: it's
+  // trustworthy only if the edge actually sets it, which isn't verified
+  // here — see the block comment above this route for the open topology
+  // question.
   const xff = req.headers.get("x-forwarded-for")
   if (xff) {
     const hops = xff.split(",").map((h) => h.trim())
-    return hops[hops.length - 1] ?? "unknown"
+    const last = hops[hops.length - 1]
+    if (last) return last
   }
+  const envoyIp = req.headers.get("x-envoy-external-address")
+  if (envoyIp) return envoyIp
   return "unknown"
 }
 
