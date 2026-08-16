@@ -71,6 +71,15 @@ export async function runCommand(input: {
 
       await upsertGroup({ jid: input.groupJid, name: input.groupName })
 
+      // Say so when there is nothing to do. Without this, running /connect on a
+      // group that is already bound repeats "choose one in the dashboard" —
+      // telling the owner to do a thing they have already done, which reads as
+      // the command having failed.
+      const [existing] = await sql`
+        SELECT event FROM wa_groups WHERE jid = ${input.groupJid} AND event IS NOT NULL
+      `
+      if (existing) return { reply: `Already connected to ${existing.event}.` }
+
       // Bound automatically only when there is exactly one active event. With
       // none there is nothing to choose, and with several a guess would file a
       // trip's claims under the wrong one — so the dashboard decides instead.

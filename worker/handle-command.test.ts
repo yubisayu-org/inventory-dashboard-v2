@@ -97,6 +97,24 @@ test("only a connector may bind a group", async () => {
   assert.equal(group.name, "Jastip")
 })
 
+test("connecting an already-bound group says so instead of repeating itself", async () => {
+  const { bindGroupToEvent } = await import("../lib/db/whatsapp-groups")
+  await bindGroupToEvent(JID, EVENT)
+
+  const result = await runCommand({
+    command: { kind: "connect" },
+    groupJid: JID,
+    groupName: "Jastip",
+    sender: `${OWNER}@s.whatsapp.net`,
+  })
+  assert.match(
+    result.reply ?? "",
+    /already connected/i,
+    "telling the owner to do what they have already done reads as a failure",
+  )
+  await bindGroupToEvent(JID, null)
+})
+
 test("opening a window records the store and reacts rather than replying", async () => {
   const result = await runCommand({
     command: { kind: "open", store: "Nishimatsuya" },
