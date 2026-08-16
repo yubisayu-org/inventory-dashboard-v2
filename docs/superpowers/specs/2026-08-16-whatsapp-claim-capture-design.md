@@ -169,25 +169,34 @@ declared variant list to resolve that against, so the text is stored **raw on
 the claim** and surfaced to the owner at buy time. No parsing, no guessing at
 what a size means for an item nobody has named yet.
 
-### Substitution asks
+### Substitutions: the owner asks, the bot follows up
 
 The size on a claim frequently cannot be met — the shelf has 80 and 100, the
-customer asked for 90. The owner taps *ask* on that claim and the bot quotes the
-customer's original claim message in the group:
+customer asked for 90. **The owner asks that question themselves**, in their own
+words, from their own number. The bot does not initiate it.
 
-> size 90 habis, mau 80 atau 100?
+That keeps the bot strictly reply-only. An owner-triggered ask would have been
+the single exception to that rule, and it is not worth having: asking is the
+noisiest thing the bot could do, it happens in bursts during a shopping trip,
+and it is the one part of this the owner was always going to do naturally.
 
-**This is the one exception to reply-only.** Everywhere else the bot speaks only
-in direct response to a customer's own message; this is owner-triggered, hours
-or days after the claim. It keeps the safest available shape — a threaded reply
-to that customer's own message, inside a group they are active in, sent one at a
-time and throttled — but it is not strictly reactive, and the exception is
-recorded here rather than being discovered during implementation.
+What the bot does is **capture the answer**:
+
+- **Quote chain.** When the owner asks by replying to the customer's claim
+  message, the customer's answer quotes that question, which quotes the claim.
+  The bot walks the chain back and knows exactly which claim the answer belongs
+  to. Replying is the natural way to ask, so this costs the owner nothing.
+- **Fallback.** If the owner asks without quoting, the chain breaks. While a
+  claim sits at ❔, the next message from that customer in the group is treated
+  as the answer — but flagged for review rather than applied silently, since it
+  may be unrelated chatter.
+
+Answers are classified by keyword: "ok", "boleh", "gpp", "mau", or a bare size
+→ accepted, claim moves to 📝 with the substitute recorded. "ga jadi", "ga usah",
+"skip", "no" → ❌. Anything unclassifiable goes to review.
 
 No new reaction is needed: ❔ already means *we need something from you*, which
-covers both a missing colour at capture and an unavailable size at buy time. The
-claim waits at ❔, then moves to 📝 if the customer accepts a substitute, or ❌ if
-they decline.
+covers both a missing colour at capture and an unavailable size at buy time.
 
 **Asking never blocks buying.** Answers arrive in minutes or in hours, and the
 owner is standing in a shop. Certain items get bought and recorded immediately;
@@ -344,12 +353,12 @@ of chatter that draws spam attention.
 - **Number.** A dedicated SIM, never the business number. Whatever number joins
   the groups carries the ToS risk; if it is banned, the loss is that number, not
   the customer relationships.
-- **Bot speech.** Reply-only, with one exception. The bot messages someone only
-  in response to their own message, throttled; cold DMs are what get numbers
-  banned. Asking for an IG handle and asking for a missing colour both fit
-  inside reply-only, and reactions carry most of the acknowledgement load with
-  no messages at all. The exception is the owner-triggered substitution ask —
-  see that section for why it stays close to the safe shape.
+- **Bot speech.** Reply-only, no exceptions. The bot messages someone only in
+  direct response to their own message, throttled; cold DMs are what get numbers
+  banned. Only two things earn a message at all — asking an unknown sender for
+  their IG handle, and asking for a missing colour — and reactions carry
+  everything else with no messages sent. Substitution questions are asked by the
+  owner from their own number, so the bot never initiates a conversation.
 - **Storage.** Posted photos and reply images. Given the existing work on
   Supabase egress, retention needs an explicit decision: likely discard reply
   images once their claim is confirmed, keep the original post.
