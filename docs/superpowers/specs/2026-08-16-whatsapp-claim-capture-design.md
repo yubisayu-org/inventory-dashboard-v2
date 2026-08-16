@@ -288,3 +288,11 @@ New tables (migrations from **062** upward — 058–060 are taken by the
 - Sample images on disk (original, ticked reply, cropped reply) to validate the
   resolvers.
 - Retention policy for reply images.
+
+## Deferred
+
+- **Over-demand alert.** Notify the owner when a slot's claims pass the stock
+  figure written in its caption, rather than leaving it to be noticed on the
+  shopping list. Held back deliberately until one event has run and the real
+  frequency is known — building it now would be guessing at a threshold nobody
+  has observed yet.
