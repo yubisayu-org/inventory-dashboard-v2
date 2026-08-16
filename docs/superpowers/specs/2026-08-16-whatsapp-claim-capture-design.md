@@ -102,16 +102,20 @@ Every claim message gets an emoji reaction from the bot:
 
 | Phase | Reaction | Meaning |
 |---|---|---|
-| Capture | ✅ | Understood and recorded |
-| | ❓ | Partly understood — a dimension is missing (size but no colour). The only case that also earns a text reply. |
+| Capture | 📝 | Understood and recorded |
+| | ❔ | Partly understood — a dimension is missing (size but no colour). The only case that also earns a text reply. |
 | | ❌ | Could not be read; the customer should retype |
-| After buying | 🛒 | Secured for this customer |
+| After buying | ✅ | Secured for this customer |
 | | 😢 | Not obtained — sold out, or lost the allocation when short |
+
+The split is deliberate: 📝 means *noted*, ✅ means *done*. A customer glancing
+at their own message can tell the difference between "we heard you" and "it's
+yours" without reading anything.
 
 WhatsApp permits one reaction per message per sender, and a new reaction
 replaces the old, so a claim **advances** through these states rather than
-accumulating them. A customer gets ✅ within seconds of claiming; days later,
-when the owner taps counts in the store, the same message flips to 🛒 or 😢.
+accumulating them. A customer gets 📝 within seconds of claiming; days later,
+when the owner taps counts in the store, the same message flips to ✅ or 😢.
 
 This is what makes the fulfilment result deliverable at zero cost: nobody
 receives a DM, the owner writes nothing, and each customer learns their outcome
@@ -128,8 +132,9 @@ weight, do not clutter the group, and are a much smaller activity signature on
 the bot number than a message would be.
 
 They are also **mutable**. A claim that resolved to ❌, or one corrected in the
-review queue, has its reaction updated to ✅ afterwards — the customer sees
-their claim accepted without the owner writing anything.
+review queue, has its reaction updated to 📝 afterwards — the customer sees
+their claim accepted without the owner writing anything. Note that a correction
+resolves to 📝, not ✅: the claim is now recorded, not yet bought.
 
 Recording a purchase updates many reactions at once: buying forty items flips
 forty claims. That burst must be **throttled and spread out**, since a rapid
@@ -170,7 +175,7 @@ or find another store.
 
 A stock figure written into the caption ("stock only 16") is therefore
 **advisory**: the shopping list renders `18 claimed / 16 stock` so the owner
-knows before walking in, but claim 17 still records and still gets a ✅. Having
+knows before walking in, but claim 17 still records and still gets a 📝. Having
 the bot tell a customer "sold out" on the strength of a number guessed from a
 photograph would be worse than over-collecting.
 
