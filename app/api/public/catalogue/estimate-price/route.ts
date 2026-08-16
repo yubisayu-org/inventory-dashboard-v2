@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import catalogueSql from "@/lib/db-catalogue-public"
 import { calcAbroadPrice, ceilTo } from "@/lib/pricing"
+import { clientIp, createRateLimiter } from "@/lib/catalogue-rate-limit"
 
 // Public, no-login endpoint estimating a price for a custom order request,
 // from a foreign-currency purchase price and weight. Computes server-side
@@ -74,63 +75,14 @@ function roundEstimate(price: number): number {
   return ceilTo(price, Math.max(ROUND_TO, relativeStep))
 }
 
-// Secondary defense only — see the block comment above. Keys on the
-// last X-Forwarded-For hop (the one this app's own edge proxy appends,
-// not one a client can inject by prepending fake entries), falling back
-// to a platform real-IP header if present. Evicts expired entries once
-// the map grows past a threshold so a spoofing attacker can't grow it
-// unboundedly on a long-lived process.
-const rateLimitMap = new Map<string, { windowStart: number; count: number }>()
-const RATE_LIMIT_WINDOW = 60_000 // 1 minute
-const RATE_LIMIT_MAX = 20
-const RATE_LIMIT_MAP_SWEEP_THRESHOLD = 1000
-// Hard cap below the sweep threshold: a script rotating its IP/XFF header
-// faster than entries expire would otherwise keep the map growing forever
-// even with the sweep, since sweeping only removes already-expired
-// entries. If still over threshold post-sweep, drop oldest-inserted
-// entries (Map iterates in insertion order) until back under it.
-const RATE_LIMIT_MAP_HARD_CAP = 1000
-
-function isRateLimited(ip: string): boolean {
-  const now = Date.now()
-  if (rateLimitMap.size > RATE_LIMIT_MAP_SWEEP_THRESHOLD) {
-    for (const [key, entry] of rateLimitMap) {
-      if (now - entry.windowStart > RATE_LIMIT_WINDOW) rateLimitMap.delete(key)
-    }
-    if (rateLimitMap.size > RATE_LIMIT_MAP_HARD_CAP) {
-      const excess = rateLimitMap.size - RATE_LIMIT_MAP_HARD_CAP
-      const oldestKeys = Array.from(rateLimitMap.keys()).slice(0, excess)
-      for (const key of oldestKeys) rateLimitMap.delete(key)
-    }
-  }
-  let entry = rateLimitMap.get(ip)
-  if (!entry || now - entry.windowStart > RATE_LIMIT_WINDOW) {
-    entry = { windowStart: now, count: 1 }
-    rateLimitMap.set(ip, entry)
-    return false
-  }
-  entry.count++
-  return entry.count > RATE_LIMIT_MAX
-}
-
-function clientIp(req: NextRequest): string {
-  // The last X-Forwarded-For hop is safe by construction on this app's
-  // deployment (Railway/Envoy appends the real client IP as the final
-  // entry) regardless of how many fake entries a client prepends, so it's
-  // checked first. x-envoy-external-address is only a fallback: it's
-  // trustworthy only if the edge actually sets it, which isn't verified
-  // here — see the block comment above this route for the open topology
-  // question.
-  const xff = req.headers.get("x-forwarded-for")
-  if (xff) {
-    const hops = xff.split(",").map((h) => h.trim())
-    const last = hops[hops.length - 1]
-    if (last) return last
-  }
-  const envoyIp = req.headers.get("x-envoy-external-address")
-  if (envoyIp) return envoyIp
-  return "unknown"
-}
+// Secondary defense only — see the block comment above. Evicts expired
+// entries once the map grows past a threshold so a spoofing attacker
+// can't grow it unboundedly on a long-lived process. See
+// lib/catalogue-rate-limit.ts for clientIp()'s last-XFF-hop logic and the
+// sweep/hard-cap details — shared across all public catalogue routes, but
+// this route gets its own independent counter (own createRateLimiter()
+// call), matching the approve/reject routes.
+const isRateLimited = createRateLimiter(60_000, 20)
 
 function corsHeaders(): Record<string, string> {
   return {

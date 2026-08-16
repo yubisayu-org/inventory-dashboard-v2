@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import { rejectCatalogueRequestOffer } from "@/lib/db"
 import catalogueSql from "@/lib/db-catalogue-public"
+import { clientIp, createRateLimiter } from "@/lib/catalogue-rate-limit"
 
 // TODO: swap for the real domain once the catalogue site is deployed.
 const ALLOWED_ORIGIN = "https://yubisayu-catalogue.netlify.app"
 const MAX_BODY_BYTES = 512
+
+// Own independent counter — doesn't share a budget with approve/estimate-price.
+const isRateLimited = createRateLimiter(60_000, 20)
 
 function corsHeaders(): Record<string, string> {
   return {
@@ -25,6 +29,11 @@ export async function POST(req: NextRequest, { params }: Params) {
   const id = Number(idStr)
   if (!Number.isInteger(id) || id < 1) {
     return NextResponse.json({ error: "Invalid id" }, { status: 400, headers: corsHeaders() })
+  }
+
+  const ip = clientIp(req)
+  if (isRateLimited(ip)) {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429, headers: corsHeaders() })
   }
 
   const declaredLen = Number(req.headers.get("content-length") ?? 0)
