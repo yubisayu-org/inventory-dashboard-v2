@@ -60,3 +60,6 @@ next-env.d.ts
 
 # local scratch (WhatsApp sample images, experiments)
 /scratchpad
+
+# Baileys device credentials — a linked WhatsApp session. Never commit.
+.wa-session/

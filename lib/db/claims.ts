@@ -17,6 +17,9 @@ export interface WaPost {
   pricingMethod: PricingMethod
   note: string
   safeHues: number[]
+  /** The WhatsApp message this post was sent as. Empty for dashboard uploads. */
+  messageId: string
+  groupJid: string
   createdAt: string
 }
 
@@ -68,13 +71,16 @@ export async function createPost(input: {
   pricingMethod: PricingMethod
   note: string
   safeHues: number[]
+  messageId?: string
+  groupJid?: string
 }, db: DBExecutor = sql): Promise<{ id: number }> {
   const [row] = await db`
     INSERT INTO wa_posts (event, image_path, image_width, image_height, store,
-      country_id, pricing_method, note, safe_hues)
+      country_id, pricing_method, note, safe_hues, message_id, group_jid)
     VALUES (${input.event}, ${input.imagePath}, ${input.imageWidth},
       ${input.imageHeight}, ${input.store}, ${input.countryId},
-      ${input.pricingMethod}, ${input.note}, ${input.safeHues})
+      ${input.pricingMethod}, ${input.note}, ${input.safeHues},
+      ${input.messageId ?? ""}, ${input.groupJid ?? ""})
     RETURNING id
   `
   return { id: row.id }
@@ -92,12 +98,33 @@ function mapPost(r: Record<string, unknown>): WaPost {
     pricingMethod: toPricingMethod(r.pricing_method),
     note: (r.note as string) ?? "",
     safeHues: ((r.safe_hues as number[]) ?? []).map(Number),
+    messageId: (r.message_id as string) ?? "",
+    groupJid: (r.group_jid as string) ?? "",
     createdAt: tsToString(r.created_at as Date | null),
   }
 }
 
 export async function getPost(id: number): Promise<WaPost | null> {
   const [row] = await sql`SELECT * FROM wa_posts WHERE id = ${id}`
+  return row ? mapPost(row) : null
+}
+
+/**
+ * The post a reply is quoting.
+ *
+ * Scoped to the group as well as the message id: ids are unique per chat, not
+ * globally, and two groups running two trips must not resolve to each other's
+ * shelves.
+ */
+export async function findPostByMessage(
+  groupJid: string,
+  messageId: string,
+): Promise<WaPost | null> {
+  if (!messageId) return null
+  const [row] = await sql`
+    SELECT * FROM wa_posts
+    WHERE group_jid = ${groupJid} AND message_id = ${messageId}
+  `
   return row ? mapPost(row) : null
 }
 
