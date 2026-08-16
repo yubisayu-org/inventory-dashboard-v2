@@ -12,7 +12,7 @@ export default function OrderRequestsClient() {
   const [requests, setRequests] = useState<CatalogueRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [countries, setCountries] = useState<{ id: number; name: string }[]>([])
+  const [countries, setCountries] = useState<{ id: number; name: string; kurs: number; cargoPerKg: number }[]>([])
 
   useEffect(() => {
     fetch("/api/sheets/products", { cache: "no-store" })
@@ -105,13 +105,17 @@ export default function OrderRequestsClient() {
               )}
               {r.status === "offer_pending" && (
                 <>
-                  <span className="text-xs text-amber-600 font-medium">Menunggu persetujuan customer</span>
+                  <span className="text-xs text-amber-600 font-medium">
+                    Menunggu persetujuan customer — {r.countryName} · valas {r.valas} · {r.gram}g · Rp {fmt(r.estimatedPrice ?? 0)}
+                  </span>
                   <button onClick={() => cancelEdit(r.id)} className="px-3 py-1.5 rounded-lg border border-cream-border text-xs">Cancel</button>
                 </>
               )}
               {r.status === "approved" && (
                 <>
-                  <span className="text-xs text-green-600 font-medium">Customer approved ✓ Rp {fmt(r.estimatedPrice ?? 0)}</span>
+                  <span className="text-xs text-green-600 font-medium">
+                    Customer approved ✓ — {r.countryName} · valas {r.valas} · {r.gram}g · Rp {fmt(r.estimatedPrice ?? 0)}
+                  </span>
                   <button onClick={() => setCreatingProductForId(r.id)} className="px-3 py-1.5 rounded-lg border border-cream-border text-xs">Create Product</button>
                   <button onClick={() => setConvertingId(r.id)} className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs">Convert</button>
                   <button onClick={() => setRejectingId(r.id)} className="px-3 py-1.5 rounded-lg border border-cream-border text-xs">Reject</button>
@@ -151,6 +155,7 @@ export default function OrderRequestsClient() {
         return req ? (
           <CreateProductModal
             request={req}
+            countries={countries}
             onClose={() => setCreatingProductForId(null)}
             onDone={() => setCreatingProductForId(null)}
           />
@@ -364,8 +369,9 @@ function EditModal({ requestId, countries, onClose, onDone }: {
   )
 }
 
-function CreateProductModal({ request, onClose, onDone }: {
+function CreateProductModal({ request, countries, onClose, onDone }: {
   request: CatalogueRequest
+  countries: { id: number; name: string; kurs: number; cargoPerKg: number }[]
   onClose: () => void
   onDone: () => void
 }) {
@@ -373,6 +379,8 @@ function CreateProductModal({ request, onClose, onDone }: {
   const [price, setPrice] = useState(String(request.estimatedPrice ?? 0))
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState("")
+
+  const country = countries.find((c) => c.id === request.countryId)
 
   async function submit() {
     if (!name.trim()) { setError("Name is required"); return }
@@ -389,6 +397,13 @@ function CreateProductModal({ request, onClose, onDone }: {
           countryId: request.countryId,
           valas: request.valas,
           gram: request.gram,
+          // Stored so the row's OTHER fields stay internally consistent
+          // with what actually produced `price` below — otherwise the row
+          // shows kurs/cargoPerKg as 0 and a later Products-page edit
+          // recomputes the price from freight only. Does NOT affect the
+          // price itself, which is still whatever's in `price` below.
+          kurs: country?.kurs ?? 0,
+          cargoPerKg: country?.cargoPerKg ?? 0,
           profitPct: 15,
           operationalFee: 0,
           packingFee: 0,
