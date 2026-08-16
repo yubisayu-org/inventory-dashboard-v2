@@ -1,10 +1,83 @@
+import type { WAMessage, WASocket } from "baileys"
 import { startSession } from "./session"
+import { parseCommand } from "./commands"
+import { runCommand } from "./handle-command"
+import { capturePost } from "./capture"
+
+/** The text of a message, whatever kind it is. */
+export function messageText(message: WAMessage): string {
+  const content = message.message
+  if (!content) return ""
+  return (
+    content.conversation ??
+    content.extendedTextMessage?.text ??
+    content.imageMessage?.caption ??
+    content.videoMessage?.caption ??
+    ""
+  )
+}
+
+/** The id of the message this one is replying to, or "". */
+export function quotedId(message: WAMessage): string {
+  const content = message.message
+  return (
+    content?.extendedTextMessage?.contextInfo?.stanzaId ??
+    content?.imageMessage?.contextInfo?.stanzaId ??
+    ""
+  )
+}
+
+async function onMessage(sock: WASocket, message: WAMessage) {
+  // Its own messages come back on this event. Reacting to them would loop.
+  if (message.key.fromMe) return
+
+  const groupJid = message.key.remoteJid ?? ""
+  if (!groupJid.endsWith("@g.us")) return
+
+  const sender = message.key.participant ?? ""
+  const messageId = message.key.id ?? ""
+  const text = messageText(message)
+
+  const command = parseCommand(text)
+  if (command) {
+    const result = await runCommand({
+      command,
+      groupJid,
+      groupName: (await sock.groupMetadata(groupJid).catch(() => null))?.subject ?? "",
+      sender,
+    })
+    if (result.react) {
+      await sock.sendMessage(groupJid, { react: { text: result.react, key: message.key } })
+    }
+    if (result.reply) await sock.sendMessage(groupJid, { text: result.reply })
+    // Rendering and sending the shopping list arrives in task 6.
+    return
+  }
+
+  const isImage = Boolean(message.message?.imageMessage)
+  if (!isImage) return
+
+  // An image that quotes something is a customer pointing at a post; one that
+  // quotes nothing, from an admin, inside an open window, is a new shelf.
+  if (quotedId(message) === "") {
+    await capturePost({ sock, message, groupJid, messageId, sender, caption: text })
+  }
+  // Claims arrive in task 5.
+}
 
 async function main() {
   await startSession((sock) => {
-    // Handlers are attached in later tasks. Connecting is the whole of task 1,
-    // and it is worth confirming on its own before anything reads a message.
-    void sock
+    sock.ev.on("messages.upsert", async ({ messages, type }) => {
+      if (type !== "notify") return
+      for (const message of messages) {
+        try {
+          await onMessage(sock, message)
+        } catch (err) {
+          // One bad message must not take the socket down with it.
+          console.error("failed to handle a message:", err)
+        }
+      }
+    })
   })
 }
 
