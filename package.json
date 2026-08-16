@@ -10,7 +10,7 @@
     "build": "next build",
     "start": "next start",
     "worker": "tsx --env-file-if-exists=.env.local --env-file-if-exists=.env.development.local worker/index.ts",
-    "test": "tsx --env-file-if-exists=.env.development.local --test lib/claims/*.test.ts lib/*.test.ts lib/db/*.test.ts lib/whatsapp/*.test.ts"
+    "test": "tsx --env-file-if-exists=.env.development.local --test lib/claims/*.test.ts lib/*.test.ts lib/db/*.test.ts lib/whatsapp/*.test.ts worker/*.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",
