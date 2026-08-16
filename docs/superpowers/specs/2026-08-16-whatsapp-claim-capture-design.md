@@ -90,17 +90,20 @@ internal.
 An incomplete claim ("38" when three colours exist) triggers a bot reply asking
 for the missing dimension. The answer completes the claim.
 
-### 4. Reaction on the post (single-product posts only)
+### Reactions count only when solicited
 
-For a post with exactly one item and no variants, a 👍 on the post itself is a
-complete claim: one unit, that item. Nothing to type, nothing to mark, and free
-to capture.
+A reaction is meaningful **only as an answer to a question the owner asked**.
 
-It does not generalize. A reaction carries no position, so it says nothing about
-a shelf photo, and it cannot pick between variants on a multi-variant post. It
-is offered only where the post is unambiguous on its own.
+- 👍 answering a substitution question → the claim stands, with the substitute
+  recorded. This is a real claim outcome, not a side note.
+- 👍 on a product post, unprompted → **ignored**. It is not a claim.
 
----
+The split is deliberate. An unprompted thumbs-up is usually "cute", not "I want
+one", and reading it as a claim would also collide with the owner posting a
+photo *as* a question ("cuma ada ini, mau?"): the thumbs-up there means
+yes-to-the-question, but a claim-reading bot would record a phantom item and
+leave the original claim still waiting. Counting only solicited reactions
+removes both problems at once.
 
 Shelf posts also accept typed claims where the owner has numbered items, but
 numbering is optional and not required by the design. Free-text claims against
