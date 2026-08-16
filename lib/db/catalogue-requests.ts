@@ -245,3 +245,45 @@ export async function cancelEditCatalogueRequest(
   `
   if (rows.length === 0) throw new Error("Request not found or already handled")
 }
+
+/** Public path: customer approves a revised offer. `db` must be the
+ *  scoped `catalogue_public` connection (has UPDATE(status) only, per
+ *  migration 064 — this function never sets any other column). Guarded on
+ *  both the id AND the handle, so one customer can't approve/reject
+ *  another's offer by guessing an id — the handle is exactly as visible
+ *  to the customer as the id is (both come back from the same status
+ *  lookup response), so this isn't a stronger trust boundary than the
+ *  rest of this feature already relies on. */
+export async function approveCatalogueRequestOffer(
+  id: number,
+  customerHandle: string,
+  db: postgres.Sql,
+): Promise<void> {
+  const rows = await db`
+    UPDATE catalogue_requests
+    SET status = 'approved', updated_at = NOW()
+    WHERE id = ${id}
+      AND lower(replace(customer_handle, '@', '')) = ${normalizeId(customerHandle)}
+      AND status = 'offer_pending'
+    RETURNING id
+  `
+  if (rows.length === 0) throw new Error("Request not found or already handled")
+}
+
+/** Public path: customer rejects a revised offer — terminal, same as a
+ *  staff reject. */
+export async function rejectCatalogueRequestOffer(
+  id: number,
+  customerHandle: string,
+  db: postgres.Sql,
+): Promise<void> {
+  const rows = await db`
+    UPDATE catalogue_requests
+    SET status = 'rejected', updated_at = NOW()
+    WHERE id = ${id}
+      AND lower(replace(customer_handle, '@', '')) = ${normalizeId(customerHandle)}
+      AND status = 'offer_pending'
+    RETURNING id
+  `
+  if (rows.length === 0) throw new Error("Request not found or already handled")
+}
