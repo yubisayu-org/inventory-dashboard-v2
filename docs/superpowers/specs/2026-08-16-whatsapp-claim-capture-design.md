@@ -173,6 +173,16 @@ Available two ways:
   it. Group-visible to start; a setting flips it to owner-only DM if customers
   turn the tally into a pile-on.
 
+The shopping list is **never sent automatically**. Claims arrive over hours, so
+any unprompted snapshot is stale on arrival and would have the bot posting the
+same picture repeatedly — noise in the group, and the most obvious repetitive
+sending pattern the number could exhibit.
+
+`/rekap` is **owner-only**: the sender is checked against the owner's number and
+the command is silently ignored from anyone else. Silently, not with an error
+reply — a customer who types it should get no response at all, rather than a
+message that invites them to try again.
+
 ## Partial buying
 
 The owner buys 4 of the 5 claimed today and may find the last one tomorrow.
