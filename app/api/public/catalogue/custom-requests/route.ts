@@ -83,7 +83,15 @@ export async function POST(req: NextRequest) {
       )
     }
     if (referenceImageUrl) {
-      if (!referenceImagePrefix || !referenceImageUrl.startsWith(referenceImagePrefix)) {
+      let ok = false
+      try {
+        const u = new URL(referenceImageUrl)
+        const expected = new URL(referenceImagePrefix ?? "")
+        ok = u.origin === expected.origin && u.pathname.startsWith(expected.pathname)
+      } catch {
+        // ok stays false — malformed URL is rejected
+      }
+      if (!ok) {
         return NextResponse.json({ error: "Invalid referenceImageUrl" }, { status: 400, headers: corsHeaders() })
       }
     }
