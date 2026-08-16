@@ -134,6 +134,28 @@ A slot carries:
 - **bought** — how many were actually purchased
 - the list of claims behind it, each with its sender
 
+### Claims are unbounded
+
+There is no stock figure to enforce against. A shelf photo shows what was on the
+shelf at that moment; the seller does not know the real count, and the same is
+true of a product photo or video. So **no claim is ever rejected for exceeding
+stock**. `claimed` is a measure of demand, not an allocation.
+
+Reality is applied at the buy step instead: the owner buys what is actually
+there, records that as `bought`, and `compareOrderPriority` decides who gets
+them. Over-claiming is useful signal — eighteen claims on a slot says buy extra,
+or find another store.
+
+A stock figure written into the caption ("stock only 16") is therefore
+**advisory**: the shopping list renders `18 claimed / 16 stock` so the owner
+knows before walking in, but claim 17 still records and still gets a ✅. Having
+the bot tell a customer "sold out" on the strength of a number guessed from a
+photograph would be worse than over-collecting.
+
+Hard first-come-first-served cutoffs are deliberately not built: that is a
+different social contract with customers, and it would commit the seller to a
+number they only estimated.
+
 ## Output: the shopping list
 
 Rendered from the original post plus its slots.
