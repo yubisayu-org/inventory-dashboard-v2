@@ -42,6 +42,27 @@ export async function loadGray(path: string, width: number): Promise<GrayRaster>
 }
 
 /**
+ * Luminance decode that fits *within* a box, preserving aspect ratio.
+ *
+ * Sizing by width alone overshoots on the tall side: a 3:4 reply scaled to the
+ * scene's width comes out taller than the scene, so the one template size that
+ * can match a whole photo sent back — the scene's own size — is never
+ * reachable. Constraining both axes makes that case representable.
+ */
+export async function loadGrayWithin(
+  path: string,
+  width: number,
+  height: number,
+): Promise<GrayRaster> {
+  const { data, info } = await sharp(path)
+    .greyscale()
+    .resize({ width, height, fit: "inside" })
+    .raw()
+    .toBuffer({ resolveWithObject: true })
+  return { data: new Uint8Array(data), width: info.width, height: info.height }
+}
+
+/**
  * RGB to HSV. Hue in degrees, saturation and value in 0..1.
  *
  * Hue and saturation are what separate pen ink from photographed goods: pen is
