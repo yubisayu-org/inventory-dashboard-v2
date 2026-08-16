@@ -50,3 +50,40 @@ export async function deleteCatalogueMedia(url: string): Promise<void> {
     console.error(`Failed to delete orphaned catalogue media at ${path}:`, error.message)
   }
 }
+
+const EXT_BY_CONTENT_TYPE: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/gif": "gif",
+}
+
+/** Public path: lets an anonymous customer upload a reference photo
+ *  directly to Storage via a signed URL, without ever needing a Supabase
+ *  key in the browser (verified empirically: the returned uploadUrl works
+ *  with a plain unauthenticated `fetch(uploadUrl, {method:'PUT', ...})` —
+ *  no Authorization/apikey header required, matching Supabase's documented
+ *  signed-upload-URL contract). The caller
+ *  (app/api/public/catalogue/custom-upload-url/route.ts) is itself
+ *  public/no-login — this function does exactly what that route needs.
+ *  Images only (no video — reference photos, not catalogue post media),
+ *  reusing the same MAX_PHOTO_BYTES cap uploadCatalogueMedia enforces
+ *  server-side for the equivalent staff-upload case (this signed-URL path
+ *  can't enforce a byte cap itself since the browser uploads directly to
+ *  Storage — Storage's own per-bucket size limit, configured when the
+ *  bucket was created, is the actual backstop; this cap is a documentation
+ *  anchor and a future home for a stricter per-bucket policy if needed). */
+export async function createCatalogueUploadUrl(
+  contentType: string,
+): Promise<{ uploadUrl: string; publicUrl: string }> {
+  const ext = EXT_BY_CONTENT_TYPE[contentType]
+  if (!ext) throw new Error("contentType must be image/jpeg, image/png, image/webp, or image/gif")
+
+  const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+
+  const { data, error } = await supabase.storage.from(BUCKET).createSignedUploadUrl(path)
+  if (error) throw new Error(`Failed to create upload URL: ${error.message}`)
+
+  const { data: publicData } = supabase.storage.from(BUCKET).getPublicUrl(path)
+  return { uploadUrl: data.signedUrl, publicUrl: publicData.publicUrl }
+}
