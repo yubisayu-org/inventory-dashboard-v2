@@ -171,13 +171,28 @@ async function onMessage(sock: WASocket, message: WAMessage) {
  * in the chat and the interesting one is rarely the last.
  */
 async function sendRekap(sock: WASocket, groupJid: string, quoted: string) {
-  const quotedPost = quoted ? await findPostByMessage(groupJid, quoted) : null
+  // Pointing at something and silently getting something else is worse than an
+  // error. If the reply quotes a message that is not a shelf we captured — a
+  // photo sent while the window was closed, a customer's claim, the bot's own
+  // last rekap — say so rather than falling back to the newest and looking like
+  // the wrong shelf was rendered.
+  if (quoted) {
+    const quotedPost = await findPostByMessage(groupJid, quoted)
+    if (DEBUG) console.log("[wa] rekap", { quoted, resolved: quotedPost?.id ?? null })
+    if (!quotedPost) {
+      await sock.sendMessage(groupJid, {
+        text: "That message is not a shelf I captured — reply to the photo that got a 📸.",
+      })
+      return
+    }
+    await sock.sendMessage(groupJid, { image: await renderShoppingList(quotedPost.id), caption: "" })
+    return
+  }
 
-  const [post] = quotedPost
-    ? [{ id: quotedPost.id }]
-    : await sql`
-        SELECT id FROM wa_posts WHERE group_jid = ${groupJid} ORDER BY id DESC LIMIT 1
-      `
+  const [post] = await sql`
+    SELECT id FROM wa_posts WHERE group_jid = ${groupJid} ORDER BY id DESC LIMIT 1
+  `
+  if (DEBUG) console.log("[wa] rekap", { quoted: "(none)", resolved: post?.id ?? null })
   if (!post) {
     await sock.sendMessage(groupJid, { text: "No shelf posted here yet." })
     return
