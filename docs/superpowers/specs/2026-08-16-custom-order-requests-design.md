@@ -77,11 +77,18 @@ Every call that crosses the video-catalog ↔ dashboard boundary stays plain
 JSON, consistent with `netlify/functions/catalogue.js` and `requests.js`.
 The actual file bytes go straight from the browser to Supabase Storage,
 never through either app's server. The signed-upload-URL endpoint is
-public (no session) since it's called by an anonymous customer, gated the
-same way the rest of this feature is: rate-limited at the video-catalog
-proxy layer, and the resulting URL is useless without a subsequent
-`custom-requests` POST that actually creates a row referencing it — an
-orphaned upload with no request row is inert, the same failure mode
+public (no session) since it's called by an anonymous customer. Note that
+it is directly reachable at its own dashboard URL — a caller can bypass the
+video-catalog site (and whatever rate limiting its not-yet-built Netlify
+Function proxy layer would eventually add) entirely, e.g. via a plain
+`curl`. CORS's `ALLOWED_ORIGIN` only constrains browser-originated requests;
+it is not an access control and does nothing against a direct HTTP client.
+There is no rate limiting at this layer today — see "Launch Gate: Bot
+Mitigation" below, this is a genuine launch blocker, not a nice-to-have.
+Even so, a signed URL that
+never gets uploaded to, or gets uploaded to but never referenced by a real
+`catalogue_requests` row, is inert — an orphaned upload with no request row
+costs nothing beyond storage space, the same failure mode
 `deleteCatalogueMedia` already exists to (best-effort) clean up for staff
 uploads, and worth reusing here too, out of scope for this design to fully
 pin down beyond noting the precedent exists.
@@ -172,10 +179,33 @@ branch.
   a product-management change.
 - No video reference uploads, photo only (matches the "reference photo,"
   not "reference media," framing already agreed).
-- The signed-upload-URL endpoint does not itself rate-limit beyond what
-  the video-catalog proxy layer already does — an attacker could still
-  request upload URLs without ever completing a request submission, but
-  an unused signed URL that's never uploaded to, or uploaded to but never
+- The signed-upload-URL endpoint has no rate limiting of its own, and
+  neither does the video-catalog proxy layer today (it doesn't exist yet).
+  An unused signed URL that's never uploaded to, or uploaded to but never
   referenced by a real `catalogue_requests` row, costs nothing beyond
   storage space for an orphaned file (worth a periodic cleanup job
-  eventually, explicitly out of scope for this design).
+  eventually, explicitly out of scope for this design) — but that doesn't
+  cover the endpoint itself being hammered; see "Launch Gate" below.
+
+## Launch Gate: Bot Mitigation (not a "nice to have")
+
+Both new public endpoints — `/api/public/catalogue/custom-upload-url` and
+`/api/public/catalogue/custom-requests` — are reachable directly at their
+own dashboard URL, completely bypassing whatever rate limiting the
+not-yet-built video-catalog Netlify Function proxy layer would eventually
+add. `ALLOWED_ORIGIN`/CORS only constrains browser-originated requests; it
+is not an access control and does nothing against a direct HTTP client
+(e.g. `curl`).
+
+This is a genuine launch blocker, not deferred work to pick up "if abuse
+shows up": `custom-upload-url` in particular hands out a real Storage write
+capability (a signed upload URL, usable exactly once but with no cap on how
+many times it can be requested) to any anonymous caller. That's a stronger
+risk than the already-deferred gap on the sibling
+`/api/public/catalogue/requests` endpoint (read-only status lookup), since
+here an unmitigated caller can mint unlimited write capabilities and fill
+the `catalogue-reference` bucket.
+
+Both endpoints need bot mitigation — e.g. Cloudflare Turnstile via the same
+`verifyTurnstile` helper `app/api/public/register/route.ts` already uses —
+wired in before this feature goes live, not left for a follow-up.
