@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
   // else would make this route an open relay for arbitrary attacker-supplied
   // URLs stored in our own DB and rendered in the staff dashboard.
   const referenceImagePrefix = process.env.SUPABASE_URL
-    ? `${process.env.SUPABASE_URL}/storage/v1/object/public/catalogue-media/`
+    ? `${process.env.SUPABASE_URL}/storage/v1/object/public/catalogue-reference/`
     : null
 
   try {

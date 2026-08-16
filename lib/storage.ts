@@ -6,6 +6,11 @@ import { createClient } from "@supabase/supabase-js"
 const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
 const BUCKET = "catalogue-media"
+// Separate, policy-constrained bucket for anonymous customer reference-photo
+// uploads (custom order requests) — see migration 062. Kept distinct from
+// BUCKET (staff-only catalogue post media) so the anonymous upload path is
+// never widened onto the shared staff bucket.
+const REFERENCE_BUCKET = "catalogue-reference"
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024
 const MAX_VIDEO_BYTES = 50 * 1024 * 1024
 
@@ -70,9 +75,9 @@ const EXT_BY_CONTENT_TYPE: Record<string, string> = {
  *  reusing the same MAX_PHOTO_BYTES cap uploadCatalogueMedia enforces
  *  server-side for the equivalent staff-upload case (this signed-URL path
  *  can't enforce a byte cap itself since the browser uploads directly to
- *  Storage — Storage's own per-bucket size limit, configured when the
- *  bucket was created, is the actual backstop; this cap is a documentation
- *  anchor and a future home for a stricter per-bucket policy if needed). */
+ *  Storage — REFERENCE_BUCKET's own file_size_limit/allowed_mime_types,
+ *  set in migration 062, IS the real DB-enforced backstop; this cap is a
+ *  documentation anchor matching that policy, not a separate mechanism). */
 export async function createCatalogueUploadUrl(
   contentType: string,
 ): Promise<{ uploadUrl: string; publicUrl: string }> {
@@ -81,9 +86,9 @@ export async function createCatalogueUploadUrl(
 
   const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
 
-  const { data, error } = await supabase.storage.from(BUCKET).createSignedUploadUrl(path)
+  const { data, error } = await supabase.storage.from(REFERENCE_BUCKET).createSignedUploadUrl(path)
   if (error) throw new Error(`Failed to create upload URL: ${error.message}`)
 
-  const { data: publicData } = supabase.storage.from(BUCKET).getPublicUrl(path)
+  const { data: publicData } = supabase.storage.from(REFERENCE_BUCKET).getPublicUrl(path)
   return { uploadUrl: data.signedUrl, publicUrl: publicData.publicUrl }
 }
