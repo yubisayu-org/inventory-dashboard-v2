@@ -4,7 +4,7 @@ import sql from "../db-pool"
 import { FIXTURES } from "../claims/fixtures"
 import { calcAbroadPrice, landedCost, type PricingMethod } from "../pricing"
 import { getProductDefaults } from "../db/settings"
-import { createPost, addClaim, setSlots, listSlots } from "../db/claims"
+import { createPost, addClaim, setSlots, listSlots, setSlotBought } from "../db/claims"
 import { nameSlot } from "./naming"
 
 const EVENT = `TESTNAME${process.hrtime.bigint()}`
@@ -181,4 +181,54 @@ test("a Target Price post needs the price typed, since nothing derives it", asyn
   const [product] = await sql`SELECT * FROM products WHERE id = ${productId}`
   assert.equal(product.price, 450000, "a Target Price is stored verbatim")
   assert.equal(product.cost, 299875, "cost is the landed cost the server derived")
+})
+
+test("what was bought in the shop lands on the orders naming creates", async () => {
+  const { postId, slot } = await slotWithClaims([2, 1])
+  // The owner got two of the three claimed, which by paid priority went to the
+  // first claim (both customers rank equally, so arrival order decides).
+  await setSlotBought(slot.id, 2)
+
+  const { productId } = await name({
+    slotId: slot.id, name: `Bought Already ${process.hrtime.bigint()}`, valas: 1699, gram: 250,
+  })
+
+  const orders = await sql`
+    SELECT unit, unit_buy FROM orders WHERE product_id = ${productId} ORDER BY unit DESC
+  `
+  assert.equal(orders.length, 2)
+  assert.equal(orders[0].unit, 2)
+  assert.equal(orders[0].unit_buy, 2, "the claim that got units carries them onto its order")
+  assert.equal(orders[1].unit, 1)
+  assert.equal(orders[1].unit_buy ?? 0, 0, "the claim that missed out is recorded as unbought")
+  assert.ok(postId > 0)
+})
+
+test("a size becomes part of the product name, as the catalogue spells it", async () => {
+  const { postId } = await slotWithClaims([1])
+  // Re-point that slot at a size, the way clustering would for "size 95".
+  await sql`UPDATE wa_slots SET size = '95' WHERE post_id = ${postId}`
+  const [sized] = await listSlots(postId)
+
+  const stamp = process.hrtime.bigint()
+  const { productId } = await name({
+    slotId: sized.id, name: `Bear Set ${stamp}`, valas: 1699, gram: 250,
+  })
+
+  const [product] = await sql`SELECT name FROM products WHERE id = ${productId}`
+  assert.equal(product.name, `Bear Set ${stamp} 95`)
+})
+
+test("a name that already ends in its size is not given it twice", async () => {
+  const { postId } = await slotWithClaims([1])
+  await sql`UPDATE wa_slots SET size = '95' WHERE post_id = ${postId}`
+  const [sized] = await listSlots(postId)
+
+  const stamp = process.hrtime.bigint()
+  const { productId } = await name({
+    slotId: sized.id, name: `Bear Set ${stamp} 95`, valas: 1699, gram: 250,
+  })
+
+  const [product] = await sql`SELECT name FROM products WHERE id = ${productId}`
+  assert.equal(product.name, `Bear Set ${stamp} 95`)
 })

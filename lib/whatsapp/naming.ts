@@ -114,6 +114,14 @@ export async function nameSlot(input: {
     cost: 0,
   }
 
+  // The catalogue spells the variant into the product name — "Grey Set M",
+  // "Outer Shawl Beige" — so a sized slot carries its size there too. Skipped
+  // when the owner already typed it, which they will when copying a label.
+  const trimmed = input.name.trim()
+  const slotSize = (slotRow.size as string) ?? ""
+  const productName =
+    slotSize && !trimmed.endsWith(slotSize) ? `${trimmed} ${slotSize}` : trimmed
+
   return sql.begin(async (tx) => {
     const priced = await computeProductPrice({
       pricingMethod: post.pricingMethod,
@@ -124,7 +132,7 @@ export async function nameSlot(input: {
     })
 
     const { id: productId } = await addProduct({
-      name: input.name.trim(),
+      name: productName,
       store: post.store,
       price: priced.price,
       gram: input.gram,
@@ -151,6 +159,25 @@ export async function nameSlot(input: {
       note: claim.note,
     }))
     await appendOrders(orders, tx)
+
+    // The owner counted in the shop hours before naming, so the slot usually
+    // already knows what was bought. Each claim became exactly one order, so
+    // that number goes straight onto it — no allocation to redo, and no second
+    // source of truth to drift from wa_claims.obtained.
+    //
+    // Matched on customer and unit because appendOrders returns nothing; both
+    // are stable for the row it just inserted, and the product id makes the pair
+    // unique within this call.
+    for (const claim of claims) {
+      if (claim.obtained <= 0) continue
+      await tx`
+        UPDATE orders SET unit_buy = ${claim.obtained}, updated_at = NOW()
+        WHERE product_id = ${productId}
+          AND customer = ${claim.customer as string}
+          AND unit = ${claim.quantity}
+          AND unit_buy IS DISTINCT FROM ${claim.obtained}
+      `
+    }
 
     await tx`
       UPDATE wa_slots SET product_id = ${productId}, updated_at = NOW()
