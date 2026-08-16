@@ -75,6 +75,32 @@ match beats the runner-up by a wide margin it is certain; when two shelf
 positions score alike (repeated stock, a crop showing only fabric texture) the
 claim goes to review rather than being guessed.
 
+### 2b. Re-posted original with a caption
+
+Customers frequently send the **unmodified original** back with their request in
+the caption — "size 38 hitam" — rather than using WhatsApp's reply. On some
+phones re-sending is simply easier than replying.
+
+Here the image and the caption do different jobs: the image says *which post*,
+the caption says *what they want*. An unmarked, uncropped original carries no
+positional information at all.
+
+The distinction falls out of the crop matcher already needed above — match the
+incoming image against known posts, then measure how much of the original the
+match covers:
+
+- **~the whole frame** → a re-post. Treat it as a pointer to that post and
+  resolve the claim from the caption.
+- **a small region** → a crop, and that region is the claim.
+
+The caption then resolves as text (below), so the outcome depends on post type:
+a variant post matches its declared list and resolves cleanly; a numbered shelf
+photo resolves on the number; an un-numbered shelf photo has nothing to match
+against and goes to review.
+
+If the re-posted original carries a mark, ink detection fires first and the
+caption becomes the claim's free-text note instead.
+
 ### 3. Text (both post types)
 
 For a variant post, the reply is words: "hitam 38", "yg merah ukuran 40 dong",
