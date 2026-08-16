@@ -123,3 +123,22 @@ test("claims that name no size share one unsized SKU", async () => {
   assert.equal(slots[0].size, "", "no size is a state, not a guess")
   assert.equal(slots[0].claimed, 2)
 })
+
+test("a crop that cannot be placed confidently records no position", async () => {
+  // Reply with a photo of something that is not on this shelf. Whatever the
+  // matcher settles on, it will not clear its runner-up by much — and a badge
+  // dropped on the wrong pyjamas is worse than a claim asking to be placed.
+  const { id: postId } = await shelfPost()
+  const { claimIds } = await ingestImageReply({
+    postId, sender: "9", messageId: "ambiguous",
+    replyPath: FIXTURES.original, caption: "",
+  })
+
+  const claims = (await listClaims(postId)).filter((c) => claimIds.includes(c.id))
+  for (const claim of claims) {
+    if (claim.source !== "crop") continue
+    if (claim.confidence > 0.15) continue
+    assert.equal(claim.point, null, "an unplaceable crop must not invent a position")
+    assert.equal(claim.state, "review")
+  }
+})

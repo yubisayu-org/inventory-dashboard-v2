@@ -3,6 +3,14 @@ import { addClaim, getPost, listClaims, setSlots } from "@/lib/db/claims"
 import { localPostImage } from "./post-image"
 
 /**
+ * How far a crop must beat the next-best position to be trusted with one.
+ *
+ * Measured on the fixtures: a genuine crop cleared its runner-up by about 0.30,
+ * while an ambiguous match on real shelf photos came in around 0.01.
+ */
+const CROP_MARGIN = 0.15
+
+/**
  * Turn a customer's image reply into claims.
  *
  * The resolver decides what kind of reply it is; this function only records the
@@ -57,10 +65,22 @@ export async function ingestImageReply(input: {
       for (const mark of result.marks) await record("ink", mark.point, 1, "pending")
       break
     case "crop": {
-      // The margin over the runner-up is the confidence that matters: a narrow
-      // one means repeated stock, and the owner should look.
+      // The margin over the runner-up is the confidence that matters, not the
+      // raw score: a shelf of near-identical pyjamas produces several good
+      // matches, and the winner among them is close to arbitrary.
       const margin = result.located.score - result.located.runnerUp
-      await record("crop", result.located.centre, margin, margin > 0.15 ? "pending" : "review")
+      const confident = margin > CROP_MARGIN
+
+      // Below the margin the position is dropped rather than stored. Recording
+      // one anyway would put a badge on the wrong item, and the owner shops from
+      // that picture — a claim with no position asks a question, a claim with
+      // the wrong one gives a wrong answer.
+      await record(
+        "crop",
+        confident ? result.located.centre : null,
+        margin,
+        confident ? "pending" : "review",
+      )
       break
     }
     case "repost":
