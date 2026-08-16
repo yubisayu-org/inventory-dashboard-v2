@@ -90,6 +90,18 @@ internal.
 An incomplete claim ("38" when three colours exist) triggers a bot reply asking
 for the missing dimension. The answer completes the claim.
 
+### 4. Reaction on the post (single-product posts only)
+
+For a post with exactly one item and no variants, a 👍 on the post itself is a
+complete claim: one unit, that item. Nothing to type, nothing to mark, and free
+to capture.
+
+It does not generalize. A reaction carries no position, so it says nothing about
+a shelf photo, and it cannot pick between variants on a multi-variant post. It
+is offered only where the post is unambiguous on its own.
+
+---
+
 Shelf posts also accept typed claims where the owner has numbered items, but
 numbering is optional and not required by the design. Free-text claims against
 an **un-numbered** shelf photo ("yang bunny 2") have no closed set to match
@@ -191,9 +203,22 @@ What the bot does is **capture the answer**:
   as the answer — but flagged for review rather than applied silently, since it
   may be unrelated chatter.
 
-Answers are classified by keyword: "ok", "boleh", "gpp", "mau", or a bare size
-→ accepted, claim moves to 📝 with the substitute recorded. "ga jadi", "ga usah",
-"skip", "no" → ❌. Anything unclassifiable goes to review.
+- **Reaction.** The customer thumbs-up the owner's question instead of typing.
+  This is the **most reliable** channel of the three: a reaction event carries
+  the exact message key it was applied to, so the claim is identified directly
+  rather than inferred from a quote chain or a guess. It is also the cheapest —
+  one tap for the customer, nothing added to the group, and reading reactions is
+  passive, so it costs the bot number nothing.
+
+Typed answers are classified by keyword: "ok", "boleh", "gpp", "mau", or a bare
+size → accepted, claim moves to 📝 with the substitute recorded. "ga jadi",
+"ga usah", "skip", "no" → ❌. Reactions classify the same way: 👍 👌 ❤️ ✅ accept,
+👎 ❌ decline. Anything unclassifiable — including an unrecognized reaction —
+goes to review rather than being applied, since customers do sometimes react to
+the wrong message.
+
+A reaction cannot carry nuance ("ok but only if 95 fits"), so the typed path
+stays available; the two coexist.
 
 No new reaction is needed: ❔ already means *we need something from you*, which
 covers both a missing colour at capture and an unavailable size at buy time.
