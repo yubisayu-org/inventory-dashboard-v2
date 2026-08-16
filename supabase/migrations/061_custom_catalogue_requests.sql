@@ -14,8 +14,12 @@ ALTER TABLE catalogue_requests
   ADD CONSTRAINT catalogue_requests_product_or_description
   CHECK (product_id IS NOT NULL OR description <> '');
 
--- Column-privilege GRANTs are additive in Postgres — this ADDS description
--- and reference_image_url to the INSERT column list migration 059 already
--- granted (customer_handle, product_id, qty, note); it does not need to
--- REVOKE and re-grant the existing columns.
+-- Defensive reset: an earlier, pre-fix version of migration 059 (before a
+-- later commit narrowed it) may have granted table-wide INSERT on this
+-- table on some already-migrated databases (local dev included) — editing
+-- that migration file afterward doesn't retroactively revoke what an
+-- earlier apply already granted. This REVOKE + the two GRANTs below
+-- restore the intended column-scoped-only state regardless of history.
+REVOKE INSERT ON catalogue_requests FROM catalogue_public;
+GRANT INSERT (customer_handle, product_id, qty, note) ON catalogue_requests TO catalogue_public;
 GRANT INSERT (description, reference_image_url) ON catalogue_requests TO catalogue_public;
