@@ -86,12 +86,22 @@ export async function POST(req: NextRequest) {
         { status: 400, headers: corsHeaders() },
       )
     }
+    let storedReferenceImageUrl = referenceImageUrl
     if (referenceImageUrl) {
       let ok = false
       try {
         const u = new URL(referenceImageUrl)
         const expected = new URL(referenceImagePrefix ?? "")
-        ok = u.origin === expected.origin && u.pathname.startsWith(expected.pathname)
+        ok =
+          u.origin === expected.origin &&
+          u.pathname.startsWith(expected.pathname) &&
+          u.pathname !== expected.pathname
+        if (ok) {
+          // Rebuild from the validated URL's own origin+pathname rather than
+          // storing whatever string was sent — strips query strings/fragments
+          // and anything else riding along with an otherwise-valid URL.
+          storedReferenceImageUrl = u.origin + u.pathname
+        }
       } catch {
         // ok stays false — malformed URL is rejected
       }
@@ -101,7 +111,7 @@ export async function POST(req: NextRequest) {
     }
 
     await createCatalogueRequest(
-      { customerHandle, productId: null, description, qty, note, referenceImageUrl },
+      { customerHandle, productId: null, description, qty, note, referenceImageUrl: storedReferenceImageUrl },
       catalogueSql,
     )
     return NextResponse.json({ success: true }, { headers: corsHeaders() })
