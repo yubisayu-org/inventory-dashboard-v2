@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireOwner } from "@/lib/api"
-import { convertCatalogueRequest, rejectCatalogueRequest } from "@/lib/db"
+import { convertCatalogueRequest, rejectCatalogueRequest, editCatalogueRequest, cancelEditCatalogueRequest } from "@/lib/db"
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -53,7 +53,42 @@ export async function PUT(req: NextRequest, { params }: Params) {
       }
     }
 
-    return NextResponse.json({ error: "action must be 'convert' or 'reject'" }, { status: 400 })
+    if (body.action === "edit") {
+      const countryId = Number(body.countryId)
+      const valas = Number(body.valas)
+      const gram = Number(body.gram)
+      if (!Number.isInteger(countryId) || countryId < 1) {
+        return NextResponse.json({ error: "countryId must be a positive integer" }, { status: 400 })
+      }
+      if (!Number.isFinite(valas) || valas <= 0) {
+        return NextResponse.json({ error: "valas must be a positive number" }, { status: 400 })
+      }
+      if (!Number.isFinite(gram) || gram <= 0) {
+        return NextResponse.json({ error: "gram must be a positive number" }, { status: 400 })
+      }
+      try {
+        const result = await editCatalogueRequest(id, { countryId, valas, gram })
+        return NextResponse.json({ success: true, estimatedPrice: result.estimatedPrice })
+      } catch (err) {
+        if (isGuardViolation(err)) return NextResponse.json({ error: err.message }, { status: 409 })
+        if (err instanceof Error && err.message === "Country not found") {
+          return NextResponse.json({ error: err.message }, { status: 400 })
+        }
+        throw err
+      }
+    }
+
+    if (body.action === "cancel-edit") {
+      try {
+        await cancelEditCatalogueRequest(id)
+        return NextResponse.json({ success: true })
+      } catch (err) {
+        if (isGuardViolation(err)) return NextResponse.json({ error: err.message }, { status: 409 })
+        throw err
+      }
+    }
+
+    return NextResponse.json({ error: "action must be 'convert', 'reject', 'edit', or 'cancel-edit'" }, { status: 400 })
   } catch (err) {
     console.error("Failed to update order request:", err)
     return NextResponse.json({ error: err instanceof Error ? err.message : "Failed to update request" }, { status: 500 })
