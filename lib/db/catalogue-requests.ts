@@ -122,7 +122,8 @@ export async function getCatalogueRequests(
  *  other order-creation path), same as before this change.
  *
  *  Race protection unchanged: the initial SELECT locks the row (`FOR
- *  UPDATE`) and the final UPDATE re-checks `status = 'pending'`, so two
+ *  UPDATE`) and the final UPDATE re-checks `status IN ('pending',
+ *  'approved')`, so two
  *  concurrent conversions of the same request can't both create an order —
  *  the loser's SELECT blocks until the winner commits, then sees the
  *  already-flipped status and gets zero rows, throwing before any order is
@@ -191,14 +192,16 @@ export async function rejectCatalogueRequest(
 const EDIT_PROFIT_PCT = 15
 const EDIT_ROUND_TO = 1000
 
-/** Owner-only: propose (or re-propose) a country/valas/gram revision on a
- *  pending custom request. Computes estimated_price server-side from the
- *  country's real kurs/cargoPerKg — fixed 15% margin, no fees, flat
- *  roundTo = 1000 (NOT the public estimator's relative-precision rounding;
- *  see this plan's Global Constraints for why that distinction matters
- *  here). Guarded: only from 'pending', moves to 'offer_pending'. Also
- *  covers re-editing while already offer_pending (WHERE allows both, see
- *  below) — overwrites the prior proposal in place, no history kept. */
+/** Owner-only: propose a country/valas/gram revision on a pending custom
+ *  request. Computes estimated_price server-side from the country's real
+ *  kurs/cargoPerKg — fixed 15% margin, no fees, flat roundTo = 1000 (NOT
+ *  the public estimator's relative-precision rounding; see this plan's
+ *  Global Constraints for why that distinction matters here). Guarded:
+ *  only from 'pending', moves to 'offer_pending'. Re-editing while already
+ *  offer_pending is NOT allowed here — the UI's two-step cancel-edit →
+ *  edit path handles that, since allowing it directly here would let a
+ *  concurrent revision land on a row the customer just approved under a
+ *  different (unseen) price. */
 export async function editCatalogueRequest(
   id: number,
   data: { countryId: number; valas: number; gram: number },
@@ -222,7 +225,7 @@ export async function editCatalogueRequest(
     UPDATE catalogue_requests
     SET country_id = ${data.countryId}, valas = ${data.valas}, gram = ${data.gram},
         estimated_price = ${price}, status = 'offer_pending', updated_at = NOW()
-    WHERE id = ${id} AND status IN ('pending', 'offer_pending')
+    WHERE id = ${id} AND status = 'pending'
     RETURNING id
   `
   if (rows.length === 0) throw new Error("Request not found or already handled")
@@ -283,6 +286,22 @@ export async function rejectCatalogueRequestOffer(
     WHERE id = ${id}
       AND lower(replace(customer_handle, '@', '')) = ${normalizeId(customerHandle)}
       AND status = 'offer_pending'
+    RETURNING id
+  `
+  if (rows.length === 0) throw new Error("Request not found or already handled")
+}
+
+/** Owner-only: reopen a rejected request back to pending — the recovery
+ *  path for a mistaken or forced customer reject, since nothing else in
+ *  this file accepts 'rejected' as a starting status. */
+export async function reopenCatalogueRequest(
+  id: number,
+  db: DBExecutor = sql,
+): Promise<void> {
+  const rows = await db`
+    UPDATE catalogue_requests
+    SET status = 'pending', updated_at = NOW()
+    WHERE id = ${id} AND status = 'rejected'
     RETURNING id
   `
   if (rows.length === 0) throw new Error("Request not found or already handled")

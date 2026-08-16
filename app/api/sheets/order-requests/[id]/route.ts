@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireOwner } from "@/lib/api"
-import { convertCatalogueRequest, rejectCatalogueRequest, editCatalogueRequest, cancelEditCatalogueRequest } from "@/lib/db"
+import { convertCatalogueRequest, rejectCatalogueRequest, editCatalogueRequest, cancelEditCatalogueRequest, reopenCatalogueRequest } from "@/lib/db"
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -88,7 +88,17 @@ export async function PUT(req: NextRequest, { params }: Params) {
       }
     }
 
-    return NextResponse.json({ error: "action must be 'convert', 'reject', 'edit', or 'cancel-edit'" }, { status: 400 })
+    if (body.action === "reopen") {
+      try {
+        await reopenCatalogueRequest(id)
+        return NextResponse.json({ success: true })
+      } catch (err) {
+        if (isGuardViolation(err)) return NextResponse.json({ error: err.message }, { status: 409 })
+        throw err
+      }
+    }
+
+    return NextResponse.json({ error: "action must be 'convert', 'reject', 'edit', 'cancel-edit', or 'reopen'" }, { status: 400 })
   } catch (err) {
     console.error("Failed to update order request:", err)
     return NextResponse.json({ error: err instanceof Error ? err.message : "Failed to update request" }, { status: 500 })
