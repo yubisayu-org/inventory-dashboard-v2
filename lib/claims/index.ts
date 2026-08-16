@@ -21,7 +21,9 @@ export type { Cluster } from "./cluster"
 export { normalizeSize } from "./size"
 
 export type ImageReply =
-  | { kind: "marks"; marks: Mark[] }
+  /** `via` says which detector fired — worth knowing when a result looks wrong,
+   *  because the two fail for completely different reasons. */
+  | { kind: "marks"; marks: Mark[]; via: "hue" | "difference" }
   | { kind: "crop"; located: Located }
   | { kind: "repost"; located: Located }
   | { kind: "unresolved" }
@@ -54,7 +56,7 @@ export async function resolveImageReply(
 
   const reply = await loadRgb(replyPath, REPLY_W)
   const marks = detectMarks(reply, hues)
-  if (marks.length > 0) return { kind: "marks", marks }
+  if (marks.length > 0) return { kind: "marks", marks, via: "hue" }
 
   // Hue detection needs a colour the photograph does not contain, and a real
   // shop shelf can leave only one — signage, packaging and price tags between
@@ -65,7 +67,7 @@ export async function resolveImageReply(
   // marked up: a customer who photographs their screen defeats it, while hue
   // detection still reads their ink.
   const changed = await detectChanges(postPath, replyPath)
-  if (changed.length > 0) return { kind: "marks", marks: changed }
+  if (changed.length > 0) return { kind: "marks", marks: changed, via: "difference" }
 
   const located = await locateInPost(postPath, replyPath)
   if (located === null) return { kind: "unresolved" }
