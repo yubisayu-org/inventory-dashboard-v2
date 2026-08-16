@@ -5,6 +5,8 @@ import { withActor } from "./actor"
 import { appendOrders } from "./orders"
 import { normalizeId } from "./helpers"
 import type { CatalogueRequest } from "./types"
+import { calcAbroadPrice } from "../pricing"
+import { getCountryRate } from "./catalog"
 
 function toRequest(r: Record<string, unknown>): CatalogueRequest {
   return {
@@ -20,6 +22,13 @@ function toRequest(r: Record<string, unknown>): CatalogueRequest {
     staffNote: r.staff_note as string,
     convertedOrderId: (r.converted_order_id as number | null) ?? null,
     createdAt: (r.created_at as Date).toISOString(),
+    countryId: (r.country_id as number | null) ?? null,
+    countryName: (r.country_name as string | null) ?? null,
+    // valas/gram are NUMERIC — postgres-js returns them as strings when
+    // set, same coercion needed as everywhere else NUMERIC is read.
+    valas: r.valas != null ? Number(r.valas) : null,
+    gram: r.gram != null ? Number(r.gram) : null,
+    estimatedPrice: (r.estimated_price as number | null) ?? null,
   }
 }
 
@@ -64,9 +73,11 @@ export async function getCatalogueRequestsByHandle(
   const rows = await db`
     SELECT r.id, r.customer_handle, r.product_id, p.name AS product_name,
            r.description, r.reference_image_url,
-           r.qty, r.note, r.status, r.staff_note, r.converted_order_id, r.created_at
+           r.qty, r.note, r.status, r.staff_note, r.converted_order_id, r.created_at,
+           r.country_id, c.name AS country_name, r.valas, r.gram, r.estimated_price
     FROM catalogue_requests r
     LEFT JOIN products p ON p.id = r.product_id
+    LEFT JOIN countries c ON c.id = r.country_id
     WHERE lower(replace(r.customer_handle, '@', '')) = ${normalizeId(handle)}
     ORDER BY r.created_at DESC
   `
@@ -82,18 +93,22 @@ export async function getCatalogueRequests(
     ? await db`
         SELECT r.id, r.customer_handle, r.product_id, p.name AS product_name,
                r.description, r.reference_image_url,
-               r.qty, r.note, r.status, r.staff_note, r.converted_order_id, r.created_at
+               r.qty, r.note, r.status, r.staff_note, r.converted_order_id, r.created_at,
+               r.country_id, c.name AS country_name, r.valas, r.gram, r.estimated_price
         FROM catalogue_requests r
         LEFT JOIN products p ON p.id = r.product_id
-        WHERE r.status = 'pending'
+        LEFT JOIN countries c ON c.id = r.country_id
+        WHERE r.status IN ('pending', 'offer_pending', 'approved')
         ORDER BY r.created_at ASC
       `
     : await db`
         SELECT r.id, r.customer_handle, r.product_id, p.name AS product_name,
                r.description, r.reference_image_url,
-               r.qty, r.note, r.status, r.staff_note, r.converted_order_id, r.created_at
+               r.qty, r.note, r.status, r.staff_note, r.converted_order_id, r.created_at,
+               r.country_id, c.name AS country_name, r.valas, r.gram, r.estimated_price
         FROM catalogue_requests r
         LEFT JOIN products p ON p.id = r.product_id
+        LEFT JOIN countries c ON c.id = r.country_id
         ORDER BY r.created_at DESC
       `
   return rows.map(toRequest)
@@ -123,7 +138,7 @@ export async function convertCatalogueRequest(
     const [request] = await tx`
       SELECT customer_handle, product_id, qty, note
       FROM catalogue_requests
-      WHERE id = ${id} AND status = 'pending'
+      WHERE id = ${id} AND status IN ('pending', 'approved')
       FOR UPDATE
     `
     if (!request) throw new Error("Request not found or already handled")
@@ -151,7 +166,7 @@ export async function convertCatalogueRequest(
     const rows = await tx`
       UPDATE catalogue_requests
       SET status = 'converted', converted_order_id = ${created.id}, updated_at = NOW()
-      WHERE id = ${id} AND status = 'pending'
+      WHERE id = ${id} AND status IN ('pending', 'approved')
       RETURNING id
     `
     if (rows.length === 0) throw new Error("Request not found or already handled")
@@ -167,7 +182,65 @@ export async function rejectCatalogueRequest(
   const rows = await db`
     UPDATE catalogue_requests
     SET status = 'rejected', staff_note = ${staffNote}, updated_at = NOW()
-    WHERE id = ${id} AND status = 'pending'
+    WHERE id = ${id} AND status IN ('pending', 'approved')
+    RETURNING id
+  `
+  if (rows.length === 0) throw new Error("Request not found or already handled")
+}
+
+const EDIT_PROFIT_PCT = 15
+const EDIT_ROUND_TO = 1000
+
+/** Owner-only: propose (or re-propose) a country/valas/gram revision on a
+ *  pending custom request. Computes estimated_price server-side from the
+ *  country's real kurs/cargoPerKg — fixed 15% margin, no fees, flat
+ *  roundTo = 1000 (NOT the public estimator's relative-precision rounding;
+ *  see this plan's Global Constraints for why that distinction matters
+ *  here). Guarded: only from 'pending', moves to 'offer_pending'. Also
+ *  covers re-editing while already offer_pending (WHERE allows both, see
+ *  below) — overwrites the prior proposal in place, no history kept. */
+export async function editCatalogueRequest(
+  id: number,
+  data: { countryId: number; valas: number; gram: number },
+  db: DBExecutor = sql,
+): Promise<{ estimatedPrice: number }> {
+  const rate = await getCountryRate(data.countryId, db)
+  if (!rate) throw new Error("Country not found")
+
+  const { price } = calcAbroadPrice({
+    valas: data.valas,
+    kurs: rate.kurs,
+    gram: data.gram,
+    cargoPerKg: rate.cargoPerKg,
+    profitPct: EDIT_PROFIT_PCT,
+    operationalFee: 0,
+    packingFee: 0,
+    roundTo: EDIT_ROUND_TO,
+  })
+
+  const rows = await db`
+    UPDATE catalogue_requests
+    SET country_id = ${data.countryId}, valas = ${data.valas}, gram = ${data.gram},
+        estimated_price = ${price}, status = 'offer_pending', updated_at = NOW()
+    WHERE id = ${id} AND status IN ('pending', 'offer_pending')
+    RETURNING id
+  `
+  if (rows.length === 0) throw new Error("Request not found or already handled")
+  return { estimatedPrice: price }
+}
+
+/** Owner-only: withdraw a proposed revision that hasn't been answered yet
+ *  (e.g. a typo) without asking the customer to reject it. Clears the four
+ *  offer columns and returns to 'pending'. */
+export async function cancelEditCatalogueRequest(
+  id: number,
+  db: DBExecutor = sql,
+): Promise<void> {
+  const rows = await db`
+    UPDATE catalogue_requests
+    SET country_id = NULL, valas = NULL, gram = NULL, estimated_price = NULL,
+        status = 'pending', updated_at = NOW()
+    WHERE id = ${id} AND status = 'offer_pending'
     RETURNING id
   `
   if (rows.length === 0) throw new Error("Request not found or already handled")

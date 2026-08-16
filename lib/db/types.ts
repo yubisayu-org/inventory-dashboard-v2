@@ -586,9 +586,14 @@ export interface CatalogueRequest {
   referenceImageUrl: string | null
   qty: number
   note: string
-  status: "pending" | "converted" | "rejected"
+  status: "pending" | "offer_pending" | "approved" | "converted" | "rejected"
   staffNote: string
   convertedOrderId: number | null
   createdAt: string
+  countryId: number | null
+  countryName: string | null
+  valas: number | null
+  gram: number | null
+  estimatedPrice: number | null
 }
 
