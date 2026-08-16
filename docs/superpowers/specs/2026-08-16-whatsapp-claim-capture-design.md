@@ -497,6 +497,26 @@ None blocking. The resolver feasibility question is closed; breadth of testing
 (more shelves, more pen colours, more crop styles) accumulates naturally once
 the first event runs.
 
+## Open question for the dashboard plan: when naming happens
+
+Deferred by the owner to the start of the dashboard plan, 2026-08-16.
+
+This spec puts naming *after* the shopping trip. That has a consequence worth
+settling before the dashboard is built: the existing Shopping List page is
+"Items to buy — orders not yet purchased", driven by orders. Orders created
+after a purchase are already bought, so they would never appear there, and the
+photo flow would bypass that page entirely, entering the pipeline at arrival.
+
+The alternative is to name slots once claims are in but **before** the trip.
+Every claim exists by then, so nothing is named speculatively — the property
+that motivated deferring naming in the first place is preserved. Orders are
+created in the normal to-buy state, the existing Shopping List works untouched,
+and the annotated photo becomes the in-store companion rather than a parallel
+system.
+
+It changes which page owns the buying step, so it is a first-task decision for
+that plan rather than something to discover mid-build.
+
 ## Deferred
 
 - **Over-demand alert.** Notify the owner when a slot's claims pass the stock
