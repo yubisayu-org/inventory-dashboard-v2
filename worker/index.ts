@@ -142,7 +142,12 @@ async function onMessage(sock: WASocket, message: WAMessage) {
   // An image that quotes nothing, from an admin, inside an open window, is a
   // new shelf. Everything else that quotes a post is somebody claiming.
   if (isImage && quoted === "") {
-    await capturePost({ sock, message, groupJid, messageId, sender, caption: text })
+    const postId = await capturePost({ sock, message, groupJid, messageId, sender, caption: text })
+    // Acknowledge a captured shelf. Without this the owner cannot tell a photo
+    // that became a post from one the closed window ignored — and a customer
+    // replying to the second gets silence, which is how an afternoon goes
+    // missing.
+    if (postId !== null) reactions?.push({ jid: groupJid, key: message.key, emoji: "📸" })
     return
   }
   if (quoted === "") return
