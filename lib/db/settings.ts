@@ -80,7 +80,7 @@ export async function getProductDefaults(db: DBExecutor = sql): Promise<ProductD
   const [row] = await db`
     SELECT profit_pct, operational_fee, packing_fee, markup_pct, tier_kurs_round_to,
            profit_margin_round_to, flat_fee, flat_fee_pct, flat_fee_min, default_country_id,
-           default_pricing_method, dp_percent
+           default_pricing_method, whatsapp_pricing_method, dp_percent
     FROM product_defaults WHERE id = 1
   `
   if (!row) return DEFAULT_PRODUCT_DEFAULTS
@@ -104,6 +104,8 @@ export async function getProductDefaults(db: DBExecutor = sql): Promise<ProductD
     defaultCountryId: row.default_country_id != null ? Number(row.default_country_id) : null,
     // toPricingMethod narrows anything unexpected to 'overseas', matching the column default.
     defaultPricingMethod: toPricingMethod(row.default_pricing_method),
+    // Its own column, not a share of the one above: see lib/product-defaults.ts.
+    whatsappPricingMethod: toPricingMethod(row.whatsapp_pricing_method),
     // 0 is legal (disables the DP-threshold feature), same reasoning as flatFeePct.
     dpPercent: Number(row.dp_percent) || 0,
   }
@@ -113,10 +115,11 @@ export async function updateProductDefaults(data: ProductDefaults, db: DBExecuto
   await db`
     INSERT INTO product_defaults (id, profit_pct, operational_fee, packing_fee, markup_pct,
       tier_kurs_round_to, profit_margin_round_to, flat_fee, flat_fee_pct, flat_fee_min,
-      default_country_id, default_pricing_method, dp_percent, updated_at)
+      default_country_id, default_pricing_method, whatsapp_pricing_method, dp_percent, updated_at)
     VALUES (1, ${data.profitPct}, ${data.operationalFee}, ${data.packingFee}, ${data.markupPct},
       ${data.tierKursRoundTo}, ${data.profitMarginRoundTo}, ${data.flatFee}, ${data.flatFeePct},
-      ${data.flatFeeMin}, ${data.defaultCountryId}, ${data.defaultPricingMethod}, ${data.dpPercent}, NOW())
+      ${data.flatFeeMin}, ${data.defaultCountryId}, ${data.defaultPricingMethod},
+      ${data.whatsappPricingMethod}, ${data.dpPercent}, NOW())
     ON CONFLICT (id) DO UPDATE SET
       profit_pct = EXCLUDED.profit_pct,
       operational_fee = EXCLUDED.operational_fee,
@@ -129,6 +132,7 @@ export async function updateProductDefaults(data: ProductDefaults, db: DBExecuto
       flat_fee_min = EXCLUDED.flat_fee_min,
       default_country_id = EXCLUDED.default_country_id,
       default_pricing_method = EXCLUDED.default_pricing_method,
+      whatsapp_pricing_method = EXCLUDED.whatsapp_pricing_method,
       dp_percent = EXCLUDED.dp_percent,
       updated_at = NOW()
   `

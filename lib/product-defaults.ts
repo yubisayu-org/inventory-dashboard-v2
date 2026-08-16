@@ -77,6 +77,16 @@ export interface ProductDefaults {
    * field empty, which is the same state it had before this setting existed.
    */
   defaultPricingMethod: PricingMethod
+  /**
+   * Which pricing method a post captured from a WhatsApp group starts on
+   * (migration 062).
+   *
+   * Deliberately NOT defaultPricingMethod: that one decides the Add Product
+   * form's opening tab, and the owner wants the two to differ — the shops they
+   * photograph are priced one way and the things they type in by hand another.
+   * Sharing a column would make changing either change both.
+   */
+  whatsappPricingMethod: PricingMethod
   /** % of an event's invoice total that must be paid before the default
    *  invoice message is sent instead of the invoice_dp reminder (see
    *  lib/db/invoice.ts). Whole number (30 means 30%), not a fraction. 0
@@ -109,5 +119,6 @@ export const DEFAULT_PRODUCT_DEFAULTS: ProductDefaults = {
   // What the form hardcoded before migration 055, so an install that never touches this
   // opens exactly where it always did.
   defaultPricingMethod: "overseas",
+  whatsappPricingMethod: "overseas",
   dpPercent: 0,
 }
