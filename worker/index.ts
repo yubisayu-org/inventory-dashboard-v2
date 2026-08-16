@@ -3,6 +3,17 @@ import { startSession } from "./session"
 import { parseCommand } from "./commands"
 import { runCommand } from "./handle-command"
 import { capturePost } from "./capture"
+import { captureClaim, postForReply } from "./claims"
+import { ReactionQueue } from "./reactions"
+
+/**
+ * One queue for the whole process, not one per message.
+ *
+ * The pacing only means anything if every reaction shares it — two queues
+ * would happily fire at the same instant and produce exactly the volley the
+ * pacing exists to avoid.
+ */
+let reactions: ReactionQueue | null = null
 
 /** The text of a message, whatever kind it is. */
 export function messageText(message: WAMessage): string {
@@ -55,18 +66,29 @@ async function onMessage(sock: WASocket, message: WAMessage) {
   }
 
   const isImage = Boolean(message.message?.imageMessage)
-  if (!isImage) return
+  const quoted = quotedId(message)
 
-  // An image that quotes something is a customer pointing at a post; one that
-  // quotes nothing, from an admin, inside an open window, is a new shelf.
-  if (quotedId(message) === "") {
+  // An image that quotes nothing, from an admin, inside an open window, is a
+  // new shelf. Everything else that quotes a post is somebody claiming.
+  if (isImage && quoted === "") {
     await capturePost({ sock, message, groupJid, messageId, sender, caption: text })
+    return
   }
-  // Claims arrive in task 5.
+  if (quoted === "") return
+
+  const post = await postForReply(groupJid, quoted)
+  if (post === null) return
+
+  const emoji = await captureClaim({ sock, message, post, sender, messageId, text, isImage })
+  if (emoji) reactions?.push({ jid: groupJid, key: message.key, emoji })
 }
 
 async function main() {
   await startSession((sock) => {
+    reactions = new ReactionQueue(async ({ jid, key, emoji }) => {
+      await sock.sendMessage(jid, { react: { text: emoji, key } })
+    })
+
     sock.ev.on("messages.upsert", async ({ messages, type }) => {
       if (type !== "notify") return
       for (const message of messages) {
