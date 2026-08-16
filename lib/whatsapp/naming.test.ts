@@ -59,7 +59,7 @@ async function slotWithClaims(quantities: number[], customer: string | null = HA
     })
     claimIds.push(id)
   }
-  await setSlots(postId, [{ point: { x: 0.24, y: 0.78 }, variantId: null, claimIds }])
+  await setSlots(postId, [{ point: { x: 0.24, y: 0.78 }, variantId: null, size: "", claimIds }])
   const [slot] = await listSlots(postId)
   return { postId, slot }
 }
@@ -151,7 +151,7 @@ test("a post with no country cannot be named, because valas has no rate", async 
     postId, sender: "1", customer: HANDLE, source: "ink", point: { x: 0.5, y: 0.5 },
     variantId: null, quantity: 1, note: "", confidence: 1, state: "pending", messageId: "",
   })
-  await setSlots(postId, [{ point: { x: 0.5, y: 0.5 }, variantId: null, claimIds: [claimId] }])
+  await setSlots(postId, [{ point: { x: 0.5, y: 0.5 }, variantId: null, size: "", claimIds: [claimId] }])
   const [slot] = await listSlots(postId)
 
   await assert.rejects(
@@ -166,7 +166,7 @@ test("a Target Price post needs the price typed, since nothing derives it", asyn
     postId, sender: "1", customer: HANDLE, source: "ink", point: { x: 0.5, y: 0.5 },
     variantId: null, quantity: 1, note: "", confidence: 1, state: "pending", messageId: "",
   })
-  await setSlots(postId, [{ point: { x: 0.5, y: 0.5 }, variantId: null, claimIds: [claimId] }])
+  await setSlots(postId, [{ point: { x: 0.5, y: 0.5 }, variantId: null, size: "", claimIds: [claimId] }])
   const [slot] = await listSlots(postId)
 
   await assert.rejects(

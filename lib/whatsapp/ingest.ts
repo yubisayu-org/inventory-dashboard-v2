@@ -1,4 +1,4 @@
-import { resolveImageReply, clusterPoints, type Point } from "@/lib/claims"
+import { resolveImageReply, clusterPoints, normalizeSize, type Point } from "@/lib/claims"
 import { addClaim, getPost, listClaims, setSlots } from "@/lib/db/claims"
 
 /**
@@ -82,20 +82,37 @@ export async function ingestImageReply(input: {
  */
 export async function recluster(postId: number): Promise<void> {
   const claims = await listClaims(postId)
+  const live = claims.filter((c) => c.state !== "rejected")
 
-  const positioned = claims.filter((c) => c.point !== null && c.state !== "rejected")
+  const positioned = live.filter((c) => c.point !== null)
   const clusters = clusterPoints(positioned.map((c) => c.point as Point))
 
-  const positional = clusters.map((cluster) => ({
-    point: cluster.centre,
-    variantId: null as string | null,
-    claimIds: cluster.members.map((i) => positioned[i].id),
-  }))
+  // A cluster is a place on the shelf. What is bought there may still be two
+  // different things, so each cluster splits again by the size its claims name.
+  // The centre stays the cluster's, not the sub-group's: both sizes hang on the
+  // same peg, and moving one badge sideways would only make the picture lie.
+  const positional = clusters.flatMap((cluster) => {
+    const bySize = new Map<string, number[]>()
+    for (const index of cluster.members) {
+      const claim = positioned[index]
+      const size = normalizeSize(claim.note)
+      const list = bySize.get(size) ?? []
+      list.push(claim.id)
+      bySize.set(size, list)
+    }
+    return [...bySize.entries()].map(([size, claimIds]) => ({
+      point: cluster.centre,
+      variantId: null as string | null,
+      size,
+      claimIds,
+    }))
+  })
 
-  // Variant claims have no position, so they group by variant id instead.
+  // Variant claims have no position, so they group by variant id instead. The
+  // variant already IS the size, so nothing is read out of the note here.
   const byVariant = new Map<string, number[]>()
-  for (const claim of claims) {
-    if (claim.variantId === null || claim.state === "rejected") continue
+  for (const claim of live) {
+    if (claim.variantId === null) continue
     const list = byVariant.get(claim.variantId) ?? []
     list.push(claim.id)
     byVariant.set(claim.variantId, list)
@@ -103,6 +120,7 @@ export async function recluster(postId: number): Promise<void> {
   const variantSlots = [...byVariant.entries()].map(([variantId, claimIds]) => ({
     point: null,
     variantId,
+    size: "",
     claimIds,
   }))
 

@@ -2,8 +2,8 @@ import { test, before, after } from "node:test"
 import assert from "node:assert/strict"
 import sql from "../db-pool"
 import { FIXTURES } from "../claims/fixtures"
-import { createPost, listClaims, listSlots } from "../db/claims"
-import { ingestImageReply } from "./ingest"
+import { createPost, addClaim, listClaims, listSlots } from "../db/claims"
+import { ingestImageReply, recluster } from "./ingest"
 
 const EVENT = `TESTING${process.hrtime.bigint()}`
 
@@ -84,4 +84,42 @@ test("claims near each other cluster into one slot", async () => {
   // Two customers ticking the same two items: two slots, two claims each.
   assert.equal(slots.length, 2)
   assert.ok(slots.every((s) => s.claimed === 2))
+})
+
+test("one position with two sizes becomes two SKU", async () => {
+  const { id: postId } = await shelfPost()
+  await addClaim({
+    postId, sender: "1", customer: null, source: "ink", point: { x: 0.4, y: 0.4 },
+    variantId: null, quantity: 1, note: "size 90", confidence: 1, state: "pending", messageId: "",
+  })
+  await addClaim({
+    postId, sender: "2", customer: null, source: "ink", point: { x: 0.405, y: 0.4 },
+    variantId: null, quantity: 2, note: "yg 95 ya kak", confidence: 1, state: "pending", messageId: "",
+  })
+
+  await recluster(postId)
+
+  const slots = await listSlots(postId)
+  assert.equal(slots.length, 2, "same spot on the shelf, two things to buy")
+  assert.deepEqual(slots.map((s) => s.size).sort(), ["90", "95"])
+  assert.equal(slots.find((s) => s.size === "95")?.claimed, 2)
+})
+
+test("claims that name no size share one unsized SKU", async () => {
+  const { id: postId } = await shelfPost()
+  await addClaim({
+    postId, sender: "1", customer: null, source: "ink", point: { x: 0.7, y: 0.3 },
+    variantId: null, quantity: 1, note: "mau 1", confidence: 1, state: "pending", messageId: "",
+  })
+  await addClaim({
+    postId, sender: "2", customer: null, source: "ink", point: { x: 0.705, y: 0.302 },
+    variantId: null, quantity: 1, note: "", confidence: 1, state: "pending", messageId: "",
+  })
+
+  await recluster(postId)
+
+  const slots = await listSlots(postId)
+  assert.equal(slots.length, 1)
+  assert.equal(slots[0].size, "", "no size is a state, not a guess")
+  assert.equal(slots[0].claimed, 2)
 })

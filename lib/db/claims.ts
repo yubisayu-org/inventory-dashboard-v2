@@ -2,6 +2,8 @@ import sql from "../db-pool"
 import type { DBExecutor } from "./actor"
 import { tsToString } from "./helpers"
 import { toPricingMethod, type PricingMethod } from "@/lib/pricing"
+import { fetchPaidStatusMap, compareOrderPriority } from "./shopping-list"
+import { allocateFifo } from "@/lib/fifo-fill"
 import type { Point } from "@/lib/claims"
 
 export interface WaPost {
@@ -30,6 +32,8 @@ export interface WaClaim {
   point: Point | null
   variantId: string | null
   quantity: number
+  /** How many of this claim were actually bought. The slot's total is the sum. */
+  obtained: number
   note: string
   confidence: number
   state: ClaimState
@@ -43,8 +47,13 @@ export interface WaSlot {
   postId: number
   point: Point | null
   variantId: string | null
+  /** Size this slot is for. Empty means nobody said one — a real state, not a gap. */
+  size: string
+  /** Working name. Not a product: naming is a separate, heavier act. */
+  label: string
   /** Sum of the quantities of the claims attached to this slot. Derived. */
   claimed: number
+  /** Sum of what those claims obtained. Also derived — see migration 064. */
   bought: number
   productId: number | null
 }
@@ -158,6 +167,7 @@ function mapClaim(r: Record<string, unknown>): WaClaim {
     point: x === null || y === null ? null : { x: Number(x), y: Number(y) },
     variantId: (r.variant_id as string | null) ?? null,
     quantity: (r.quantity as number) ?? 1,
+    obtained: (r.obtained as number) ?? 0,
     note: (r.note as string) ?? "",
     confidence: Number(r.confidence ?? 1),
     state: r.state as ClaimState,
@@ -176,29 +186,32 @@ export async function listClaims(postId: number): Promise<WaClaim[]> {
  * Replace a post's slots with a freshly clustered set.
  *
  * Clustering is recomputed whenever a claim arrives, so this runs often. What
- * it must NOT do is discard the two things a slot knows that clustering cannot
- * recompute — the shop tally and the product it was named as. Those are matched
- * back by position, because the owner is looking at a photo and a slot that
- * moved half a percent is the same slot to them.
+ * it must NOT do is discard the three things a slot knows that clustering
+ * cannot recompute — the working name, the product it was named as, and (via
+ * its claims) what was bought. The first two are matched back by position AND
+ * size, because two sizes of one item sit at the same point on the photograph
+ * and position alone would let their identities swap.
+ *
+ * What was bought needs no carrying: it lives on the claims, which are not
+ * touched here beyond being re-pointed.
  */
 export async function setSlots(
   postId: number,
-  slots: { point: Point | null; variantId: string | null; claimIds: number[] }[],
+  slots: { point: Point | null; variantId: string | null; size: string; claimIds: number[] }[],
 ): Promise<void> {
   await sql.begin(async (tx) => {
     const existing = await tx`SELECT * FROM wa_slots WHERE post_id = ${postId}`
 
-    // Carry forward bought/product by nearest previous slot centre. A variant
-    // slot matches by id instead, since it has no position.
     const carried = slots.map((slot) => {
       const previous = existing.find((e) => {
+        if ((e.size as string) !== slot.size) return false
         if (slot.variantId !== null) return e.variant_id === slot.variantId
         if (slot.point === null || e.point_x === null) return false
         return Math.hypot(Number(e.point_x) - slot.point.x, Number(e.point_y) - slot.point.y) < 0.03
       })
       return {
         ...slot,
-        bought: (previous?.bought as number) ?? 0,
+        label: (previous?.label as string) ?? "",
         productId: (previous?.product_id as number | null) ?? null,
       }
     })
@@ -208,9 +221,9 @@ export async function setSlots(
 
     for (const slot of carried) {
       const [row] = await tx`
-        INSERT INTO wa_slots (post_id, point_x, point_y, variant_id, bought, product_id)
+        INSERT INTO wa_slots (post_id, point_x, point_y, variant_id, size, label, product_id)
         VALUES (${postId}, ${slot.point?.x ?? null}, ${slot.point?.y ?? null},
-          ${slot.variantId}, ${slot.bought}, ${slot.productId})
+          ${slot.variantId}, ${slot.size}, ${slot.label}, ${slot.productId})
         RETURNING id
       `
       if (slot.claimIds.length > 0) {
@@ -225,7 +238,9 @@ export async function setSlots(
 
 export async function listSlots(postId: number): Promise<WaSlot[]> {
   const rows = await sql`
-    SELECT s.*, COALESCE(SUM(c.quantity), 0)::int AS claimed
+    SELECT s.*,
+           COALESCE(SUM(c.quantity), 0)::int AS claimed,
+           COALESCE(SUM(c.obtained), 0)::int AS bought
     FROM wa_slots s
     LEFT JOIN wa_claims c ON c.slot_id = s.id AND c.state <> 'rejected'
     WHERE s.post_id = ${postId}
@@ -240,6 +255,8 @@ export async function listSlots(postId: number): Promise<WaSlot[]> {
       postId: r.post_id as number,
       point: x === null || y === null ? null : { x: Number(x), y: Number(y) },
       variantId: (r.variant_id as string | null) ?? null,
+      size: (r.size as string) ?? "",
+      label: (r.label as string) ?? "",
       claimed: (r.claimed as number) ?? 0,
       bought: (r.bought as number) ?? 0,
       productId: (r.product_id as number | null) ?? null,
@@ -247,13 +264,75 @@ export async function listSlots(postId: number): Promise<WaSlot[]> {
   })
 }
 
-/** The shop tally. Independent of orders, which may not exist yet. */
-export async function setSlotBought(
+/** The working name, typed once in the shop. Creates nothing. */
+export async function setSlotLabel(
   slotId: number,
-  bought: number,
+  label: string,
   db: DBExecutor = sql,
 ): Promise<void> {
   await db`
-    UPDATE wa_slots SET bought = ${bought}, updated_at = NOW() WHERE id = ${slotId}
+    UPDATE wa_slots SET label = ${label.trim()}, updated_at = NOW() WHERE id = ${slotId}
   `
+}
+
+/** One claim's outcome — what the owner's tick in the group means. */
+export async function markClaimObtained(
+  claimId: number,
+  obtained: number,
+  db: DBExecutor = sql,
+): Promise<void> {
+  await db`
+    UPDATE wa_claims SET obtained = ${Math.max(0, Math.trunc(obtained))}, updated_at = NOW()
+    WHERE id = ${claimId}
+  `
+}
+
+/**
+ * The stepper: "I got N of this SKU", without saying whose.
+ *
+ * Spends N across the slot's claims in the order the rest of the app already
+ * settles a shortage — paid, then partly paid, then unpaid, then whoever asked
+ * first. Claims that get nothing are reset to zero, because N is a statement
+ * about the whole slot rather than an increment.
+ *
+ * The owner's tick on a single message writes the same column directly. Both
+ * roads lead to wa_claims.obtained, so the shopping list cannot show one number
+ * while the orders behind it say another.
+ */
+export async function setSlotBought(slotId: number, bought: number): Promise<void> {
+  const [slot] = await sql`
+    SELECT s.id, p.event
+    FROM wa_slots s JOIN wa_posts p ON p.id = s.post_id
+    WHERE s.id = ${slotId}
+  `
+  if (!slot) throw new Error(`no such slot: ${slotId}`)
+
+  const rows = await sql`
+    SELECT id, customer, quantity FROM wa_claims
+    WHERE slot_id = ${slotId} AND state <> 'rejected'
+    ORDER BY id ASC
+  `
+  const event = slot.event as string
+  const claims = rows.map((r) => ({
+    id: r.id as number,
+    // An unresolved sender has no payment history to rank on, so they sort as
+    // unpaid — which is where an unknown belongs when units are short.
+    customer: (r.customer as string | null) ?? "",
+    quantity: r.quantity as number,
+  }))
+
+  const statusMap = await fetchPaidStatusMap([event])
+  claims.sort(compareOrderPriority(event, statusMap))
+
+  const { allocations } = allocateFifo(claims, (c) => c.quantity, Math.max(0, Math.trunc(bought)))
+  const given = new Map(allocations.map((a) => [a.item.id, a.allocated]))
+
+  await sql.begin(async (tx) => {
+    for (const claim of claims) {
+      await tx`
+        UPDATE wa_claims SET obtained = ${given.get(claim.id) ?? 0}, updated_at = NOW()
+        WHERE id = ${claim.id}
+      `
+    }
+  })
 }

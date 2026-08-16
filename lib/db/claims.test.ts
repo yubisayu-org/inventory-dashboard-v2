@@ -1,7 +1,7 @@
 import { test, before, after } from "node:test"
 import assert from "node:assert/strict"
 import sql from "../db-pool"
-import { createPost, getPost, addClaim, listClaims, setSlots, listSlots, setSlotBought } from "./claims"
+import { createPost, getPost, addClaim, listClaims, setSlots, listSlots, setSlotBought, setSlotLabel, markClaimObtained } from "./claims"
 
 const EVENT = `TEST${process.hrtime.bigint()}`
 
@@ -76,7 +76,7 @@ test("setSlots replaces slots and points claims at them", async () => {
   })
 
   await setSlots(postId, [
-    { point: { x: 0.205, y: 0.795 }, variantId: null, claimIds: [a.id, b.id] },
+    { point: { x: 0.205, y: 0.795 }, variantId: null, size: "", claimIds: [a.id, b.id] },
   ])
 
   const slots = await listSlots(postId)
@@ -97,10 +97,13 @@ test("re-clustering preserves what a slot already knows", async () => {
     postId, sender: "1", customer: null, source: "ink", point: { x: 0.5, y: 0.5 },
     variantId: null, quantity: 1, note: "", confidence: 1, state: "pending", messageId: "",
   })
-  await setSlots(postId, [{ point: { x: 0.5, y: 0.5 }, variantId: null, claimIds: [first.id] }])
+  await setSlots(postId, [
+    { point: { x: 0.5, y: 0.5 }, variantId: null, size: "90", claimIds: [first.id] },
+  ])
 
   const [slot] = await listSlots(postId)
-  await setSlotBought(slot.id, 2)
+  await setSlotLabel(slot.id, "Brown Bear Set")
+  await setSlotBought(slot.id, 1)
 
   // A later claim arrives and clustering runs again over the same position.
   const second = await addClaim({
@@ -108,11 +111,103 @@ test("re-clustering preserves what a slot already knows", async () => {
     variantId: null, quantity: 1, note: "", confidence: 1, state: "pending", messageId: "",
   })
   await setSlots(postId, [
-    { point: { x: 0.505, y: 0.5 }, variantId: null, claimIds: [first.id, second.id] },
+    { point: { x: 0.505, y: 0.5 }, variantId: null, size: "90", claimIds: [first.id, second.id] },
   ])
 
   const reclustered = await listSlots(postId)
   assert.equal(reclustered.length, 1)
-  assert.equal(reclustered[0].bought, 2, "a tally made in the shop must survive re-clustering")
+  assert.equal(reclustered[0].label, "Brown Bear Set", "a name typed in the shop must survive")
+  assert.equal(reclustered[0].bought, 1, "a tally made in the shop must survive re-clustering")
   assert.equal(reclustered[0].claimed, 2)
+})
+
+test("two sizes at one position are two slots that do not swap identities", async () => {
+  const { id: postId } = await createPost({
+    event: EVENT, imagePath: "test/d.jpg", imageWidth: 100, imageHeight: 100,
+    store: "", countryId: null, pricingMethod: "overseas", note: "", safeHues: [],
+  })
+  const small = await addClaim({
+    postId, sender: "1", customer: null, source: "ink", point: { x: 0.5, y: 0.5 },
+    variantId: null, quantity: 1, note: "size 90", confidence: 1, state: "pending", messageId: "",
+  })
+  const large = await addClaim({
+    postId, sender: "2", customer: null, source: "ink", point: { x: 0.5, y: 0.5 },
+    variantId: null, quantity: 1, note: "size 95", confidence: 1, state: "pending", messageId: "",
+  })
+
+  await setSlots(postId, [
+    { point: { x: 0.5, y: 0.5 }, variantId: null, size: "90", claimIds: [small.id] },
+    { point: { x: 0.5, y: 0.5 }, variantId: null, size: "95", claimIds: [large.id] },
+  ])
+  const slots = await listSlots(postId)
+  assert.equal(slots.length, 2)
+
+  const ninety = slots.find((s) => s.size === "90")
+  assert.ok(ninety)
+  await setSlotLabel(ninety.id, "Bear 90")
+
+  // Re-cluster. Both slots sit on the same point, so only the size tells them
+  // apart — carrying forward by position alone would put the name on either.
+  await setSlots(postId, [
+    { point: { x: 0.5, y: 0.5 }, variantId: null, size: "90", claimIds: [small.id] },
+    { point: { x: 0.5, y: 0.5 }, variantId: null, size: "95", claimIds: [large.id] },
+  ])
+
+  const after = await listSlots(postId)
+  assert.equal(after.find((s) => s.size === "90")?.label, "Bear 90")
+  assert.equal(after.find((s) => s.size === "95")?.label, "")
+})
+
+test("a short buy goes to the paying customer first", async () => {
+  const { id: postId } = await createPost({
+    event: EVENT, imagePath: "test/e.jpg", imageWidth: 100, imageHeight: 100,
+    store: "", countryId: null, pricingMethod: "overseas", note: "", safeHues: [],
+  })
+  // No payments exist for either customer in this event, so both rank unpaid and
+  // the tie-break is claim id — arrival order, which is the rule we assert here.
+  const early = await addClaim({
+    postId, sender: "1", customer: null, source: "ink", point: { x: 0.2, y: 0.2 },
+    variantId: null, quantity: 1, note: "", confidence: 1, state: "pending", messageId: "",
+  })
+  const late = await addClaim({
+    postId, sender: "2", customer: null, source: "ink", point: { x: 0.2, y: 0.2 },
+    variantId: null, quantity: 1, note: "", confidence: 1, state: "pending", messageId: "",
+  })
+  await setSlots(postId, [
+    { point: { x: 0.2, y: 0.2 }, variantId: null, size: "", claimIds: [early.id, late.id] },
+  ])
+  const [slot] = await listSlots(postId)
+
+  await setSlotBought(slot.id, 1)
+
+  const claims = await listClaims(postId)
+  assert.equal(claims.find((c) => c.id === early.id)?.obtained, 1)
+  assert.equal(claims.find((c) => c.id === late.id)?.obtained, 0)
+  assert.equal((await listSlots(postId))[0].bought, 1, "the slot total is the sum of its claims")
+})
+
+test("a tick on one claim buys exactly that claim", async () => {
+  const { id: postId } = await createPost({
+    event: EVENT, imagePath: "test/f.jpg", imageWidth: 100, imageHeight: 100,
+    store: "", countryId: null, pricingMethod: "overseas", note: "", safeHues: [],
+  })
+  const first = await addClaim({
+    postId, sender: "1", customer: null, source: "ink", point: { x: 0.3, y: 0.3 },
+    variantId: null, quantity: 1, note: "", confidence: 1, state: "pending", messageId: "",
+  })
+  const second = await addClaim({
+    postId, sender: "2", customer: null, source: "ink", point: { x: 0.3, y: 0.3 },
+    variantId: null, quantity: 2, note: "", confidence: 1, state: "pending", messageId: "",
+  })
+  await setSlots(postId, [
+    { point: { x: 0.3, y: 0.3 }, variantId: null, size: "", claimIds: [first.id, second.id] },
+  ])
+
+  // The owner ticked the SECOND customer's message, who asked for two.
+  await markClaimObtained(second.id, 2)
+
+  const claims = await listClaims(postId)
+  assert.equal(claims.find((c) => c.id === first.id)?.obtained, 0)
+  assert.equal(claims.find((c) => c.id === second.id)?.obtained, 2)
+  assert.equal((await listSlots(postId))[0].bought, 2)
 })
