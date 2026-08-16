@@ -54,11 +54,29 @@ All three are pure computation. No model, no API, no per-claim cost.
 Customer ticks or circles items using WhatsApp's pen and sends the image back.
 
 WhatsApp's pen colours are heavily saturated; product photography is not. Marks
-are found by thresholding on saturation in the reply image **alone** — no
-comparison against the original, and therefore no image registration. This
+are found by thresholding on hue and saturation in the reply image **alone** —
+no comparison against the original, and therefore no image registration. This
 matters: replies come back re-encoded, resized, sometimes cropped, so aligning
 two images would have been the hardest part of the build and it is avoided
 entirely.
+
+**Measured on a real sample** (`scratchpad/wa-samples/`, a Japanese baby-clothes
+shelf, reply re-compressed by WhatsApp to 960×1280 progressive JPEG):
+
+- The two green ticks resolved to exactly **two blobs**, at (41.4%, 76.7%) and
+  (24.4%, 78.9%).
+- The unmarked original contained **zero** pixels in the pen-green hue range.
+  Not a favourable ratio — no false positives at all.
+
+**Pen colour is not universally safe, and the post tells us which are.** A first
+pass thresholding on saturation alone found the shop's red PRICE DOWN sign
+rather than the ticks; green worked only because nothing on that shelf is green.
+Red pen on that photo would have collided.
+
+The original post is always on hand, so the fix costs nothing: build its hue
+histogram when it is posted, and only trust marks in hues the photograph does
+not contain. The same histogram can tell the owner which pen colour is safe for
+that particular photo.
 
 Each mark yields a point in the reply's coordinate space, normalized to the
 original's.
@@ -69,11 +87,23 @@ Customer crops the original photo down to the item they want and sends that —
 no ink at all.
 
 A crop is an exact sub-rectangle of a known image, so it is located by template
-matching: downscale both to a few hundred pixels, coarse-to-fine search, take
+matching: downscale both to a few hundred pixels, sweep template scales, take
 the best-scoring position. The match score is free confidence — when the top
 match beats the runner-up by a wide margin it is certain; when two shelf
 positions score alike (repeated stock, a crop showing only fabric texture) the
 claim goes to review rather than being guessed.
+
+**Measured on the worst realistic case** — the sample crop is a *screenshot* of
+a zoomed view, so it is double-compressed, upscaled, and a different aspect
+ratio from the original:
+
+- Best score **0.915**, runner-up at the same scale **0.664** — clean
+  separation.
+- Located region x 46–77%, y 12–34%, verified by eye to be the item the customer
+  meant.
+- 2.9 s brute-force at 260px scene width, unoptimized and single-threaded, on a
+  5.9 MB original. Production has ample headroom (coarse-to-fine, cached
+  downscales).
 
 ### 2b. Re-posted original with a caption
 
@@ -448,10 +478,12 @@ New tables (migrations from **062** upward — 058–060 are taken by the
 
 ## Risks
 
-- **The pixel resolvers are unproven.** Ink detection and crop matching must be
-  validated against real WhatsApp-compressed samples before they are built. If
-  the signal is poor, the design survives unchanged but those two resolvers
-  degrade to "everything goes to review".
+- ~~**The pixel resolvers are unproven.**~~ **Resolved 2026-08-16.** Both were
+  measured against real WhatsApp-compressed samples and both separate cleanly —
+  see the numbers under each resolver above. Remaining uncertainty is breadth,
+  not feasibility: one shelf, one lighting condition, one pen colour, one crop.
+  The pen-colour collision found during that test is handled by the per-post hue
+  histogram.
 - **Ban risk is real and unmitigable.** Reply-only and throttling reduce it; a
   dedicated number contains the blast radius.
 - **Clustering thresholds will misfire** on tightly-packed shelves. The
@@ -461,8 +493,9 @@ New tables (migrations from **062** upward — 058–060 are taken by the
 
 ## Open items
 
-- Sample images on disk (original, ticked reply, cropped reply) to validate the
-  resolvers.
+None blocking. The resolver feasibility question is closed; breadth of testing
+(more shelves, more pen colours, more crop styles) accumulates naturally once
+the first event runs.
 
 ## Deferred
 
