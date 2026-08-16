@@ -328,9 +328,17 @@ response at all, rather than a message that invites them to try again.
 The app's own roles (`owner` | `admin`) key on **email** — see
 [lib/roles.ts](../../../lib/roles.ts) and its `ADMIN_EMAILS` list. A WhatsApp
 sender has a number and no login, so the bot cannot reuse that check and needs
-its own allow-list of admin numbers. Keeping it a list rather than a single
-owner number means staff who help run an event can pull the shopping list too,
-without sharing one phone.
+its own allow-list of numbers.
+
+**Two separate permissions, mirroring the app's two roles:**
+
+| Command | Who |
+|---|---|
+| `/rekap` | Any number on the admin list — staff helping run an event can pull the shopping list without sharing a phone |
+| `/connect` | The owner's number only |
+
+Binding a group to an event decides where every claim for that trip lands, so it
+stays with one person.
 
 ## Partial buying
 
@@ -413,9 +421,16 @@ of chatter that draws spam attention.
   their IG handle, and asking for a missing colour — and reactions carry
   everything else with no messages sent. Substitution questions are asked by the
   owner from their own number, so the bot never initiates a conversation.
-- **Storage.** Posted photos and reply images. Given the existing work on
-  Supabase egress, retention needs an explicit decision: likely discard reply
-  images once their claim is confirmed, keep the original post.
+- **Storage.** Original post images are **kept** — there are few of them and the
+  shopping list re-renders from them. Reply images are **discarded once their
+  claim is confirmed**, which keeps this off the Supabase egress budget.
+
+  Discarding is safe because the group chat is the real audit trail: a
+  customer's claim message, image included, stays in WhatsApp as long as the
+  chat exists. A later dispute ("I asked for size 90") is settled by scrolling
+  the group, not by the server's copy. Copies on the owner's phone are a bonus,
+  not an archive — whether media is saved to the gallery depends on WhatsApp's
+  auto-download settings, and storage cleanups or a new handset can remove them.
 
 ## Data model
 
@@ -448,7 +463,6 @@ New tables (migrations from **062** upward — 058–060 are taken by the
 
 - Sample images on disk (original, ticked reply, cropped reply) to validate the
   resolvers.
-- Retention policy for reply images.
 
 ## Deferred
 
