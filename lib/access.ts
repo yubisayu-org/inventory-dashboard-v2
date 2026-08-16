@@ -16,6 +16,7 @@ export const ADMIN_ROUTES = [
   "/dashboard/custom-label",
   "/dashboard/customers",
   "/dashboard/excess-purchase", // Inventory (ready stock)
+  "/dashboard/shop", // In-store tally: counting is not naming, so an admin may do it
 ] as const
 
 /** Where an admin lands after login and when redirected off a blocked route. */
