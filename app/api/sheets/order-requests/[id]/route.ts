@@ -22,11 +22,22 @@ export async function PUT(req: NextRequest, { params }: Params) {
     if (body.action === "convert") {
       const event = String(body.event ?? "")
       if (!event) return NextResponse.json({ error: "event is required" }, { status: 400 })
+
+      const productIdRaw = body.productId
+      let productId: number | undefined
+      if (productIdRaw !== undefined && productIdRaw !== null) {
+        productId = Number(productIdRaw)
+        if (!Number.isInteger(productId) || productId < 1) {
+          return NextResponse.json({ error: "productId must be a positive integer" }, { status: 400 })
+        }
+      }
+
       try {
-        const result = await convertCatalogueRequest(id, event, session.user.email ?? null)
+        const result = await convertCatalogueRequest(id, event, session.user.email ?? null, productId)
         return NextResponse.json({ success: true, orderId: result.orderId })
       } catch (err) {
         if (isGuardViolation(err)) return NextResponse.json({ error: err.message }, { status: 409 })
+        if (isUserActionable(err)) return NextResponse.json({ error: err.message }, { status: 400 })
         throw err
       }
     }
@@ -55,4 +66,17 @@ export async function PUT(req: NextRequest, { params }: Params) {
 // app/api/sheets/duplicate-form/[row]/route.ts (returnOrderUnitsToExcess guard).
 function isGuardViolation(err: unknown): err is Error {
   return err instanceof Error && err.message === "Request not found or already handled"
+}
+
+// convertCatalogueRequest throws these two exact messages when a custom
+// request (no tagged product) is converted without staff picking one, or
+// with a productId that no longer resolves to a real product — both are
+// user-actionable input problems (400), distinct from the "someone else
+// already handled it" race isGuardViolation covers (409).
+function isUserActionable(err: unknown): err is Error {
+  return (
+    err instanceof Error &&
+    (err.message === "A product must be selected to convert a custom request" ||
+      err.message === "Selected product not found")
+  )
 }
