@@ -580,8 +580,10 @@ export interface CataloguePost {
 export interface CatalogueRequest {
   id: number
   customerHandle: string
-  productId: number
-  productName: string
+  productId: number | null
+  productName: string | null
+  description: string
+  referenceImageUrl: string | null
   qty: number
   note: string
   status: "pending" | "converted" | "rejected"
