@@ -10,7 +10,7 @@ import { listClaims } from "@/lib/db/claims"
 import { renderShoppingList } from "@/lib/whatsapp/render"
 import sql from "@/lib/db-pool"
 import { isBotAdmin } from "@/lib/db/whatsapp-groups"
-import { senderNumber } from "./handle-command"
+import { senderJid, senderNumber } from "./handle-command"
 
 /**
  * One queue for the whole process, not one per message.
@@ -58,7 +58,7 @@ const DEBUG = Boolean(process.env.WA_DEBUG)
 
 async function trace(sock: WASocket, message: WAMessage) {
   if (!DEBUG) return
-  const jid = message.key.participant ?? ""
+  const jid = senderJid(message.key)
   const text = messageText(message)
   const number = senderNumber(jid)
   console.log("[wa]", {
@@ -68,13 +68,10 @@ async function trace(sock: WASocket, message: WAMessage) {
     fromMe: message.key.fromMe,
     linkedAs: sock.user?.id ?? "(unknown)",
     chat: message.key.remoteJid,
-    participant: jid || "(none)",
-    // participantAlt/participantPn carry the real number when WhatsApp hands
-    // out a privacy id (@lid) as the participant.
-    alt:
-      (message.key as { participantAlt?: string; participantPn?: string }).participantAlt ??
-      (message.key as { participantPn?: string }).participantPn ??
-      "(none)",
+    // What the code actually uses, after preferring a number-bearing JID over
+    // a privacy id.
+    resolvedJid: jid || "(none)",
+    rawParticipant: message.key.participant ?? "(none)",
     parsedNumber: number || "(empty)",
     isAdmin: number ? await isBotAdmin(number) : false,
     isCommand: Boolean(parseCommand(text)),
@@ -89,7 +86,7 @@ async function onMessage(sock: WASocket, message: WAMessage) {
   const groupJid = message.key.remoteJid ?? ""
   if (!groupJid.endsWith("@g.us")) return
 
-  const sender = message.key.participant ?? ""
+  const sender = senderJid(message.key)
   const messageId = message.key.id ?? ""
   const text = messageText(message)
 
@@ -182,7 +179,7 @@ async function main() {
           if (event.reaction.key?.fromMe) continue
 
           const applied = await applyOwnerReaction({
-            reactorJid: event.reaction.key?.participant ?? "",
+            reactorJid: senderJid(event.reaction.key),
             messageId: event.key.id ?? "",
             emoji: event.reaction.text ?? "",
           })

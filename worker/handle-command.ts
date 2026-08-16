@@ -2,6 +2,7 @@ import sql from "@/lib/db-pool"
 import {
   bindGroupToEvent, canConnect, closeCapture, isBotAdmin, openCapture, upsertGroup,
 } from "@/lib/db/whatsapp-groups"
+import type { WAMessageKey } from "baileys"
 import type { Command } from "./commands"
 
 export interface CommandResult {
@@ -11,6 +12,22 @@ export interface CommandResult {
   react?: string
   /** The caller should render and send the shopping list. */
   rekap?: true
+}
+
+/**
+ * The JID that identifies a person, preferring one that carries their number.
+ *
+ * WhatsApp increasingly hands out a privacy identifier — `104428539535560@lid`
+ * — as a message's participant. That is stable per account but is NOT a phone
+ * number, so looking it up against wa_admins or customers.whatsapp always
+ * misses, and every lookup in this worker fails closed and silently. The real
+ * number arrives alongside it as participantPn / senderPn, so prefer those and
+ * fall back to participant for accounts that still send a plain JID.
+ */
+export function senderJid(key: WAMessageKey | null | undefined): string {
+  if (!key) return ""
+  const alt = (key as { participantAlt?: string }).participantAlt
+  return key.participantPn ?? key.senderPn ?? alt ?? key.participant ?? ""
 }
 
 /**

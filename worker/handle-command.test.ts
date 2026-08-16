@@ -2,7 +2,7 @@ import { test, before, after } from "node:test"
 import assert from "node:assert/strict"
 import sql from "../lib/db-pool"
 import { addBotAdmin, currentCapture, listGroups } from "../lib/db/whatsapp-groups"
-import { senderNumber, runCommand } from "./handle-command"
+import { senderJid, senderNumber, runCommand } from "./handle-command"
 
 const EVENT = `TESTCMD${process.hrtime.bigint()}`
 const JID = `${process.hrtime.bigint()}@g.us`
@@ -32,6 +32,37 @@ test("a sender's number is read out of the JID however it is shaped", () => {
   assert.equal(senderNumber("628110000001:12@s.whatsapp.net"), "628110000001")
   assert.equal(senderNumber("628110000001@lid"), "628110000001")
   assert.equal(senderNumber(""), "")
+})
+
+test("a privacy id never stands in for a real number", () => {
+  // Observed on a live account: WhatsApp sends the participant as an @lid
+  // identifier and the real number alongside it. Reading the participant would
+  // look up 104428539535560, miss, and silently ignore the owner's own command.
+  assert.equal(
+    senderJid({
+      remoteJid: "120363412732437859@g.us",
+      participant: "104428539535560@lid",
+      participantPn: "62811905159@s.whatsapp.net",
+      fromMe: false,
+      id: "x",
+    }),
+    "62811905159@s.whatsapp.net",
+  )
+  assert.equal(
+    senderNumber(
+      senderJid({ participant: "104428539535560@lid", participantPn: "62811905159@s.whatsapp.net" }),
+    ),
+    "62811905159",
+  )
+})
+
+test("an account that still sends a plain JID keeps working", () => {
+  assert.equal(
+    senderJid({ participant: "628110000001@s.whatsapp.net" }),
+    "628110000001@s.whatsapp.net",
+  )
+  assert.equal(senderJid(null), "")
+  assert.equal(senderJid({}), "")
 })
 
 test("a stranger's command does nothing at all", async () => {
