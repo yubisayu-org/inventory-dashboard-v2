@@ -161,6 +161,25 @@ A slot carries:
 - **bought** — how many were actually purchased
 - the list of claims behind it, each with its sender
 
+### Duplicate claims
+
+A customer claiming the same slot in two messages is ambiguous: it may mean "I
+want two", or it may mean they got impatient and resent. No rule is right every
+time, so the design leans on what customers actually do — a second unit is
+usually *stated* ("mau 2", "2 ya kak"), while a bare repeat is usually an
+accident.
+
+- Same customer, same slot, **no explicit quantity** → collapse into one claim.
+  The repeat adds nothing.
+- **An explicit quantity always wins**, however many messages carried it.
+- A repeat arriving **well after the 📝 landed** → flag to review rather than
+  collapse silently. A customer who already saw their claim acknowledged and
+  sent another is more likely to mean it.
+
+The reaction is also the cure. Most double-posting comes from uncertainty — no
+acknowledgement, so they send again. A 📝 within seconds removes the reason to
+repeat, which is worth more than any dedup rule.
+
 ### Claims are unbounded
 
 There is no stock figure to enforce against. A shelf photo shows what was on the
