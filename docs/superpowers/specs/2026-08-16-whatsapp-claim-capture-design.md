@@ -178,10 +178,17 @@ any unprompted snapshot is stale on arrival and would have the bot posting the
 same picture repeatedly — noise in the group, and the most obvious repetitive
 sending pattern the number could exhibit.
 
-`/rekap` is **owner-only**: the sender is checked against the owner's number and
-the command is silently ignored from anyone else. Silently, not with an error
-reply — a customer who types it should get no response at all, rather than a
-message that invites them to try again.
+`/rekap` is **admin-only**: the sender is checked against an allow-list of
+permitted numbers and the command is silently ignored from anyone else.
+Silently, not with an error reply — a customer who types it should get no
+response at all, rather than a message that invites them to try again.
+
+The app's own roles (`owner` | `admin`) key on **email** — see
+[lib/roles.ts](../../../lib/roles.ts) and its `ADMIN_EMAILS` list. A WhatsApp
+sender has a number and no login, so the bot cannot reuse that check and needs
+its own allow-list of admin numbers. Keeping it a list rather than a single
+owner number means staff who help run an event can pull the shopping list too,
+without sharing one phone.
 
 ## Partial buying
 
