@@ -9,9 +9,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "tsx --test lib/claims/*.test.ts"
+    "test": "tsx --env-file-if-exists=.env.development.local --test lib/claims/*.test.ts lib/*.test.ts lib/db/*.test.ts lib/whatsapp/*.test.ts"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.112.3",
     "@tanstack/react-table": "^8.21.3",
     "jspdf": "^4.2.1",
     "next": "^16.2.6",
