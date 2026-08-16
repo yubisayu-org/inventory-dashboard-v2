@@ -1,7 +1,6 @@
-import { existsSync } from "node:fs"
 import sharp from "sharp"
 import { getPost, listSlots, type WaSlot } from "@/lib/db/claims"
-import { downloadPostImage } from "@/lib/storage"
+import { localPostImage } from "./post-image"
 
 /** Width the picture is rendered at. Wide enough to read on a phone, small
  *  enough to send over a mobile connection in a shop. */
@@ -21,19 +20,6 @@ function escapeXml(value: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
-}
-
-/**
- * Read the post's image.
- *
- * image_path holds a bucket object key in normal use, but the ingest tests store
- * a local filesystem path so the resolver can read a fixture directly. Falling
- * back to the filesystem keeps both working without a second code path through
- * the renderer.
- */
-async function readPostImage(imagePath: string): Promise<Buffer> {
-  if (existsSync(imagePath)) return sharp(imagePath).toBuffer()
-  return downloadPostImage(imagePath)
 }
 
 /**
@@ -99,7 +85,7 @@ export async function renderShoppingList(postId: number): Promise<Buffer> {
   if (post === null) throw new Error(`no such post: ${postId}`)
 
   const slots = await listSlots(postId)
-  const photo = sharp(await readPostImage(post.imagePath)).resize({ width: SHOPPING_LIST_WIDTH })
+  const photo = sharp(await localPostImage(post.imagePath)).resize({ width: SHOPPING_LIST_WIDTH })
   const base = await photo.toBuffer()
   const { width = SHOPPING_LIST_WIDTH, height = 0 } = await sharp(base).metadata()
 

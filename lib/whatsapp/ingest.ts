@@ -1,5 +1,6 @@
 import { resolveImageReply, clusterPoints, normalizeSize, type Point } from "@/lib/claims"
 import { addClaim, getPost, listClaims, setSlots } from "@/lib/db/claims"
+import { localPostImage } from "./post-image"
 
 /**
  * Turn a customer's image reply into claims.
@@ -24,7 +25,9 @@ export async function ingestImageReply(input: {
   const post = await getPost(input.postId)
   if (post === null) throw new Error(`no such post: ${input.postId}`)
 
-  const result = await resolveImageReply(post.imagePath, input.replyPath)
+  // image_path is a bucket key, not a file path — the resolver needs the latter.
+  const postFile = await localPostImage(post.imagePath)
+  const result = await resolveImageReply(postFile, input.replyPath)
   const claimIds: number[] = []
 
   const record = async (
