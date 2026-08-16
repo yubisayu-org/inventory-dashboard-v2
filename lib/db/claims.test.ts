@@ -211,3 +211,26 @@ test("a tick on one claim buys exactly that claim", async () => {
   assert.equal(claims.find((c) => c.id === second.id)?.obtained, 2)
   assert.equal((await listSlots(postId))[0].bought, 2)
 })
+
+test("a claim in review is not promoted by re-clustering", async () => {
+  const { id: postId } = await createPost({
+    event: EVENT, imagePath: "test/g.jpg", imageWidth: 100, imageHeight: 100,
+    store: "", countryId: null, pricingMethod: "overseas", note: "", safeHues: [],
+  })
+  const flagged = await addClaim({
+    postId, sender: "1", customer: null, source: "crop", point: { x: 0.4, y: 0.4 },
+    variantId: null, quantity: 1, note: "", confidence: 0.01, state: "review", messageId: "",
+  })
+
+  await setSlots(postId, [
+    { point: { x: 0.4, y: 0.4 }, variantId: null, size: "", claimIds: [flagged.id] },
+  ])
+
+  const [claim] = await listClaims(postId)
+  assert.equal(
+    claim.state,
+    "review",
+    "clustering runs on every new claim, so promoting would empty the review queue",
+  )
+  assert.ok(claim.slotId, "it still joins its slot — it is flagged, not detached")
+})

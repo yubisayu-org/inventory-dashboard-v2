@@ -255,7 +255,15 @@ export async function setSlots(
       `
       if (slot.claimIds.length > 0) {
         await tx`
-          UPDATE wa_claims SET slot_id = ${row.id}, state = 'assigned', updated_at = NOW()
+          UPDATE wa_claims
+          SET slot_id = ${row.id},
+              -- Only a pending claim advances. A claim in review was put there
+              -- because a human has to look at it — a crop that barely matched,
+              -- a sender nobody recognises — and clustering runs on every new
+              -- claim, so promoting unconditionally emptied the review queue
+              -- moments after anything landed in it.
+              state = CASE WHEN state = 'pending' THEN 'assigned' ELSE state END,
+              updated_at = NOW()
           WHERE id IN ${tx(slot.claimIds)}
         `
       }
