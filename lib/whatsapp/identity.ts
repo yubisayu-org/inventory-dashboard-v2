@@ -97,3 +97,66 @@ export async function linkSenderToCustomer(number: string, handle: string): Prom
     `
   })
 }
+
+/**
+ * Read an Instagram handle out of a reply, or decide it was not one.
+ *
+ * Deliberately strict. This runs on ordinary group chatter from someone the bot
+ * has just asked a question, and mistaking "iya kak" for a handle would link a
+ * customer record to the wrong person — a mistake that then quietly attaches
+ * their orders to a stranger.
+ *
+ * A handle must therefore be the whole message, use only the characters
+ * Instagram allows, and contain a letter: a bare number is far more likely to be
+ * a size than a username.
+ */
+export function parseHandle(text: string): string | null {
+  const bare = text.trim().replace(/^@+/, "")
+  if (!/^[A-Za-z0-9._]{2,30}$/.test(bare)) return null
+  if (!/[A-Za-z]/.test(bare)) return null
+  return bare.toLowerCase()
+}
+
+/** Whether this number has ever been asked who they are. */
+export async function hasBeenAsked(number: string): Promise<boolean> {
+  const [row] = await sql`
+    SELECT 1 FROM wa_identity_asks WHERE number = ${normalizeNumber(number)}
+  `
+  return Boolean(row)
+}
+
+/** Remember that the question went out, so it never goes out twice. */
+export async function recordAsk(number: string, messageId: string): Promise<void> {
+  await sql`
+    INSERT INTO wa_identity_asks (number, message_id)
+    VALUES (${normalizeNumber(number)}, ${messageId})
+    ON CONFLICT (number) DO NOTHING
+  `
+}
+
+/** The unanswered question put to this number, if there is one. */
+export async function pendingAsk(number: string): Promise<{ messageId: string } | null> {
+  const [row] = await sql`
+    SELECT message_id FROM wa_identity_asks
+    WHERE number = ${normalizeNumber(number)} AND answered_at IS NULL
+  `
+  return row ? { messageId: (row.message_id as string) ?? "" } : null
+}
+
+/**
+ * Accept an answer to the identity question.
+ *
+ * Refuses a handle nobody has: auto-creating a customer keyed off whatever
+ * someone typed is exactly the second namespace this design rules out, and a
+ * typo would create a customer nobody can ever find again.
+ */
+export async function answerAsk(number: string, handle: string): Promise<boolean> {
+  const [exists] = await sql`SELECT 1 FROM customers WHERE instagram_id = ${handle}`
+  if (!exists) return false
+
+  await linkSenderToCustomer(number, handle)
+  await sql`
+    UPDATE wa_identity_asks SET answered_at = NOW() WHERE number = ${normalizeNumber(number)}
+  `
+  return true
+}

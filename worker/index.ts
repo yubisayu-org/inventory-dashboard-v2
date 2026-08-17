@@ -5,6 +5,9 @@ import { runCommand } from "./handle-command"
 import { capturePost } from "./capture"
 import { captureClaim, postForReply } from "./claims"
 import { matchPostByImage } from "@/lib/whatsapp/ingest"
+import {
+  answerAsk, findCustomerByNumber, hasBeenAsked, parseHandle, pendingAsk, recordAsk,
+} from "@/lib/whatsapp/identity"
 import { ReactionQueue } from "./reactions"
 import { applyOwnerReaction, outcomeFor } from "./outcomes"
 import { findPostByMessage, listClaims } from "@/lib/db/claims"
@@ -121,6 +124,10 @@ async function onMessage(sock: WASocket, message: WAMessage) {
   const messageId = message.key.id ?? ""
   const text = messageText(message)
 
+  // An answer to "who are you" is consumed here so it is never also read as a
+  // claim or a command.
+  if (text && (await tryIdentityAnswer(sock, groupJid, message, sender, text))) return
+
   const command = parseCommand(text)
   if (command) {
     const result = await runCommand({
@@ -166,6 +173,7 @@ async function onMessage(sock: WASocket, message: WAMessage) {
 
   const emoji = await captureClaim({ sock, message, post, sender, messageId, text, isImage })
   if (emoji) reactions?.push({ jid: groupJid, key: message.key, emoji })
+  await askWhoTheyAre(sock, groupJid, message, sender)
 }
 
 /**
@@ -187,6 +195,73 @@ async function onMessage(sock: WASocket, message: WAMessage) {
  * matched now earns 😢, which asks them to try again rather than leaving them
  * to find out at delivery.
  */
+/** What the bot says, once, to a number it cannot place. */
+const IDENTITY_QUESTION =
+  "Halo kak! Boleh info username Instagram-nya? Biar orderannya tercatat atas nama kakak 🙏"
+
+/**
+ * Ask an unrecognised claimant who they are — once, ever.
+ *
+ * This is the only thing the bot says without being spoken to first, so it is
+ * fenced accordingly: only after they have actually claimed something, only if
+ * their number is on no customer record, and never a second time. Asking again
+ * on every shelf they claim would pester the customer and give the number the
+ * one activity pattern worth avoiding.
+ *
+ * Sent as a reply to their own claim, so their answer quotes it and comes back
+ * identifiable.
+ */
+async function askWhoTheyAre(sock: WASocket, groupJid: string, message: WAMessage, sender: string) {
+  const number = senderNumber(sender)
+  if (!number) return
+  if (await findCustomerByNumber(number)) return
+  if (await hasBeenAsked(number)) return
+
+  const sent = await sock.sendMessage(groupJid, { text: IDENTITY_QUESTION }, { quoted: message })
+  await recordAsk(number, sent?.key?.id ?? "")
+}
+
+/**
+ * Take an answer to that question, if this message is one.
+ *
+ * Only from a number with a question outstanding, and only when the whole
+ * message is a plausible handle — this runs against ordinary group chatter, and
+ * reading "iya kak" as a username would attach someone's orders to a stranger.
+ *
+ * Returns true when the message was consumed as an answer, so it is not also
+ * read as a claim.
+ */
+async function tryIdentityAnswer(
+  sock: WASocket,
+  groupJid: string,
+  message: WAMessage,
+  sender: string,
+  text: string,
+): Promise<boolean> {
+  const number = senderNumber(sender)
+  if (!number) return false
+
+  const ask = await pendingAsk(number)
+  if (ask === null) return false
+
+  const handle = parseHandle(text)
+  if (handle === null) return false
+
+  if (await answerAsk(number, handle)) {
+    reactions?.push({ jid: groupJid, key: message.key, emoji: "📝" })
+    return true
+  }
+
+  // A handle nobody has. Said plainly rather than silently ignored, because the
+  // customer has answered and deserves to know it did not land.
+  await sock.sendMessage(
+    groupJid,
+    { text: `Belum ketemu akun "${handle}" kak. Coba cek lagi ya 🙏` },
+    { quoted: message },
+  )
+  return true
+}
+
 async function claimWithoutReply(
   sock: WASocket,
   message: WAMessage,
@@ -234,6 +309,7 @@ async function claimWithoutReply(
       sock, message, post: match.post, sender, messageId, text, isImage: true,
     })
     if (emoji) reactions?.push({ jid: groupJid, key: message.key, emoji })
+    await askWhoTheyAre(sock, groupJid, message, sender)
   } finally {
     await rm(dir, { recursive: true, force: true })
   }
