@@ -25,6 +25,11 @@ export async function GET() {
       LEFT JOIN wa_slots s ON s.post_id = p.id
       LEFT JOIN wa_claims c ON c.slot_id = s.id AND c.state <> 'rejected'
       GROUP BY p.id
+      -- A shelf nobody claimed anything on is nothing to shop for. They are
+      -- common — a rack is photographed, the group ignores it — and each one
+      -- listed is a rack walked to for no reason. A shelf that is fully bought
+      -- still has claims, so it stays, marked Done.
+      HAVING COALESCE(SUM(c.quantity), 0) > 0
       ORDER BY p.id DESC
       LIMIT 100
     `
