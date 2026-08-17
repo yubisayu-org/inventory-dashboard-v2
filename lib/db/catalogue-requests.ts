@@ -29,6 +29,8 @@ function toRequest(r: Record<string, unknown>): CatalogueRequest {
     valas: r.valas != null ? Number(r.valas) : null,
     gram: r.gram != null ? Number(r.gram) : null,
     estimatedPrice: (r.estimated_price as number | null) ?? null,
+    postId: (r.post_id as number | null) ?? null,
+    defaultEvent: (r.default_event as string | null) ?? null,
   }
 }
 
@@ -47,18 +49,20 @@ export async function createCatalogueRequest(
     note: string
     description?: string
     referenceImageUrl?: string | null
+    postId?: number | null
   },
   db: postgres.Sql,
 ): Promise<void> {
   await db`
-    INSERT INTO catalogue_requests (customer_handle, product_id, qty, note, description, reference_image_url)
+    INSERT INTO catalogue_requests (customer_handle, product_id, qty, note, description, reference_image_url, post_id)
     VALUES (
       ${normalizeId(data.customerHandle)},
       ${data.productId},
       ${data.qty},
       ${data.note},
       ${data.description ?? ""},
-      ${data.referenceImageUrl ?? null}
+      ${data.referenceImageUrl ?? null},
+      ${data.postId ?? null}
     )
   `
 }
@@ -94,10 +98,13 @@ export async function getCatalogueRequests(
         SELECT r.id, r.customer_handle, r.product_id, p.name AS product_name,
                r.description, r.reference_image_url,
                r.qty, r.note, r.status, r.staff_note, r.converted_order_id, r.created_at,
-               r.country_id, c.name AS country_name, r.valas, r.gram, r.estimated_price
+               r.country_id, c.name AS country_name, r.valas, r.gram, r.estimated_price,
+               r.post_id, h.default_event
         FROM catalogue_requests r
         LEFT JOIN products p ON p.id = r.product_id
         LEFT JOIN countries c ON c.id = r.country_id
+        LEFT JOIN catalogue_posts cp ON cp.id = r.post_id
+        LEFT JOIN catalogue_highlights h ON h.id = cp.highlight_id
         WHERE r.status IN ('pending', 'offer_pending', 'approved')
         ORDER BY r.created_at ASC
       `
@@ -105,10 +112,13 @@ export async function getCatalogueRequests(
         SELECT r.id, r.customer_handle, r.product_id, p.name AS product_name,
                r.description, r.reference_image_url,
                r.qty, r.note, r.status, r.staff_note, r.converted_order_id, r.created_at,
-               r.country_id, c.name AS country_name, r.valas, r.gram, r.estimated_price
+               r.country_id, c.name AS country_name, r.valas, r.gram, r.estimated_price,
+               r.post_id, h.default_event
         FROM catalogue_requests r
         LEFT JOIN products p ON p.id = r.product_id
         LEFT JOIN countries c ON c.id = r.country_id
+        LEFT JOIN catalogue_posts cp ON cp.id = r.post_id
+        LEFT JOIN catalogue_highlights h ON h.id = cp.highlight_id
         ORDER BY r.created_at DESC
       `
   return rows.map(toRequest)

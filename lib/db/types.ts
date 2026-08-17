@@ -565,6 +565,16 @@ export interface OperationalExpenseRow {
   updatedAt: string
 }
 
+export interface CatalogueHighlight {
+  id: number
+  name: string
+  defaultEvent: string | null
+  sortOrder: number
+  visible: boolean
+  createdAt: string
+  updatedAt: string
+}
+
 export interface CataloguePost {
   id: number
   mediaUrl: string
@@ -573,6 +583,7 @@ export interface CataloguePost {
   visible: boolean
   createdAt: string
   updatedAt: string
+  highlightId: number | null
   /** Products tagged in this post. */
   productIds: number[]
 }
@@ -595,5 +606,11 @@ export interface CatalogueRequest {
   valas: number | null
   gram: number | null
   estimatedPrice: number | null
+  postId: number | null
+  /** Resolved from post -> highlight -> default_event, only when it
+   *  currently matches an active event. Owner-read path only — the public
+   *  status-lookup path never populates this (stays null), since a
+   *  customer has no use for staff's purchasing-event bookkeeping. */
+  defaultEvent: string | null
 }
 
