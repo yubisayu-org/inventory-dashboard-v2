@@ -96,17 +96,23 @@ async function captureImageClaim(input: {
       replyPath: scratch,
       caption: input.text,
     })
-    await resolveSenders(input.post.id)
-    await recluster(input.post.id)
-
     // The reply image itself is deliberately not kept — the spec discards them
     // once the claim is recorded, and the group chat is the audit trail.
     const claims = await listClaims(input.post.id)
     const mine = claims.filter((c) => claimIds.includes(c.id))
 
-    if (mine.length === 0) return CAPTURE_REACTIONS.unreadable
-    if (mine.some((c) => c.state === "review")) return CAPTURE_REACTIONS.needsDetail
-    return CAPTURE_REACTIONS.recorded
+    // Decided before resolveSenders runs, and from what was understood rather
+    // than from claim state.
+    //
+    // State also carries "this sender is not a customer yet", which is the
+    // owner's job to fix and something the customer cannot know about or act
+    // on. Reading it here told someone who had marked the shelf perfectly that
+    // their claim was missing a detail.
+    const emoji = reactionForClaims(mine)
+
+    await resolveSenders(input.post.id)
+    await recluster(input.post.id)
+    return emoji
   } finally {
     await rm(dir, { recursive: true, force: true })
   }
@@ -156,4 +162,22 @@ async function keepForInspection(
 async function localPostImagePath(post: WaPost): Promise<string | null> {
   const { localPostImage } = await import("@/lib/whatsapp/post-image")
   return localPostImage(post.imagePath).catch(() => null)
+}
+
+/**
+ * What the customer should see, judged on what was understood of their reply.
+ *
+ * Only the reply is considered. Whether the owner has met this person before,
+ * whether a slot is short, whether anything has been bought — none of that is
+ * an answer to "did you get what I sent".
+ */
+export function reactionForClaims(claims: { source: string; point: unknown }[]): string {
+  if (claims.length === 0) return CAPTURE_REACTIONS.unreadable
+
+  // A claim with no position identified the shelf but not the item: the photo
+  // came back whole, or the crop could not be placed. That is genuinely a
+  // question for the customer.
+  if (claims.every((c) => c.point === null)) return CAPTURE_REACTIONS.needsDetail
+
+  return CAPTURE_REACTIONS.recorded
 }
