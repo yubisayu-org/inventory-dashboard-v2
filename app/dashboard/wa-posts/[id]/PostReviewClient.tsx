@@ -177,6 +177,7 @@ function SlotCard({ slot, claims, onDone }: { slot: Slot; claims: Claim[]; onDon
   const [price, setPrice] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
+  const [zoom, setZoom] = useState(false)
 
   const blocked = claims.some((c) => c.customer === null)
 
@@ -209,12 +210,19 @@ function SlotCard({ slot, claims, onDone }: { slot: Slot; claims: Claim[]; onDon
             over each slot so the count reads at arm's length in a shop; here
             that badge would sit on top of the product being named. */}
         {slot.point ? (
-          // eslint-disable-next-line @next/next/no-img-element -- our own crop route.
-          <img
-            src={`/api/whatsapp/slots/${slot.id}/thumb`}
-            alt="Close-up of this item on the shelf"
-            className="w-28 h-28 rounded-lg border border-cream-border object-cover shrink-0"
-          />
+          <button
+            type="button"
+            onClick={() => setZoom(true)}
+            className="shrink-0 rounded-lg overflow-hidden border border-cream-border hover:border-brand transition-colors"
+            title="Look closer"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element -- our own crop route. */}
+            <img
+              src={`/api/whatsapp/slots/${slot.id}/thumb`}
+              alt="Close-up of this item on the shelf"
+              className="w-28 h-28 object-cover"
+            />
+          </button>
         ) : null}
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
@@ -300,6 +308,71 @@ function SlotCard({ slot, claims, onDone }: { slot: Slot; claims: Claim[]; onDon
           </button>
         </>
       )}
+
+      {zoom ? <SlotZoom slotId={slot.id} onClose={() => setZoom(false)} /> : null}
+    </div>
+  )
+}
+
+/** How much of the shelf's shorter side each step shows. */
+const ZOOM_STEPS = [0.4, 0.28, 0.18, 0.12]
+
+/**
+ * A closer look at one slot.
+ *
+ * Zooming crops tighter rather than enlarging. A price tag is a handful of
+ * pixels on a shelf photograph, so blowing up the same crop only makes it
+ * blurrier — showing less of the shelf is the only thing that actually reveals
+ * more of the label.
+ */
+function SlotZoom({ slotId, onClose }: { slotId: number; onClose: () => void }) {
+  const [step, setStep] = useState(1)
+  const share = ZOOM_STEPS[step]
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="flex flex-col gap-2 max-w-[min(90vw,640px)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element -- our own crop route. */}
+        <img
+          src={`/api/whatsapp/slots/${slotId}/thumb?share=${share}`}
+          alt="Close-up of this item on the shelf"
+          className="w-full rounded-xl bg-black"
+        />
+        <div className="flex items-center justify-center gap-2">
+          <button
+            type="button"
+            onClick={() => setStep((n) => Math.max(0, n - 1))}
+            disabled={step === 0}
+            className="rounded-lg bg-white/90 px-3 py-1.5 text-sm font-semibold disabled:opacity-40"
+          >
+            Wider
+          </button>
+          <span className="text-xs text-white/80 tabular-nums">
+            {step + 1} / {ZOOM_STEPS.length}
+          </span>
+          <button
+            type="button"
+            onClick={() => setStep((n) => Math.min(ZOOM_STEPS.length - 1, n + 1))}
+            disabled={step === ZOOM_STEPS.length - 1}
+            className="rounded-lg bg-white/90 px-3 py-1.5 text-sm font-semibold disabled:opacity-40"
+          >
+            Closer
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg bg-white/90 px-3 py-1.5 text-sm font-semibold"
+          >
+            Close
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

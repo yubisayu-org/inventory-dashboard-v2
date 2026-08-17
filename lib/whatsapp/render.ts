@@ -182,7 +182,7 @@ const CROP_SHARE = 0.28
  * A slot with no position has no close-up: nothing is known about where it is,
  * which is exactly why it is in review.
  */
-export async function renderSlotCrop(slotId: number): Promise<Buffer | null> {
+export async function renderSlotCrop(slotId: number, share = CROP_SHARE): Promise<Buffer | null> {
   const [row] = await sql`
     SELECT s.point_x, s.point_y, p.image_path
     FROM wa_slots s JOIN wa_posts p ON p.id = s.post_id
@@ -196,15 +196,26 @@ export async function renderSlotCrop(slotId: number): Promise<Buffer | null> {
   const height = meta.height ?? 0
   if (!width || !height) return null
 
-  const box = Math.round(Math.min(width, height) * CROP_SHARE)
+  // Tighter than a tenth of the frame is finer than the photograph resolves;
+  // wider than two thirds is the whole shelf again.
+  const bounded = Math.min(0.66, Math.max(0.1, share))
+  const box = Math.round(Math.min(width, height) * bounded)
+
   // Clamped so a slot near an edge yields a full-size crop that slides inward
   // rather than a sliver, which would be harder to recognise than no crop.
   const left = Math.max(0, Math.min(width - box, Math.round(Number(row.point_x) * width - box / 2)))
   const top = Math.max(0, Math.min(height - box, Math.round(Number(row.point_y) * height - box / 2)))
 
+  // Upscaled at most twofold. A price tag is a handful of pixels on a shelf
+  // photograph, and enlarging past what the sensor recorded makes it blurrier
+  // rather than more legible — the honest answer to "I cannot read it" is a
+  // tighter crop, not a bigger one.
+  const out = Math.min(box * 2, 1000)
+
   return sharp(file)
     .extract({ left, top, width: box, height: box })
-    .resize({ width: 320 })
-    .jpeg({ quality: 80 })
+    .resize({ width: out })
+    .sharpen()
+    .jpeg({ quality: 88 })
     .toBuffer()
 }

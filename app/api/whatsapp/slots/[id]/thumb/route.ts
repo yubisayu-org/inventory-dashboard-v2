@@ -11,14 +11,20 @@ type Params = { params: Promise<{ id: string }> }
  * do not change once captured, and only the counts drawn over the full picture
  * ever move.
  */
-export async function GET(_req: Request, { params }: Params) {
+export async function GET(req: Request, { params }: Params) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
   const roleError = requireRole(session)
   if (roleError) return roleError
 
   try {
-    const image = await renderSlotCrop(Number((await params).id))
+    // How much of the shelf to show. Zooming in means cropping tighter, not
+    // enlarging — the detail either survived the photograph or it did not.
+    const share = Number(new URL(req.url).searchParams.get("share"))
+    const image = await renderSlotCrop(
+      Number((await params).id),
+      Number.isFinite(share) && share > 0 ? share : undefined,
+    )
     if (image === null) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
     return new NextResponse(new Uint8Array(image), {
