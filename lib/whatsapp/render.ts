@@ -29,18 +29,34 @@ function escapeXml(value: string): string {
  * That is the number the owner acts on while holding a basket — "4/5" needs a
  * subtraction first. The bought-of-claimed figure stays, smaller, underneath.
  */
+/**
+ * Badge size relative to the original drawing.
+ *
+ * Halved at the owner's request: the first size hid the product it marked, and
+ * on a shelf this dense a badge that covers the item defeats the purpose of
+ * putting it on the photograph at all.
+ */
+const BADGE_SCALE = 0.5
+
 function badge(slot: WaSlot, cx: number, cy: number): string {
   const left = slot.claimed - slot.bought
   const colour = tone(slot.claimed, slot.bought)
-  const r = 40
+
+  const r = Math.round(40 * BADGE_SCALE)
+  const digit = Math.round((left === 0 ? 34 : 40) * BADGE_SCALE)
+  const pillW = Math.round(88 * BADGE_SCALE)
+  const pillH = Math.round(26 * BADGE_SCALE)
+  const pillFont = Math.round(18 * BADGE_SCALE)
+  const stroke = Math.max(2, Math.round(5 * BADGE_SCALE))
+
   return `
-    <circle cx="${cx}" cy="${cy}" r="${r}" fill="${colour}" stroke="#fff" stroke-width="5"/>
-    <text x="${cx}" y="${cy + 4}" text-anchor="middle" font-size="${left === 0 ? 34 : 40}"
+    <circle cx="${cx}" cy="${cy}" r="${r}" fill="${colour}" stroke="#fff" stroke-width="${stroke}"/>
+    <text x="${cx}" y="${cy + digit * 0.35}" text-anchor="middle" font-size="${digit}"
           font-weight="700" fill="#fff">${left === 0 ? "✓" : left}</text>
-    <rect x="${cx - 44}" y="${cy + r + 4}" width="88" height="26" rx="13"
-          fill="#111827" fill-opacity="0.82"/>
-    <text x="${cx}" y="${cy + r + 23}" text-anchor="middle" font-size="18" font-weight="600"
-          fill="#fff">${slot.bought} of ${slot.claimed}</text>`
+    <rect x="${cx - pillW / 2}" y="${cy + r + 2}" width="${pillW}" height="${pillH}"
+          rx="${pillH / 2}" fill="#111827" fill-opacity="0.82"/>
+    <text x="${cx}" y="${cy + r + 2 + pillH * 0.72}" text-anchor="middle" font-size="${pillFont}"
+          font-weight="600" fill="#fff">${slot.bought} of ${slot.claimed}</text>`
 }
 
 const ROW_HEIGHT = 40
