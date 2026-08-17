@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import { senderDigits, claimedAt } from "@/lib/format"
 import { alternativeSizes } from "@/lib/claims/size"
+import { neighbours, type Neighbours, type ShopPost } from "../stores"
 
 interface Slot {
   id: number
@@ -45,6 +46,10 @@ export default function ShopPostClient({ postId }: { postId: number }) {
   const [data, setData] = useState<PostPayload | null>(null)
   const [error, setError] = useState("")
   const [openSlot, setOpenSlot] = useState<number | null>(null)
+  // The other shelves in this shop, so the next rack is one tap rather than a
+  // trip back to the list. Fetched separately because it is a different
+  // question — "what else is in this shop" — and a stale answer costs nothing.
+  const [siblings, setSiblings] = useState<Neighbours | null>(null)
   // Bumped after every save so the rendered picture is refetched rather than
   // served from the browser's cache, which would show the previous counts.
   const [version, setVersion] = useState(0)
@@ -60,6 +65,13 @@ export default function ShopPostClient({ postId }: { postId: number }) {
   }, [postId])
 
   useEffect(load, [load])
+
+  useEffect(() => {
+    fetch("/api/whatsapp/shop", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data: { posts?: ShopPost[] }) => setSiblings(neighbours(data.posts ?? [], postId)))
+      .catch(() => setSiblings(null))
+  }, [postId])
 
   async function save(slotId: number, bought: number) {
     const res = await fetch(`/api/whatsapp/slots/${slotId}`, {
@@ -177,6 +189,19 @@ export default function ShopPostClient({ postId }: { postId: number }) {
         ))}
       </div>
 
+      {/* The next rack along, in the order the shop was photographed. Below the
+          list rather than above it: you arrive at it having counted this shelf,
+          which is exactly when it is wanted. */}
+      {siblings && siblings.total > 1 ? (
+        <div className="flex items-center gap-2">
+          <NeighbourLink post={siblings.previous} direction="previous" />
+          <span className="text-xs text-gray-500 tabular-nums shrink-0">
+            {siblings.position} of {siblings.total}
+          </span>
+          <NeighbourLink post={siblings.next} direction="next" />
+        </div>
+      ) : null}
+
       {slot ? (
         <SlotSheet
           key={slot.id}
@@ -189,6 +214,40 @@ export default function ShopPostClient({ postId }: { postId: number }) {
         />
       ) : null}
     </div>
+  )
+}
+
+/**
+ * One step along the aisle, or a dead end held open.
+ *
+ * The disabled end keeps its space rather than collapsing, so the button under
+ * a thumb does not move between shelves — the first and last rack would
+ * otherwise shuffle the row and cost a mis-tap.
+ */
+function NeighbourLink({
+  post, direction,
+}: {
+  post: ShopPost | null
+  direction: "previous" | "next"
+}) {
+  const label = direction === "next" ? "Next shelf" : "Previous"
+  const shared =
+    "flex-1 rounded-xl border border-cream-border px-4 py-2.5 text-sm font-semibold text-center"
+
+  if (post === null) {
+    return <span className={`${shared} text-gray-300 bg-cream/50`}>{label}</span>
+  }
+
+  const left = post.claimed - post.bought
+  return (
+    <Link href={`/dashboard/shop/${post.id}`} className={`${shared} bg-white hover:border-brand`}>
+      {direction === "previous" ? "← " : ""}
+      {label}
+      {direction === "next" ? " →" : ""}
+      <span className="block text-[11px] font-normal text-gray-500 tabular-nums">
+        {left === 0 ? "done" : `buy ${left}`}
+      </span>
+    </Link>
   )
 }
 

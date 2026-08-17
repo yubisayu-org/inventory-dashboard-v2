@@ -2,55 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-
-interface ShopPost {
-  id: number
-  event: string
-  store: string
-  sku: number
-  claimed: number
-  bought: number
-}
-
-interface StoreGroup {
-  key: string
-  name: string
-  posts: ShopPost[]
-  left: number
-}
-
-/**
- * Shelves from one store, together.
- *
- * Store is typed by whoever opened the capture window, so "Nishimatsuya" and
- * "NISHIMATSUYA" are the same shop and must not become two sections. The name
- * shown is the first spelling seen rather than an upper-cased one, because the
- * heading is read by a person, not matched by a machine.
- */
-function groupByStore(posts: ShopPost[]): StoreGroup[] {
-  const groups = new Map<string, StoreGroup>()
-
-  for (const post of posts) {
-    const name = post.store.trim() || "Untitled shelf"
-    const key = name.toLowerCase()
-    const group = groups.get(key) ?? { key, name, posts: [], left: 0 }
-    group.posts.push(post)
-    group.left += Math.max(0, post.claimed - post.bought)
-    groups.set(key, group)
-  }
-
-  // Oldest shelf first inside a shop, which is the order they were photographed
-  // in — and the order the racks stand in, because the photographs were taken
-  // walking the aisle. Shopping the list top to bottom is then one walk rather
-  // than a lap per shelf. Newest-first is right for an archive and wrong here.
-  for (const group of groups.values()) group.posts.sort((a, b) => a.id - b.id)
-
-  // Shops with something left first: you are standing in one of them.
-  return [...groups.values()].sort((a, b) => {
-    if ((a.left === 0) !== (b.left === 0)) return a.left === 0 ? 1 : -1
-    return b.left - a.left
-  })
-}
+import { groupByStore, type ShopPost } from "./stores"
 
 export default function ShopClient() {
   const [posts, setPosts] = useState<ShopPost[] | null>(null)
