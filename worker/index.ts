@@ -227,6 +227,9 @@ async function claimWithoutReply(
       return
     }
 
+    // captureClaim re-runs the resolver, which for an untouched frame lands on
+    // "repost" and files it for review — the same outcome a reply to that
+    // photograph would have had.
     const emoji = await captureClaim({
       sock, message, post: match.post, sender, messageId, text, isImage: true,
     })

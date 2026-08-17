@@ -2,7 +2,7 @@ import {
   resolveImageReply, clusterPoints, normalizeSize, DEFAULT_CLUSTER_RADIUS, type Point,
 } from "@/lib/claims"
 import { addClaim, getPost, listClaims, listRecentPosts, setSlots, type WaPost } from "@/lib/db/claims"
-import { detectChanges, loadRgbWithin } from "@/lib/claims"
+import { compareFrames, loadRgbWithin, type Mark } from "@/lib/claims"
 import { localPostImage } from "./post-image"
 
 /**
@@ -194,15 +194,22 @@ export async function recluster(postId: number): Promise<void> {
 export async function matchPostByImage(
   groupJid: string,
   replyPath: string,
-): Promise<{ post: WaPost; marks: Awaited<ReturnType<typeof detectChanges>> } | null> {
+): Promise<{ post: WaPost; marks: Mark[] } | null> {
   for (const post of await listRecentPosts(groupJid)) {
     // image_path is a bucket key; the detector needs a file. Cached after the
     // first reply, so scanning several shelves costs one download each at most.
     const file = await localPostImage(post.imagePath).catch(() => null)
     if (file === null) continue
 
-    const marks = await detectChanges(file, replyPath).catch(() => [])
-    if (marks.length > 0) return { post, marks }
+    const { aligned, marks } = await compareFrames(file, replyPath).catch(() => ({
+      aligned: false,
+      marks: [] as Mark[],
+    }))
+
+    // Aligned with no marks is the shelf sent back untouched. That says WHICH
+    // shelf and nothing more, which is a claim for the review queue rather than
+    // something to discard — the customer did point at this photograph.
+    if (aligned) return { post, marks }
 
     // Why a candidate was rejected is the only useful thing to know when a
     // customer insists they sent the right picture. Shapes differing means they

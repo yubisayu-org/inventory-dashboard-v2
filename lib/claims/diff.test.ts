@@ -68,3 +68,17 @@ test("a green tick on a green shelf is still found", async () => {
   assert.equal(marks.length, 2, "both ticks, whatever colour they were drawn in")
   assert.ok(marks.every((m) => m.pixels > 50), "and as solid blobs, not threshold noise")
 })
+
+test("an unmarked copy is the same frame, not a different shelf", async () => {
+  // The two empty results mean opposite things. Sending the photo back
+  // untouched says which shelf and nothing more, which belongs in review;
+  // sending a different shop's photo says nothing at all.
+  const { compareFrames } = await import("./diff")
+
+  const untouched = await compareFrames(FIXTURES.original, FIXTURES.original)
+  assert.equal(untouched.aligned, true, "the same photograph is the same photograph")
+  assert.equal(untouched.marks.length, 0)
+
+  const elsewhere = await compareFrames(FIXTURES.original, FIXTURES.greenTicked)
+  assert.equal(elsewhere.aligned, false, "a different shop is not this shelf")
+})

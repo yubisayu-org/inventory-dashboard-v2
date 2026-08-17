@@ -45,18 +45,35 @@ const MAX_CHANGED_SHARE = 0.25
  * compared: different shapes, or so much changed that they are not the same
  * picture.
  */
-export async function detectChanges(
+export interface FrameComparison {
+  /** Whether the two images are the same frame at all. */
+  aligned: boolean
+  /** What was drawn on it. Empty on an aligned frame means nothing was. */
+  marks: Mark[]
+}
+
+/**
+ * Compare a reply against a post, reporting alignment separately from marks.
+ *
+ * The distinction matters: an empty result can mean "a different photograph"
+ * or "the same photograph, unmarked", and those deserve different answers. The
+ * first is not this shelf; the second identifies the shelf but not the item, so
+ * it belongs in review rather than being thrown away.
+ */
+export async function compareFrames(
   postPath: string,
   replyPath: string,
   minPixels?: number,
-): Promise<Mark[]> {
+): Promise<FrameComparison> {
   // Fitted into the same box rather than resized to the same width, so a reply
   // that came back at a different aspect ratio is caught by the size check
   // below instead of being silently stretched into alignment.
   const post = await loadRgbWithin(postPath, DIFF_WIDTH, DIFF_WIDTH)
   const reply = await loadRgbWithin(replyPath, DIFF_WIDTH, DIFF_WIDTH)
 
-  if (post.width !== reply.width || post.height !== reply.height) return []
+  if (post.width !== reply.width || post.height !== reply.height) {
+    return { aligned: false, marks: [] }
+  }
 
   const { width: w, height: h } = post
   const mask = new Uint8Array(w * h)
@@ -74,7 +91,31 @@ export async function detectChanges(
     }
   }
 
-  if (changed / (w * h) > MAX_CHANGED_SHARE) return []
+  // Measured on real pairs: a marked copy differs across a fraction of a
+  // percent, two different shelves across about sixty. Nothing lands between.
+  if (changed / (w * h) > MAX_CHANGED_SHARE) return { aligned: false, marks: [] }
 
-  return blobsFromMask(mask, w, h, minPixels)
+  return { aligned: true, marks: blobsFromMask(mask, w, h, minPixels) }
+}
+
+/**
+ * Find what the customer drew, by comparing their reply against the post.
+ *
+ * The hue detector asks "is this pixel pen-coloured", which needs a colour the
+ * photograph does not already contain. On a real shop shelf — signage, packets,
+ * price tags — that can leave a single usable colour, and a customer marking in
+ * any other is invisible.
+ *
+ * This asks a different question: what is not in the original? That works
+ * whatever colour they used, at the cost of needing the reply to be the same
+ * image marked up rather than a fresh photograph. Both detectors are kept
+ * because they fail in different situations — this one on a re-photographed
+ * screen, the other on a colourful shelf.
+ */
+export async function detectChanges(
+  postPath: string,
+  replyPath: string,
+  minPixels?: number,
+): Promise<Mark[]> {
+  return (await compareFrames(postPath, replyPath, minPixels)).marks
 }
