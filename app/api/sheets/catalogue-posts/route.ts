@@ -41,12 +41,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "productIds must be a JSON array of integers" }, { status: 400 })
     }
 
+    const highlightIdRaw = form.get("highlightId")
+    const highlightId =
+      highlightIdRaw && String(highlightIdRaw).trim() !== "" ? Number(highlightIdRaw) : null
+    if (highlightId !== null && (!Number.isInteger(highlightId) || highlightId < 1)) {
+      return NextResponse.json({ error: "highlightId must be a positive integer" }, { status: 400 })
+    }
+
     const { url, mediaType } = await uploadCatalogueMedia(file)
 
     let result: { id: number }
     try {
       result = await withActor(session.user.email ?? null, (tx) =>
-        createCataloguePost({ mediaUrl: url, mediaType, caption, productIds }, tx),
+        createCataloguePost({ mediaUrl: url, mediaType, caption, productIds, highlightId }, tx),
       )
     } catch (err) {
       // Don't leave an orphaned file in storage if the DB insert fails

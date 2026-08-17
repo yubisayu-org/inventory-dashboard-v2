@@ -1,0 +1,37 @@
+import { NextRequest, NextResponse } from "next/server"
+import { requireSession, requireOwner } from "@/lib/api"
+import { updateCatalogueHighlight, withActor } from "@/lib/db"
+
+type Params = { params: Promise<{ id: string }> }
+
+export async function PUT(req: NextRequest, { params }: Params) {
+  const { session, error: authError } = await requireSession()
+  if (authError) return authError
+  const ownerError = requireOwner(session)
+  if (ownerError) return ownerError
+
+  const { id: idStr } = await params
+  const id = Number(idStr)
+  if (!Number.isInteger(id) || id < 1) {
+    return NextResponse.json({ error: "Invalid id" }, { status: 400 })
+  }
+
+  try {
+    const body = await req.json()
+    const name = String(body.name ?? "").trim()
+    if (!name) {
+      return NextResponse.json({ error: "name is required" }, { status: 400 })
+    }
+    const defaultEvent = body.defaultEvent ? String(body.defaultEvent) : null
+    const sortOrder = Number.isInteger(body.sortOrder) ? body.sortOrder : 0
+    const visible = typeof body.visible === "boolean" ? body.visible : true
+
+    await withActor(session.user.email ?? null, (tx) =>
+      updateCatalogueHighlight(id, { name, defaultEvent, sortOrder, visible }, tx),
+    )
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    console.error("Failed to update catalogue highlight:", err)
+    return NextResponse.json({ error: "Failed to update highlight" }, { status: 500 })
+  }
+}
