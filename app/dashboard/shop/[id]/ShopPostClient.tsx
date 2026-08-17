@@ -230,7 +230,7 @@ function NeighbourLink({
   post: ShopPost | null
   direction: "previous" | "next"
 }) {
-  const label = direction === "next" ? "Next shelf →" : "← Previous"
+  const label = direction === "next" ? "Next shelf →" : "← Previous shelf"
   const shared =
     "flex-1 rounded-xl border border-cream-border px-4 py-2.5 text-sm font-semibold text-center"
 
