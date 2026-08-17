@@ -6,7 +6,7 @@ export default function ShopPage() {
   return (
     <PageShell>
       <PageHeader
-        title="Shop"
+        title="Group Order"
         subtitle="Count what you actually found, one shelf at a time"
       />
       <ShopClient />
