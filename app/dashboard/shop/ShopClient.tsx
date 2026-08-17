@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 
 interface ShopPost {
@@ -12,9 +12,47 @@ interface ShopPost {
   bought: number
 }
 
+interface StoreGroup {
+  key: string
+  name: string
+  posts: ShopPost[]
+  left: number
+}
+
+/**
+ * Shelves from one store, together.
+ *
+ * Store is typed by whoever opened the capture window, so "Nishimatsuya" and
+ * "NISHIMATSUYA" are the same shop and must not become two sections. The name
+ * shown is the first spelling seen rather than an upper-cased one, because the
+ * heading is read by a person, not matched by a machine.
+ */
+function groupByStore(posts: ShopPost[]): StoreGroup[] {
+  const groups = new Map<string, StoreGroup>()
+
+  for (const post of posts) {
+    const name = post.store.trim() || "Untitled shelf"
+    const key = name.toLowerCase()
+    const group = groups.get(key) ?? { key, name, posts: [], left: 0 }
+    group.posts.push(post)
+    group.left += Math.max(0, post.claimed - post.bought)
+    groups.set(key, group)
+  }
+
+  // Shops with something left first: you are standing in one of them. Within a
+  // shop the newest shelf leads, which is the order they were posted in.
+  return [...groups.values()].sort((a, b) => {
+    if ((a.left === 0) !== (b.left === 0)) return a.left === 0 ? 1 : -1
+    return b.left - a.left
+  })
+}
+
 export default function ShopClient() {
   const [posts, setPosts] = useState<ShopPost[] | null>(null)
   const [error, setError] = useState("")
+  // Which stores are folded away. Finished ones start folded, and this holds
+  // every deliberate change to that.
+  const [closed, setClosed] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     fetch("/api/whatsapp/shop", { cache: "no-store" })
@@ -26,6 +64,8 @@ export default function ShopClient() {
       .catch(() => setError("Failed to load"))
   }, [])
 
+  const groups = useMemo(() => groupByStore(posts ?? []), [posts])
+
   if (error) return <p className="text-sm text-red-600">{error}</p>
   if (!posts) return <p className="text-sm text-gray-500">Loading…</p>
   if (posts.length === 0) {
@@ -33,34 +73,73 @@ export default function ShopClient() {
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      {posts.map((post) => {
-        const left = post.claimed - post.bought
+    <div className="flex flex-col gap-3">
+      {groups.map((group) => {
+        // A finished store folds itself: it is one green line saying so until
+        // somebody asks to see it again.
+        const open = closed[group.key] === undefined ? group.left > 0 : !closed[group.key]
+
         return (
-          <Link
-            key={post.id}
-            href={`/dashboard/shop/${post.id}`}
-            className="flex items-center gap-3 rounded-xl border border-cream-border bg-white px-4 py-3 hover:border-brand transition-colors"
+          <div
+            key={group.key}
+            className="rounded-xl border border-cream-border bg-white overflow-hidden"
           >
-            <div className="min-w-0 flex-1">
-              <div className="text-sm font-semibold text-foreground truncate">
-                {post.store || "Untitled shelf"}
-              </div>
-              <div className="text-xs text-gray-500 tabular-nums">
-                {post.event} · {post.sku} SKU
-              </div>
-            </div>
-            <div className="text-right shrink-0">
-              <div
-                className={`text-sm font-bold tabular-nums ${left === 0 ? "text-green-700" : "text-red-700"}`}
+            <button
+              type="button"
+              onClick={() => setClosed((c) => ({ ...c, [group.key]: open }))}
+              className="w-full flex items-center gap-2 px-4 py-2.5 bg-cream text-left"
+            >
+              <span className="text-xs text-gray-400 w-3">{open ? "▾" : "▸"}</span>
+              <span className="text-xs font-bold tracking-wide uppercase text-foreground truncate">
+                {group.name}
+              </span>
+              <span className="text-xs text-gray-500 tabular-nums">
+                {group.posts.length} {group.posts.length === 1 ? "shelf" : "shelves"}
+              </span>
+              <span
+                className={`ml-auto text-sm font-bold tabular-nums ${
+                  group.left === 0 ? "text-green-700" : "text-red-700"
+                }`}
               >
-                {left === 0 ? "Done" : `Buy ${left}`}
-              </div>
-              <div className="text-xs text-gray-500 tabular-nums">
-                {post.bought} of {post.claimed}
-              </div>
-            </div>
-          </Link>
+                {group.left === 0 ? "Done" : `Buy ${group.left}`}
+              </span>
+            </button>
+
+            {open
+              ? group.posts.map((post) => {
+                  const left = post.claimed - post.bought
+                  return (
+                    <Link
+                      key={post.id}
+                      href={`/dashboard/shop/${post.id}`}
+                      className="flex items-center gap-3 px-4 py-3 border-t border-cream-border hover:bg-cream transition-colors"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element -- our own render route. */}
+                      <img
+                        src={`/api/whatsapp/posts/${post.id}/rekap`}
+                        alt=""
+                        className="w-10 h-10 rounded object-cover shrink-0 border border-cream-border"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-semibold text-foreground tabular-nums">
+                          {post.sku} SKU
+                        </div>
+                        <div className="text-xs text-gray-500 tabular-nums">
+                          {post.event} · {post.bought} of {post.claimed} units
+                        </div>
+                      </div>
+                      <div
+                        className={`text-sm font-bold tabular-nums shrink-0 ${
+                          left === 0 ? "text-green-700" : "text-red-700"
+                        }`}
+                      >
+                        {left === 0 ? "Done" : `Buy ${left}`}
+                      </div>
+                    </Link>
+                  )
+                })
+              : null}
+          </div>
         )
       })}
     </div>
