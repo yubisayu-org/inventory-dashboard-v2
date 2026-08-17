@@ -21,6 +21,7 @@ interface Claim {
   obtained: number
   note: string
   state: string
+  createdAt: string
 }
 
 interface PostPayload {
@@ -34,6 +35,26 @@ const tone = (claimed: number, bought: number) =>
 
 const dot = (claimed: number, bought: number) =>
   bought >= claimed ? "bg-green-600" : bought > 0 ? "bg-amber-500" : "bg-red-600"
+
+/**
+ * The digits of a sender's JID.
+ *
+ * Shown beside the handle because asking about a substitution means finding
+ * this person in a group of a hundred, and the number is what a phone searches
+ * on when the handle does not ring a bell.
+ */
+function senderDigits(jid: string): string {
+  return (jid.split("@")[0] ?? "").split(":")[0].replace(/\D/g, "")
+}
+
+/** "17/08/2026 09.41.22" → "17/08 09.41". The seconds and the year are noise. */
+function claimedAt(stamp: string): string {
+  const [date = "", time = ""] = stamp.split(" ")
+  const [day, month] = date.split("/")
+  const [hour, minute] = time.split(".")
+  if (!day || !hour) return stamp
+  return `${day}/${month} ${hour}.${minute}`
+}
 
 export default function ShopPostClient({ postId }: { postId: number }) {
   const [data, setData] = useState<PostPayload | null>(null)
@@ -263,7 +284,12 @@ function ShortPanel({ claims, count }: { claims: Claim[]; count: number }) {
         <div key={claim.id} className="flex items-center gap-2 text-xs">
           <span className="shrink-0">{gets >= claim.quantity ? "✅" : "❔"}</span>
           <span className="flex-1 min-w-0">
-            <span className="font-semibold truncate block">{claim.customer ?? claim.sender}</span>
+            <span className="font-semibold truncate block">
+              {claim.customer ?? senderDigits(claim.sender)}
+            </span>
+            <span className="text-gray-500 block tabular-nums">
+              {senderDigits(claim.sender)} · {claimedAt(claim.createdAt)}
+            </span>
             {claim.note ? (
               <span className="text-gray-500 block truncate">“{claim.note}”</span>
             ) : null}
