@@ -44,10 +44,15 @@ function badge(slot: WaSlot, cx: number, cy: number): string {
 
   const r = Math.round(40 * BADGE_SCALE)
   const digit = Math.round((left === 0 ? 34 : 40) * BADGE_SCALE)
-  const pillW = Math.round(88 * BADGE_SCALE)
-  const pillH = Math.round(26 * BADGE_SCALE)
-  const pillFont = Math.round(18 * BADGE_SCALE)
   const stroke = Math.max(2, Math.round(5 * BADGE_SCALE))
+
+  // The pill keeps its original size while the circle shrinks. The circle sits
+  // on the product and had to get out of its way; the pill hangs below on shelf
+  // edging, blocks nothing, and is the harder of the two to read — shrinking it
+  // would cost legibility to solve a problem it never had.
+  const pillW = 88
+  const pillH = 26
+  const pillFont = 18
 
   return `
     <circle cx="${cx}" cy="${cy}" r="${r}" fill="${colour}" stroke="#fff" stroke-width="${stroke}"/>
