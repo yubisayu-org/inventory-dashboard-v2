@@ -14,15 +14,6 @@ const OPEN = "#dc2626"
 const tone = (claimed: number, bought: number) =>
   bought >= claimed ? DONE : bought > 0 ? PARTIAL : OPEN
 
-/** SVG text is not HTML, and a customer's label can contain anything. */
-function escapeXml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-}
-
 /**
  * One badge per SKU: how many are STILL TO BUY, not how many were claimed.
  *
@@ -64,43 +55,18 @@ function badge(slot: WaSlot, cx: number, cy: number): string {
           font-weight="600" fill="#fff">${slot.bought} of ${slot.claimed}</text>`
 }
 
-const ROW_HEIGHT = 40
-const LIST_HEADER = 44
-const LIST_PADDING = 16
-
-/** One line per SKU, under the photo. Sizes are their own lines, indented. */
-function listRow(slot: WaSlot, index: number, width: number, top: number, indent: boolean): string {
-  const left = slot.claimed - slot.bought
-  const colour = tone(slot.claimed, slot.bought)
-  const name = escapeXml(slot.label || `SKU ${index + 1}`)
-  const action = left === 0 ? "done" : `buy ${left}`
-
-  const marker = indent
-    ? `<rect x="60" y="${top + 6}" width="4" height="18" rx="2" fill="${colour}"/>`
-    : `<circle cx="34" cy="${top + 13}" r="13" fill="${colour}"/>`
-  // An indented row sits directly under the name it belongs to, so repeating
-  // that name would only push the size — the one thing the row exists to say —
-  // further from the eye.
-  const title = indent
-    ? `<text x="76" y="${top + 21}" font-size="22" fill="#4b5563">size ${escapeXml(slot.size) || "—"}</text>`
-    : `<text x="60" y="${top + 21}" font-size="24" font-weight="600" fill="#111827">${name}${slot.size ? ` · ${escapeXml(slot.size)}` : ""}</text>`
-
-  return `
-    ${marker}
-    ${title}
-    <text x="${width - 150}" y="${top + 21}" text-anchor="end" font-size="22"
-          fill="#9ca3af">${slot.bought}/${slot.claimed}</text>
-    <text x="${width - 24}" y="${top + 21}" text-anchor="end" font-size="23" font-weight="700"
-          fill="${colour}">${action}</text>`
-}
-
 /**
  * The picture the owner shops from, and the one /rekap posts.
  *
- * Badges say what to grab; the list under the photo carries the detail badges
- * have no room for — which SKU, which size, and the name once one has been
- * typed. Two SKU at one position share a badge position by design: they hang on
- * the same peg, so their two lines in the list are what tells them apart.
+ * Badges only. A written list under the photo was tried and dropped: on a shelf
+ * of unnamed SKU every line repeated its own badge — same count, same colour,
+ * beside a name no better than "SKU 3" — and cost half the screen to say it.
+ * The detail a badge cannot hold (size, name, who claimed it) lives on the tally
+ * screen, which is open in the other hand while shopping.
+ *
+ * Two SKU at one position therefore share one badge, showing their combined
+ * count: they hang on the same peg, so one number and one grab is the truth on
+ * the shop floor. Splitting them by size is the tally screen's job.
  */
 export async function renderShoppingList(postId: number): Promise<Buffer> {
   const post = await getPost(postId)
@@ -132,52 +98,14 @@ export async function renderShoppingList(postId: number): Promise<Buffer> {
     })
     .join("")
 
-  // A split item gets a heading line plus one line per size; everything else
-  // gets a single line.
-  const byLabel = new Map<string, WaSlot[]>()
-  for (const slot of slots) {
-    const key = slot.label || `#${slot.id}`
-    byLabel.set(key, [...(byLabel.get(key) ?? []), slot])
-  }
-  const lines: { slot: WaSlot; indent: boolean }[] = []
-  for (const group of byLabel.values()) {
-    if (group.length === 1) {
-      lines.push({ slot: group[0], indent: false })
-    } else {
-      const total: WaSlot = {
-        ...group[0],
-        size: "",
-        claimed: group.reduce((n, s) => n + s.claimed, 0),
-        bought: group.reduce((n, s) => n + s.bought, 0),
-      }
-      lines.push({ slot: total, indent: false })
-      for (const slot of group) lines.push({ slot, indent: true })
-    }
-  }
-
-  const listHeight = LIST_HEADER + lines.length * ROW_HEIGHT + LIST_PADDING
-  let y = height + LIST_HEADER
-  const rows = lines
-    .map(({ slot, indent }, i) => {
-      const row = listRow(slot, i, width, y, indent)
-      y += ROW_HEIGHT
-      return row
-    })
-    .join("")
-
   const overlay = Buffer.from(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height + listHeight}">
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
       <style>text { font-family: Helvetica, Arial, "DejaVu Sans", sans-serif; }</style>
       ${badges}
-      <rect x="0" y="${height}" width="${width}" height="${listHeight}" fill="#ffffff"/>
-      <text x="24" y="${height + 30}" font-size="20" font-weight="700" fill="#6b7280"
-            letter-spacing="1.5">WHAT TO BUY · ${slots.length} SKU</text>
-      ${rows}
     </svg>`,
   )
 
   return sharp(base)
-    .extend({ bottom: listHeight, background: "#ffffff" })
     .composite([{ input: overlay, top: 0, left: 0 }])
     .jpeg({ quality: 82 })
     .toBuffer()

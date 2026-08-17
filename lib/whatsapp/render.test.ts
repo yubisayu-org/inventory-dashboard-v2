@@ -53,17 +53,15 @@ async function populatedPost() {
   return { postId, slots }
 }
 
-test("the picture is taller than the photo, because the list is under it", async () => {
+test("the picture is the photo itself, with nothing appended below it", async () => {
   const { postId } = await populatedPost()
   const image = await renderShoppingList(postId)
   const meta = await sharp(image).metadata()
 
   assert.equal(meta.width, SHOPPING_LIST_WIDTH)
   // The fixture is 1600x2133, so the photo alone is 1200 tall at this width.
-  assert.ok(
-    (meta.height ?? 0) > 1200,
-    `expected room for the list below the photo, got ${meta.height}`,
-  )
+  // Anything taller means a panel crept back under it.
+  assert.equal(meta.height, 1200)
   assert.equal(meta.format, "jpeg")
 })
 
