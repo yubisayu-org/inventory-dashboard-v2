@@ -59,6 +59,10 @@ export interface WaSlot {
   /** Sum of what those claims obtained. Also derived — see migration 064. */
   bought: number
   productId: number | null
+  /** Name and price of the product this slot was named as, once it has been.
+   *  Carried here so a screen showing slots never has to fetch products too. */
+  productName: string | null
+  productPrice: number | null
 }
 
 export async function createPost(input: {
@@ -275,11 +279,14 @@ export async function listSlots(postId: number): Promise<WaSlot[]> {
   const rows = await sql`
     SELECT s.*,
            COALESCE(SUM(c.quantity), 0)::int AS claimed,
-           COALESCE(SUM(c.obtained), 0)::int AS bought
+           COALESCE(SUM(c.obtained), 0)::int AS bought,
+           p.name AS product_name,
+           p.price AS product_price
     FROM wa_slots s
     LEFT JOIN wa_claims c ON c.slot_id = s.id AND c.state <> 'rejected'
+    LEFT JOIN products p ON p.id = s.product_id
     WHERE s.post_id = ${postId}
-    GROUP BY s.id
+    GROUP BY s.id, p.name, p.price
     ORDER BY s.id ASC
   `
   return rows.map((r) => {
@@ -295,6 +302,8 @@ export async function listSlots(postId: number): Promise<WaSlot[]> {
       claimed: (r.claimed as number) ?? 0,
       bought: (r.bought as number) ?? 0,
       productId: (r.product_id as number | null) ?? null,
+      productName: (r.product_name as string | null) ?? null,
+      productPrice: r.product_price != null ? Number(r.product_price) : null,
     }
   })
 }

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import { PRICING_METHODS, PRICING_METHOD_LABEL } from "@/lib/pricing"
+import { fmt } from "@/lib/format"
 
 interface Slot {
   id: number
@@ -12,6 +13,8 @@ interface Slot {
   claimed: number
   bought: number
   productId: number | null
+  productName: string | null
+  productPrice: number | null
 }
 
 interface Claim {
@@ -294,7 +297,23 @@ function SlotCard({ slot, claims, onDone }: { slot: Slot; claims: Claim[]; onDon
       </div>
 
       {slot.productId !== null ? (
-        <p className="text-xs text-green-700 font-semibold">Named · product #{slot.productId}</p>
+        // What was actually created, not just that something was. The name is
+        // the one place a wrong valas or a mistyped size becomes obvious, and
+        // it is obvious only while the shelf is still on screen.
+        <div className="rounded-lg bg-green-50 border border-green-200 px-2.5 py-2">
+          <div className="flex items-baseline gap-2">
+            <span className="text-sm font-semibold text-green-900 truncate">
+              {slot.productName ?? `Product #${slot.productId}`}
+            </span>
+            <span className="ml-auto text-sm font-bold text-green-900 tabular-nums shrink-0">
+              {slot.productPrice !== null ? `Rp ${fmt(slot.productPrice)}` : "—"}
+            </span>
+          </div>
+          <div className="text-[11px] text-green-800 mt-0.5">
+            {claims.length} {claims.length === 1 ? "order" : "orders"} created · product #
+            {slot.productId}
+          </div>
+        </div>
       ) : (
         <>
           <div className="grid grid-cols-2 gap-2">
