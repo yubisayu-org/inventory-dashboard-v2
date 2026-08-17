@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import { PRICING_METHODS, PRICING_METHOD_LABEL } from "@/lib/pricing"
-import { fmt } from "@/lib/format"
+import { fmt, senderDigits, claimedAt } from "@/lib/format"
 
 interface Slot {
   id: number
@@ -27,6 +27,7 @@ interface Claim {
   note: string
   state: string
   confidence: number
+  createdAt: string
 }
 
 interface Payload {
@@ -190,7 +191,10 @@ function ReviewQueue({ claims, onDone }: { claims: Claim[]; onDone: () => void }
       {error ? <p className="text-xs text-red-600">{error}</p> : null}
       {claims.map((claim) => (
         <div key={claim.id} className="flex items-center gap-2">
-          <span className="text-xs font-mono text-gray-600 shrink-0">{claim.sender}</span>
+          <span className="text-xs font-mono text-gray-600 shrink-0">
+            {senderDigits(claim.sender)}
+            <span className="text-gray-400"> · {claimedAt(claim.createdAt)}</span>
+          </span>
           <input
             value={handles[claim.id] ?? ""}
             onChange={(e) => setHandles((h) => ({ ...h, [claim.id]: e.target.value }))}
@@ -293,10 +297,17 @@ function SlotCard({ slot, claims, onDone }: { slot: Slot; claims: Claim[]; onDon
 
           <div className="flex flex-col gap-1">
             {claims.map((claim) => (
-              <div key={claim.id} className="flex items-center gap-2 text-xs">
-                <span className="flex-1 min-w-0 truncate">
-                  {claim.customer ?? <span className="text-amber-700">{claim.sender}</span>}
-                  {claim.note ? <span className="text-gray-500"> · “{claim.note}”</span> : null}
+              <div key={claim.id} className="flex items-start gap-2 text-xs">
+                <span className="flex-1 min-w-0">
+                  <span className="block truncate">
+                    {claim.customer ?? (
+                      <span className="text-amber-700">{senderDigits(claim.sender)}</span>
+                    )}
+                    {claim.note ? <span className="text-gray-500"> · “{claim.note}”</span> : null}
+                  </span>
+                  <span className="block text-gray-400 tabular-nums">
+                    {senderDigits(claim.sender)} · {claimedAt(claim.createdAt)}
+                  </span>
                 </span>
                 <span className="text-gray-500 tabular-nums shrink-0">
                   {claim.obtained}/{claim.quantity}

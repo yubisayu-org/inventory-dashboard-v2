@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
+import { senderDigits, claimedAt } from "@/lib/format"
 
 interface Slot {
   id: number
@@ -35,26 +36,6 @@ const tone = (claimed: number, bought: number) =>
 
 const dot = (claimed: number, bought: number) =>
   bought >= claimed ? "bg-green-600" : bought > 0 ? "bg-amber-500" : "bg-red-600"
-
-/**
- * The digits of a sender's JID.
- *
- * Shown beside the handle because asking about a substitution means finding
- * this person in a group of a hundred, and the number is what a phone searches
- * on when the handle does not ring a bell.
- */
-function senderDigits(jid: string): string {
-  return (jid.split("@")[0] ?? "").split(":")[0].replace(/\D/g, "")
-}
-
-/** "17/08/2026 09.41.22" → "17/08 09.41". The seconds and the year are noise. */
-function claimedAt(stamp: string): string {
-  const [date = "", time = ""] = stamp.split(" ")
-  const [day, month] = date.split("/")
-  const [hour, minute] = time.split(".")
-  if (!day || !hour) return stamp
-  return `${day}/${month} ${hour}.${minute}`
-}
 
 export default function ShopPostClient({ postId }: { postId: number }) {
   const [data, setData] = useState<PostPayload | null>(null)
