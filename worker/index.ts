@@ -189,12 +189,24 @@ async function sendRekap(sock: WASocket, groupJid: string, quoted: string) {
     return
   }
 
+  // Newest shelf that anyone has actually claimed on, not simply the newest.
+  // A shopping list for a shelf with no claims is a picture of nothing to buy,
+  // and posting several shelves in a row — which is the normal way to work a
+  // shop — otherwise buries the one being discussed.
   const [post] = await sql`
-    SELECT id FROM wa_posts WHERE group_jid = ${groupJid} ORDER BY id DESC LIMIT 1
+    SELECT p.id FROM wa_posts p
+    WHERE p.group_jid = ${groupJid}
+      AND EXISTS (
+        SELECT 1 FROM wa_claims c
+        WHERE c.post_id = p.id AND c.state <> 'rejected'
+      )
+    ORDER BY p.id DESC LIMIT 1
   `
   if (DEBUG) console.log("[wa] rekap", { quoted: "(none)", resolved: post?.id ?? null })
   if (!post) {
-    await sock.sendMessage(groupJid, { text: "No shelf posted here yet." })
+    await sock.sendMessage(groupJid, {
+      text: "Nothing claimed yet. Reply /rekap to a shelf to see it anyway.",
+    })
     return
   }
   const image = await renderShoppingList(post.id as number)
