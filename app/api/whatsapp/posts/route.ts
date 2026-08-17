@@ -12,6 +12,7 @@ export async function GET(req: NextRequest) {
   try {
     const result = await listPosts({
       event: params.get("event") ?? undefined,
+      store: params.get("store") ?? undefined,
       search: params.get("search") ?? undefined,
       page: Number(params.get("page")) || 1,
       pageSize: Number(params.get("pageSize")) || 25,

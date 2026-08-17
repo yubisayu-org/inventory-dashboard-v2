@@ -45,10 +45,24 @@ interface Payload {
   claims: Claim[]
 }
 
+/** Just enough of a neighbouring shelf to link to it. */
+interface Sibling {
+  id: number
+  store: string
+}
+
+interface Siblings {
+  previous: Sibling | null
+  next: Sibling | null
+  position: number
+  total: number
+}
+
 export default function PostReviewClient({ postId }: { postId: number }) {
   const [data, setData] = useState<Payload | null>(null)
   const [error, setError] = useState("")
   const [version, setVersion] = useState(0)
+  const [siblings, setSiblings] = useState<Siblings | null>(null)
 
   const load = useCallback(() => {
     fetch(`/api/whatsapp/posts/${postId}`, { cache: "no-store" })
@@ -61,6 +75,31 @@ export default function PostReviewClient({ postId }: { postId: number }) {
   }, [postId])
 
   useEffect(load, [load])
+
+  // The rest of this shop's shelves, so naming can walk the trip the way the
+  // shopping did. Asked for by store rather than by page: which page of the
+  // archive a shelf falls on is an accident of how many were posted since.
+  const store = data?.post.store ?? ""
+  useEffect(() => {
+    if (!store) return
+    const params = new URLSearchParams({ store, page: "1", pageSize: "200" })
+    fetch(`/api/whatsapp/posts?${params}`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((payload: { rows?: Sibling[] }) => {
+        // The archive answers newest-first; a walk goes the other way, in the
+        // order the racks were photographed.
+        const walk = [...(payload.rows ?? [])].sort((a, b) => a.id - b.id)
+        const index = walk.findIndex((p) => p.id === postId)
+        if (index === -1) return setSiblings(null)
+        setSiblings({
+          previous: index > 0 ? walk[index - 1] : null,
+          next: index < walk.length - 1 ? walk[index + 1] : null,
+          position: index + 1,
+          total: walk.length,
+        })
+      })
+      .catch(() => setSiblings(null))
+  }, [store, postId])
 
   function refresh() {
     setVersion((v) => v + 1)
@@ -81,6 +120,8 @@ export default function PostReviewClient({ postId }: { postId: number }) {
 
   const needsReview = data.claims.filter((c) => c.state === "review")
   const namedCount = data.slots.filter((s) => s.productId !== null).length
+  const claimed = data.slots.reduce((n, s) => n + s.claimed, 0)
+  const bought = data.slots.reduce((n, s) => n + s.bought, 0)
 
   return (
     <div className="flex flex-col gap-4">
@@ -92,8 +133,8 @@ export default function PostReviewClient({ postId }: { postId: number }) {
           <h1 className="text-xl font-bold text-foreground truncate">
             {data.post.store || "Untitled shelf"}
           </h1>
-          <p className="text-xs text-gray-500">
-            {data.post.event} · {data.slots.length} SKU
+          <p className="text-xs text-gray-500 tabular-nums">
+            {data.post.event} · {data.slots.length} SKU · {bought} of {claimed} units
           </p>
         </div>
 
@@ -129,34 +170,65 @@ export default function PostReviewClient({ postId }: { postId: number }) {
         </p>
       ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-start">
-        {/* Sticky, because the shelf is reference material for every card on the
-            right — scrolling to the fourth SKU should not scroll away the
-            picture that says which item it is. It also closes the dead space
-            that opened under a short list beside a long one. */}
-        <div className="lg:sticky lg:top-6 lg:self-start">
-          {/* eslint-disable-next-line @next/next/no-img-element -- our own rendered JPEG. */}
-          <img
-            src={`/api/whatsapp/posts/${postId}/rekap?v=${version}`}
-            alt="The shelf with a badge on each SKU"
-            className="w-full rounded-xl border border-cream-border"
+      {/* eslint-disable-next-line @next/next/no-img-element -- our own rendered JPEG. */}
+      <img
+        src={`/api/whatsapp/posts/${postId}/rekap?v=${version}`}
+        alt="The shelf with a badge on each SKU"
+        className="w-full rounded-xl border border-cream-border"
+      />
+
+      <div className="flex flex-col gap-4">
+        {needsReview.length > 0 ? <ReviewQueue claims={needsReview} onDone={refresh} /> : null}
+
+        {data.slots.map((slot) => (
+          <SlotCard
+            key={slot.id}
+            slot={slot}
+            claims={data.claims.filter((c) => c.slotId === slot.id && c.state !== "rejected")}
+            onDone={refresh}
           />
-        </div>
-
-        <div className="flex flex-col gap-4">
-          {needsReview.length > 0 ? <ReviewQueue claims={needsReview} onDone={refresh} /> : null}
-
-          {data.slots.map((slot) => (
-            <SlotCard
-              key={slot.id}
-              slot={slot}
-              claims={data.claims.filter((c) => c.slotId === slot.id && c.state !== "rejected")}
-              onDone={refresh}
-            />
-          ))}
-        </div>
+        ))}
       </div>
+
+      {/* The racks either side, in the order the shop was photographed — the
+          same walk Group Order takes, so a shelf missed at the hotel is reached
+          the same way it was reached in the shop. */}
+      {siblings && siblings.total > 1 ? (
+        <div className="flex items-center gap-2">
+          <NeighbourLink post={siblings.previous} direction="previous" />
+          <span className="text-xs text-gray-500 tabular-nums shrink-0">
+            {siblings.position} of {siblings.total}
+          </span>
+          <NeighbourLink post={siblings.next} direction="next" />
+        </div>
+      ) : null}
     </div>
+  )
+}
+
+/**
+ * One step along the aisle, or a dead end held open.
+ *
+ * The disabled end keeps its space rather than collapsing, so the button under
+ * a cursor does not move between shelves.
+ */
+function NeighbourLink({
+  post, direction,
+}: {
+  post: Sibling | null
+  direction: "previous" | "next"
+}) {
+  const label = direction === "next" ? "Next shelf →" : "← Previous shelf"
+  const shared =
+    "flex-1 rounded-xl border border-cream-border px-4 py-2.5 text-sm font-semibold text-center"
+
+  if (post === null) {
+    return <span className={`${shared} text-gray-300 bg-cream/50`}>{label}</span>
+  }
+  return (
+    <Link href={`/dashboard/wa-posts/${post.id}`} className={`${shared} bg-white hover:border-brand`}>
+      {label}
+    </Link>
   )
 }
 

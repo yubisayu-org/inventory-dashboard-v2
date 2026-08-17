@@ -175,12 +175,15 @@ export interface WaPostSummary extends WaPost {
 
 export async function listPosts(opts: {
   event?: string
+  /** Exact store, case-insensitively — the shelves of one shop. */
+  store?: string
   search?: string
   page: number
   pageSize: number
 }): Promise<{ rows: WaPostSummary[]; totalCount: number }> {
   const offset = (opts.page - 1) * opts.pageSize
   const event = opts.event ?? null
+  const store = opts.store ? opts.store.trim().toLowerCase() : null
   const search = opts.search ? `%${opts.search.toLowerCase()}%` : null
 
   // Counted in the same query rather than per row: the archive shows twenty-five
@@ -195,6 +198,7 @@ export async function listPosts(opts: {
     LEFT JOIN wa_slots s ON s.post_id = p.id
     LEFT JOIN wa_claims c ON c.slot_id = s.id AND c.state <> 'rejected'
     WHERE (${event}::text IS NULL OR p.event = ${event})
+      AND (${store}::text IS NULL OR lower(p.store) = ${store})
       AND (${search}::text IS NULL OR lower(p.store) LIKE ${search} OR lower(p.note) LIKE ${search})
     GROUP BY p.id
     ORDER BY p.id DESC
@@ -203,6 +207,7 @@ export async function listPosts(opts: {
   const [{ total }] = await sql`
     SELECT COUNT(*)::int AS total FROM wa_posts
     WHERE (${event}::text IS NULL OR event = ${event})
+      AND (${store}::text IS NULL OR lower(store) = ${store})
       AND (${search}::text IS NULL OR lower(store) LIKE ${search} OR lower(note) LIKE ${search})
   `
   return {
