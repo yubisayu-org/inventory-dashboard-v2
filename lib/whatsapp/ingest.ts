@@ -2,7 +2,7 @@ import {
   resolveImageReply, clusterPoints, normalizeSize, DEFAULT_CLUSTER_RADIUS, type Point,
 } from "@/lib/claims"
 import { addClaim, getPost, listClaims, listRecentPosts, setSlots, type WaPost } from "@/lib/db/claims"
-import { detectChanges } from "@/lib/claims"
+import { detectChanges, loadRgbWithin } from "@/lib/claims"
 import { localPostImage } from "./post-image"
 
 /**
@@ -198,10 +198,27 @@ export async function matchPostByImage(
   for (const post of await listRecentPosts(groupJid)) {
     // image_path is a bucket key; the detector needs a file. Cached after the
     // first reply, so scanning several shelves costs one download each at most.
-    const marks = await localPostImage(post.imagePath)
-      .then((file) => detectChanges(file, replyPath))
-      .catch(() => [])
+    const file = await localPostImage(post.imagePath).catch(() => null)
+    if (file === null) continue
+
+    const marks = await detectChanges(file, replyPath).catch(() => [])
     if (marks.length > 0) return { post, marks }
+
+    // Why a candidate was rejected is the only useful thing to know when a
+    // customer insists they sent the right picture. Shapes differing means they
+    // cropped it or sent a screenshot of the chat rather than the photo.
+    if (process.env.WA_DEBUG) {
+      const [a, b] = await Promise.all([
+        loadRgbWithin(file, 480, 480).catch(() => null),
+        loadRgbWithin(replyPath, 480, 480).catch(() => null),
+      ])
+      console.log("[wa] no match", {
+        post: post.id,
+        postShape: a ? `${a.width}x${a.height}` : "?",
+        replyShape: b ? `${b.width}x${b.height}` : "?",
+        sameShape: Boolean(a && b && a.width === b.width && a.height === b.height),
+      })
+    }
   }
   return null
 }

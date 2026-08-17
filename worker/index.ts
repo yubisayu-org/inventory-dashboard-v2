@@ -214,6 +214,15 @@ async function claimWithoutReply(
     await writeFile(scratch, buffer)
     const match = await matchPostByImage(groupJid, scratch)
     if (match === null) {
+      // Keep the picture that failed to match. "I sent the right photo" is not
+      // arguable without it.
+      if (process.env.WA_DEBUG) {
+        const { copyFile, mkdir } = await import("node:fs/promises")
+        const debugDir = join(tmpdir(), "wa-debug")
+        await mkdir(debugDir, { recursive: true })
+        await copyFile(scratch, join(debugDir, `${messageId}-unmatched.jpg`))
+        console.log("[wa] unmatched image saved", { messageId, dir: debugDir })
+      }
       reactions?.push({ jid: groupJid, key: message.key, emoji: "😢" })
       return
     }
