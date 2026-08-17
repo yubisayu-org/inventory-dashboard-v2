@@ -344,16 +344,68 @@ export async function setSlotLabel(
   `
 }
 
+/**
+ * Push what the claims say onto the orders naming created for them.
+ *
+ * Naming copies obtained onto unit_buy once, at the moment it creates the
+ * orders. Counting does not stop there: a shelf is often named at the hotel and
+ * then revisited — a second store, a restock, a size that turned up later — and
+ * every unit counted after naming used to land on wa_claims and go no further,
+ * leaving the shopping list asking for something already in the suitcase.
+ *
+ * A no-op for an unnamed slot, which has no orders yet; naming will read the
+ * claims itself when it makes them.
+ *
+ * Claims and orders are paired by (customer, quantity) in id order rather than
+ * by a stored link, because appendOrders returns nothing to store. Ranking both
+ * sides keeps two identical claims from the same customer — the same person
+ * asking twice for one unit — pointing at one order each instead of both
+ * pointing at the first.
+ *
+ * Zero is written as NULL, not 0, matching what naming writes for a claim that
+ * got nothing: the shopping list reads both as "still to buy", but dispatch
+ * treats NOT NULL as "there is something to send".
+ */
+export async function syncOrdersToClaims(slotId: number, db: DBExecutor = sql): Promise<void> {
+  const [slot] = await db`
+    SELECT s.product_id, p.event
+    FROM wa_slots s JOIN wa_posts p ON p.id = s.post_id
+    WHERE s.id = ${slotId}
+  `
+  if (!slot || slot.product_id === null) return
+
+  await db`
+    WITH claim_rank AS (
+      SELECT id, customer, quantity, obtained,
+             row_number() OVER (PARTITION BY customer, quantity ORDER BY id) AS rn
+      FROM wa_claims
+      WHERE slot_id = ${slotId} AND state <> 'rejected' AND customer IS NOT NULL
+    ), order_rank AS (
+      SELECT id, customer, unit,
+             row_number() OVER (PARTITION BY customer, unit ORDER BY id) AS rn
+      FROM orders
+      WHERE product_id = ${slot.product_id} AND event = ${slot.event}
+    )
+    UPDATE orders o
+    SET unit_buy = NULLIF(c.obtained, 0), updated_at = NOW()
+    FROM claim_rank c
+    JOIN order_rank r ON r.customer = c.customer AND r.unit = c.quantity AND r.rn = c.rn
+    WHERE o.id = r.id AND o.unit_buy IS DISTINCT FROM NULLIF(c.obtained, 0)
+  `
+}
+
 /** One claim's outcome — what the owner's tick in the group means. */
 export async function markClaimObtained(
   claimId: number,
   obtained: number,
   db: DBExecutor = sql,
 ): Promise<void> {
-  await db`
+  const [claim] = await db`
     UPDATE wa_claims SET obtained = ${Math.max(0, Math.trunc(obtained))}, updated_at = NOW()
     WHERE id = ${claimId}
+    RETURNING slot_id
   `
+  if (claim?.slot_id != null) await syncOrdersToClaims(claim.slot_id as number, db)
 }
 
 /**
@@ -403,5 +455,8 @@ export async function setSlotBought(slotId: number, bought: number): Promise<voi
         WHERE id = ${claim.id}
       `
     }
+    // In the same transaction, so the orders can never be left disagreeing with
+    // the claims they were built from.
+    await syncOrdersToClaims(slotId, tx)
   })
 }

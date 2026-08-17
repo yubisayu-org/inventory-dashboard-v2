@@ -4,7 +4,7 @@ import { computeProductPrice } from "@/lib/pricing-server"
 import { addProduct } from "@/lib/db/catalog"
 import { appendOrders } from "@/lib/db/orders"
 import { getProductDefaults } from "@/lib/db/settings"
-import { getPost, listClaims } from "@/lib/db/claims"
+import { getPost, listClaims, syncOrdersToClaims } from "@/lib/db/claims"
 import { effectivePricingMethod, freezePricingMethod } from "./pricing-method"
 import type { OrderRow } from "@/lib/db/types"
 
@@ -166,29 +166,16 @@ export async function nameSlot(input: {
     }))
     await appendOrders(orders, tx)
 
-    // The owner counted in the shop hours before naming, so the slot usually
-    // already knows what was bought. Each claim became exactly one order, so
-    // that number goes straight onto it — no allocation to redo, and no second
-    // source of truth to drift from wa_claims.obtained.
-    //
-    // Matched on customer and unit because appendOrders returns nothing; both
-    // are stable for the row it just inserted, and the product id makes the pair
-    // unique within this call.
-    for (const claim of claims) {
-      if (claim.obtained <= 0) continue
-      await tx`
-        UPDATE orders SET unit_buy = ${claim.obtained}, updated_at = NOW()
-        WHERE product_id = ${productId}
-          AND customer = ${claim.customer as string}
-          AND unit = ${claim.quantity}
-          AND unit_buy IS DISTINCT FROM ${claim.obtained}
-      `
-    }
-
     await tx`
       UPDATE wa_slots SET product_id = ${productId}, updated_at = NOW()
       WHERE id = ${input.slotId}
     `
+
+    // The owner counted in the shop hours before naming, so the slot usually
+    // already knows what was bought. The same function the tally screen uses
+    // carries that onto the orders just created — one road from claim to order,
+    // so the two cannot drift apart depending on which end moved first.
+    await syncOrdersToClaims(input.slotId, tx)
 
     // From here the shelf has a price on somebody's invoice, so it stops
     // following the setting. In the same transaction as the product, because a

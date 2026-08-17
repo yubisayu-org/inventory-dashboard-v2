@@ -260,6 +260,40 @@ test("a post with a method of its own keeps it when named", async () => {
   assert.equal(post.pricing_method, "flat_fee", "freezing must never overwrite a deliberate choice")
 })
 
+test("counting more after naming reaches the orders, not just the claims", async () => {
+  const { slot } = await slotWithClaims([1, 1])
+  // Only one of the two was in the basket when the slot was named.
+  await setSlotBought(slot.id, 1)
+  const { productId } = await name({
+    slotId: slot.id, name: `Restocked ${process.hrtime.bigint()}`, valas: 1699, gram: 250,
+  })
+
+  // Back to the shop, second one found.
+  await setSlotBought(slot.id, 2)
+
+  const orders = await sql`
+    SELECT unit_buy FROM orders WHERE product_id = ${productId} ORDER BY id
+  `
+  assert.deepEqual(
+    orders.map((o) => o.unit_buy), [1, 1],
+    "a unit counted after naming must land on its order, or the shopping list keeps asking for it",
+  )
+})
+
+test("lowering the count after naming puts the order back on the shopping list", async () => {
+  const { slot } = await slotWithClaims([1])
+  await setSlotBought(slot.id, 1)
+  const { productId } = await name({
+    slotId: slot.id, name: `Returned ${process.hrtime.bigint()}`, valas: 1699, gram: 250,
+  })
+
+  // Miscounted: it was not in the basket after all.
+  await setSlotBought(slot.id, 0)
+
+  const [order] = await sql`SELECT unit_buy FROM orders WHERE product_id = ${productId}`
+  assert.equal(order.unit_buy, null, "zero is written as NULL, the way an untouched order reads")
+})
+
 test("a size becomes part of the product name, as the catalogue spells it", async () => {
   const { postId } = await slotWithClaims([1])
   // Re-point that slot at a size, the way clustering would for "size 95".
