@@ -233,10 +233,34 @@ export async function renderSlotCrop(slotId: number, share = CROP_SHARE): Promis
   // tighter crop, not a bigger one.
   const out = Math.min(box * 2, 1000)
 
+  // A ring on the item this crop is about.
+  //
+  // The crop deliberately includes the neighbours, which is what makes two
+  // adjacent slots look like the same picture — a tenth of a frame apart, they
+  // share most of their view. The ring says which of the things in shot is
+  // this one.
+  //
+  // Hollow and thin on purpose: a filled badge would cover the product, which
+  // is the mistake the shopping-list badge already had to be shrunk for.
+  const ringX = Math.round(Number(row.point_x) * width) - left
+  const ringY = Math.round(Number(row.point_y) * height) - top
+  const scale = out / box
+  const ringR = Math.round(box * 0.16 * scale)
+  const ring = Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${out}" height="${out}">
+      <circle cx="${Math.round(ringX * scale)}" cy="${Math.round(ringY * scale)}" r="${ringR}"
+              fill="none" stroke="#ffffff" stroke-width="${Math.max(2, Math.round(ringR * 0.14))}"
+              opacity="0.9"/>
+      <circle cx="${Math.round(ringX * scale)}" cy="${Math.round(ringY * scale)}" r="${ringR}"
+              fill="none" stroke="#dc2626" stroke-width="${Math.max(1, Math.round(ringR * 0.08))}"/>
+    </svg>`,
+  )
+
   return sharp(file)
     .extract({ left, top, width: box, height: box })
     .resize({ width: out })
     .sharpen()
+    .composite([{ input: ring, top: 0, left: 0 }])
     .jpeg({ quality: 88 })
     .toBuffer()
 }
