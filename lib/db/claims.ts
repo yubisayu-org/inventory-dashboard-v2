@@ -166,21 +166,38 @@ export async function listRecentPosts(groupJid: string, limit = 8): Promise<WaPo
  * One page of posts. Under 100 per event, but they accumulate across events,
  * so this paginates like every other list in the dashboard.
  */
+/** A post as the archive lists it: the post, plus what is on it. */
+export interface WaPostSummary extends WaPost {
+  sku: number
+  claimed: number
+  bought: number
+}
+
 export async function listPosts(opts: {
   event?: string
   search?: string
   page: number
   pageSize: number
-}): Promise<{ rows: WaPost[]; totalCount: number }> {
+}): Promise<{ rows: WaPostSummary[]; totalCount: number }> {
   const offset = (opts.page - 1) * opts.pageSize
   const event = opts.event ?? null
   const search = opts.search ? `%${opts.search.toLowerCase()}%` : null
 
+  // Counted in the same query rather than per row: the archive shows twenty-five
+  // shelves at a time, and "3 SKU, 1 of 4 units" is what tells them apart once
+  // the store name is the same on all of them.
   const rows = await sql`
-    SELECT * FROM wa_posts
-    WHERE (${event}::text IS NULL OR event = ${event})
-      AND (${search}::text IS NULL OR lower(store) LIKE ${search} OR lower(note) LIKE ${search})
-    ORDER BY id DESC
+    SELECT p.*,
+           COUNT(DISTINCT s.id)::int AS sku,
+           COALESCE(SUM(c.quantity), 0)::int AS claimed,
+           COALESCE(SUM(c.obtained), 0)::int AS bought
+    FROM wa_posts p
+    LEFT JOIN wa_slots s ON s.post_id = p.id
+    LEFT JOIN wa_claims c ON c.slot_id = s.id AND c.state <> 'rejected'
+    WHERE (${event}::text IS NULL OR p.event = ${event})
+      AND (${search}::text IS NULL OR lower(p.store) LIKE ${search} OR lower(p.note) LIKE ${search})
+    GROUP BY p.id
+    ORDER BY p.id DESC
     LIMIT ${opts.pageSize} OFFSET ${offset}
   `
   const [{ total }] = await sql`
@@ -188,7 +205,15 @@ export async function listPosts(opts: {
     WHERE (${event}::text IS NULL OR event = ${event})
       AND (${search}::text IS NULL OR lower(store) LIKE ${search} OR lower(note) LIKE ${search})
   `
-  return { rows: rows.map(mapPost), totalCount: total }
+  return {
+    rows: rows.map((r) => ({
+      ...mapPost(r),
+      sku: (r.sku as number) ?? 0,
+      claimed: (r.claimed as number) ?? 0,
+      bought: (r.bought as number) ?? 0,
+    })),
+    totalCount: total,
+  }
 }
 
 export async function addClaim(input: {
