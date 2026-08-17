@@ -121,12 +121,18 @@ export default function PostReviewClient({ postId }: { postId: number }) {
       ) : null}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-start">
-        {/* eslint-disable-next-line @next/next/no-img-element -- our own rendered JPEG. */}
-        <img
-          src={`/api/whatsapp/posts/${postId}/rekap?v=${version}`}
-          alt="The shelf with a badge on each SKU"
-          className="w-full rounded-xl border border-cream-border"
-        />
+        {/* Sticky, because the shelf is reference material for every card on the
+            right — scrolling to the fourth SKU should not scroll away the
+            picture that says which item it is. It also closes the dead space
+            that opened under a short list beside a long one. */}
+        <div className="lg:sticky lg:top-6 lg:self-start">
+          {/* eslint-disable-next-line @next/next/no-img-element -- our own rendered JPEG. */}
+          <img
+            src={`/api/whatsapp/posts/${postId}/rekap?v=${version}`}
+            alt="The shelf with a badge on each SKU"
+            className="w-full rounded-xl border border-cream-border"
+          />
+        </div>
 
         <div className="flex flex-col gap-4">
           {needsReview.length > 0 ? <ReviewQueue claims={needsReview} onDone={refresh} /> : null}
@@ -244,7 +250,10 @@ function SlotCard({ slot, claims, onDone }: { slot: Slot; claims: Claim[]; onDon
   }
 
   return (
-    <div className="rounded-xl border border-cream-border bg-white p-3 flex flex-col gap-2">
+    <div className="rounded-xl border border-cream-border bg-white p-3">
+      {/* The thumbnail is a fixed column and everything else flows beside it.
+          Stacked instead, a short card left a tall blank to the right of the
+          picture. */}
       <div className="flex items-start gap-3">
         {/* The photograph underneath, uncovered. The shopping list draws a badge
             over each slot so the count reads at arm's length in a shop; here
@@ -264,7 +273,8 @@ function SlotCard({ slot, claims, onDone }: { slot: Slot; claims: Claim[]; onDon
             />
           </button>
         ) : null}
-        <div className="min-w-0 flex-1">
+
+        <div className="min-w-0 flex-1 flex flex-col gap-2">
           <div className="flex items-baseline gap-2">
             <h3 className="text-sm font-semibold text-foreground truncate">
               {slot.label || `SKU ${slot.id}`}
@@ -274,96 +284,97 @@ function SlotCard({ slot, claims, onDone }: { slot: Slot; claims: Claim[]; onDon
               {slot.bought} of {slot.claimed} bought
             </span>
           </div>
+
           {!slot.point ? (
-            <p className="text-xs text-amber-700 mt-1">
+            <p className="text-xs text-amber-700">
               No position on the photo — place it before naming.
             </p>
           ) : null}
+
+          <div className="flex flex-col gap-1">
+            {claims.map((claim) => (
+              <div key={claim.id} className="flex items-center gap-2 text-xs">
+                <span className="flex-1 min-w-0 truncate">
+                  {claim.customer ?? <span className="text-amber-700">{claim.sender}</span>}
+                  {claim.note ? <span className="text-gray-500"> · “{claim.note}”</span> : null}
+                </span>
+                <span className="text-gray-500 tabular-nums shrink-0">
+                  {claim.obtained}/{claim.quantity}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {slot.productId !== null ? (
+            // What was actually created, not just that something was. The name is
+            // the one place a wrong valas or a mistyped size becomes obvious, and
+            // it is obvious only while the shelf is still on screen.
+            <div className="rounded-lg bg-green-50 border border-green-200 px-2.5 py-2">
+              <div className="flex items-baseline gap-2">
+                <span className="text-sm font-semibold text-green-900 truncate">
+                  {slot.productName ?? `Product #${slot.productId}`}
+                </span>
+                <span className="ml-auto text-sm font-bold text-green-900 tabular-nums shrink-0">
+                  {slot.productPrice !== null ? `Rp ${fmt(slot.productPrice)}` : "—"}
+                </span>
+              </div>
+              <div className="text-[11px] text-green-800 mt-0.5">
+                {claims.length} {claims.length === 1 ? "order" : "orders"} created · product #
+                {slot.productId}
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Product name"
+                  className="col-span-2 border border-cream-border rounded-lg px-2 py-1.5 text-sm"
+                />
+                <input
+                  value={valas}
+                  onChange={(e) => setValas(e.target.value)}
+                  inputMode="decimal"
+                  placeholder="Valas (price tag)"
+                  className="border border-cream-border rounded-lg px-2 py-1.5 text-sm"
+                />
+                <input
+                  value={gram}
+                  onChange={(e) => setGram(e.target.value)}
+                  inputMode="numeric"
+                  placeholder="Gram"
+                  className="border border-cream-border rounded-lg px-2 py-1.5 text-sm"
+                />
+                <input
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                  inputMode="numeric"
+                  placeholder="Price (Target Price only)"
+                  className="col-span-2 border border-cream-border rounded-lg px-2 py-1.5 text-sm"
+                />
+              </div>
+
+              {error ? <p className="text-xs text-red-600">{error}</p> : null}
+              {blocked ? (
+                <p className="text-xs text-amber-700">
+                  One of these senders is not a customer yet. Link them above first —
+                  naming now would drop their order.
+                </p>
+              ) : null}
+
+              <button
+                type="button"
+                disabled={busy || blocked || !name.trim()}
+                onClick={create}
+                className="rounded-lg bg-brand py-1.5 text-xs font-bold text-white disabled:opacity-40"
+              >
+                Create product and orders
+              </button>
+            </>
+          )}
         </div>
       </div>
-
-      <div className="flex flex-col gap-1">
-        {claims.map((claim) => (
-          <div key={claim.id} className="flex items-center gap-2 text-xs">
-            <span className="flex-1 min-w-0 truncate">
-              {claim.customer ?? <span className="text-amber-700">{claim.sender}</span>}
-              {claim.note ? <span className="text-gray-500"> · “{claim.note}”</span> : null}
-            </span>
-            <span className="text-gray-500 tabular-nums shrink-0">
-              {claim.obtained}/{claim.quantity}
-            </span>
-          </div>
-        ))}
-      </div>
-
-      {slot.productId !== null ? (
-        // What was actually created, not just that something was. The name is
-        // the one place a wrong valas or a mistyped size becomes obvious, and
-        // it is obvious only while the shelf is still on screen.
-        <div className="rounded-lg bg-green-50 border border-green-200 px-2.5 py-2">
-          <div className="flex items-baseline gap-2">
-            <span className="text-sm font-semibold text-green-900 truncate">
-              {slot.productName ?? `Product #${slot.productId}`}
-            </span>
-            <span className="ml-auto text-sm font-bold text-green-900 tabular-nums shrink-0">
-              {slot.productPrice !== null ? `Rp ${fmt(slot.productPrice)}` : "—"}
-            </span>
-          </div>
-          <div className="text-[11px] text-green-800 mt-0.5">
-            {claims.length} {claims.length === 1 ? "order" : "orders"} created · product #
-            {slot.productId}
-          </div>
-        </div>
-      ) : (
-        <>
-          <div className="grid grid-cols-2 gap-2">
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Product name"
-              className="col-span-2 border border-cream-border rounded-lg px-2 py-1.5 text-sm"
-            />
-            <input
-              value={valas}
-              onChange={(e) => setValas(e.target.value)}
-              inputMode="decimal"
-              placeholder="Valas (price tag)"
-              className="border border-cream-border rounded-lg px-2 py-1.5 text-sm"
-            />
-            <input
-              value={gram}
-              onChange={(e) => setGram(e.target.value)}
-              inputMode="numeric"
-              placeholder="Gram"
-              className="border border-cream-border rounded-lg px-2 py-1.5 text-sm"
-            />
-            <input
-              value={price}
-              onChange={(e) => setPrice(e.target.value)}
-              inputMode="numeric"
-              placeholder="Price (Target Price only)"
-              className="col-span-2 border border-cream-border rounded-lg px-2 py-1.5 text-sm"
-            />
-          </div>
-
-          {error ? <p className="text-xs text-red-600">{error}</p> : null}
-          {blocked ? (
-            <p className="text-xs text-amber-700">
-              One of these senders is not a customer yet. Link them above first —
-              naming now would drop their order.
-            </p>
-          ) : null}
-
-          <button
-            type="button"
-            disabled={busy || blocked || !name.trim()}
-            onClick={create}
-            className="rounded-lg bg-brand py-1.5 text-xs font-bold text-white disabled:opacity-40"
-          >
-            Create product and orders
-          </button>
-        </>
-      )}
 
       {zoom ? <SlotZoom slotId={slot.id} onClose={() => setZoom(false)} /> : null}
     </div>
