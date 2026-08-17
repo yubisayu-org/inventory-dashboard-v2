@@ -39,8 +39,13 @@ function groupByStore(posts: ShopPost[]): StoreGroup[] {
     groups.set(key, group)
   }
 
-  // Shops with something left first: you are standing in one of them. Within a
-  // shop the newest shelf leads, which is the order they were posted in.
+  // Oldest shelf first inside a shop, which is the order they were photographed
+  // in — and the order the racks stand in, because the photographs were taken
+  // walking the aisle. Shopping the list top to bottom is then one walk rather
+  // than a lap per shelf. Newest-first is right for an archive and wrong here.
+  for (const group of groups.values()) group.posts.sort((a, b) => a.id - b.id)
+
+  // Shops with something left first: you are standing in one of them.
   return [...groups.values()].sort((a, b) => {
     if ((a.left === 0) !== (b.left === 0)) return a.left === 0 ? 1 : -1
     return b.left - a.left
