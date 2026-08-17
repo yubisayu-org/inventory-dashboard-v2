@@ -173,8 +173,20 @@ export async function recluster(postId: number): Promise<void> {
   await setSlots(postId, [...positional, ...variantSlots])
 }
 
-/** Shelves compared frame-to-frame. Cheap, so the window can be generous. */
-const FRAME_CANDIDATES = 25
+/**
+ * Shelves compared frame-to-frame when a customer did not reply.
+ *
+ * A hundred covers a whole event at the owner's stated volume, so a claim on a
+ * shelf posted at the start of a trip still finds it. Comparison is around
+ * thirty milliseconds, and the loop stops at the first shelf that matches —
+ * which is usually a recent one — so the full scan only happens for a photo
+ * that belongs to no shelf at all.
+ *
+ * The real cost is the first scan after a restart, when each shelf's image is
+ * fetched from the bucket before it can be compared. They are cached on disk
+ * after that, so it is paid once rather than per claim.
+ */
+const FRAME_CANDIDATES = 100
 
 /** Shelves template-matched for a crop. Seconds each, so only the newest few. */
 const CROP_CANDIDATES = 4
