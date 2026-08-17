@@ -201,7 +201,7 @@ function SlotSheet({
               value={label}
               onChange={(e) => setLabel(e.target.value)}
               onBlur={() => label !== slot.label && onRename(label)}
-              placeholder="Name it so the list reads properly"
+              placeholder="Name it — e.g. brown bear set"
               className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
             />
             <p className="text-xs text-gray-500 tabular-nums">
@@ -306,10 +306,6 @@ function ShortPanel({ claims, count }: { claims: Claim[]; count: number }) {
           </span>
         </div>
       ))}
-      <p className="text-[10px] text-gray-500 leading-snug">
-        Ask by replying to their message in the group — an answer there quotes the
-        claim, so the bot can record it by itself.
-      </p>
     </div>
   )
 }
