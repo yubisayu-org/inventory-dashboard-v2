@@ -6,6 +6,7 @@ import { senderDigits, claimedAt } from "@/lib/format"
 
 interface Slot {
   id: number
+  point: { x: number; y: number } | null
   size: string
   label: string
   claimed: number
@@ -123,6 +124,16 @@ export default function ShopPostClient({ postId }: { postId: number }) {
             className="flex items-center gap-3 px-4 py-3 border-b border-cream-border last:border-b-0 text-left hover:bg-cream transition-colors"
           >
             <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${dot(s.claimed, s.bought)}`} />
+            {/* A database id says nothing about which pyjamas these are. The
+                crop does, and it is the only label an unnamed SKU has. */}
+            {s.point ? (
+              // eslint-disable-next-line @next/next/no-img-element -- our own crop route.
+              <img
+                src={`/api/whatsapp/slots/${s.id}/thumb`}
+                alt=""
+                className="w-10 h-10 rounded object-cover shrink-0 border border-cream-border"
+              />
+            ) : null}
             <span className="flex-1 min-w-0 text-sm font-medium text-foreground truncate">
               {s.label || `SKU ${s.id}`}
               {s.size ? <span className="text-gray-500 font-normal"> · {s.size}</span> : null}
@@ -173,17 +184,32 @@ function SlotSheet({
       >
         <div className="mx-auto h-1 w-9 rounded-full bg-gray-300" />
 
-        <input
-          value={label}
-          onChange={(e) => setLabel(e.target.value)}
-          onBlur={() => label !== slot.label && onRename(label)}
-          placeholder="Name it so the list reads properly"
-          className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
-        />
-        <p className="text-xs text-gray-500 tabular-nums">
-          {slot.size ? `Size ${slot.size} · ` : ""}
-          {slot.claimed} claimed by {claims.length} {claims.length === 1 ? "person" : "people"}
-        </p>
+        <div className="flex items-start gap-3">
+          {/* Which item this is, at the moment of counting it. Naming happens at
+              the hotel, so in the shop the picture is the only identifier a slot
+              has. */}
+          {slot.point ? (
+            // eslint-disable-next-line @next/next/no-img-element -- our own crop route.
+            <img
+              src={`/api/whatsapp/slots/${slot.id}/thumb`}
+              alt="Close-up of this item on the shelf"
+              className="w-16 h-16 rounded-lg object-cover shrink-0 border border-cream-border"
+            />
+          ) : null}
+          <div className="min-w-0 flex-1 flex flex-col gap-1.5">
+            <input
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              onBlur={() => label !== slot.label && onRename(label)}
+              placeholder="Name it so the list reads properly"
+              className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
+            />
+            <p className="text-xs text-gray-500 tabular-nums">
+              {slot.size ? `Size ${slot.size} · ` : ""}
+              {slot.claimed} claimed by {claims.length} {claims.length === 1 ? "person" : "people"}
+            </p>
+          </div>
+        </div>
 
         {/* A stepper, not a keyboard. Claims are small numbers, and a number pad
             in a shop is where a stray 44 comes from. */}
