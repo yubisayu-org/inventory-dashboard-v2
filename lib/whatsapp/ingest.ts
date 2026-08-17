@@ -2,7 +2,7 @@ import {
   resolveImageReply, clusterPoints, normalizeSize, DEFAULT_CLUSTER_RADIUS, type Point,
 } from "@/lib/claims"
 import { addClaim, getPost, listClaims, listRecentPosts, setSlots, type WaPost } from "@/lib/db/claims"
-import { compareFrames, loadRgbWithin, type Mark } from "@/lib/claims"
+import { compareFrames, loadRgbWithin, locateInPost, type Mark } from "@/lib/claims"
 import { localPostImage } from "./post-image"
 
 /**
@@ -173,6 +173,12 @@ export async function recluster(postId: number): Promise<void> {
   await setSlots(postId, [...positional, ...variantSlots])
 }
 
+/** Shelves compared frame-to-frame. Cheap, so the window can be generous. */
+const FRAME_CANDIDATES = 25
+
+/** Shelves template-matched for a crop. Seconds each, so only the newest few. */
+const CROP_CANDIDATES = 4
+
 /**
  * Work out which shelf a customer marked, when they did not reply to it.
  *
@@ -195,11 +201,15 @@ export async function matchPostByImage(
   groupJid: string,
   replyPath: string,
 ): Promise<{ post: WaPost; marks: Mark[] } | null> {
-  for (const post of await listRecentPosts(groupJid)) {
-    // image_path is a bucket key; the detector needs a file. Cached after the
-    // first reply, so scanning several shelves costs one download each at most.
+  const recent = await listRecentPosts(groupJid, FRAME_CANDIDATES)
+
+  // Pass one: the same frame, marked or not. Around thirty milliseconds per
+  // shelf, so it is worth trying against everything recent.
+  const files = new Map<number, string>()
+  for (const post of recent) {
     const file = await localPostImage(post.imagePath).catch(() => null)
     if (file === null) continue
+    files.set(post.id, file)
 
     const { aligned, marks } = await compareFrames(file, replyPath).catch(() => ({
       aligned: false,
@@ -211,21 +221,48 @@ export async function matchPostByImage(
     // something to discard — the customer did point at this photograph.
     if (aligned) return { post, marks }
 
-    // Why a candidate was rejected is the only useful thing to know when a
-    // customer insists they sent the right picture. Shapes differing means they
-    // cropped it or sent a screenshot of the chat rather than the photo.
     if (process.env.WA_DEBUG) {
       const [a, b] = await Promise.all([
         loadRgbWithin(file, 480, 480).catch(() => null),
         loadRgbWithin(replyPath, 480, 480).catch(() => null),
       ])
-      console.log("[wa] no match", {
+      console.log("[wa] no frame match", {
         post: post.id,
         postShape: a ? `${a.width}x${a.height}` : "?",
         replyShape: b ? `${b.width}x${b.height}` : "?",
-        sameShape: Boolean(a && b && a.width === b.width && a.height === b.height),
       })
     }
   }
+
+  // Pass two: a crop. Customers trim the photo while marking it, which changes
+  // its shape and defeats subtraction entirely — the failure that sent every
+  // one of these to the review queue as unrecognisable.
+  //
+  // Template matching handles it, at seconds rather than milliseconds per
+  // shelf, so only the newest few are worth trying. It reports where the crop
+  // sits, which is itself the claim: a customer who crops to one item has
+  // pointed at it.
+  for (const post of recent.slice(0, CROP_CANDIDATES)) {
+    const file = files.get(post.id)
+    if (!file) continue
+
+    const located = await locateInPost(file, replyPath).catch(() => null)
+    if (located === null) continue
+    if (process.env.WA_DEBUG) {
+      console.log("[wa] crop match", {
+        post: post.id,
+        kind: located.kind,
+        score: Number(located.score.toFixed(3)),
+        margin: Number((located.score - located.runnerUp).toFixed(3)),
+      })
+    }
+    // A repost has no position of its own, so it is left to the resolver in
+    // captureClaim to file for review rather than being reported as a mark.
+    if (located.kind === "crop") {
+      return { post, marks: [{ point: located.centre, pixels: 0 }] }
+    }
+    return { post, marks: [] }
+  }
+
   return null
 }
