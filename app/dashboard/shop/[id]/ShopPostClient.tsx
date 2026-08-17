@@ -191,15 +191,18 @@ export default function ShopPostClient({ postId }: { postId: number }) {
 
       {/* The next rack along, in the order the shop was photographed. Below the
           list rather than above it: you arrive at it having counted this shelf,
-          which is exactly when it is wanted. */}
-      {siblings && siblings.total > 1 ? (
-        <div className="flex items-center gap-2">
-          <NeighbourLink post={siblings.previous} direction="previous" />
-          <span className="text-xs text-gray-500 tabular-nums shrink-0">
-            {siblings.position} of {siblings.total}
+          which is exactly when it is wanted. Nothing points backwards — the
+          shop is walked once, and the list is a tap away for anything else. */}
+      {siblings?.next ? (
+        <Link
+          href={`/dashboard/shop/${siblings.next.id}`}
+          className="flex items-center justify-center gap-2 rounded-xl border border-cream-border bg-white px-4 py-2.5 text-sm font-semibold hover:border-brand transition-colors"
+        >
+          Next shelf →
+          <span className="text-xs font-normal text-gray-500 tabular-nums">
+            {siblings.position + 1} of {siblings.total}
           </span>
-          <NeighbourLink post={siblings.next} direction="next" />
-        </div>
+        </Link>
       ) : null}
 
       {slot ? (
@@ -214,40 +217,6 @@ export default function ShopPostClient({ postId }: { postId: number }) {
         />
       ) : null}
     </div>
-  )
-}
-
-/**
- * One step along the aisle, or a dead end held open.
- *
- * The disabled end keeps its space rather than collapsing, so the button under
- * a thumb does not move between shelves — the first and last rack would
- * otherwise shuffle the row and cost a mis-tap.
- */
-function NeighbourLink({
-  post, direction,
-}: {
-  post: ShopPost | null
-  direction: "previous" | "next"
-}) {
-  const label = direction === "next" ? "Next shelf" : "Previous"
-  const shared =
-    "flex-1 rounded-xl border border-cream-border px-4 py-2.5 text-sm font-semibold text-center"
-
-  if (post === null) {
-    return <span className={`${shared} text-gray-300 bg-cream/50`}>{label}</span>
-  }
-
-  const left = post.claimed - post.bought
-  return (
-    <Link href={`/dashboard/shop/${post.id}`} className={`${shared} bg-white hover:border-brand`}>
-      {direction === "previous" ? "← " : ""}
-      {label}
-      {direction === "next" ? " →" : ""}
-      <span className="block text-[11px] font-normal text-gray-500 tabular-nums">
-        {left === 0 ? "done" : `buy ${left}`}
-      </span>
-    </Link>
   )
 }
 
