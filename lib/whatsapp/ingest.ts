@@ -1,7 +1,8 @@
 import {
   resolveImageReply, clusterPoints, normalizeSize, DEFAULT_CLUSTER_RADIUS, type Point,
 } from "@/lib/claims"
-import { addClaim, getPost, listClaims, setSlots } from "@/lib/db/claims"
+import { addClaim, getPost, listClaims, listRecentPosts, setSlots, type WaPost } from "@/lib/db/claims"
+import { detectChanges } from "@/lib/claims"
 import { localPostImage } from "./post-image"
 
 /**
@@ -170,4 +171,37 @@ export async function recluster(postId: number): Promise<void> {
   }))
 
   await setSlots(postId, [...positional, ...variantSlots])
+}
+
+/**
+ * Work out which shelf a customer marked, when they did not reply to it.
+ *
+ * Replying is the reliable way to say which photo you mean, and it is also a
+ * habit rather than a reflex — customers crop or scribble on a shelf and fire it
+ * off. Until now those landed nowhere at all: no claim, no reaction, and someone
+ * convinced they had ordered.
+ *
+ * Difference detection answers this for free. Subtracting the reply from the
+ * wrong shelf yields either nothing or a frame full of change, both of which it
+ * refuses; subtracting it from the right one yields their pen strokes. So the
+ * post that produces marks IS the post they marked, and finding it and reading
+ * it are the same operation.
+ *
+ * Newest first, and the first match wins. Two shelves similar enough to both
+ * match are two photographs of the same rack, where either answer puts the claim
+ * in the same place.
+ */
+export async function matchPostByImage(
+  groupJid: string,
+  replyPath: string,
+): Promise<{ post: WaPost; marks: Awaited<ReturnType<typeof detectChanges>> } | null> {
+  for (const post of await listRecentPosts(groupJid)) {
+    // image_path is a bucket key; the detector needs a file. Cached after the
+    // first reply, so scanning several shelves costs one download each at most.
+    const marks = await localPostImage(post.imagePath)
+      .then((file) => detectChanges(file, replyPath))
+      .catch(() => [])
+    if (marks.length > 0) return { post, marks }
+  }
+  return null
 }

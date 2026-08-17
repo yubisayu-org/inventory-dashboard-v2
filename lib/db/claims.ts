@@ -133,6 +133,23 @@ export async function findPostByMessage(
 }
 
 /**
+ * The group's most recent shelves, newest first.
+ *
+ * Used to work out which shelf a customer marked when they did not reply to it.
+ * Bounded because the answer is always recent: people claim on what is on
+ * screen, not on last week's shop.
+ */
+export async function listRecentPosts(groupJid: string, limit = 8): Promise<WaPost[]> {
+  const rows = await sql`
+    SELECT * FROM wa_posts
+    WHERE group_jid = ${groupJid}
+    ORDER BY id DESC
+    LIMIT ${limit}
+  `
+  return rows.map(mapPost)
+}
+
+/**
  * One page of posts. Under 100 per event, but they accumulate across events,
  * so this paginates like every other list in the dashboard.
  */

@@ -4,6 +4,7 @@ import { parseCommand } from "./commands"
 import { runCommand } from "./handle-command"
 import { capturePost } from "./capture"
 import { captureClaim, postForReply } from "./claims"
+import { matchPostByImage } from "@/lib/whatsapp/ingest"
 import { ReactionQueue } from "./reactions"
 import { applyOwnerReaction, outcomeFor } from "./outcomes"
 import { findPostByMessage, listClaims } from "@/lib/db/claims"
@@ -147,7 +148,15 @@ async function onMessage(sock: WASocket, message: WAMessage) {
     // that became a post from one the closed window ignored — and a customer
     // replying to the second gets silence, which is how an afternoon goes
     // missing.
-    if (postId !== null) reactions?.push({ jid: groupJid, key: message.key, emoji: "📸" })
+    if (postId !== null) {
+      reactions?.push({ jid: groupJid, key: message.key, emoji: "📸" })
+      return
+    }
+    // Not a shelf. Then it is somebody marking one without using Reply, which
+    // customers do constantly — replying is a habit, not a reflex. Work out
+    // which shelf by subtracting it from each recent one: the shelf that yields
+    // pen strokes is the shelf they marked.
+    await claimWithoutReply(sock, message, groupJid, messageId, sender, text)
     return
   }
   if (quoted === "") return
@@ -170,6 +179,54 @@ async function onMessage(sock: WASocket, message: WAMessage) {
  * been posted since — and by the time a trip is under way, several shelves are
  * in the chat and the interesting one is rarely the last.
  */
+/**
+ * Record a marked photo that never quoted the shelf it belongs to.
+ *
+ * Silence was the old behaviour and the worst possible one: no claim, no
+ * reaction, and a customer sure they had ordered. Anything that cannot be
+ * matched now earns 😢, which asks them to try again rather than leaving them
+ * to find out at delivery.
+ */
+async function claimWithoutReply(
+  sock: WASocket,
+  message: WAMessage,
+  groupJid: string,
+  messageId: string,
+  sender: string,
+  text: string,
+) {
+  const { downloadMediaMessage } = await import("baileys")
+  const { mkdtemp, rm, writeFile } = await import("node:fs/promises")
+  const { tmpdir } = await import("node:os")
+  const { join } = await import("node:path")
+  const { quietLogger } = await import("./logger")
+
+  const buffer = (await downloadMediaMessage(
+    message,
+    "buffer",
+    {},
+    { logger: quietLogger, reuploadRequest: sock.updateMediaMessage },
+  )) as Buffer
+
+  const dir = await mkdtemp(join(tmpdir(), "wa-unquoted-"))
+  const scratch = join(dir, "reply.jpg")
+  try {
+    await writeFile(scratch, buffer)
+    const match = await matchPostByImage(groupJid, scratch)
+    if (match === null) {
+      reactions?.push({ jid: groupJid, key: message.key, emoji: "😢" })
+      return
+    }
+
+    const emoji = await captureClaim({
+      sock, message, post: match.post, sender, messageId, text, isImage: true,
+    })
+    if (emoji) reactions?.push({ jid: groupJid, key: message.key, emoji })
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+}
+
 async function sendRekap(sock: WASocket, groupJid: string, quoted: string) {
   // Pointing at something and silently getting something else is worse than an
   // error. If the reply quotes a message that is not a shelf we captured — a

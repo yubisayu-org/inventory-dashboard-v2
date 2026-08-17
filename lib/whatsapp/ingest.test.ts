@@ -3,9 +3,10 @@ import assert from "node:assert/strict"
 import sql from "../db-pool"
 import { FIXTURES } from "../claims/fixtures"
 import { createPost, addClaim, listClaims, listSlots } from "../db/claims"
-import { ingestImageReply, recluster } from "./ingest"
+import { ingestImageReply, recluster, matchPostByImage } from "./ingest"
 
 const EVENT = `TESTING${process.hrtime.bigint()}`
+const GROUP = `${process.hrtime.bigint()}@g.us`
 
 before(async () => {
   await sql`
@@ -180,4 +181,42 @@ test("a different customer marking the same item is not a repeat", async () => {
   assert.equal(other.claimIds.length, 2, "two people wanting one thing is two orders")
   const slots = await listSlots(postId)
   assert.ok(slots.every((s) => s.claimed === 2))
+})
+
+test("a marked photo finds its own shelf without being replied to", async () => {
+  // Customers crop or scribble on a shelf and send it as a fresh image. Until
+  // this, those landed nowhere: no claim, no reaction, and someone sure they
+  // had ordered.
+  const { id: decoy } = await createPost({
+    event: EVENT, imagePath: FIXTURES.greenPost, imageWidth: 1280, imageHeight: 960,
+    store: "Decoy", countryId: null, pricingMethod: "overseas", note: "",
+    safeHues: [], groupJid: GROUP,
+  })
+  const { id: real } = await createPost({
+    event: EVENT, imagePath: FIXTURES.original, imageWidth: 1600, imageHeight: 2133,
+    store: "Real", countryId: null, pricingMethod: "overseas", note: "",
+    safeHues: [], groupJid: GROUP,
+  })
+
+  const match = await matchPostByImage(GROUP, FIXTURES.ticked)
+  assert.ok(match, "the marked shelf should be found among the group's recent posts")
+  assert.equal(match.post.id, real, "and it should be the shelf that was actually marked")
+  assert.equal(match.marks.length, 2)
+  assert.ok(decoy > 0)
+})
+
+test("a photo of something else matches no shelf", async () => {
+  // Its own group: posts from other tests linger, and one of them is the shelf
+  // this photo really was marked on — which would be a correct match, not the
+  // miss this is checking for.
+  const lonely = `${process.hrtime.bigint()}@g.us`
+  await createPost({
+    event: EVENT, imagePath: FIXTURES.original, imageWidth: 1600, imageHeight: 2133,
+    store: "Real", countryId: null, pricingMethod: "overseas", note: "",
+    safeHues: [], groupJid: lonely,
+  })
+  // A different shop entirely. Guessing a shelf here would file the claim
+  // against a product the customer never saw. The two frames differ across some
+  // 60% of their pixels, well past what a marked copy ever does.
+  assert.equal(await matchPostByImage(lonely, FIXTURES.greenTicked), null)
 })
