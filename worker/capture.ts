@@ -1,6 +1,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import sharp from "sharp"
 import { downloadMediaMessage } from "baileys"
 import type { WAMessage, WASocket } from "baileys"
 import { hueHistogram, loadRgb, safePenHues } from "@/lib/claims"
@@ -64,14 +65,20 @@ export async function capturePost(input: {
     const raster = await loadRgb(scratch, HISTOGRAM_WIDTH)
     const hues = safePenHues(hueHistogram(raster), raster.width * raster.height).map((c) => c.hue)
 
+    // The photograph's own size, not the histogram's. raster is a 240px-wide
+    // downscale that exists only to count colours, and storing its dimensions
+    // described every shelf as 240 pixels across — harmless while nothing read
+    // the columns, and a trap for the first thing that did.
+    const shot = await sharp(scratch).metadata()
+
     const path = `${event}/${input.messageId}.jpg`
     await uploadPostImage(path, buffer, "image/jpeg")
 
     const { id } = await createPost({
       event,
       imagePath: path,
-      imageWidth: raster.width,
-      imageHeight: raster.height,
+      imageWidth: shot.width ?? 0,
+      imageHeight: shot.height ?? 0,
       store: capture.store,
       // Country comes from the event, which is where a trip's currency lives.
       countryId: await countryForEvent(event),
