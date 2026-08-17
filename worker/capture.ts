@@ -16,6 +16,17 @@ import { senderNumber } from "./handle-command"
 const HISTOGRAM_WIDTH = 240
 
 /**
+ * Longest edge a stored shelf may have.
+ *
+ * A photo sent through WhatsApp arrives about 1600 across and is kept as-is. A
+ * photo sent as a file arrives at whatever the camera shot — 3000, 4000 — which
+ * is worth having for the price tags and not worth storing whole: the bytes are
+ * ten to twenty times larger, every render reads them, and Supabase charges for
+ * egress. This keeps roughly twice WhatsApp's detail at a fraction of the cost.
+ */
+const MAX_STORED_EDGE = 2000
+
+/**
  * Turn a photo the owner sent into a post — if it was one.
  *
  * Three things all have to hold, and returning null for any of them is the
@@ -70,15 +81,27 @@ export async function capturePost(input: {
     // described every shelf as 240 pixels across — harmless while nothing read
     // the columns, and a trap for the first thing that did.
     const shot = await sharp(scratch).metadata()
+    const oversized = Math.max(shot.width ?? 0, shot.height ?? 0) > MAX_STORED_EDGE
+
+    // Re-encoded only when it has to be. A photo that arrived through WhatsApp
+    // is already small and is stored byte for byte, because a second JPEG pass
+    // over an image that has had one only loses more.
+    const stored = oversized
+      ? await sharp(scratch)
+          .resize({ width: MAX_STORED_EDGE, height: MAX_STORED_EDGE, fit: "inside" })
+          .jpeg({ quality: 88 })
+          .toBuffer()
+      : buffer
+    const size = oversized ? await sharp(stored).metadata() : shot
 
     const path = `${event}/${input.messageId}.jpg`
-    await uploadPostImage(path, buffer, "image/jpeg")
+    await uploadPostImage(path, stored, "image/jpeg")
 
     const { id } = await createPost({
       event,
       imagePath: path,
-      imageWidth: shot.width ?? 0,
-      imageHeight: shot.height ?? 0,
+      imageWidth: size.width ?? 0,
+      imageHeight: size.height ?? 0,
       store: capture.store,
       // Country comes from the event, which is where a trip's currency lives.
       countryId: await countryForEvent(event),

@@ -16,6 +16,7 @@ import { renderShoppingList } from "@/lib/whatsapp/render"
 import sql from "@/lib/db-pool"
 import { isBotAdmin } from "@/lib/db/whatsapp-groups"
 import { senderJid, senderNumber } from "./handle-command"
+import { messageText, quotedId, imageDocument } from "./message"
 
 /**
  * One queue for the whole process, not one per message.
@@ -25,29 +26,6 @@ import { senderJid, senderNumber } from "./handle-command"
  * pacing exists to avoid.
  */
 let reactions: ReactionQueue | null = null
-
-/** The text of a message, whatever kind it is. */
-export function messageText(message: WAMessage): string {
-  const content = message.message
-  if (!content) return ""
-  return (
-    content.conversation ??
-    content.extendedTextMessage?.text ??
-    content.imageMessage?.caption ??
-    content.videoMessage?.caption ??
-    ""
-  )
-}
-
-/** The id of the message this one is replying to, or "". */
-export function quotedId(message: WAMessage): string {
-  const content = message.message
-  return (
-    content?.extendedTextMessage?.contextInfo?.stanzaId ??
-    content?.imageMessage?.contextInfo?.stanzaId ??
-    ""
-  )
-}
 
 /**
  * Opt-in tracing for "the bot did nothing and I cannot tell why".
@@ -145,7 +123,9 @@ async function onMessage(sock: WASocket, message: WAMessage) {
     return
   }
 
-  const isImage = Boolean(message.message?.imageMessage)
+  // A photo sent as a file counts as a photo — see imageDocument. Everything
+  // downstream takes bytes, and Baileys downloads both the same way.
+  const isImage = Boolean(message.message?.imageMessage) || imageDocument(message) !== null
   const quoted = quotedId(message)
 
   // An image that quotes nothing, from an admin, inside an open window, is a
