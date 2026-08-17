@@ -10,6 +10,7 @@ import {
 } from "@/lib/whatsapp/identity"
 import { ReactionQueue } from "./reactions"
 import { applyOwnerReaction, outcomeFor } from "./outcomes"
+import { trySizeOffer, trySizeAnswer } from "./size-offer"
 import { findPostByMessage, listClaims } from "@/lib/db/claims"
 import { renderShoppingList } from "@/lib/whatsapp/render"
 import sql from "@/lib/db-pool"
@@ -167,6 +168,15 @@ async function onMessage(sock: WASocket, message: WAMessage) {
     return
   }
   if (quoted === "") return
+
+  // The owner answering a claim with a different size — "95 kosong, 100 ya".
+  // Checked before the claim path because it quotes a claim, not a shelf, and
+  // would otherwise fall straight through postForReply and be dropped.
+  const offered = await trySizeOffer({ groupJid, messageId, sender, text, quoted })
+  if (offered) {
+    reactions?.push({ jid: groupJid, key: message.key, emoji: offered })
+    return
+  }
 
   const post = await postForReply(groupJid, quoted)
   if (post === null) return
@@ -392,6 +402,20 @@ async function main() {
           // reaction.key is the REACTOR's key; event.key is the message reacted
           // to. Skipping the bot's own stops it reading its own notes back.
           if (event.reaction.key?.fromMe) continue
+
+          // Her 👍 on an offer of a different size. Tried first: the same emoji
+          // means "bought" when the owner puts it on a claim, and these are told
+          // apart by what was reacted to, not by the emoji.
+          const answered = await trySizeAnswer({
+            groupJid,
+            messageId: event.key.id ?? "",
+            reactorJid: senderJid(event.reaction.key),
+            emoji: event.reaction.text ?? "",
+          })
+          if (answered) {
+            reactions?.push({ jid: groupJid, key: event.key, emoji: answered })
+            continue
+          }
 
           const applied = await applyOwnerReaction({
             reactorJid: senderJid(event.reaction.key),
