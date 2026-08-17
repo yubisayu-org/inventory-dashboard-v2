@@ -9,4 +9,9 @@ export const FIXTURES = {
   original: join(here, "__fixtures__", "original.jpg"),
   ticked: join(here, "__fixtures__", "ticked.jpg"),
   crop: join(here, "__fixtures__", "crop.jpg"),
+  // A second real pair, kept because it broke the resolver twice: the shelf is
+  // full of green packaging, so green is excluded as a pen colour, and the
+  // customer ticked in green.
+  greenPost: join(here, "__fixtures__", "green-post.jpg"),
+  greenTicked: join(here, "__fixtures__", "green-ticked.jpg"),
 } as const

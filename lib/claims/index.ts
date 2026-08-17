@@ -54,20 +54,28 @@ export async function resolveImageReply(
   const post = await loadRgb(postPath, POST_W)
   const hues = safePenHues(hueHistogram(post), post.width * post.height).map((c) => c.hue)
 
+  // Difference first, hue second — the reverse of the original order, changed
+  // after a live shelf proved the ordering backwards.
+  //
+  // Difference refuses cleanly when it cannot apply: a reply of a different
+  // shape, or one where so much changed that it is a separate photograph. So
+  // when it does return marks, the two images genuinely align and what it found
+  // genuinely was not in the original. That is a stronger claim than hue can
+  // make.
+  //
+  // Hue's failure is quieter and worse. A shelf of green packaging excludes
+  // green, so a customer's green tick is invisible — and hue then finds some
+  // 44-pixel smudge in a trusted colour instead, returns one mark where two
+  // were drawn, and looks like it worked.
+  const changed = await detectChanges(postPath, replyPath)
+  if (changed.length > 0) return { kind: "marks", marks: changed, via: "difference" }
+
+  // Still needed for the case difference cannot serve: a customer who
+  // photographs their screen rather than screenshotting it, where every pixel
+  // differs but their ink is still the one saturated colour on the shelf.
   const reply = await loadRgb(replyPath, REPLY_W)
   const marks = detectMarks(reply, hues)
   if (marks.length > 0) return { kind: "marks", marks, via: "hue" }
-
-  // Hue detection needs a colour the photograph does not contain, and a real
-  // shop shelf can leave only one — signage, packaging and price tags between
-  // them cover most of the wheel. When it finds nothing, ask what CHANGED
-  // instead, which works whatever pen the customer reached for.
-  //
-  // Second rather than first because it needs the reply to be the same image
-  // marked up: a customer who photographs their screen defeats it, while hue
-  // detection still reads their ink.
-  const changed = await detectChanges(postPath, replyPath)
-  if (changed.length > 0) return { kind: "marks", marks: changed, via: "difference" }
 
   const located = await locateInPost(postPath, replyPath)
   if (located === null) return { kind: "unresolved" }

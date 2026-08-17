@@ -52,3 +52,19 @@ test("the marks land in the same places the hue detector reports", async () => {
     assert.ok(near, `no hue mark near ${JSON.stringify(mark.point)}`)
   }
 })
+
+test("a green tick on a green shelf is still found", async () => {
+  // The live failure this ordering was changed for. safePenHues leaves only
+  // purple on this photograph, so hue detection cannot see the customer's green
+  // ticks — and worse, it finds a 44-pixel smudge in purple and reports one mark
+  // where two were drawn.
+  const { safePenHues, hueHistogram } = await import("./hue")
+  const { loadRgb } = await import("./raster")
+  const post = await loadRgb(FIXTURES.greenPost, 240)
+  const safe = safePenHues(hueHistogram(post), post.width * post.height).map((c) => c.hue)
+  assert.deepEqual(safe, [280], "the shelf's own colours leave only purple trusted")
+
+  const marks = await detectChanges(FIXTURES.greenPost, FIXTURES.greenTicked)
+  assert.equal(marks.length, 2, "both ticks, whatever colour they were drawn in")
+  assert.ok(marks.every((m) => m.pixels > 50), "and as solid blobs, not threshold noise")
+})
