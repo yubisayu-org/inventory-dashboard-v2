@@ -1,4 +1,5 @@
 import sharp from "sharp"
+import sql from "@/lib/db-pool"
 import { getPost, listSlots, type WaSlot } from "@/lib/db/claims"
 import { localPostImage } from "./post-image"
 
@@ -158,5 +159,52 @@ export async function renderShoppingList(postId: number): Promise<Buffer> {
     .extend({ bottom: listHeight, background: "#ffffff" })
     .composite([{ input: overlay, top: 0, left: 0 }])
     .jpeg({ quality: 82 })
+    .toBuffer()
+}
+
+/**
+ * Share of the photo's shorter side a slot crop covers.
+ *
+ * Wide enough to include the neighbours, because "the bear one, second from the
+ * left" is how these get named, and a crop tight enough to hold only the item
+ * takes away the very context that identifies it.
+ */
+const CROP_SHARE = 0.28
+
+/**
+ * A close-up of one slot, for naming it.
+ *
+ * The shopping list draws a badge over each slot, which is right in a shop —
+ * the number has to be readable at arm's length — and wrong at a laptop, where
+ * the badge covers the product being described. So the naming screen gets the
+ * photograph underneath, uncovered, cropped to the item in question.
+ *
+ * A slot with no position has no close-up: nothing is known about where it is,
+ * which is exactly why it is in review.
+ */
+export async function renderSlotCrop(slotId: number): Promise<Buffer | null> {
+  const [row] = await sql`
+    SELECT s.point_x, s.point_y, p.image_path
+    FROM wa_slots s JOIN wa_posts p ON p.id = s.post_id
+    WHERE s.id = ${slotId}
+  `
+  if (!row || row.point_x === null || row.point_y === null) return null
+
+  const file = await localPostImage(row.image_path as string)
+  const meta = await sharp(file).metadata()
+  const width = meta.width ?? 0
+  const height = meta.height ?? 0
+  if (!width || !height) return null
+
+  const box = Math.round(Math.min(width, height) * CROP_SHARE)
+  // Clamped so a slot near an edge yields a full-size crop that slides inward
+  // rather than a sliver, which would be harder to recognise than no crop.
+  const left = Math.max(0, Math.min(width - box, Math.round(Number(row.point_x) * width - box / 2)))
+  const top = Math.max(0, Math.min(height - box, Math.round(Number(row.point_y) * height - box / 2)))
+
+  return sharp(file)
+    .extract({ left, top, width: box, height: box })
+    .resize({ width: 320 })
+    .jpeg({ quality: 80 })
     .toBuffer()
 }

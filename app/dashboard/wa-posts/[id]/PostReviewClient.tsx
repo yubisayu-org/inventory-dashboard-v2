@@ -5,6 +5,7 @@ import Link from "next/link"
 
 interface Slot {
   id: number
+  point: { x: number; y: number } | null
   size: string
   label: string
   claimed: number
@@ -203,14 +204,34 @@ function SlotCard({ slot, claims, onDone }: { slot: Slot; claims: Claim[]; onDon
 
   return (
     <div className="rounded-xl border border-cream-border bg-white p-3 flex flex-col gap-2">
-      <div className="flex items-baseline gap-2">
-        <h3 className="text-sm font-semibold text-foreground truncate">
-          {slot.label || `SKU ${slot.id}`}
-          {slot.size ? <span className="text-gray-500 font-normal"> · {slot.size}</span> : null}
-        </h3>
-        <span className="text-xs text-gray-500 tabular-nums ml-auto shrink-0">
-          {slot.bought} of {slot.claimed} bought
-        </span>
+      <div className="flex items-start gap-3">
+        {/* The photograph underneath, uncovered. The shopping list draws a badge
+            over each slot so the count reads at arm's length in a shop; here
+            that badge would sit on top of the product being named. */}
+        {slot.point ? (
+          // eslint-disable-next-line @next/next/no-img-element -- our own crop route.
+          <img
+            src={`/api/whatsapp/slots/${slot.id}/thumb`}
+            alt="Close-up of this item on the shelf"
+            className="w-28 h-28 rounded-lg border border-cream-border object-cover shrink-0"
+          />
+        ) : null}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline gap-2">
+            <h3 className="text-sm font-semibold text-foreground truncate">
+              {slot.label || `SKU ${slot.id}`}
+              {slot.size ? <span className="text-gray-500 font-normal"> · {slot.size}</span> : null}
+            </h3>
+            <span className="text-xs text-gray-500 tabular-nums ml-auto shrink-0">
+              {slot.bought} of {slot.claimed} bought
+            </span>
+          </div>
+          {!slot.point ? (
+            <p className="text-xs text-amber-700 mt-1">
+              No position on the photo — place it before naming.
+            </p>
+          ) : null}
+        </div>
       </div>
 
       <div className="flex flex-col gap-1">
