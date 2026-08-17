@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
+import { PRICING_METHODS, PRICING_METHOD_LABEL } from "@/lib/pricing"
 
 interface Slot {
   id: number
@@ -59,10 +60,20 @@ export default function PostReviewClient({ postId }: { postId: number }) {
     load()
   }
 
+  async function setPricingMethod(pricingMethod: string) {
+    await fetch(`/api/whatsapp/posts/${postId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pricingMethod }),
+    })
+    load()
+  }
+
   if (error) return <p className="text-sm text-red-600">{error}</p>
   if (!data) return <p className="text-sm text-gray-500">Loading…</p>
 
   const needsReview = data.claims.filter((c) => c.state === "review")
+  const namedCount = data.slots.filter((s) => s.productId !== null).length
 
   return (
     <div className="flex flex-col gap-4">
@@ -70,15 +81,41 @@ export default function PostReviewClient({ postId }: { postId: number }) {
         <Link href="/dashboard/wa-posts" className="text-sm text-gray-500 hover:text-foreground">
           ←
         </Link>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h1 className="text-xl font-bold text-foreground truncate">
             {data.post.store || "Untitled shelf"}
           </h1>
           <p className="text-xs text-gray-500">
-            {data.post.event} · {data.slots.length} SKU · {data.post.pricingMethod}
+            {data.post.event} · {data.slots.length} SKU
           </p>
         </div>
+
+        {/* A post keeps the pricing method it was captured with, so changing the
+            WhatsApp default later does not reach back and reprice a morning's
+            shelves. A shelf cannot be re-posted, though, so a wrong one has to
+            be correctable here. */}
+        <label className="flex items-center gap-2 text-xs text-gray-500 shrink-0">
+          Pricing
+          <select
+            value={data.post.pricingMethod}
+            onChange={(e) => setPricingMethod(e.target.value)}
+            className="border border-cream-border rounded-lg px-2 py-1.5 text-sm bg-white"
+          >
+            {PRICING_METHODS.map((method) => (
+              <option key={method} value={method}>
+                {PRICING_METHOD_LABEL[method]}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
+
+      {namedCount > 0 ? (
+        <p className="text-xs text-gray-500">
+          {namedCount} SKU already named keep the price they were created with —
+          changing the method here only affects the ones still to be named.
+        </p>
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-start">
         {/* eslint-disable-next-line @next/next/no-img-element -- our own rendered JPEG. */}
