@@ -1,4 +1,6 @@
-import { resolveImageReply, clusterPoints, normalizeSize, type Point } from "@/lib/claims"
+import {
+  resolveImageReply, clusterPoints, normalizeSize, DEFAULT_CLUSTER_RADIUS, type Point,
+} from "@/lib/claims"
 import { addClaim, getPost, listClaims, setSlots } from "@/lib/db/claims"
 import { localPostImage } from "./post-image"
 
@@ -33,6 +35,19 @@ export async function ingestImageReply(input: {
   const post = await getPost(input.postId)
   if (post === null) throw new Error(`no such post: ${input.postId}`)
 
+  // What this sender already claims on this post, so a resend does not double
+  // their order. Customers repeat themselves when an acknowledgement is slow,
+  // and the spec's rule is that a bare repeat adds nothing — it is the same
+  // request, sent twice, not a request for two.
+  const alreadyClaimed = (await listClaims(input.postId))
+    .filter((c) => c.sender === input.sender && c.state !== "rejected" && c.point !== null)
+    .map((c) => c.point as Point)
+
+  const isRepeat = (point: Point) =>
+    alreadyClaimed.some(
+      (seen) => Math.hypot(seen.x - point.x, seen.y - point.y) <= DEFAULT_CLUSTER_RADIUS,
+    )
+
   // image_path is a bucket key, not a file path — the resolver needs the latter.
   const postFile = await localPostImage(post.imagePath)
   const result = await resolveImageReply(postFile, input.replyPath)
@@ -62,7 +77,14 @@ export async function ingestImageReply(input: {
 
   switch (result.kind) {
     case "marks":
-      for (const mark of result.marks) await record("ink", mark.point, 1, "pending")
+      for (const mark of result.marks) {
+        // Same person, same spot, already recorded. Skipped rather than stored
+        // and reconciled later: a duplicate that exists is a duplicate that can
+        // reach the shopping list.
+        if (isRepeat(mark.point)) continue
+        await record("ink", mark.point, 1, "pending")
+        alreadyClaimed.push(mark.point)
+      }
       break
     case "crop": {
       // The margin over the runner-up is the confidence that matters, not the

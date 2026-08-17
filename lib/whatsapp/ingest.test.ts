@@ -142,3 +142,42 @@ test("a crop that cannot be placed confidently records no position", async () =>
     assert.equal(claim.state, "review")
   }
 })
+
+test("the same person sending the same marks twice claims them once", async () => {
+  // Customers resend when they have not seen an acknowledgement. A bare repeat
+  // is the same request sent twice, not a request for two.
+  const { id: postId } = await shelfPost()
+  const first = await ingestImageReply({
+    postId, sender: "628111019159", messageId: "first",
+    replyPath: FIXTURES.ticked, caption: "",
+  })
+  const second = await ingestImageReply({
+    postId, sender: "628111019159", messageId: "second",
+    replyPath: FIXTURES.ticked, caption: "",
+  })
+
+  assert.equal(first.claimIds.length, 2)
+  assert.equal(second.claimIds.length, 0, "the repeat adds nothing")
+
+  const slots = await listSlots(postId)
+  assert.ok(
+    slots.every((s) => s.claimed === 1),
+    `each item wanted once, got ${slots.map((s) => s.claimed).join(",")}`,
+  )
+})
+
+test("a different customer marking the same item is not a repeat", async () => {
+  const { id: postId } = await shelfPost()
+  await ingestImageReply({
+    postId, sender: "628111019159", messageId: "a",
+    replyPath: FIXTURES.ticked, caption: "",
+  })
+  const other = await ingestImageReply({
+    postId, sender: "628999888777", messageId: "b",
+    replyPath: FIXTURES.ticked, caption: "",
+  })
+
+  assert.equal(other.claimIds.length, 2, "two people wanting one thing is two orders")
+  const slots = await listSlots(postId)
+  assert.ok(slots.every((s) => s.claimed === 2))
+})
