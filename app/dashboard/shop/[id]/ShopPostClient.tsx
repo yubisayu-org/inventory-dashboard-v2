@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import { senderDigits, claimedAt } from "@/lib/format"
+import { alternativeSizes } from "@/lib/claims/size"
 
 interface Slot {
   id: number
@@ -22,6 +23,8 @@ interface Claim {
   quantity: number
   obtained: number
   note: string
+  /** Set once a different size has been agreed. Null means the note stands. */
+  size: string | null
   state: string
   createdAt: string
 }
@@ -69,6 +72,32 @@ export default function ShopPostClient({ postId }: { postId: number }) {
       setError(body.error ?? "Failed to save")
       return
     }
+    setOpenSlot(null)
+    setVersion((v) => v + 1)
+    load()
+  }
+
+  /**
+   * Take her up on a size she offered herself.
+   *
+   * She wrote "kalau 95 nggak ada, 100 juga boleh" when she ordered, so the
+   * consent already exists in writing and nothing needs to be sent or waited
+   * for. The bot never acts on that sentence by itself — it only shows it — so
+   * this is the owner reading her words and agreeing on the spot.
+   */
+  async function swap(claimId: number, size: string) {
+    const res = await fetch(`/api/whatsapp/claims/${claimId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ size }),
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ error: "Failed to save" }))
+      setError(body.error ?? "Failed to save")
+      return
+    }
+    // Her claim has moved to another slot, so this one's counts changed and the
+    // sheet is looking at a slot that may no longer hold her.
     setOpenSlot(null)
     setVersion((v) => v + 1)
     load()
@@ -156,6 +185,7 @@ export default function ShopPostClient({ postId }: { postId: number }) {
           onClose={() => setOpenSlot(null)}
           onSave={(n) => save(slot.id, n)}
           onRename={(label) => rename(slot.id, label)}
+          onSwap={swap}
         />
       ) : null}
     </div>
@@ -163,13 +193,14 @@ export default function ShopPostClient({ postId }: { postId: number }) {
 }
 
 function SlotSheet({
-  slot, claims, onClose, onSave, onRename,
+  slot, claims, onClose, onSave, onRename, onSwap,
 }: {
   slot: Slot
   claims: Claim[]
   onClose: () => void
   onSave: (bought: number) => void
   onRename: (label: string) => void
+  onSwap: (claimId: number, size: string) => void
 }) {
   const [count, setCount] = useState(slot.bought)
   const [label, setLabel] = useState(slot.label)
@@ -255,6 +286,8 @@ function SlotSheet({
           </button>
         </div>
 
+        <FallbackPanel claims={claims} onSwap={onSwap} />
+
         {short > 0 && claims.length > 0 ? <ShortPanel claims={claims} count={count} /> : null}
 
         <button
@@ -265,6 +298,59 @@ function SlotSheet({
           Save
         </button>
       </div>
+    </div>
+  )
+}
+
+/**
+ * Sizes the customer offered herself, ready to take up.
+ *
+ * "Size 95, kalau nggak ada 100 juga boleh" is common and, until now, dead
+ * text: the claim filed under 95 and the sentence went unread by anything. The
+ * bot still will not act on it — a sentence can as easily say "definitely not
+ * 100" — so her exact words sit beside the button and the owner, who can read
+ * them, decides.
+ *
+ * Shown only while a swap is still possible: nothing to offer, or the shelf is
+ * already counted short for another reason, and the panel stays out of the way.
+ */
+function FallbackPanel({
+  claims, onSwap,
+}: {
+  claims: Claim[]
+  onSwap: (claimId: number, size: string) => void
+}) {
+  const offers = claims
+    .filter((claim) => claim.size === null)
+    .map((claim) => ({ claim, sizes: alternativeSizes(claim.note) }))
+    .filter(({ sizes }) => sizes.length > 0)
+
+  if (offers.length === 0) return null
+
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-amber-200 bg-amber-50 p-2">
+      {offers.map(({ claim, sizes }) => (
+        <div key={claim.id} className="flex flex-col gap-1.5">
+          <div className="text-xs">
+            <span className="font-semibold">{claim.customer ?? senderDigits(claim.sender)}</span>
+            <span className="text-gray-600"> also wrote </span>
+            <span className="font-semibold tabular-nums">{sizes.join(", ")}</span>
+          </div>
+          <div className="text-[11px] text-gray-600 leading-snug">“{claim.note}”</div>
+          <div className="flex gap-1.5">
+            {sizes.map((size) => (
+              <button
+                key={size}
+                type="button"
+                onClick={() => onSwap(claim.id, size)}
+                className="rounded-full border border-amber-300 bg-white px-3 py-1 text-xs font-bold text-amber-700"
+              >
+                Switch to {size}
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }

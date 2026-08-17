@@ -4,6 +4,7 @@ import sql from "@/lib/db-pool"
 import { normalizeCustomer } from "@/lib/db/helpers"
 import { markClaimObtained } from "@/lib/db/claims"
 import { linkSenderToCustomer } from "@/lib/whatsapp/identity"
+import { swapClaimSize } from "@/lib/whatsapp/swap"
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -54,6 +55,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       await markClaimObtained(id, obtained)
     }
 
+    // The size she has agreed to take instead of the one she asked for. Her note
+    // is left saying what she wrote, plus the swap — see swapClaimSize.
+    if (typeof body.size === "string" && body.size.trim()) {
+      await swapClaimSize(id, body.size)
+    }
+
     if (typeof body.state === "string") {
       if (!STATES.includes(body.state as (typeof STATES)[number])) {
         return NextResponse.json(
@@ -66,7 +73,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
     return NextResponse.json({ success: true })
   } catch (err) {
-    if (err instanceof Error && /no such customer|both required/.test(err.message)) {
+    if (err instanceof Error && /no such customer|both required|not a size|already been named/.test(err.message)) {
       return NextResponse.json({ error: err.message }, { status: 400 })
     }
     console.error("Failed to update claim:", err)
