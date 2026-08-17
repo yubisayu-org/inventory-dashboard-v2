@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
-import { PRICING_METHODS, PRICING_METHOD_LABEL } from "@/lib/pricing"
+import { PRICING_METHODS, PRICING_METHOD_LABEL, type PricingMethod } from "@/lib/pricing"
 import { fmt, senderDigits, claimedAt } from "@/lib/format"
 
 interface Slot {
@@ -35,7 +35,10 @@ interface Payload {
     id: number
     event: string
     store: string
-    pricingMethod: string
+    /** Null while the post is still following the WhatsApp setting. */
+    pricingMethod: PricingMethod | null
+    /** What that amounts to right now, so the option can be named. */
+    effectivePricingMethod: PricingMethod
     countryId: number | null
   }
   slots: Slot[]
@@ -94,17 +97,22 @@ export default function PostReviewClient({ postId }: { postId: number }) {
           </p>
         </div>
 
-        {/* A post keeps the pricing method it was captured with, so changing the
-            WhatsApp default later does not reach back and reprice a morning's
-            shelves. A shelf cannot be re-posted, though, so a wrong one has to
-            be correctable here. */}
+        {/* Normally left on Default, which follows Settings → WhatsApp, so
+            changing that setting moves every shelf that has not been named yet.
+            Picking a method here opts this one shelf out — for a store priced
+            differently from the rest of the trip. Naming pins whatever was in
+            force, because from then on it is a price customers have been
+            quoted. */}
         <label className="flex items-center gap-2 text-xs text-gray-500 shrink-0">
           Pricing
           <select
-            value={data.post.pricingMethod}
+            value={data.post.pricingMethod ?? ""}
             onChange={(e) => setPricingMethod(e.target.value)}
             className="border border-cream-border rounded-lg px-2 py-1.5 text-sm bg-white"
           >
+            <option value="">
+              Default · {PRICING_METHOD_LABEL[data.post.effectivePricingMethod]}
+            </option>
             {PRICING_METHODS.map((method) => (
               <option key={method} value={method}>
                 {PRICING_METHOD_LABEL[method]}

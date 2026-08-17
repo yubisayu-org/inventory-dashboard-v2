@@ -41,7 +41,7 @@ after(async () => {
   await sql.end()
 })
 
-async function postWith(pricingMethod: PricingMethod, countryId: number | null) {
+async function postWith(pricingMethod: PricingMethod | null, countryId: number | null) {
   return createPost({
     event: EVENT, imagePath: FIXTURES.original, imageWidth: 1600, imageHeight: 2133,
     store: "Nishimatsuya", countryId, pricingMethod, note: "", safeHues: [130],
@@ -202,6 +202,62 @@ test("what was bought in the shop lands on the orders naming creates", async () 
   assert.equal(orders[1].unit, 1)
   assert.equal(orders[1].unit_buy ?? 0, 0, "the claim that missed out is recorded as unbought")
   assert.ok(postId > 0)
+})
+
+/** A slot on a post that is following the WhatsApp setting. */
+async function inheritingSlot() {
+  const { id: postId } = await postWith(null, JAPAN)
+  const { id: claimId } = await addClaim({
+    postId, sender: "1", customer: HANDLE, source: "ink", point: { x: 0.5, y: 0.5 },
+    variantId: null, quantity: 1, note: "", confidence: 1, state: "pending", messageId: "",
+  })
+  await setSlots(postId, [
+    { point: { x: 0.5, y: 0.5 }, variantId: null, size: "", claimIds: [claimId] },
+  ])
+  const [slot] = await listSlots(postId)
+  return { postId, slot }
+}
+
+test("a post with no method of its own is priced by the WhatsApp setting", async () => {
+  const { postId, slot } = await inheritingSlot()
+  const expected = (await getProductDefaults()).whatsappPricingMethod
+
+  const { productId } = await name({
+    slotId: slot.id, name: `Inherited ${process.hrtime.bigint()}`, valas: 1699, gram: 250,
+    // Target Price is the one method that cannot derive its own price. Sent
+    // unconditionally: every other method ignores it.
+    price: 450000,
+  })
+
+  const [product] = await sql`SELECT pricing_method FROM products WHERE id = ${productId}`
+  assert.equal(product.pricing_method, expected, "the setting decides, not the capture-time copy")
+
+  const [post] = await sql`SELECT pricing_method FROM wa_posts WHERE id = ${postId}`
+  assert.equal(
+    post.pricing_method, expected,
+    "naming pins the method, so a later settings change cannot disagree with the orders",
+  )
+})
+
+test("a post with a method of its own keeps it when named", async () => {
+  const { id: postId } = await postWith("flat_fee", JAPAN)
+  const { id: claimId } = await addClaim({
+    postId, sender: "1", customer: HANDLE, source: "ink", point: { x: 0.5, y: 0.5 },
+    variantId: null, quantity: 1, note: "", confidence: 1, state: "pending", messageId: "",
+  })
+  await setSlots(postId, [
+    { point: { x: 0.5, y: 0.5 }, variantId: null, size: "", claimIds: [claimId] },
+  ])
+  const [slot] = await listSlots(postId)
+
+  const { productId } = await name({
+    slotId: slot.id, name: `Pinned ${process.hrtime.bigint()}`, valas: 1699, gram: 250,
+  })
+
+  const [product] = await sql`SELECT pricing_method FROM products WHERE id = ${productId}`
+  assert.equal(product.pricing_method, "flat_fee")
+  const [post] = await sql`SELECT pricing_method FROM wa_posts WHERE id = ${postId}`
+  assert.equal(post.pricing_method, "flat_fee", "freezing must never overwrite a deliberate choice")
 })
 
 test("a size becomes part of the product name, as the catalogue spells it", async () => {

@@ -3,6 +3,7 @@ import { requireSession, requireRole, requireOwner } from "@/lib/api"
 import sql from "@/lib/db-pool"
 import { toPricingMethod } from "@/lib/pricing"
 import { getPost, listSlots, listClaims } from "@/lib/db/claims"
+import { effectivePricingMethod } from "@/lib/whatsapp/pricing-method"
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -24,8 +25,19 @@ export async function GET(_req: Request, { params }: Params) {
     const post = await getPost(id)
     if (post === null) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
-    const [slots, claims] = await Promise.all([listSlots(id), listClaims(id)])
-    return NextResponse.json({ post, slots, claims }, { headers: { "Cache-Control": "no-store" } })
+    const [slots, claims, effective] = await Promise.all([
+      listSlots(id),
+      listClaims(id),
+      effectivePricingMethod(post),
+    ])
+    // Both are sent: pricingMethod says whether the post is following the
+    // setting (null) or pinned, and effectivePricingMethod says what that
+    // amounts to right now. A screen needs the first to render the control and
+    // the second to name the option inside it.
+    return NextResponse.json(
+      { post: { ...post, effectivePricingMethod: effective }, slots, claims },
+      { headers: { "Cache-Control": "no-store" } },
+    )
   } catch (err) {
     console.error("Failed to load WhatsApp post:", err)
     return NextResponse.json({ error: "Failed to load" }, { status: 500 })
@@ -33,13 +45,12 @@ export async function GET(_req: Request, { params }: Params) {
 }
 
 /**
- * Correct what a post was captured with.
+ * Correct what a post will be priced with.
  *
- * A post snapshots the store and pricing method at capture time, and changing
- * the global default afterwards deliberately does not reach back — a setting
- * edited in the evening must not silently reprice a morning's shelves. But a
- * shelf captured under the wrong method cannot be re-posted either, so it has
- * to be correctable here.
+ * A post follows the WhatsApp setting until one of its SKU is named, so most
+ * shelves never need this: changing the setting moves all of them at once. It
+ * exists for the shelf that is the exception — a different store, a one-off
+ * arrangement — and null puts that shelf back under the setting.
  *
  * Owner-only: this decides what every SKU on the shelf will cost.
  */
@@ -56,7 +67,14 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
     const body = await req.json()
 
-    if (typeof body.pricingMethod === "string") {
+    // Null — or the empty string a <select> sends for its blank option — means
+    // "follow the setting again", which is a different instruction from any
+    // method and so cannot go through toPricingMethod.
+    if (body.pricingMethod === null || body.pricingMethod === "") {
+      await sql`
+        UPDATE wa_posts SET pricing_method = NULL, updated_at = NOW() WHERE id = ${id}
+      `
+    } else if (typeof body.pricingMethod === "string") {
       await sql`
         UPDATE wa_posts SET pricing_method = ${toPricingMethod(body.pricingMethod)},
                             updated_at = NOW()

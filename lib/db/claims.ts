@@ -14,7 +14,12 @@ export interface WaPost {
   imageHeight: number
   store: string
   countryId: number | null
-  pricingMethod: PricingMethod
+  /**
+   * The method this shelf is priced with, or null to follow the WhatsApp
+   * setting. Null is resolved by effectivePricingMethod and frozen to a concrete
+   * value the first time a SKU on the post is named — see migration 068.
+   */
+  pricingMethod: PricingMethod | null
   note: string
   safeHues: number[]
   /** The WhatsApp message this post was sent as. Empty for dashboard uploads. */
@@ -72,7 +77,8 @@ export async function createPost(input: {
   imageHeight: number
   store: string
   countryId: number | null
-  pricingMethod: PricingMethod
+  /** Null follows the WhatsApp default until the post is named. */
+  pricingMethod: PricingMethod | null
   note: string
   safeHues: number[]
   messageId?: string
@@ -99,7 +105,9 @@ function mapPost(r: Record<string, unknown>): WaPost {
     imageHeight: (r.image_height as number) ?? 0,
     store: (r.store as string) ?? "",
     countryId: (r.country_id as number | null) ?? null,
-    pricingMethod: toPricingMethod(r.pricing_method),
+    // Null is a real answer here — "ask the setting" — so it survives rather
+    // than being narrowed to overseas the way a bad string is.
+    pricingMethod: r.pricing_method === null ? null : toPricingMethod(r.pricing_method),
     note: (r.note as string) ?? "",
     safeHues: ((r.safe_hues as number[]) ?? []).map(Number),
     messageId: (r.message_id as string) ?? "",

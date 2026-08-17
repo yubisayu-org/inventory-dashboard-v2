@@ -5,6 +5,7 @@ import { addProduct } from "@/lib/db/catalog"
 import { appendOrders } from "@/lib/db/orders"
 import { getProductDefaults } from "@/lib/db/settings"
 import { getPost, listClaims } from "@/lib/db/claims"
+import { effectivePricingMethod, freezePricingMethod } from "./pricing-method"
 import type { OrderRow } from "@/lib/db/types"
 
 /**
@@ -65,9 +66,14 @@ export async function nameSlot(input: {
     )
   }
 
+  // A post that never had a method picked for it follows the WhatsApp setting,
+  // and is pinned to whatever that says below — naming is where a preference
+  // turns into an invoiced price.
+  const pricingMethod = await effectivePricingMethod(post)
+
   // The one method whose price a human decides rather than a formula derives.
   // Defaulting it would invent a selling price out of nothing.
-  if (post.pricingMethod === "target_price" && !(Number(input.price) > 0)) {
+  if (pricingMethod === "target_price" && !(Number(input.price) > 0)) {
     throw new Error(`slot ${input.slotId} is on a Target Price post, which needs a price`)
   }
 
@@ -88,7 +94,7 @@ export async function nameSlot(input: {
   // through. Running the same shared function here keeps the two identical
   // without changing where the authority lives.
   const overseasPrice =
-    post.pricingMethod === "overseas"
+    pricingMethod === "overseas"
       ? calcAbroadPrice({
           valas: input.valas,
           kurs,
@@ -110,7 +116,7 @@ export async function nameSlot(input: {
     operationalFee: defaults.operationalFee,
     packingFee: defaults.packingFee,
     // Zero for every method the server prices itself, which then ignores it.
-    price: post.pricingMethod === "target_price" ? Number(input.price) : overseasPrice,
+    price: pricingMethod === "target_price" ? Number(input.price) : overseasPrice,
     cost: 0,
   }
 
@@ -124,7 +130,7 @@ export async function nameSlot(input: {
 
   return sql.begin(async (tx) => {
     const priced = await computeProductPrice({
-      pricingMethod: post.pricingMethod,
+      pricingMethod,
       flatFeeMode: "fixed",
       countryId: post.countryId,
       body,
@@ -141,7 +147,7 @@ export async function nameSlot(input: {
       kurs,
       tieredKurs: priced.tieredKurs,
       cargoPerKg,
-      pricingMethod: post.pricingMethod,
+      pricingMethod,
       flatFeeMode: "fixed",
       profitPct: defaults.profitPct,
       operationalFee: defaults.operationalFee,
@@ -183,6 +189,12 @@ export async function nameSlot(input: {
       UPDATE wa_slots SET product_id = ${productId}, updated_at = NOW()
       WHERE id = ${input.slotId}
     `
+
+    // From here the shelf has a price on somebody's invoice, so it stops
+    // following the setting. In the same transaction as the product, because a
+    // post frozen without its product — or priced without being frozen — is a
+    // shelf whose remaining SKU could be named at a different method tomorrow.
+    await freezePricingMethod(post.id, pricingMethod, tx)
 
     return { productId, orderCount: claims.length }
   })

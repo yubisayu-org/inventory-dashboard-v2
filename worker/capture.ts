@@ -5,7 +5,6 @@ import { downloadMediaMessage } from "baileys"
 import type { WAMessage, WASocket } from "baileys"
 import { hueHistogram, loadRgb, safePenHues } from "@/lib/claims"
 import { createPost, findPostByMessage } from "@/lib/db/claims"
-import { getProductDefaults } from "@/lib/db/settings"
 import { currentCapture, isBotAdmin } from "@/lib/db/whatsapp-groups"
 import { uploadPostImage } from "@/lib/storage"
 import sql from "@/lib/db-pool"
@@ -68,7 +67,6 @@ export async function capturePost(input: {
     const path = `${event}/${input.messageId}.jpg`
     await uploadPostImage(path, buffer, "image/jpeg")
 
-    const defaults = await getProductDefaults()
     const { id } = await createPost({
       event,
       imagePath: path,
@@ -77,7 +75,10 @@ export async function capturePost(input: {
       store: capture.store,
       // Country comes from the event, which is where a trip's currency lives.
       countryId: await countryForEvent(event),
-      pricingMethod: defaults.whatsappPricingMethod,
+      // Left to follow the WhatsApp setting rather than copying it now. A shelf
+      // captured this morning and a setting changed this afternoon should agree
+      // when the shelf is finally named tonight.
+      pricingMethod: null,
       note: input.caption,
       safeHues: hues,
       messageId: input.messageId,
