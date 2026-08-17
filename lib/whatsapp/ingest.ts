@@ -141,7 +141,11 @@ export async function recluster(postId: number): Promise<void> {
     const bySize = new Map<string, number[]>()
     for (const index of cluster.members) {
       const claim = positioned[index]
-      const size = normalizeSize(claim.note)
+      // An agreed size beats the written one. Re-reading the note here would
+      // undo every swap on the next claim to land, because the note still says
+      // what she originally asked for — deliberately, since that is what her
+      // invoice shows.
+      const size = claim.size ?? normalizeSize(claim.note)
       const list = bySize.get(size) ?? []
       list.push(claim.id)
       bySize.set(size, list)

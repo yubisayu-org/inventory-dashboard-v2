@@ -23,20 +23,52 @@ const LETTER_SIZES = ["XXXL", "XXL", "XL", "S", "M", "L"] as const
  * text". This only decides which slot the claim belongs to.
  */
 export function normalizeSize(note: string): string {
-  const text = note.toLowerCase()
+  return sizesIn(note)[0] ?? ""
+}
 
-  // Numbers first: they are unambiguous once the range filter has run, whereas
-  // a stray "l" inside a word is not.
+/**
+ * Every size mentioned in a note, in the order written.
+ *
+ * The first is what normalizeSize returns and what the claim is filed under.
+ * The rest are the ones people add themselves — "size 95, kalau nggak ada 100
+ * juga boleh" — and are never acted on automatically: the sentence around them
+ * could as easily be "definitely not 100". They are shown to the owner beside
+ * her actual words, and it is the owner who decides.
+ */
+export function sizesIn(note: string): string[] {
+  const text = note.toLowerCase()
+  const found: string[] = []
+
   for (const match of text.matchAll(/\d+/g)) {
     const value = Number(match[0])
-    if (value >= MIN_NUMERIC_SIZE && value <= MAX_NUMERIC_SIZE) return String(value)
+    if (value < MIN_NUMERIC_SIZE || value > MAX_NUMERIC_SIZE) continue
+    const size = String(value)
+    if (!found.includes(size)) found.push(size)
   }
 
   // Letters must stand alone. Word boundaries stop "lucu" reading as L and
   // "kalau" reading as... nothing in particular, but the same rule covers both.
+  //
+  // Sorted by where they appear so "M atau L" reads M first, matching the
+  // numeric pass. LETTER_SIZES is ordered longest-first for matching, which is
+  // not the order anybody wrote them in.
+  const letters: { size: string; at: number }[] = []
   for (const size of LETTER_SIZES) {
-    if (new RegExp(`(^|[^a-z])${size.toLowerCase()}([^a-z]|$)`).test(text)) return size
+    const at = text.search(new RegExp(`(^|[^a-z])${size.toLowerCase()}([^a-z]|$)`))
+    if (at !== -1) letters.push({ size, at })
+  }
+  for (const { size } of letters.sort((a, b) => a.at - b.at)) {
+    if (!found.includes(size)) found.push(size)
   }
 
-  return ""
+  return found
+}
+
+/**
+ * Sizes she mentioned beyond the one she is filed under.
+ *
+ * A suggestion for the owner, never an instruction to the machine.
+ */
+export function alternativeSizes(note: string): string[] {
+  return sizesIn(note).slice(1)
 }

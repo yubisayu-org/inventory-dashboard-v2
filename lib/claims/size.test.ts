@@ -1,6 +1,6 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { normalizeSize } from "./size"
+import { normalizeSize, sizesIn, alternativeSizes } from "./size"
 
 test("a numeric size is found however it is introduced", () => {
   assert.equal(normalizeSize("size 90"), "90")
@@ -45,4 +45,32 @@ test("a bare letter that is really a word is not a size", () => {
   // "l" inside a word must not read as size L.
   assert.equal(normalizeSize("lucu banget"), "")
   assert.equal(normalizeSize("mau kalau ada"), "")
+})
+
+test("every size in a note is listed, in the order written", () => {
+  assert.deepEqual(sizesIn("size 95, kalau nggak ada 100 juga boleh"), ["95", "100"])
+  assert.deepEqual(sizesIn("M atau L boleh"), ["M", "L"])
+  assert.deepEqual(sizesIn("size 90"), ["90"])
+  assert.deepEqual(sizesIn("mau 2 pcs"), [], "a quantity is not a size, however many are listed")
+})
+
+test("a size repeated is listed once", () => {
+  // "95 → Size 95" happens when a swap is undone by hand.
+  assert.deepEqual(sizesIn("size 95 → Size 95"), ["95"])
+})
+
+test("alternatives are everything past the size she is filed under", () => {
+  assert.deepEqual(alternativeSizes("size 95, kalau nggak ada 100 juga boleh"), ["100"])
+  assert.deepEqual(alternativeSizes("size 95"), [], "no alternative is the normal case")
+  assert.deepEqual(
+    alternativeSizes("95 atau 100 atau 110"), ["100", "110"],
+    "a customer may hedge more than once",
+  )
+})
+
+test("a swapped note still reports the original as the size asked for", () => {
+  // The note keeps her words and gains the agreement; the claim's own size
+  // column is what actually moves it. Parsing must not quietly do that job.
+  assert.equal(normalizeSize("Size 95 → Size 100"), "95")
+  assert.deepEqual(sizesIn("Size 95 → Size 100"), ["95", "100"])
 })

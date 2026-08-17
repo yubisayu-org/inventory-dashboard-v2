@@ -43,6 +43,11 @@ export interface WaClaim {
   /** How many of this claim were actually bought. The slot's total is the sum. */
   obtained: number
   note: string
+  /**
+   * The size agreed after the fact, when the one asked for was not there.
+   * Null means the note still speaks for itself, which is the normal case.
+   */
+  size: string | null
   confidence: number
   state: ClaimState
   messageId: string
@@ -225,6 +230,7 @@ function mapClaim(r: Record<string, unknown>): WaClaim {
     quantity: (r.quantity as number) ?? 1,
     obtained: (r.obtained as number) ?? 0,
     note: (r.note as string) ?? "",
+    size: (r.size as string | null) ?? null,
     confidence: Number(r.confidence ?? 1),
     state: r.state as ClaimState,
     messageId: (r.message_id as string) ?? "",
