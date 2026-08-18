@@ -39,9 +39,6 @@ interface PostPayload {
 const tone = (claimed: number, bought: number) =>
   bought >= claimed ? "text-green-700" : bought > 0 ? "text-amber-600" : "text-red-700"
 
-const dot = (claimed: number, bought: number) =>
-  bought >= claimed ? "bg-green-600" : bought > 0 ? "bg-amber-500" : "bg-red-600"
-
 export default function ShopPostClient({ postId }: { postId: number }) {
   const [data, setData] = useState<PostPayload | null>(null)
   const [error, setError] = useState("")
@@ -162,7 +159,6 @@ export default function ShopPostClient({ postId }: { postId: number }) {
             key={s.id}
             className="flex items-center gap-3 px-4 py-3 border-b border-cream-border last:border-b-0"
           >
-            <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${dot(s.claimed, s.bought)}`} />
             {/* A database id says nothing about which pyjamas these are. The
                 crop does, and it is the only label an unnamed SKU has. */}
             {s.point ? (
