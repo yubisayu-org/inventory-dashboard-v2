@@ -496,6 +496,10 @@ function SlotCard({
           // Only where there is still something to name. A slot that already
           // became a product wants the late-orders button on the card, not a
           // second form that would refuse.
+          // Unfolded when there is naming to do, folded once the product
+          // exists — the visit is to type in the first case and to look in the
+          // second.
+          startOpen={slot.productId === null}
           // Present whether or not the slot is named: unnamed it is the form,
           // named it is the record — with the orders button live if somebody on
           // this slot still has none.

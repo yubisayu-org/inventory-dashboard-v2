@@ -14,7 +14,7 @@ const ZOOM_STEPS = [0.4, 0.28, 0.18, 0.12]
  * more of the label.
  */
 export default function SlotZoom({
-  slotId, onClose, form, caption,
+  slotId, onClose, form, caption, startOpen = false,
 }: {
   slotId: number
   onClose: () => void
@@ -31,10 +31,7 @@ export default function SlotZoom({
   caption?: string
 }) {
   const [step, setStep] = useState(1)
-  // Closed to start with: the crop is why this screen opens, and on a naming
-  // pass the fields are one tap away rather than permanently taking a third of
-  // the picture.
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(startOpen)
   const share = ZOOM_STEPS[step]
 
   return (
@@ -136,7 +133,7 @@ export default function SlotZoom({
             onClick={() => setOpen((shown) => !shown)}
             className="flex w-full items-center gap-2 px-3 py-2.5 text-left"
           >
-            <span className="text-[11px] font-bold uppercase tracking-wide text-gray-500 truncate">
+            <span className="text-sm font-bold text-foreground truncate">
               {caption ?? "Beri nama"}
             </span>
             {/* A pencil rather than a chevron: it says what is behind the row,
