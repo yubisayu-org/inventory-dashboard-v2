@@ -134,36 +134,33 @@ export default function SlotNameForm({
         </p>
       ) : null}
 
-      {/* Naming only. Creating the product settles what the thing is and what
-          it costs; putting it on somebody's invoice is the next decision, and
-          the button below makes it — so a mistyped valas is caught before anyone
-          is charged for it. */}
-      <button
-        type="button"
-        disabled={busy || named || !name.trim()}
-        onClick={() => create(false)}
-        className={`rounded-lg bg-brand font-bold text-white disabled:opacity-40 ${
-          compact ? "py-2.5 text-sm" : "py-1.5 text-xs"
-        }`}
-      >
-        {named ? "Produk sudah dibuat" : busy ? "Membuat…" : "Buat produk"}
-      </button>
-
-      {/* Live only while somebody on this slot has no order. A named slot keeps
-          taking claims — the rack is still in the group — and this is how they
-          reach an invoice. */}
-      {named && (missing ?? 0) > 0 ? (
+      {/* Side by side, and both always present. Two acts in the order they
+          happen — the product settles what the thing is and what it costs, the
+          orders put it on invoices — and seeing the second greyed out is what
+          tells you the first has to come first. */}
+      <div className="flex gap-2">
         <button
           type="button"
-          disabled={busy}
-          onClick={addOrders}
-          className={`rounded-lg border border-amber-300 bg-white font-bold text-amber-800 disabled:opacity-40 ${
+          disabled={busy || named || !name.trim()}
+          onClick={() => create(false)}
+          className={`flex-1 rounded-lg bg-brand font-bold text-white disabled:opacity-40 ${
             compact ? "py-2.5 text-sm" : "py-1.5 text-xs"
           }`}
         >
-          {busy ? "Membuat…" : `Buat ${missing} order lagi`}
+          {named ? "Produk dibuat" : busy ? "Membuat…" : "Buat produk"}
         </button>
-      ) : null}
+
+        <button
+          type="button"
+          disabled={busy || !named || (missing ?? 0) === 0}
+          onClick={addOrders}
+          className={`flex-1 rounded-lg border border-amber-300 bg-white font-bold text-amber-800 disabled:opacity-40 ${
+            compact ? "py-2.5 text-sm" : "py-1.5 text-xs"
+          }`}
+        >
+          {(missing ?? 0) > 0 ? `Buat ${missing} order` : "Order dibuat"}
+        </button>
+      </div>
     </div>
   )
 }
