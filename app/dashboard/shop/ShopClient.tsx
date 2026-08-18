@@ -189,6 +189,7 @@ export default function ShopClient() {
         // Every shelf in a store group belongs to one trip, so the first says
         // which one the closure applies to.
         const event = group.posts[0].event
+        const claimedHere = group.posts.reduce((n, p) => n + p.claimed, 0)
         const shopShut = shut.has(`${event}|${group.key}`)
 
         return (
@@ -221,10 +222,21 @@ export default function ShopClient() {
                   the same thing at every level of this screen. */}
               <span
                 className={`flex items-center gap-1 text-sm font-bold tabular-nums shrink-0 ${
-                  group.left === 0 ? "text-green-700" : "text-red-700"
+                  claimedHere === 0
+                    ? "text-gray-300"
+                    : group.left === 0
+                      ? "text-green-700"
+                      : "text-red-700"
                 }`}
               >
-                {group.left === 0 ? (
+                {claimedHere === 0 ? (
+                  <svg
+                  width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  strokeWidth="2.4" strokeLinecap="round"
+                >
+                  <path d="M5 12h14" />
+                </svg>
+                ) : group.left === 0 ? (
                   <svg
                   width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                   strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"
@@ -298,11 +310,24 @@ export default function ShopClient() {
                           list reads it — the faded figure is context, never the
                           number acted on. */}
                       <div
+                        // Nothing claimed is grey: a rack the group ignored has
+                        // not been bought, and a tick would say it had.
                         className={`flex items-center gap-1 text-sm font-bold tabular-nums whitespace-nowrap ${
-                          left === 0 ? "text-green-700" : "text-red-700"
+                          post.claimed === 0
+                            ? "text-gray-300"
+                            : left === 0
+                              ? "text-green-700"
+                              : "text-red-700"
                         }`}
                       >
-                        {left === 0 ? (
+                        {post.claimed === 0 ? (
+                          <svg
+                  width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  strokeWidth="2.4" strokeLinecap="round"
+                >
+                  <path d="M5 12h14" />
+                </svg>
+                        ) : left === 0 ? (
                           <svg
                   width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                   strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"
