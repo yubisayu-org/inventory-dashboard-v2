@@ -214,10 +214,17 @@ export default function ShopClient() {
               >
                 <path d="m6 9 6 6 6-6" />
               </svg>
-              <span className="font-bold text-sm text-foreground truncate">{group.name}</span>
-              <span className="ml-auto text-xs text-gray-400 tabular-nums shrink-0">
-                {group.posts.length} {group.posts.length === 1 ? "shelf" : "shelves"}
+              {/* The count belongs to the name, not to the far edge: "9 shelves"
+                  says how big this shop is, which is read with the shop rather
+                  than with what is left to buy. */}
+              <span className="min-w-0 truncate text-sm font-bold text-foreground">
+                {group.name}
+                <span className="font-normal text-gray-400 tabular-nums">
+                  {" · "}
+                  {group.posts.length} {group.posts.length === 1 ? "shelf" : "shelves"}
+                </span>
               </span>
+              <span className="ml-auto" />
               {/* The same basket and tick the shelf rows use, so a count means
                   the same thing at every level of this screen. */}
               <span
