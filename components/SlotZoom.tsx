@@ -49,6 +49,14 @@ export default function SlotZoom({
         className="relative w-[min(90vw,640px)] shrink-0"
         onClick={(e) => e.stopPropagation()}
       >
+        {caption ? (
+          // Above the picture rather than below it: it names what is on screen,
+          // and a label under the thing it labels is read second.
+          <p className="rounded-t-xl bg-white px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-gray-500 truncate">
+            {caption}
+          </p>
+        ) : null}
+
         {/* eslint-disable-next-line @next/next/no-img-element -- our own crop route. */}
         <img
           src={`/api/whatsapp/slots/${slotId}/thumb?share=${share}`}
@@ -60,7 +68,7 @@ export default function SlotZoom({
           type="button"
           onClick={onClose}
           aria-label="Close"
-          className="absolute top-2 right-2 w-9 h-9 rounded-full bg-black/60 text-white flex items-center justify-center"
+          className="absolute top-12 right-2 w-9 h-9 rounded-full bg-black/60 text-white flex items-center justify-center"
         >
           <svg
             width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -74,7 +82,7 @@ export default function SlotZoom({
         {/* Top left, in a column. Clear of the fields below the picture and of
             the close button opposite, so nothing has to move when either
             appears. */}
-        <div className="absolute left-2 top-2 flex flex-col items-center gap-1 rounded-full bg-black/60 px-1.5 py-2">
+        <div className="absolute left-2 top-12 flex flex-col items-center gap-1 rounded-full bg-black/60 px-1.5 py-2">
           <button
             type="button"
             onClick={() => setStep((n) => Math.min(ZOOM_STEPS.length - 1, n + 1))}
@@ -125,11 +133,6 @@ export default function SlotZoom({
           scrolls the page instead of fighting the sheet for room. */}
       {form ? (
         <div className="w-full max-w-[min(90vw,640px)] rounded-b-xl bg-white p-3 lg:hidden" onClick={(e) => e.stopPropagation()}>
-          {caption ? (
-            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500 truncate mb-2">
-              {caption}
-            </p>
-          ) : null}
           {form}
         </div>
       ) : null}
@@ -138,11 +141,6 @@ export default function SlotZoom({
           fields sit beside it. Naming happens at a desk more often than not. */}
       {form ? (
         <div className="hidden lg:block w-80 rounded-xl bg-white p-4" onClick={(e) => e.stopPropagation()}>
-          {caption ? (
-            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500 truncate mb-2">
-              {caption}
-            </p>
-          ) : null}
           {form}
         </div>
       ) : null}
