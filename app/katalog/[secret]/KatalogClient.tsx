@@ -256,30 +256,6 @@ function MarkSheet({
   /** Every rack she has circled something on, in the order she saw them. */
   const marked = shelves.filter((each) => (byShelf[each.id] ?? []).length > 0)
 
-  /**
-   * Save every marked rack in one tap.
-   *
-   * Fired synchronously, with no await between files: a browser only treats a
-   * download as wanted if it happens inside the gesture that asked for it, and
-   * anything awaited first has already ended that gesture — which is why a
-   * spaced-out burst made Safari ask three separate times.
-   *
-   * Even so this is the consolation prize. Over HTTPS the share sheet takes all
-   * three at once and no saving happens at all; these downloads exist for the
-   * plain-http dev server and for phones without the share API.
-   */
-  function saveAll(items: { id: number; url: string }[]) {
-    for (const item of items) {
-      const link = document.createElement("a")
-      link.href = item.url
-      link.download = `rak-${item.id}.jpg`
-      link.rel = "noopener"
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-    }
-  }
-
   async function share() {
     setBusy(true)
 
@@ -362,8 +338,8 @@ function MarkSheet({
         {saved ? (
           <div className="flex flex-col items-center gap-4 py-2">
             <p className="text-xs text-white/80 text-center leading-snug">
-              Simpan {saved.length === 1 ? "gambar ini" : `${saved.length} gambar ini`} lewat
-              tombol di bawah, lalu kirim ke grup
+              Simpan {saved.length === 1 ? "gambar ini" : `${saved.length} gambar ini`} satu per
+              satu, lalu kirim ke grup
             </p>
             {saved.map((item) => (
               <div key={item.id} className="w-full flex flex-col items-center gap-2">
@@ -373,12 +349,17 @@ function MarkSheet({
                   alt={item.store}
                   className="max-w-full max-h-[60vh] object-contain rounded-lg"
                 />
+                {/* One button per picture, because a phone saves one file
+                    per tap: iOS allows a single download per gesture whatever
+                    the page does, so a combined button would promise three and
+                    deliver one. Over HTTPS none of this appears — the share
+                    sheet takes them all at once. */}
                 <a
                   href={item.url}
                   download={`rak-${item.id}.jpg`}
-                  className="text-[11px] text-white/70 underline"
+                  className="w-full max-w-xs rounded-xl bg-white px-4 py-2 text-sm font-bold text-center text-foreground"
                 >
-                  Simpan {item.store} saja
+                  Simpan · {item.store}
                 </a>
               </div>
             ))}
@@ -432,27 +413,18 @@ function MarkSheet({
 
       <div className="flex items-center gap-2 p-3 shrink-0">
         {saved ? (
-          <>
-            <button
-              type="button"
-              onClick={() => {
-                // The blobs stay alive for the tab's lifetime otherwise, and a
-                // customer marking rack after rack would accumulate megabytes.
-                saved.forEach((item) => URL.revokeObjectURL(item.url))
-                setSaved(null)
-              }}
-              className="rounded-xl border border-white/30 px-4 py-2.5 text-sm font-semibold text-white"
-            >
-              Kembali
-            </button>
-            <button
-              type="button"
-              onClick={() => saveAll(saved)}
-              className="flex-1 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-foreground"
-            >
-              {saved.length === 1 ? "Simpan gambar" : `Simpan ${saved.length} gambar`}
-            </button>
-          </>
+          <button
+            type="button"
+            onClick={() => {
+              // The blobs stay alive for the tab's lifetime otherwise, and a
+              // customer marking rack after rack would accumulate megabytes.
+              saved.forEach((item) => URL.revokeObjectURL(item.url))
+              setSaved(null)
+            }}
+            className="flex-1 rounded-xl border border-white/30 px-4 py-2.5 text-sm font-semibold text-white"
+          >
+            Kembali
+          </button>
         ) : (
         <>
         <button
