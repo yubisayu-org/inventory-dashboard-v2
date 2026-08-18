@@ -428,6 +428,17 @@ async function main() {
         } catch (err) {
           // One bad message must not take the socket down with it.
           console.error("failed to handle a message:", err)
+
+          // And it must not look like nothing happened. Every rejection in this
+          // worker is silent by design, so a genuine fault — an image format
+          // sharp cannot read, a bucket that refused the upload — is
+          // indistinguishable from "not for me" to the person who sent it. 😢
+          // is the same thing an unmatched photo already gets: it arrived, it
+          // did not land, send it again.
+          const groupJid = message.key.remoteJid ?? ""
+          if (!message.key.fromMe && groupJid.endsWith("@g.us")) {
+            reactions?.push({ jid: groupJid, key: message.key, emoji: "😢" })
+          }
         }
       }
     })
