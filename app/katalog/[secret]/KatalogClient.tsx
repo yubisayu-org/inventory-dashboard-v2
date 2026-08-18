@@ -352,17 +352,25 @@ function MarkSheet({
                   alt={item.store}
                   className="w-full h-auto rounded-lg"
                 />
-                {/* One button per picture, because a phone saves one file
-                    per tap: iOS allows a single download per gesture whatever
-                    the page does, so a combined button would promise three and
-                    deliver one. Over HTTPS none of this appears — the share
-                    sheet takes them all at once. */}
+                {/* One control per picture, because a phone saves one file per
+                    tap: iOS allows a single download per gesture whatever the
+                    page does. An icon rather than a caption — the store name is
+                    already on the shelf above it, and three rows of prose
+                    between three pictures reads as clutter. */}
                 <a
                   href={item.url}
                   download={`rak-${item.id}.jpg`}
-                  className="w-full max-w-xs rounded-xl bg-white px-4 py-2 text-sm font-bold text-center text-foreground"
+                  aria-label={`Simpan ${item.store}`}
+                  className="w-12 h-12 rounded-full bg-white text-foreground flex items-center justify-center"
                 >
-                  Simpan · {item.store}
+                  <svg
+                    width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                  >
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
                 </a>
               </div>
             ))}
