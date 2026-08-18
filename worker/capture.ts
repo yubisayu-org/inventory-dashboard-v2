@@ -33,6 +33,17 @@ const HISTOGRAM_WIDTH = 240
 const MAX_STORED_EDGE = 3000
 
 /**
+ * JPEG quality for a shelf that had to be re-encoded.
+ *
+ * Measured against real price tags across four parts of one shelf: readable at
+ * 60, and the saving is nearly all spent by 70 — 88 to 75 sheds 600 KB, 75 to
+ * 60 only another 200, because a shelf photograph is mostly fine detail that
+ * does not compress further. 70 sits a notch above where legibility was still
+ * fine, so a darker or noisier rack has somewhere to fall.
+ */
+const STORED_QUALITY = 70
+
+/**
  * Turn a photo the owner sent into a post — if it was one.
  *
  * Three things all have to hold, and returning null for any of them is the
@@ -98,7 +109,7 @@ export async function capturePost(input: {
     const stored = oversized
       ? await sharp(scratch)
           .resize({ width: MAX_STORED_EDGE, height: MAX_STORED_EDGE, fit: "inside" })
-          .jpeg({ quality: 88 })
+          .jpeg({ quality: STORED_QUALITY })
           .toBuffer()
       : buffer
     const size = oversized ? await sharp(stored).metadata() : shot
