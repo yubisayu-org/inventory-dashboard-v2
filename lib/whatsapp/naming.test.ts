@@ -5,7 +5,7 @@ import { FIXTURES } from "../claims/fixtures"
 import { calcAbroadPrice, landedCost, type PricingMethod } from "../pricing"
 import { getProductDefaults } from "../db/settings"
 import { createPost, addClaim, setSlots, listSlots, setSlotBought } from "../db/claims"
-import { nameSlot } from "./naming"
+import { nameSlot, addMissingOrders } from "./naming"
 
 const EVENT = `TESTNAME${process.hrtime.bigint()}`
 const HANDLE = `testcust${process.hrtime.bigint()}`
@@ -321,4 +321,49 @@ test("a name that already ends in its size is not given it twice", async () => {
 
   const [product] = await sql`SELECT name FROM products WHERE id = ${productId}`
   assert.equal(product.name, `Bear Set ${stamp} 95`)
+})
+
+test("a claim arriving after naming still gets its order", async () => {
+  const { slot } = await slotWithClaims([1])
+  const { productId } = await name({
+    slotId: slot.id, name: `Late Arrival ${process.hrtime.bigint()}`, valas: 1699, gram: 250,
+  })
+
+  // The rack is still in the group and the trip is still running, so somebody
+  // claims it an hour after it was named.
+  const [post] = await sql`SELECT post_id FROM wa_slots WHERE id = ${slot.id}`
+  const { id: lateClaim } = await addClaim({
+    postId: post.post_id as number, sender: "628119990123", customer: HANDLE, source: "ink",
+    point: { x: 0.24, y: 0.78 }, variantId: null, quantity: 2, note: "mau 2",
+    confidence: 1, state: "pending", messageId: "late",
+  })
+  await sql`UPDATE wa_claims SET slot_id = ${slot.id} WHERE id = ${lateClaim}`
+
+  const result = await addMissingOrders(slot.id)
+  assert.equal(result.added, 1, "the late claim is invoiced")
+
+  const orders = await sql`SELECT unit FROM orders WHERE product_id = ${productId} ORDER BY unit`
+  assert.deepEqual(orders.map((o) => o.unit), [1, 2])
+
+  const again = await addMissingOrders(slot.id)
+  assert.equal(again.added, 0, "running it twice adds nothing")
+})
+
+test("an unresolved late claim is counted, not invoiced to nobody", async () => {
+  const { slot } = await slotWithClaims([1])
+  await name({
+    slotId: slot.id, name: `Unknown Sender ${process.hrtime.bigint()}`, valas: 100, gram: 10,
+  })
+
+  const [post] = await sql`SELECT post_id FROM wa_slots WHERE id = ${slot.id}`
+  const { id: orphan } = await addClaim({
+    postId: post.post_id as number, sender: "628119990999", customer: null, source: "ink",
+    point: { x: 0.24, y: 0.78 }, variantId: null, quantity: 1, note: "",
+    confidence: 1, state: "review", messageId: "orphan",
+  })
+  await sql`UPDATE wa_claims SET slot_id = ${slot.id} WHERE id = ${orphan}`
+
+  const result = await addMissingOrders(slot.id)
+  assert.equal(result.added, 0)
+  assert.equal(result.blocked, 1, "somebody has to say who that number is first")
 })

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, type ReactNode } from "react"
 
 /** How much of the shelf's shorter side each step shows. */
 const ZOOM_STEPS = [0.4, 0.28, 0.18, 0.12]
@@ -13,13 +13,30 @@ const ZOOM_STEPS = [0.4, 0.28, 0.18, 0.12]
  * blurrier — showing less of the shelf is the only thing that actually reveals
  * more of the label.
  */
-export default function SlotZoom({ slotId, onClose }: { slotId: number; onClose: () => void }) {
+export default function SlotZoom({
+  slotId, onClose, form, caption,
+}: {
+  slotId: number
+  onClose: () => void
+  /**
+   * The naming fields, when the viewer is allowed to name.
+   *
+   * Passed in rather than built here: the valas being typed is the number
+   * printed on the tag now filling the screen, and putting the two anywhere
+   * else means remembering a number between taps. Absent — in the shop, or for
+   * an admin — the viewer is only a viewer.
+   */
+  form?: ReactNode
+  /** What is being named, so the sheet says which SKU it belongs to. */
+  caption?: string
+}) {
   const [step, setStep] = useState(1)
+  const [naming, setNaming] = useState(false)
   const share = ZOOM_STEPS[step]
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center gap-4 bg-black/70 p-4"
       onClick={onClose}
     >
       {/* The controls sit on the picture rather than under it: at the closest
@@ -95,8 +112,59 @@ export default function SlotZoom({ slotId, onClose }: { slotId: number; onClose:
               <line x1="11" y1="8" x2="11" y2="14" />
             </svg>
           </button>
+
+          {/* Naming lives in the same strip as the zoom, because the thumb is
+              already there — with a divider, so reaching for "closer" cannot
+              commit anything. Only when a form was supplied. */}
+          {form ? (
+            <>
+              <span className="w-px h-5 bg-white/25" />
+              <button
+                type="button"
+                onClick={() => setNaming((open) => !open)}
+                aria-label={naming ? "Hide the naming fields" : "Name this item"}
+                className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                  naming ? "bg-white text-foreground" : "text-white"
+                }`}
+              >
+                <svg
+                  width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                >
+                  <path d="M12 20h9" />
+                  <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                </svg>
+              </button>
+            </>
+          ) : null}
         </div>
+
+        {/* Over the bottom of the crop on a phone, so the tag stays visible
+            above the field it is being typed into. */}
+        {form && naming ? (
+          <div className="absolute inset-x-0 bottom-0 rounded-b-xl bg-white p-3 lg:hidden">
+            {caption ? (
+              <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500 mb-2">
+                {caption}
+              </p>
+            ) : null}
+            {form}
+          </div>
+        ) : null}
       </div>
+
+      {/* On a laptop nothing has to give way: the crop keeps its size and the
+          fields sit beside it. Naming happens at a desk more often than not. */}
+      {form && naming ? (
+        <div className="hidden lg:block w-80 rounded-xl bg-white p-4" onClick={(e) => e.stopPropagation()}>
+          {caption ? (
+            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500 mb-2">
+              {caption}
+            </p>
+          ) : null}
+          {form}
+        </div>
+      ) : null}
     </div>
   )
 }

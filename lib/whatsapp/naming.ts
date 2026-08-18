@@ -186,3 +186,80 @@ export async function nameSlot(input: {
     return { productId, orderCount: claims.length }
   })
 }
+
+/**
+ * Give a late claim its order, at the product the slot already became.
+ *
+ * A shelf is named once, and customers keep claiming afterwards: the rack is
+ * still in the group, the trip is still running. Those claims land on the named
+ * slot and are counted in the tally, but nameSlot refuses a second run — so
+ * until now they reached no invoice at all. Visible in the shop, invisible in
+ * the accounts, which is the worst way to be wrong.
+ *
+ * Creates only what is missing. Claims are paired against existing orders by
+ * customer and quantity — appendOrders returns nothing to link on — so a
+ * customer who already has her line gets no second one, and running this twice
+ * adds nothing the second time.
+ *
+ * The price is the product's, not a fresh calculation: she is buying the same
+ * thing at the same price as everybody else on that slot, and re-deriving it
+ * would quietly reprice her if the kurs moved.
+ */
+export async function addMissingOrders(slotId: number): Promise<{ added: number; blocked: number }> {
+  const [slot] = await sql`
+    SELECT s.id, s.product_id, p.event
+    FROM wa_slots s JOIN wa_posts p ON p.id = s.post_id
+    WHERE s.id = ${slotId}
+  `
+  if (!slot) throw new Error(`no such slot: ${slotId}`)
+  if (slot.product_id === null) throw new Error(`slot ${slotId} has not been named yet`)
+
+  const [product] = await sql`SELECT price FROM products WHERE id = ${slot.product_id}`
+  if (!product) throw new Error(`slot ${slotId} points at a product that no longer exists`)
+
+  const claims = (await listClaims(
+    (await sql`SELECT post_id FROM wa_slots WHERE id = ${slotId}`)[0].post_id as number,
+  )).filter((c) => c.slotId === slotId && c.state !== "rejected")
+
+  // A claim whose sender was never matched to a customer has nobody to invoice.
+  // Counted and left alone rather than blocking the others: one unknown number
+  // should not hold up three orders that are ready.
+  const blocked = claims.filter((c) => c.customer === null).length
+
+  const existing = await sql`
+    SELECT customer, unit FROM orders
+    WHERE product_id = ${slot.product_id} AND event = ${slot.event}
+  `
+  const have = new Map<string, number>()
+  for (const row of existing) {
+    const key = `${row.customer}|${row.unit}`
+    have.set(key, (have.get(key) ?? 0) + 1)
+  }
+
+  const missing: OrderRow[] = []
+  for (const claim of claims) {
+    if (claim.customer === null) continue
+    const key = `${claim.customer}|${claim.quantity}`
+    const seen = have.get(key) ?? 0
+    if (seen > 0) {
+      have.set(key, seen - 1)
+      continue
+    }
+    missing.push({
+      event: slot.event as string,
+      customer: claim.customer,
+      productId: slot.product_id as number,
+      unitPrice: Number(product.price) || 0,
+      unit: claim.quantity,
+      note: claim.note,
+    })
+  }
+
+  if (missing.length > 0) {
+    await appendOrders(missing)
+    // Whatever was already counted in the shop lands on the new lines too.
+    await syncOrdersToClaims(slotId)
+  }
+
+  return { added: missing.length, blocked }
+}

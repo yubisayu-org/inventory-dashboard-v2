@@ -5,6 +5,7 @@ import Link from "next/link"
 import { PRICING_METHODS, PRICING_METHOD_LABEL, type PricingMethod } from "@/lib/pricing"
 import { fmt, senderDigits, claimedAt } from "@/lib/format"
 import SlotZoom from "@/components/SlotZoom"
+import SlotNameForm from "@/components/SlotNameForm"
 
 interface Slot {
   id: number
@@ -313,33 +314,27 @@ function SlotCard({
   needsPrice: boolean
   onDone: () => void
 }) {
-  const [name, setName] = useState(slot.label)
-  const [valas, setValas] = useState("")
-  const [gram, setGram] = useState("")
-  const [price, setPrice] = useState("")
+  const [zoom, setZoom] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
-  const [zoom, setZoom] = useState(false)
 
   const blocked = claims.some((c) => c.customer === null)
 
-  async function create() {
+  /**
+   * Orders for the claims that arrived after this slot was named.
+   *
+   * The rack stays in the group and the trip carries on, so people keep
+   * claiming a shelf that already became a product. Those claims are counted in
+   * the shop and, until this, reached no invoice at all.
+   */
+  async function addOrders() {
     setBusy(true)
     setError("")
-    const res = await fetch(`/api/whatsapp/slots/${slot.id}/name`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name,
-        valas: Number(valas) || 0,
-        gram: Number(gram) || 0,
-        ...(price ? { price: Number(price) } : {}),
-      }),
-    })
+    const res = await fetch(`/api/whatsapp/slots/${slot.id}/orders`, { method: "POST" })
     setBusy(false)
     if (!res.ok) {
-      const body = await res.json().catch(() => ({ error: "Failed to name" }))
-      setError(body.error ?? "Failed to name")
+      const body = await res.json().catch(() => ({ error: "Failed to add orders" }))
+      setError(body.error ?? "Failed to add orders")
       return
     }
     onDone()
@@ -422,70 +417,63 @@ function SlotCard({
                 </span>
               </div>
               <div className="text-[11px] text-green-800 mt-0.5">
-                {claims.length} {claims.length === 1 ? "order" : "orders"} created · product #
+                {claims.length} {claims.length === 1 ? "claim" : "claims"} · product #
                 {slot.productId}
               </div>
+              {/* A shelf keeps taking claims after it is named — the rack is
+                  still in the group and the trip is still running — and those
+                  claims used to reach the tally but no invoice. This is how they
+                  get their line, at the price everyone else on this slot paid. */}
+              <button
+                type="button"
+                onClick={addOrders}
+                disabled={busy}
+                className="mt-2 w-full rounded-lg border border-green-300 bg-white py-1.5 text-[11px] font-bold text-green-900 disabled:opacity-40"
+              >
+                {busy ? "Adding…" : "Add orders for new claims"}
+              </button>
+              {error ? <p className="text-[11px] text-red-600 mt-1">{error}</p> : null}
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-2 gap-2">
-                <input
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Product name"
-                  className="col-span-2 border border-cream-border rounded-lg px-2 py-1.5 text-sm"
-                />
-                <input
-                  value={valas}
-                  onChange={(e) => setValas(e.target.value)}
-                  inputMode="decimal"
-                  placeholder="Valas (price tag)"
-                  className="border border-cream-border rounded-lg px-2 py-1.5 text-sm"
-                />
-                <input
-                  value={gram}
-                  onChange={(e) => setGram(e.target.value)}
-                  inputMode="numeric"
-                  placeholder="Gram"
-                  className="border border-cream-border rounded-lg px-2 py-1.5 text-sm"
-                />
-                {/* Only where the method has no formula to derive a price from.
-                    Every other method computes one from the valas, the kurs and
-                    the weight, so the box was a permanent invitation to type a
-                    number that would be ignored. */}
-                {needsPrice ? (
-                  <input
-                    value={price}
-                    onChange={(e) => setPrice(e.target.value)}
-                    inputMode="numeric"
-                    placeholder="Harga jual (Target Price)"
-                    className="col-span-2 border border-cream-border rounded-lg px-2 py-1.5 text-sm"
-                  />
-                ) : null}
-              </div>
-
               {error ? <p className="text-xs text-red-600">{error}</p> : null}
-              {blocked ? (
-                <p className="text-xs text-amber-700">
-                  One of these senders is not a customer yet. Link them above first —
-                  naming now would drop their order.
-                </p>
-              ) : null}
-
-              <button
-                type="button"
-                disabled={busy || blocked || !name.trim()}
-                onClick={create}
-                className="rounded-lg bg-brand py-1.5 text-xs font-bold text-white disabled:opacity-40"
-              >
-                Create product and orders
-              </button>
+              <SlotNameForm
+                slotId={slot.id}
+                defaultName={slot.label}
+                needsPrice={needsPrice}
+                blocked={blocked}
+                onNamed={onDone}
+              />
             </>
           )}
         </div>
       </div>
 
-      {zoom ? <SlotZoom slotId={slot.id} onClose={() => setZoom(false)} /> : null}
+      {zoom ? (
+        <SlotZoom
+          slotId={slot.id}
+          onClose={() => setZoom(false)}
+          caption={`${slot.label || `SKU ${slot.id}`}${slot.size ? ` · ${slot.size}` : ""}`}
+          // Only where there is still something to name. A slot that already
+          // became a product wants the late-orders button on the card, not a
+          // second form that would refuse.
+          form={
+            slot.productId === null ? (
+              <SlotNameForm
+                slotId={slot.id}
+                defaultName={slot.label}
+                needsPrice={needsPrice}
+                blocked={blocked}
+                onNamed={() => {
+                  setZoom(false)
+                  onDone()
+                }}
+                compact
+              />
+            ) : undefined
+          }
+        />
+      ) : null}
     </div>
   )
 }
