@@ -71,15 +71,26 @@ export default function PostsClient() {
 
   return (
     <div className="flex flex-col gap-3">
-      <SearchInput
-        value={search}
-        onChange={(v) => {
-          setPage(1)
-          setSearch(v)
-        }}
-        placeholder="Search store or note…"
-        className="max-w-sm"
-      />
+      <div className="flex items-center gap-2">
+        <SearchInput
+          value={search}
+          onChange={(v) => {
+            setPage(1)
+            setSearch(v)
+          }}
+          placeholder="Search store or note…"
+          className="max-w-sm flex-1"
+        />
+        {/* The other door in. A shelf uploaded here keeps the camera's own
+            resolution, where one sent through WhatsApp comes back at about
+            1280 across. */}
+        <Link
+          href="/dashboard/wa-posts/upload"
+          className="shrink-0 rounded-xl bg-brand px-4 py-2 text-sm font-bold text-white"
+        >
+          Upload
+        </Link>
+      </div>
 
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
       {loading ? <p className="text-sm text-gray-500">Loading…</p> : null}
