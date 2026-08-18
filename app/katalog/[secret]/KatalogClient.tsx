@@ -656,6 +656,15 @@ function MarkSheet({
         >
           Undo
         </button>
+        {/* The pen stays on show at every zoom level. It was swapped for the
+            reset button while zoomed, which removed the only sign that she can
+            still draw at exactly the moment she is closest to the item and most
+            likely to want to. */}
+        <span
+          className="w-9 h-9 rounded-full border-2 border-white/60 shrink-0"
+          style={{ background: colour }}
+          aria-label="Warna pena"
+        />
         {view.k > 1 ? (
           <button
             type="button"
@@ -664,13 +673,7 @@ function MarkSheet({
           >
             {view.k.toFixed(1)}× ✕
           </button>
-        ) : (
-          <span
-            className="w-9 h-9 rounded-full border-2 border-white/60 shrink-0"
-            style={{ background: colour }}
-            aria-label="Warna pena"
-          />
-        )}
+        ) : null}
         <button
           type="button"
           onClick={share}
