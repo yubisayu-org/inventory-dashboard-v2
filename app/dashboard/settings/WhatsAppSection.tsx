@@ -24,6 +24,11 @@ export default function WhatsAppSection() {
   const [groups, setGroups] = useState<Group[]>([])
   const [admins, setAdmins] = useState<Admin[]>([])
   const [events, setEvents] = useState<string[]>([])
+  // The customer-facing link per running trip. Normally handed out by the bot
+  // with /katalog; here for a caption, a group not connected yet, or simply
+  // checking what customers can see.
+  const [links, setLinks] = useState<{ event: string; url: string }[]>([])
+  const [copied, setCopied] = useState("")
   const [defaults, setDefaults] = useState<ProductDefaults>(DEFAULT_PRODUCT_DEFAULTS)
   const [error, setError] = useState("")
 
@@ -46,6 +51,7 @@ export default function WhatsAppSection() {
 
   useEffect(() => {
     reload()
+    loadLinks()
     fetch("/api/sheets/options", { cache: "no-store" })
       .then((r) => r.json())
       .then((d: { events?: string[] }) => setEvents(d.events ?? []))
@@ -55,6 +61,24 @@ export default function WhatsAppSection() {
       .then((d: { defaults?: ProductDefaults }) => d.defaults && setDefaults(d.defaults))
       .catch(() => {})
   }, [])
+
+  async function loadLinks() {
+    const res = await fetch("/api/whatsapp/katalog", { cache: "no-store" })
+    if (!res.ok) return
+    const data = (await res.json()) as { links?: { event: string; url: string }[] }
+    setLinks(data.links ?? [])
+  }
+
+  async function rotate(event: string) {
+    // Everyone holding the old URL loses access; every other trip keeps its own.
+    if (!confirm(`Retire the current link for ${event} and issue a new one?`)) return
+    await fetch("/api/whatsapp/katalog", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ event }),
+    })
+    loadLinks()
+  }
 
   async function bind(jid: string, event: string) {
     await fetch("/api/whatsapp/settings", {
@@ -119,6 +143,41 @@ export default function WhatsAppSection() {
             </div>
           ))
         )}
+      </section>
+
+      <section className="rounded-xl border border-cream-border bg-white p-4 flex flex-col gap-3">
+        <h2 className="text-sm font-semibold text-foreground">Catalogue links</h2>
+        <p className="text-xs text-gray-500">
+          One per running trip, for whoever joined the group after its shelves
+          were posted. Unguessable, and only while the trip is open — closing it
+          takes the link dark. Rotating retires the old URL for everyone holding
+          it, and leaves other trips alone.
+        </p>
+        {links.map((link) => (
+          <div key={link.event} className="flex items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-semibold">{link.event}</div>
+              <div className="text-[11px] text-gray-500 font-mono truncate">{link.url}</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard?.writeText(link.url)
+                setCopied(link.event)
+              }}
+              className="shrink-0 rounded-lg border border-cream-border px-3 py-1.5 text-xs font-semibold"
+            >
+              {copied === link.event ? "Copied" : "Copy"}
+            </button>
+            <button
+              type="button"
+              onClick={() => rotate(link.event)}
+              className="shrink-0 rounded-lg border border-cream-border px-3 py-1.5 text-xs font-semibold text-brand"
+            >
+              Rotate
+            </button>
+          </div>
+        ))}
       </section>
 
       <section className="rounded-xl border border-cream-border bg-white p-4 flex flex-col gap-3">
