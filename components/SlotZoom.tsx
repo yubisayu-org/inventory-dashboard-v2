@@ -14,7 +14,7 @@ const ZOOM_STEPS = [0.4, 0.28, 0.18, 0.12]
  * more of the label.
  */
 export default function SlotZoom({
-  slotId, onClose, form, caption, info,
+  slotId, onClose, form, caption,
 }: {
   slotId: number
   onClose: () => void
@@ -29,13 +29,6 @@ export default function SlotZoom({
   form?: ReactNode
   /** What is being named, so the sheet says which SKU it belongs to. */
   caption?: string
-  /**
-   * What was already typed, for a slot that has been named.
-   *
-   * The reason to zoom a named SKU is to check the tag against the valas — so
-   * the answer belongs on the picture, not on the card behind it.
-   */
-  info?: string
 }) {
   const [step, setStep] = useState(1)
   const [naming, setNaming] = useState(false)
@@ -63,12 +56,6 @@ export default function SlotZoom({
           alt="Close-up of this item on the shelf"
           className="w-full rounded-xl bg-black"
         />
-
-        {info ? (
-          <span className="absolute bottom-2 left-2 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-semibold text-white tabular-nums">
-            {info}
-          </span>
-        ) : null}
 
         <button
           type="button"
