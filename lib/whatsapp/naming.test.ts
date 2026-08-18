@@ -5,7 +5,7 @@ import { FIXTURES } from "../claims/fixtures"
 import { calcAbroadPrice, landedCost, type PricingMethod } from "../pricing"
 import { getProductDefaults } from "../db/settings"
 import { createPost, addClaim, setSlots, listSlots, setSlotBought } from "../db/claims"
-import { nameSlot, addMissingOrders } from "./naming"
+import { nameSlot, addMissingOrders, unorderedClaims } from "./naming"
 import { recluster } from "./ingest"
 
 const EVENT = `TESTNAME${process.hrtime.bigint()}`
@@ -369,29 +369,37 @@ test("an unresolved late claim is counted, not invoiced to nobody", async () => 
   assert.equal(result.blocked, 1, "somebody has to say who that number is first")
 })
 
-test("a late claim is invoiced as it lands, without anyone pressing anything", async () => {
+test("a late claim waits to be invoiced, and says that it is waiting", async () => {
   const { postId, slot } = await slotWithClaims([1])
   const { productId } = await name({
-    slotId: slot.id, name: `Auto Ordered ${process.hrtime.bigint()}`, valas: 1699, gram: 250,
+    slotId: slot.id, name: `Waiting ${process.hrtime.bigint()}`, valas: 1699, gram: 250,
   })
 
-  // She claims the same peg an hour after the slot became a product. recluster
-  // runs on every ingest, and that is where the order now appears.
-  const { id: late } = await addClaim({
+  // She claims the same peg an hour after the slot became a product.
+  await addClaim({
     postId, sender: "628119990321", customer: HANDLE, source: "ink",
     point: { x: 0.24, y: 0.78 }, variantId: null, quantity: 2, note: "mau 2",
-    confidence: 1, state: "pending", messageId: "auto-late",
+    confidence: 1, state: "pending", messageId: "late-a",
   })
-  assert.ok(late > 0)
   await recluster(postId)
 
-  const orders = await sql`SELECT unit FROM orders WHERE product_id = ${productId} ORDER BY unit`
-  assert.deepEqual(orders.map((o) => o.unit), [1, 2], "no button was pressed")
+  // Nothing is billed by arriving. Putting a line on an invoice is a decision,
+  // and a claim that turns out to be junk is cheaper left un-ordered than
+  // unpicked.
+  const before = await sql`SELECT unit FROM orders WHERE product_id = ${productId}`
+  assert.deepEqual(before.map((o) => o.unit), [1])
 
-  // And clustering again does not bill her twice.
-  await recluster(postId)
-  const [{ count }] = await sql`
-    SELECT COUNT(*)::int AS count FROM orders WHERE product_id = ${productId}
-  `
-  assert.equal(count, 2)
+  // Re-read the slot: clustering rebuilds them, carrying the product across, so
+  // the id a caller held before may not be the id that holds the claims now.
+  const [current] = await listSlots(postId)
+  assert.equal(current.productId, productId)
+
+  // The claim is visible as unbilled, which is what the screen needs to offer
+  // the fix.
+  assert.deepEqual((await unorderedClaims(current.id)).length, 1)
+
+  await addMissingOrders(current.id)
+  const after = await sql`SELECT unit FROM orders WHERE product_id = ${productId} ORDER BY unit`
+  assert.deepEqual(after.map((o) => o.unit), [1, 2])
+  assert.deepEqual(await unorderedClaims(current.id), [], "and then nothing is waiting")
 })

@@ -188,43 +188,26 @@ export async function nameSlot(input: {
 }
 
 /**
- * Give a late claim its order, at the product the slot already became.
+ * Which claims on a named slot have no order yet.
  *
- * A shelf is named once, and customers keep claiming afterwards: the rack is
- * still in the group, the trip is still running. Those claims land on the named
- * slot and are counted in the tally, but nameSlot refuses a second run — so
- * until now they reached no invoice at all. Visible in the shop, invisible in
- * the accounts, which is the worst way to be wrong.
+ * Paired by customer and quantity, because appendOrders returns nothing to link
+ * on: a customer with two identical lines is matched to two identical orders,
+ * and only the surplus counts as missing.
  *
- * Creates only what is missing. Claims are paired against existing orders by
- * customer and quantity — appendOrders returns nothing to link on — so a
- * customer who already has her line gets no second one, and running this twice
- * adds nothing the second time.
- *
- * The price is the product's, not a fresh calculation: she is buying the same
- * thing at the same price as everybody else on that slot, and re-deriving it
- * would quietly reprice her if the kurs moved.
+ * Returns nothing for a slot that was never named — there is no product to
+ * order against, and the naming form is what that slot needs.
  */
-export async function addMissingOrders(slotId: number): Promise<{ added: number; blocked: number }> {
+export async function unorderedClaims(slotId: number): Promise<number[]> {
   const [slot] = await sql`
-    SELECT s.id, s.product_id, p.event
+    SELECT s.product_id, s.post_id, p.event
     FROM wa_slots s JOIN wa_posts p ON p.id = s.post_id
     WHERE s.id = ${slotId}
   `
-  if (!slot) throw new Error(`no such slot: ${slotId}`)
-  if (slot.product_id === null) throw new Error(`slot ${slotId} has not been named yet`)
+  if (!slot || slot.product_id === null) return []
 
-  const [product] = await sql`SELECT price FROM products WHERE id = ${slot.product_id}`
-  if (!product) throw new Error(`slot ${slotId} points at a product that no longer exists`)
-
-  const claims = (await listClaims(
-    (await sql`SELECT post_id FROM wa_slots WHERE id = ${slotId}`)[0].post_id as number,
-  )).filter((c) => c.slotId === slotId && c.state !== "rejected")
-
-  // A claim whose sender was never matched to a customer has nobody to invoice.
-  // Counted and left alone rather than blocking the others: one unknown number
-  // should not hold up three orders that are ready.
-  const blocked = claims.filter((c) => c.customer === null).length
+  const claims = (await listClaims(slot.post_id as number)).filter(
+    (c) => c.slotId === slotId && c.state !== "rejected" && c.customer !== null,
+  )
 
   const existing = await sql`
     SELECT customer, unit FROM orders
@@ -236,30 +219,73 @@ export async function addMissingOrders(slotId: number): Promise<{ added: number;
     have.set(key, (have.get(key) ?? 0) + 1)
   }
 
-  const missing: OrderRow[] = []
+  const missing: number[] = []
   for (const claim of claims) {
-    if (claim.customer === null) continue
     const key = `${claim.customer}|${claim.quantity}`
     const seen = have.get(key) ?? 0
     if (seen > 0) {
       have.set(key, seen - 1)
       continue
     }
-    missing.push({
+    missing.push(claim.id)
+  }
+  return missing
+}
+
+/**
+ * Give those claims their orders, at the product the slot already became.
+ *
+ * A shelf is named once, and customers keep claiming afterwards: the rack is
+ * still in the group, the trip is still running. Those claims land on the named
+ * slot and are counted in the tally, but nameSlot refuses a second run — so
+ * without this they reach no invoice at all. Visible in the shop, invisible in
+ * the accounts, which is the worst way to be wrong.
+ *
+ * Left as a decision rather than done on arrival: this puts a line on somebody's
+ * invoice, and a claim that turns out to be junk is cheaper to leave un-ordered
+ * than to unpick afterwards.
+ *
+ * The price is the product's, not a fresh calculation: she is buying the same
+ * thing as everybody else on that slot, and re-deriving it would quietly reprice
+ * her if the kurs moved.
+ */
+export async function addMissingOrders(slotId: number): Promise<{ added: number; blocked: number }> {
+  const [slot] = await sql`
+    SELECT s.product_id, s.post_id, p.event
+    FROM wa_slots s JOIN wa_posts p ON p.id = s.post_id
+    WHERE s.id = ${slotId}
+  `
+  if (!slot) throw new Error(`no such slot: ${slotId}`)
+  if (slot.product_id === null) throw new Error(`slot ${slotId} has not been named yet`)
+
+  const [product] = await sql`SELECT price FROM products WHERE id = ${slot.product_id}`
+  if (!product) throw new Error(`slot ${slotId} points at a product that no longer exists`)
+
+  const claims = (await listClaims(slot.post_id as number)).filter(
+    (c) => c.slotId === slotId && c.state !== "rejected",
+  )
+  // A claim whose sender was never matched has nobody to invoice. Counted and
+  // left alone rather than blocking the rest: one unknown number should not hold
+  // up three orders that are ready.
+  const blocked = claims.filter((c) => c.customer === null).length
+
+  const missing = new Set(await unorderedClaims(slotId))
+  const rows: OrderRow[] = claims
+    .filter((claim) => missing.has(claim.id) && claim.customer !== null)
+    .map((claim) => ({
       event: slot.event as string,
-      customer: claim.customer,
+      customer: claim.customer as string,
       productId: slot.product_id as number,
       unitPrice: Number(product.price) || 0,
       unit: claim.quantity,
       note: claim.note,
-    })
-  }
+    }))
 
-  if (missing.length > 0) {
-    await appendOrders(missing)
+  if (rows.length > 0) {
+    await appendOrders(rows)
     // Whatever was already counted in the shop lands on the new lines too.
     await syncOrdersToClaims(slotId)
   }
 
-  return { added: missing.length, blocked }
+  return { added: rows.length, blocked }
 }

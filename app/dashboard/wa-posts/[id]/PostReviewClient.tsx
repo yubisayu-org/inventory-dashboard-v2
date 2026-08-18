@@ -45,6 +45,8 @@ interface Payload {
   }
   slots: Slot[]
   claims: Claim[]
+  /** Claims on a named slot that have no order — see addMissingOrders. */
+  unordered: number[]
 }
 
 /** Just enough of a neighbouring shelf to link to it. */
@@ -187,6 +189,7 @@ export default function PostReviewClient({ postId }: { postId: number }) {
             key={slot.id}
             slot={slot}
             claims={data.claims.filter((c) => c.slotId === slot.id && c.state !== "rejected")}
+            unordered={new Set(data.unordered ?? [])}
             needsPrice={
               (data.post.pricingMethod ?? data.post.effectivePricingMethod) === "target_price"
             }
@@ -306,15 +309,38 @@ function ReviewQueue({ claims, onDone }: { claims: Claim[]; onDone: () => void }
 
 /** One SKU: who wants it, and the form that turns it into a product. */
 function SlotCard({
-  slot, claims, needsPrice, onDone,
+  slot, claims, unordered, needsPrice, onDone,
 }: {
   slot: Slot
   claims: Claim[]
+  /** Ids of claims on this slot with no order yet. */
+  unordered: Set<number>
   /** Target Price is the one method whose price a human decides. */
   needsPrice: boolean
   onDone: () => void
 }) {
   const [zoom, setZoom] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState("")
+
+  // Claims here that reached the tally but no invoice. Shown rather than
+  // guessed at: a button offered unconditionally says nothing about whether
+  // anything is actually missing.
+  const missing = claims.filter((c) => unordered.has(c.id))
+
+  /** Give those claims their lines, at the price this slot already has. */
+  async function addOrders() {
+    setBusy(true)
+    setError("")
+    const res = await fetch(`/api/whatsapp/slots/${slot.id}/orders`, { method: "POST" })
+    setBusy(false)
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ error: "Failed to add orders" }))
+      setError(body.error ?? "Failed to add orders")
+      return
+    }
+    onDone()
+  }
 
   const blocked = claims.some((c) => c.customer === null)
 
@@ -374,6 +400,11 @@ function SlotCard({
                     {senderDigits(claim.sender)} · {claimedAt(claim.createdAt)}
                   </span>
                 </span>
+                {slot.productId !== null && unordered.has(claim.id) ? (
+                  <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
+                    belum ada order
+                  </span>
+                ) : null}
                 <span className="text-gray-500 tabular-nums shrink-0">
                   {claim.obtained}/{claim.quantity}
                 </span>
@@ -394,14 +425,35 @@ function SlotCard({
                   {slot.productPrice !== null ? `Rp ${fmt(slot.productPrice)}` : "—"}
                 </span>
               </div>
-              {/* Claims that land after naming are invoiced as they arrive, so
-                  this is a statement rather than a thing to press. A sender
-                  nobody has identified yet is the one case that waits — and it
-                  is settled the moment they are linked, above. */}
               <div className="text-[11px] text-green-800 mt-0.5">
-                {claims.length} {claims.length === 1 ? "claim" : "claims"} · ordered
-                automatically · product #{slot.productId}
+                {claims.length - missing.length}{" "}
+                {claims.length - missing.length === 1 ? "order" : "orders"}
+                {missing.length > 0
+                  ? ` · ${missing.length} claim${missing.length === 1 ? "" : "s"} without one`
+                  : ""}{" "}
+                · product #{slot.productId}
               </div>
+
+              {/* Only when there is a gap. A button that is always there says
+                  nothing about whether anything is missing, so it has to be
+                  pressed to find out — and the answer is usually no. */}
+              {missing.length > 0 ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={addOrders}
+                    disabled={busy}
+                    className="mt-2 w-full rounded-lg border border-amber-300 bg-white py-1.5 text-[11px] font-bold text-amber-800 disabled:opacity-40"
+                  >
+                    {busy
+                      ? "Adding…"
+                      : `Buat ${missing.length} order lagi${
+                          slot.productPrice !== null ? ` · Rp ${fmt(slot.productPrice)}` : ""
+                        }`}
+                  </button>
+                  {error ? <p className="text-[11px] text-red-600 mt-1">{error}</p> : null}
+                </>
+              ) : null}
 
             </div>
           ) : (

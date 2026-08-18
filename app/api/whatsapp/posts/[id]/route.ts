@@ -4,6 +4,7 @@ import sql from "@/lib/db-pool"
 import { toPricingMethod } from "@/lib/pricing"
 import { getPost, listSlots, listClaims } from "@/lib/db/claims"
 import { effectivePricingMethod } from "@/lib/whatsapp/pricing-method"
+import { unorderedClaims } from "@/lib/whatsapp/naming"
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -30,12 +31,24 @@ export async function GET(_req: Request, { params }: Params) {
       listClaims(id),
       effectivePricingMethod(post),
     ])
+
+    // Which claims are on a named slot without an order of their own. A shelf
+    // keeps taking claims after it is named, and those are invisible in the
+    // accounts until somebody says so — the screen can only offer to fix what it
+    // can see. A handful of slots per shelf, so a query each is cheap.
+    const unordered = (
+      await Promise.all(
+        slots.map(async (slot) =>
+          slot.productId === null ? [] : await unorderedClaims(slot.id),
+        ),
+      )
+    ).flat()
     // Both are sent: pricingMethod says whether the post is following the
     // setting (null) or pinned, and effectivePricingMethod says what that
     // amounts to right now. A screen needs the first to render the control and
     // the second to name the option inside it.
     return NextResponse.json(
-      { post: { ...post, effectivePricingMethod: effective }, slots, claims },
+      { post: { ...post, effectivePricingMethod: effective }, slots, claims, unordered },
       { headers: { "Cache-Control": "no-store" } },
     )
   } catch (err) {
