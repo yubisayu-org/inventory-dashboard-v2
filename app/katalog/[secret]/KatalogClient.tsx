@@ -342,26 +342,24 @@ function MarkSheet({
         {saved ? (
           <div className="flex flex-col items-center gap-3">
             {saved.map((item) => (
-              <div key={item.id} className="w-full flex flex-col items-center gap-2">
-                {/* eslint-disable-next-line @next/next/no-img-element -- a blob we just made. */}
+              <div key={item.id} className="relative w-full">
                 {/* Sized exactly as the canvas is, so pressing Kirim does not
                     appear to nudge the shelf down the screen: the picture is
                     the same picture, in the same place. */}
+                {/* eslint-disable-next-line @next/next/no-img-element -- a blob we just made. */}
                 <img
                   src={item.url}
                   alt={item.store}
                   className="w-full h-auto rounded-lg"
                 />
-                {/* One control per picture, because a phone saves one file per
-                    tap: iOS allows a single download per gesture whatever the
-                    page does. An icon rather than a caption — the store name is
-                    already on the shelf above it, and three rows of prose
-                    between three pictures reads as clutter. */}
+                {/* Over the picture it belongs to, so three shelves cannot end
+                    up saved in the wrong order. One control per picture because
+                    iOS saves a single file per gesture whatever the page does. */}
                 <a
                   href={item.url}
                   download={`rak-${item.id}.jpg`}
                   aria-label={`Simpan ${item.store}`}
-                  className="w-12 h-12 rounded-full bg-white text-foreground flex items-center justify-center"
+                  className="absolute bottom-3 right-3 w-12 h-12 rounded-full bg-white/90 text-foreground flex items-center justify-center shadow-lg"
                 >
                   <svg
                     width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
