@@ -232,6 +232,11 @@ function MarkSheet({
         </p>
       </div>
 
+      {/* The canvas is never unmounted, only hidden. Remounting it gave React a
+          fresh element at its default 300x150, while the effect that sizes it to
+          the photograph had already run — so coming back from the preview showed
+          a blank canvas that redrew the shelf squashed into that default. Hiding
+          keeps the bitmap and its dimensions. */}
       <div className="flex-1 min-h-0 overflow-auto px-2">
         {saved ? (
           <div className="h-full flex flex-col items-center justify-center gap-2">
@@ -243,8 +248,9 @@ function MarkSheet({
               Atau tekan lama gambar di atas → Simpan
             </p>
           </div>
-        ) : (
-          <canvas
+        ) : null}
+
+        <canvas
             ref={canvasRef}
             onPointerDown={(e) => {
               down.current += 1
@@ -284,10 +290,9 @@ function MarkSheet({
             // pinch-zoom rather than none: the browser keeps two-finger zoom,
             // which is how she reads the price tag, while single-pointer moves
             // still reach the canvas to draw with.
-            style={{ touchAction: "pinch-zoom" }}
-            className="w-full h-auto rounded-lg select-none"
-          />
-        )}
+          style={{ touchAction: "pinch-zoom" }}
+          className={`w-full h-auto rounded-lg select-none ${saved ? "hidden" : ""}`}
+        />
       </div>
 
       <div className="flex items-center gap-2 p-3 shrink-0">
@@ -295,7 +300,12 @@ function MarkSheet({
           <>
             <button
               type="button"
-              onClick={() => setSaved(null)}
+              onClick={() => {
+                // The blob stays alive for the tab's lifetime otherwise, and a
+                // customer flipping between shelves would accumulate megabytes.
+                URL.revokeObjectURL(saved)
+                setSaved(null)
+              }}
               className="rounded-xl border border-white/30 px-4 py-2.5 text-sm font-semibold text-white"
             >
               Kembali
