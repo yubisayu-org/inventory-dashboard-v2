@@ -185,6 +185,9 @@ export default function PostReviewClient({ postId }: { postId: number }) {
             key={slot.id}
             slot={slot}
             claims={data.claims.filter((c) => c.slotId === slot.id && c.state !== "rejected")}
+            needsPrice={
+              (data.post.pricingMethod ?? data.post.effectivePricingMethod) === "target_price"
+            }
             onDone={refresh}
           />
         ))}
@@ -300,7 +303,15 @@ function ReviewQueue({ claims, onDone }: { claims: Claim[]; onDone: () => void }
 }
 
 /** One SKU: who wants it, and the form that turns it into a product. */
-function SlotCard({ slot, claims, onDone }: { slot: Slot; claims: Claim[]; onDone: () => void }) {
+function SlotCard({
+  slot, claims, needsPrice, onDone,
+}: {
+  slot: Slot
+  claims: Claim[]
+  /** Target Price is the one method whose price a human decides. */
+  needsPrice: boolean
+  onDone: () => void
+}) {
   const [name, setName] = useState(slot.label)
   const [valas, setValas] = useState("")
   const [gram, setGram] = useState("")
@@ -437,13 +448,19 @@ function SlotCard({ slot, claims, onDone }: { slot: Slot; claims: Claim[]; onDon
                   placeholder="Gram"
                   className="border border-cream-border rounded-lg px-2 py-1.5 text-sm"
                 />
-                <input
-                  value={price}
-                  onChange={(e) => setPrice(e.target.value)}
-                  inputMode="numeric"
-                  placeholder="Price (Target Price only)"
-                  className="col-span-2 border border-cream-border rounded-lg px-2 py-1.5 text-sm"
-                />
+                {/* Only where the method has no formula to derive a price from.
+                    Every other method computes one from the valas, the kurs and
+                    the weight, so the box was a permanent invitation to type a
+                    number that would be ignored. */}
+                {needsPrice ? (
+                  <input
+                    value={price}
+                    onChange={(e) => setPrice(e.target.value)}
+                    inputMode="numeric"
+                    placeholder="Harga jual (Target Price)"
+                    className="col-span-2 border border-cream-border rounded-lg px-2 py-1.5 text-sm"
+                  />
+                ) : null}
               </div>
 
               {error ? <p className="text-xs text-red-600">{error}</p> : null}
