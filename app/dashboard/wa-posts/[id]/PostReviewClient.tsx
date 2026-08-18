@@ -483,7 +483,16 @@ function SlotCard({
         <SlotZoom
           slotId={slot.id}
           onClose={() => setZoom(false)}
-          caption={`${slot.label || `SKU ${slot.id}`}${slot.size ? ` · ${slot.size}` : ""}`}
+          // The name it was given and what it sells for. Both are being checked
+          // against the tag on screen, so both belong in the heading rather than
+          // on the card behind the picture.
+          caption={[
+            slot.productName || slot.label || `SKU ${slot.id}`,
+            slot.size || null,
+            slot.productPrice !== null ? `Rp ${fmt(slot.productPrice)}` : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
           // For a named SKU, what was typed — the check being made while
           // looking at the tag.
           info={
