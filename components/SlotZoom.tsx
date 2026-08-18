@@ -31,12 +31,11 @@ export default function SlotZoom({
   caption?: string
 }) {
   const [step, setStep] = useState(1)
-  const [naming, setNaming] = useState(false)
   const share = ZOOM_STEPS[step]
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center gap-4 bg-black/70 p-4"
+      className="fixed inset-0 z-50 flex flex-col lg:flex-row items-center justify-center lg:gap-3 overflow-auto bg-black/70 p-4"
       onClick={onClose}
     >
       {/* The controls sit on the picture rather than under it: at the closest
@@ -47,7 +46,7 @@ export default function SlotZoom({
           sizing the panel to its content made the whole thing shrink as you
           looked closer, moving the buttons under your cursor. */}
       <div
-        className="relative w-[min(90vw,640px)]"
+        className="relative w-[min(90vw,640px)] shrink-0"
         onClick={(e) => e.stopPropagation()}
       >
         {/* eslint-disable-next-line @next/next/no-img-element -- our own crop route. */}
@@ -72,12 +71,9 @@ export default function SlotZoom({
           </svg>
         </button>
 
-        {/* Top left, in a column.
-            The naming sheet opens over the bottom of the crop and grows with
-            the keyboard, so anything lower than this ends up underneath it —
-            and the point of naming here is to read the tag while typing it. The
-            top corner is the one place the sheet can never reach; the close
-            button holds the other one. */}
+        {/* Top left, in a column. Clear of the fields below the picture and of
+            the close button opposite, so nothing has to move when either
+            appears. */}
         <div className="absolute left-2 top-2 flex flex-col items-center gap-1 rounded-full bg-black/60 px-1.5 py-2">
           <button
             type="button"
@@ -118,48 +114,29 @@ export default function SlotZoom({
             </svg>
           </button>
 
-          {form ? (
-            <>
-              <span className="h-px w-5 bg-white/25" />
-              <button
-                type="button"
-                onClick={() => setNaming((open) => !open)}
-                aria-label={naming ? "Hide the naming fields" : "Name this item"}
-                className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                  naming ? "bg-white text-foreground" : "text-white"
-                }`}
-              >
-                <svg
-                  width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                  strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                >
-                  <path d="M12 20h9" />
-                  <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
-                </svg>
-              </button>
-            </>
-          ) : null}
+
         </div>
 
-        {/* Over the bottom of the crop on a phone, so the tag stays visible
-            above the field it is being typed into. */}
-        {form && naming ? (
-          <div className="absolute inset-x-0 bottom-0 max-h-[60%] overflow-auto rounded-b-xl bg-white p-3 lg:hidden">
-            {/* No close button of its own: the pencil that opened this sits in
-                the top corner, which the sheet cannot cover. */}
-            {caption ? (
-              <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500 truncate mb-2">
-                {caption}
-              </p>
-            ) : null}
-            {form}
-          </div>
-        ) : null}
       </div>
+
+      {/* Under the picture, not over it. Always there, because the fields are
+          why this screen is open on a naming pass — and in normal flow rather
+          than overlaid, so nothing ever covers the crop and the keyboard simply
+          scrolls the page instead of fighting the sheet for room. */}
+      {form ? (
+        <div className="w-full max-w-[min(90vw,640px)] rounded-b-xl bg-white p-3 lg:hidden" onClick={(e) => e.stopPropagation()}>
+          {caption ? (
+            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500 truncate mb-2">
+              {caption}
+            </p>
+          ) : null}
+          {form}
+        </div>
+      ) : null}
 
       {/* On a laptop nothing has to give way: the crop keeps its size and the
           fields sit beside it. Naming happens at a desk more often than not. */}
-      {form && naming ? (
+      {form ? (
         <div className="hidden lg:block w-80 rounded-xl bg-white p-4" onClick={(e) => e.stopPropagation()}>
           {caption ? (
             <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500 truncate mb-2">
