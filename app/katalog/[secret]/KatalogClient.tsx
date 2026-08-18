@@ -30,7 +30,9 @@ export default function KatalogClient({ secret }: { secret: string }) {
   const [shelves, setShelves] = useState<Shelf[] | null>(null)
   const [event, setEvent] = useState("")
   const [error, setError] = useState("")
-  const [open, setOpen] = useState<Shelf | null>(null)
+  // Index rather than the shelf itself: the sheet walks the list without
+  // closing, so it needs to know where it is in it.
+  const [open, setOpen] = useState<number | null>(null)
 
   useEffect(() => {
     fetch(`/api/public/katalog/${secret}`)
@@ -67,11 +69,11 @@ export default function KatalogClient({ secret }: { secret: string }) {
       </header>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-2">
-        {shelves.map((shelf) => (
+        {shelves.map((shelf, index) => (
           <button
             key={shelf.id}
             type="button"
-            onClick={() => setOpen(shelf)}
+            onClick={() => setOpen(index)}
             className="text-left"
           >
             {/* eslint-disable-next-line @next/next/no-img-element -- our own AVIF route. */}
@@ -91,11 +93,12 @@ export default function KatalogClient({ secret }: { secret: string }) {
         kirim ke grup.
       </p>
 
-      {open ? (
+      {open !== null ? (
         <MarkSheet
-          key={open.id}
           secret={secret}
-          shelf={open}
+          shelves={shelves}
+          index={open}
+          onIndex={setOpen}
           onClose={() => setOpen(null)}
         />
       ) : null}
@@ -114,15 +117,26 @@ type Stroke = { x: number; y: number }[]
  * image's own size, and the sharing is left to the phone.
  */
 function MarkSheet({
-  secret, shelf, onClose,
+  secret, shelves, index, onIndex, onClose,
 }: {
   secret: string
-  shelf: Shelf
+  shelves: Shelf[]
+  index: number
+  onIndex: (index: number) => void
   onClose: () => void
 }) {
+  const shelf = shelves[index]
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const imageRef = useRef<HTMLImageElement | null>(null)
-  const [strokes, setStrokes] = useState<Stroke[]>([])
+  // Kept per shelf, so walking to the next rack and back does not throw away
+  // what she already circled. Cleared when the sheet closes, with the sheet.
+  const [byShelf, setByShelf] = useState<Record<number, Stroke[]>>({})
+  const strokes = byShelf[shelf.id] ?? []
+  const setStrokes = useCallback(
+    (update: (previous: Stroke[]) => Stroke[]) =>
+      setByShelf((all) => ({ ...all, [shelf.id]: update(all[shelf.id] ?? []) })),
+    [shelf.id],
+  )
   const [ready, setReady] = useState(false)
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState<string | null>(null)
@@ -157,7 +171,16 @@ function MarkSheet({
     }
   }, [strokes, colour])
 
+  // A preview belongs to the shelf it was made from.
   useEffect(() => {
+    setSaved((url) => {
+      if (url) URL.revokeObjectURL(url)
+      return null
+    })
+  }, [shelf.id])
+
+  useEffect(() => {
+    setReady(false)
     const image = new Image()
     // Same-origin today; explicit so moving the file to a bucket later does not
     // silently taint the canvas and break export.
@@ -221,11 +244,35 @@ function MarkSheet({
           button is pushed to the far side and takes no part in that. */}
       <div className="flex items-start gap-3 px-3 py-2 text-white shrink-0">
         <div className="min-w-0 flex-1">
-          <span className="block text-sm font-semibold leading-6 truncate">{shelf.store}</span>
+          <span className="block text-sm font-semibold leading-6 truncate">
+            {shelf.store}
+            <span className="opacity-60 font-normal tabular-nums"> · {index + 1}/{shelves.length}</span>
+          </span>
           <p className="text-[11px] opacity-70 leading-snug">
             Lingkari atau centang barang yang diinginkan
           </p>
         </div>
+        {/* Arrows rather than a swipe: a horizontal drag on the photograph is
+            a pen stroke, and a gesture that means two things costs her a mark
+            whenever it guesses wrong. */}
+        <button
+          type="button"
+          onClick={() => onIndex(index - 1)}
+          disabled={index === 0}
+          className="text-lg leading-6 shrink-0 px-1.5 disabled:opacity-25"
+          aria-label="Rak sebelumnya"
+        >
+          ‹
+        </button>
+        <button
+          type="button"
+          onClick={() => onIndex(index + 1)}
+          disabled={index >= shelves.length - 1}
+          className="text-lg leading-6 shrink-0 px-1.5 disabled:opacity-25"
+          aria-label="Rak berikutnya"
+        >
+          ›
+        </button>
         <button type="button" onClick={onClose} className="text-sm leading-6 shrink-0 px-1">
           ✕
         </button>
