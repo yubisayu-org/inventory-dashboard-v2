@@ -77,9 +77,18 @@ export default function UploadClient() {
 
       try {
         const res = await fetch("/api/whatsapp/posts/upload", { method: "POST", body })
-        const payload = await res.json()
-        if (!res.ok) {
-          update(job.id, { status: "failed", detail: payload.error ?? "failed" })
+        // Read as text first: a 413 from a proxy, or an auth redirect to a login
+        // page, is HTML — and calling .json() on it throws, which turned a
+        // legible failure into "connection lost".
+        const raw = await res.text()
+        let payload: { id?: number; width?: number; height?: number; bytes?: number; error?: string } = {}
+        try {
+          payload = JSON.parse(raw)
+        } catch {
+          payload = { error: `${res.status} ${raw.slice(0, 60)}` }
+        }
+        if (!res.ok || !payload.id) {
+          update(job.id, { status: "failed", detail: payload.error ?? `HTTP ${res.status}` })
           continue
         }
         update(job.id, {
@@ -87,8 +96,8 @@ export default function UploadClient() {
           postId: payload.id,
           detail: `${payload.width}×${payload.height} · ${kb(payload.bytes)}`,
         })
-      } catch {
-        update(job.id, { status: "failed", detail: "connection lost" })
+      } catch (err) {
+        update(job.id, { status: "failed", detail: (err as Error).message || "connection lost" })
       }
     }
 
