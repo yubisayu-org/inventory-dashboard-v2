@@ -182,8 +182,34 @@ export default function ShopPostClient({ postId }: { postId: number }) {
             <span className="text-xs text-gray-400 tabular-nums shrink-0">
               {s.bought}/{s.claimed}
             </span>
-            <span className={`text-xs font-bold tabular-nums shrink-0 ${tone(s.claimed, s.bought)}`}>
-              {s.claimed - s.bought === 0 ? "DONE" : `BUY ${s.claimed - s.bought}`}
+            {/* A basket and a number rather than the word BUY: it is the same
+                instruction in the language of the job, and it survives being
+                glanced at from arm's length in a shop. A tick means the row is
+                finished. The whole row already opens the tally, so this reads as
+                the button it is. */}
+            <span className={`flex items-center gap-1 text-xs font-bold tabular-nums shrink-0 ${tone(s.claimed, s.bought)}`}>
+              {s.claimed - s.bought === 0 ? (
+                <svg
+                  width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"
+                  aria-label="Done"
+                >
+                  <path d="M20 6 9 17l-5-5" />
+                </svg>
+              ) : (
+                <>
+                  <svg
+                    width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                    aria-label="Still to buy"
+                  >
+                    <circle cx="9" cy="21" r="1" />
+                    <circle cx="20" cy="21" r="1" />
+                    <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
+                  </svg>
+                  {s.claimed - s.bought}
+                </>
+              )}
             </span>
           </button>
         ))}
