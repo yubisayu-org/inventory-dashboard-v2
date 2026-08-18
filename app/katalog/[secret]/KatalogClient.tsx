@@ -64,7 +64,7 @@ export default function KatalogClient({ secret }: { secret: string }) {
       <header className="px-4 py-3 border-b border-cream-border bg-white sticky top-0 z-10">
         <h1 className="text-base font-bold text-foreground">Group Catalogue</h1>
         <p className="text-xs text-gray-500 tabular-nums">
-          {event} · {shelves.length} rak
+          {event} · {shelves.length} SHELVES
         </p>
       </header>
 
