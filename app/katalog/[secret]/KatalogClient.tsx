@@ -445,7 +445,7 @@ function MarkSheet({
         {/* The canvas is transformed, not the page: pinching scales the shelf
             while Undo, the pen and Kirim stay exactly where they were. The
             wrapper clips, so a zoomed shelf cannot push the layout around. */}
-        <div className={`w-full overflow-hidden rounded-lg ${saved ? "hidden" : ""}`}>
+        <div className={`relative w-full overflow-hidden rounded-lg ${saved ? "hidden" : ""}`}>
           <canvas
             ref={canvasRef}
             onPointerDown={(e) => {
@@ -531,6 +531,21 @@ function MarkSheet({
             style={{ touchAction: "none" }}
             className="w-full h-auto select-none"
           />
+
+          {view.k === 1 ? (
+            <span className="pointer-events-none absolute bottom-2 left-2 flex items-center gap-1.5 rounded-full bg-black/55 px-2.5 py-1 text-[11px] text-white">
+              <svg
+                width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+              >
+                <circle cx="11" cy="11" r="7" />
+                <line x1="20" y1="20" x2="16.65" y2="16.65" />
+                <line x1="11" y1="8" x2="11" y2="14" />
+                <line x1="8" y1="11" x2="14" y2="11" />
+              </svg>
+              Cubit untuk zoom harga
+            </span>
+          ) : null}
         </div>
       </div>
 
