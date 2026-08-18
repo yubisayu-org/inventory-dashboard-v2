@@ -15,19 +15,26 @@ export default function ShopClient() {
   // Whether racks nobody claimed on are listed. Off by default: they are the
   // majority, and none of them is anything to buy.
   const [showEmpty, setShowEmpty] = useState(false)
+  // Whether finished trips are listed. Off by default: nobody shops a trip that
+  // is over.
+  const [showArchived, setShowArchived] = useState(false)
   // Shops closed for orders, keyed "event|store". Per trip, because the same
   // shop can be open on one trip and finished on another.
   const [shut, setShut] = useState<Set<string>>(new Set())
 
   useEffect(() => {
-    fetch(`/api/whatsapp/shop${showEmpty ? "?all=true" : ""}`, { cache: "no-store" })
+    const query = new URLSearchParams()
+    if (showEmpty) query.set("all", "true")
+    if (showArchived) query.set("archived", "true")
+
+    fetch(`/api/whatsapp/shop${query.size ? `?${query}` : ""}`, { cache: "no-store" })
       .then((r) => r.json())
       .then((data: { posts?: ShopPost[]; error?: string }) => {
         if (data.error) setError(data.error)
         else setPosts(data.posts ?? [])
       })
       .catch(() => setError("Failed to load"))
-  }, [showEmpty])
+  }, [showEmpty, showArchived])
 
   const events = useMemo(() => [...new Set((posts ?? []).map((p) => p.event))], [posts])
 
@@ -130,6 +137,30 @@ export default function ShopClient() {
           )}
         </button>
 
+        {/* Finished trips. Their shelves cannot be shopped and their catalogue
+            is dark, but "what did we carry in March" is a question this screen
+            can answer as well as the archive can. */}
+        <button
+          type="button"
+          onClick={() => setShowArchived((shown) => !shown)}
+          aria-label={showArchived ? "Hide finished trips" : "Show finished trips"}
+          title={showArchived ? "Finished trips shown" : "Only the trips still running"}
+          className={`shrink-0 rounded-xl border px-3 py-2 ${
+            showArchived
+              ? "border-brand bg-brand/5 text-brand"
+              : "border-cream-border bg-white text-gray-400"
+          }`}
+        >
+          <svg
+            width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+          >
+            <rect x="2" y="3" width="20" height="5" rx="1" />
+            <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" />
+            <path d="M10 12h4" />
+          </svg>
+        </button>
+
         {/* The other way a shelf gets in. Here rather than on the archive page:
             uploading happens in the shop, which is where this screen is used. */}
         <Link
@@ -230,6 +261,14 @@ export default function ShopClient() {
                         </div>
                         <div className="mt-0.5 text-[11px] text-gray-400 tabular-nums">
                           {post.event} · {post.createdAt} · {post.bought} of {post.claimed} units
+                          {/* A shelf from a finished trip says so: its store may
+                              be the same as today's, and the rows are otherwise
+                              identical. */}
+                          {post.active ? null : (
+                            <span className="ml-1.5 rounded-full bg-cream px-1.5 py-0.5 text-[10px] font-bold text-gray-500">
+                              selesai
+                            </span>
+                          )}
                         </div>
                       </div>
                       {/* Bold is what is left to buy, exactly as the shopping

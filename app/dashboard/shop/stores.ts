@@ -7,6 +7,8 @@ export interface ShopPost {
   bought: number
   /** When the shelf was recorded, captured or uploaded. */
   createdAt: string
+  /** Whether its trip is still running. */
+  active: boolean
 }
 
 export interface StoreGroup {

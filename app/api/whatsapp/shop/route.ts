@@ -18,19 +18,23 @@ export async function GET(req: Request) {
   // Shelves nobody claimed anything on are hidden by default — a rack the group
   // ignored is nothing to shop for — but they are still shelves, and sometimes
   // the question is "did that rack ever get posted?".
-  const all = new URL(req.url).searchParams.get("all") === "true"
+  const params = new URL(req.url).searchParams
+  const all = params.get("all") === "true"
+  // Finished trips are left out by default: nobody shops a trip that is over,
+  // and the shelves of one would sit among today's looking identical.
+  const archived = params.get("archived") === "true"
 
   try {
     const rows = await sql`
-      SELECT p.id, p.event, p.store, p.created_at,
+      SELECT p.id, p.event, p.store, p.created_at, e.is_active,
              COUNT(DISTINCT s.id)::int AS sku,
              COALESCE(SUM(c.quantity), 0)::int AS claimed,
              COALESCE(SUM(c.obtained), 0)::int AS bought
       FROM wa_posts p
-      JOIN events e ON e.name = p.event AND e.is_active
+      JOIN events e ON e.name = p.event ${archived ? sql`` : sql`AND e.is_active`}
       LEFT JOIN wa_slots s ON s.post_id = p.id
       LEFT JOIN wa_claims c ON c.slot_id = s.id AND c.state <> 'rejected'
-      GROUP BY p.id
+      GROUP BY p.id, e.is_active
       -- A shelf nobody claimed anything on is nothing to shop for. They are
       -- common — a rack is photographed, the group ignores it — and each one
       -- listed is a rack walked to for no reason. A shelf that is fully bought
@@ -48,6 +52,9 @@ export async function GET(req: Request) {
           // When the shelf was recorded — the photograph's own moment, which is
           // what tells two racks of the same shop apart at a glance.
           createdAt: tsToString(r.created_at as Date | null),
+          // Whether its trip is still running, so a closed one can say so
+          // rather than sitting among today's shelves looking identical.
+          active: Boolean(r.is_active),
           sku: r.sku as number,
           claimed: r.claimed as number,
           bought: r.bought as number,
