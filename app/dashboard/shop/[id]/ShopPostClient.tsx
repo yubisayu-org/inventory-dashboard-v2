@@ -254,25 +254,7 @@ export default function ShopPostClient({
         ) : null}
       </div>
 
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => setAdding(adding ? null : { kind: "picking" })}
-          className={`rounded-xl border px-3 py-1.5 text-xs font-bold ${
-            adding
-              ? "border-brand bg-brand text-white"
-              : "border-cream-border bg-white text-brand"
-          }`}
-        >
-          {adding ? "Batal" : "+ Add order"}
-        </button>
-        {adding?.kind === "picking" ? (
-          <span className="text-xs text-gray-500">
-            Tap the shelf where she pointed, or a SKU below.
-          </span>
-        ) : null}
-      </div>
-
+      <div className="relative">
       {/* eslint-disable-next-line @next/next/no-img-element -- a rendered JPEG
           from our own route; next/image would proxy it for no benefit. */}
       <img
@@ -293,6 +275,47 @@ export default function ShopPostClient({
           adding?.kind === "picking" ? "cursor-crosshair ring-2 ring-brand" : ""
         }`}
       />
+
+      {/* On the photograph, because the photograph is what it acts on: press it
+          and the shelf takes a tap where she pointed. A mode, so an ordinary
+          touch cannot put an order on somebody's invoice. */}
+      <button
+        type="button"
+        onClick={() => setAdding(adding ? null : { kind: "picking" })}
+        aria-label={adding ? "Cancel recording an order" : "Record an order from a DM"}
+        title={adding ? "Cancel" : "Record an order that came by DM"}
+        className={`absolute bottom-2 right-2 w-10 h-10 rounded-full flex items-center justify-center backdrop-blur-sm ${
+          adding ? "bg-brand text-white" : "bg-black/55 text-white"
+        }`}
+      >
+        {adding ? (
+          <svg
+            width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="2.2" strokeLinecap="round"
+          >
+            <line x1="6" y1="6" x2="18" y2="18" />
+            <line x1="18" y1="6" x2="6" y2="18" />
+          </svg>
+        ) : (
+          <svg
+            width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+          >
+            <path d="m5 11 4-7" />
+            <path d="m19 11-4-7" />
+            <path d="M2 11h20l-1.8 8.1a2 2 0 0 1-2 1.9H5.8a2 2 0 0 1-2-1.9z" />
+            <path d="M12 14v4" />
+            <path d="M10 16h4" />
+          </svg>
+        )}
+      </button>
+
+      {adding?.kind === "picking" ? (
+        <span className="absolute bottom-3 left-2 rounded-full bg-black/60 px-2.5 py-1 text-[11px] text-white backdrop-blur-sm">
+          Tap where she pointed, or a SKU below
+        </span>
+      ) : null}
+      </div>
 
       <div className="flex flex-col rounded-xl border border-cream-border bg-white overflow-hidden">
         {data.slots.map((s) => (
@@ -451,6 +474,7 @@ export default function ShopPostClient({
             setVersion((v) => v + 1)
             load()
           }}
+          onAddOrder={() => setAdding({ kind: "slot", slotId: slot.id })}
         />
       ) : null}
     </div>
@@ -575,7 +599,7 @@ function AddOrderSheet({
 }
 
 function SlotSheet({
-  slot, claims, onClose, onSave, onRename, onSwap, onLinked,
+  slot, claims, onClose, onSave, onRename, onSwap, onLinked, onAddOrder,
 }: {
   slot: Slot
   claims: Claim[]
@@ -584,6 +608,8 @@ function SlotSheet({
   onRename: (label: string) => void
   onSwap: (claimId: number, size: string) => void
   onLinked: () => void
+  /** Record an order for this SKU that arrived privately. */
+  onAddOrder: () => void
 }) {
   const [count, setCount] = useState(slot.bought)
   const [label, setLabel] = useState(slot.label)
@@ -667,6 +693,18 @@ function SlotSheet({
             All {slot.claimed}
           </button>
         </div>
+
+        {/* An order taken in a DM, on the SKU already open. The other way in is
+            the basket on the photograph, for something nobody has claimed yet —
+            this is the common case, where she asked for a thing somebody else
+            has already asked for. */}
+        <button
+          type="button"
+          onClick={onAddOrder}
+          className="rounded-xl border border-dashed border-cream-border py-2 text-xs font-bold text-brand"
+        >
+          + Tambah pemesan (dari DM)
+        </button>
 
         <UnknownPanel claims={claims} onLinked={onLinked} />
 
