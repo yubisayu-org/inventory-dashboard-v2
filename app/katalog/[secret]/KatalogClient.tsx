@@ -217,14 +217,19 @@ function MarkSheet({
 
   return (
     <div className="fixed inset-0 z-40 bg-black/80 flex flex-col">
-      <div className="flex items-center gap-3 px-3 py-2 text-white shrink-0">
-        <button type="button" onClick={onClose} className="text-sm">
-          ✕
-        </button>
-        <span className="text-sm font-semibold truncate">{shelf.store}</span>
-        <span className="ml-auto text-[11px] opacity-70">
-          Lingkari barang yang kakak mau
-        </span>
+      <div className="px-3 py-2 text-white shrink-0">
+        <div className="flex items-center gap-3">
+          <button type="button" onClick={onClose} className="text-sm">
+            ✕
+          </button>
+          <span className="text-sm font-semibold truncate">{shelf.store}</span>
+        </div>
+        {/* Its own line: beside the store name it squeezed the name to a few
+            characters on a phone, and the instruction is what a first-time
+            visitor is reading. */}
+        <p className="text-[11px] opacity-70 mt-0.5 ml-7">
+          Lingkari atau centang barang yang diinginkan
+        </p>
       </div>
 
       <div className="flex-1 min-h-0 overflow-auto px-2">
