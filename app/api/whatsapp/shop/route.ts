@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
 import sql from "@/lib/db-pool"
+import { tsToString } from "@/lib/db/helpers"
 
 /**
  * Posts worth walking a shop with: the ones on an event that is still running.
@@ -16,7 +17,7 @@ export async function GET() {
 
   try {
     const rows = await sql`
-      SELECT p.id, p.event, p.store,
+      SELECT p.id, p.event, p.store, p.created_at,
              COUNT(DISTINCT s.id)::int AS sku,
              COALESCE(SUM(c.quantity), 0)::int AS claimed,
              COALESCE(SUM(c.obtained), 0)::int AS bought
@@ -39,6 +40,9 @@ export async function GET() {
           id: r.id as number,
           event: r.event as string,
           store: (r.store as string) ?? "",
+          // When the shelf was recorded — the photograph's own moment, which is
+          // what tells two racks of the same shop apart at a glance.
+          createdAt: tsToString(r.created_at as Date | null),
           sku: r.sku as number,
           claimed: r.claimed as number,
           bought: r.bought as number,

@@ -5,6 +5,8 @@ export interface ShopPost {
   sku: number
   claimed: number
   bought: number
+  /** When the shelf was recorded, captured or uploaded. */
+  createdAt: string
 }
 
 export interface StoreGroup {
