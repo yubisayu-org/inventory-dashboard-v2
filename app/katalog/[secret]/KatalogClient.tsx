@@ -74,8 +74,11 @@ export default function KatalogClient({ secret }: { secret: string }) {
           <span className="text-white text-base font-bold">Y</span>
         </span>
         <div className="min-w-0">
-          <h1 className="text-base font-bold text-foreground">Group Catalogue</h1>
-          <p className="text-xs text-gray-500 tabular-nums truncate">
+          {/* Line heights stated, not inherited: 24 plus 16 is the 40 the mark
+              beside them is drawn at, and anything the stylesheet decides for
+              a heading would quietly break that. */}
+          <h1 className="text-base font-bold leading-6 text-foreground">Group Catalogue</h1>
+          <p className="text-xs leading-4 text-gray-500 tabular-nums truncate">
             {event} · {shelves.length} SHELVES
           </p>
         </div>
