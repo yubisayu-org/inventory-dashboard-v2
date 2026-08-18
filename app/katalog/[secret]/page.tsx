@@ -2,18 +2,19 @@ import type { Viewport } from "next"
 import KatalogClient from "./KatalogClient"
 
 /**
- * Zoom is the point of this page, so the app-wide lock is lifted here.
+ * Page zoom stays off; the shelf zooms itself.
  *
- * The root layout disables pinch — iOS otherwise auto-zooms into small inputs
- * and will not zoom back out, which is right for a form-heavy admin tool. A
- * customer reading a price tag off a shelf has the opposite need, and this
- * page has no inputs to be zoomed into.
+ * Pinching the page scaled the pen colour, Undo and Kirim along with the
+ * photograph, and on iOS left the fixed bar drifting around the visual
+ * viewport. The marking screen transforms its own canvas instead, so this page
+ * keeps the app-wide lock inherited from the root layout — repeated here
+ * because it is a decision, not an oversight.
  */
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 6,
-  userScalable: true,
+  maximumScale: 1,
+  userScalable: false,
   viewportFit: "cover",
 }
 

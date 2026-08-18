@@ -185,6 +185,17 @@ function MarkSheet({
   // stroke — enough to tell a drag from the start of a pinch.
   const down = useRef(0)
   const started = useRef(false)
+  /**
+   * Zoom lives on the picture, not on the page.
+   *
+   * Browser pinch scales everything, so the pen colour, Undo and Kirim scaled
+   * away with the shelf — and on iOS a fixed bar drifts about while the visual
+   * viewport moves. Transforming the canvas instead leaves the controls where
+   * her thumb expects them.
+   */
+  const [view, setView] = useState({ k: 1, x: 0, y: 0 })
+  const pointers = useRef(new Map<number, { x: number; y: number }>())
+  const pinch = useRef<{ dist: number; k: number; x: number; y: number; cx: number; cy: number } | null>(null)
 
   const colour = penColour(shelf.hues)
 
@@ -220,6 +231,14 @@ function MarkSheet({
     repaintRef.current = repaint
   }, [repaint])
 
+  // A new rack starts unzoomed; carrying a zoom across would land her in the
+  // corner of a shelf she has not seen yet.
+  useEffect(() => {
+    setView({ k: 1, x: 0, y: 0 })
+    pointers.current.clear()
+    pinch.current = null
+  }, [shelf.id])
+
   useEffect(() => {
     setReady(false)
     const image = new Image()
@@ -241,6 +260,18 @@ function MarkSheet({
   }, [secret, shelf.id])
 
   useEffect(repaint, [repaint, ready])
+
+  const MAX_ZOOM = 6
+
+  /** Distance and midpoint of the two fingers currently down. */
+  function twoFingers() {
+    const [a, b] = [...pointers.current.values()]
+    return {
+      dist: Math.hypot(a.x - b.x, a.y - b.y),
+      cx: (a.x + b.x) / 2,
+      cy: (a.y + b.y) / 2,
+    }
+  }
 
   /** Canvas coordinates from a touch, whatever size the canvas is displayed at. */
   function pointFrom(e: React.PointerEvent<HTMLCanvasElement>) {
@@ -375,49 +406,85 @@ function MarkSheet({
           </div>
         ) : null}
 
-        <canvas
+        {/* The canvas is transformed, not the page: pinching scales the shelf
+            while Undo, the pen and Kirim stay exactly where they were. The
+            wrapper clips, so a zoomed shelf cannot push the layout around. */}
+        <div className={`w-full overflow-hidden rounded-lg ${saved ? "hidden" : ""}`}>
+          <canvas
             ref={canvasRef}
             onPointerDown={(e) => {
-              down.current += 1
-              // A second finger means she is pinching to read a tag, not
-              // drawing. Whatever the first finger started is thrown away, so a
-              // zoom never leaves a stray line across the shelf.
+              pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+              down.current = pointers.current.size
+
+              // A second finger means she is reading a price tag, not drawing.
+              // Whatever the first began is discarded, so zooming never leaves a
+              // stray line across the shelf.
               if (down.current > 1) {
                 drawing.current = false
-                setStrokes((s) => (started.current ? s.slice(0, -1) : s))
+                if (started.current) setStrokes((all) => all.slice(0, -1))
                 started.current = false
+                if (down.current === 2) {
+                  const { dist, cx, cy } = twoFingers()
+                  pinch.current = { dist, k: view.k, x: view.x, y: view.y, cx, cy }
+                }
                 return
               }
+
               drawing.current = true
               started.current = true
               const p = pointFrom(e)
-              setStrokes((s) => [...s, [p]])
+              setStrokes((all) => [...all, [p]])
             }}
             onPointerMove={(e) => {
+              if (!pointers.current.has(e.pointerId)) return
+              pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+
+              if (pointers.current.size >= 2 && pinch.current) {
+                const { dist, cx, cy } = twoFingers()
+                const from = pinch.current
+                const k = Math.min(MAX_ZOOM, Math.max(1, (from.k * dist) / from.dist))
+                // Keep whatever sits between her fingers under her fingers, and
+                // follow them as they travel: pinch and pan in one gesture.
+                setView({
+                  k,
+                  x: cx - ((from.cx - from.x) / from.k) * k,
+                  y: cy - ((from.cy - from.y) / from.k) * k,
+                })
+                return
+              }
+
               if (!drawing.current) return
               const p = pointFrom(e)
-              setStrokes((s) => {
-                const next = [...s]
+              setStrokes((all) => {
+                const next = [...all]
                 next[next.length - 1] = [...next[next.length - 1], p]
                 return next
               })
             }}
-            onPointerUp={() => {
-              down.current = Math.max(0, down.current - 1)
+            onPointerUp={(e) => {
+              pointers.current.delete(e.pointerId)
+              down.current = pointers.current.size
+              if (pointers.current.size < 2) pinch.current = null
               drawing.current = false
               started.current = false
             }}
-            onPointerCancel={() => {
-              down.current = 0
+            onPointerCancel={(e) => {
+              pointers.current.delete(e.pointerId)
+              down.current = pointers.current.size
+              pinch.current = null
               drawing.current = false
               started.current = false
             }}
-            // pinch-zoom rather than none: the browser keeps two-finger zoom,
-            // which is how she reads the price tag, while single-pointer moves
-            // still reach the canvas to draw with.
-          style={{ touchAction: "pinch-zoom" }}
-          className={`w-full h-auto rounded-lg select-none ${saved ? "hidden" : ""}`}
-        />
+            // Every gesture is handled here now, so the browser is told to keep
+            // its hands off: its own pinch would scale the controls with it.
+            style={{
+              touchAction: "none",
+              transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})`,
+              transformOrigin: "0 0",
+            }}
+            className="w-full h-auto select-none"
+          />
+        </div>
       </div>
 
       <div className="flex items-center gap-2 p-3 shrink-0">
@@ -444,11 +511,21 @@ function MarkSheet({
         >
           Undo
         </button>
-        <span
-          className="w-9 h-9 rounded-full border-2 border-white/60 shrink-0"
-          style={{ background: colour }}
-          aria-label="Warna pena"
-        />
+        {view.k > 1 ? (
+          <button
+            type="button"
+            onClick={() => setView({ k: 1, x: 0, y: 0 })}
+            className="rounded-xl border border-white/30 px-3 py-2.5 text-xs font-bold text-white tabular-nums shrink-0"
+          >
+            {view.k.toFixed(1)}× ✕
+          </button>
+        ) : (
+          <span
+            className="w-9 h-9 rounded-full border-2 border-white/60 shrink-0"
+            style={{ background: colour }}
+            aria-label="Warna pena"
+          />
+        )}
         <button
           type="button"
           onClick={share}
