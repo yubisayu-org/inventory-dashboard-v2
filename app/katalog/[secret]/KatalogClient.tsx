@@ -301,7 +301,7 @@ function MarkSheet({
           </span>
           {/* The header line is the running instruction: what to do now, which
               changes the moment the marks become pictures to save. */}
-          <p className="text-[11px] opacity-70 leading-snug">
+          <p className="text-[11px] opacity-70 leading-snug min-h-[2.4em]">
             {saved
               ? `Simpan ${saved.length === 1 ? "gambar" : `${saved.length} gambar`} ini satu per satu, lalu kirim ke grup`
               : "Lingkari atau centang barang yang diinginkan"}
@@ -340,14 +340,17 @@ function MarkSheet({
           keeps the bitmap and its dimensions. */}
       <div className="flex-1 min-h-0 overflow-auto px-2">
         {saved ? (
-          <div className="flex flex-col items-center gap-4 py-2">
+          <div className="flex flex-col items-center gap-3">
             {saved.map((item) => (
               <div key={item.id} className="w-full flex flex-col items-center gap-2">
                 {/* eslint-disable-next-line @next/next/no-img-element -- a blob we just made. */}
+                {/* Sized exactly as the canvas is, so pressing Kirim does not
+                    appear to nudge the shelf down the screen: the picture is
+                    the same picture, in the same place. */}
                 <img
                   src={item.url}
                   alt={item.store}
-                  className="max-w-full max-h-[60vh] object-contain rounded-lg"
+                  className="w-full h-auto rounded-lg"
                 />
                 {/* One button per picture, because a phone saves one file
                     per tap: iOS allows a single download per gesture whatever
