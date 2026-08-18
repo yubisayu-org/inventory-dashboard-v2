@@ -259,20 +259,24 @@ function MarkSheet({
   /**
    * Save every marked rack in one tap.
    *
-   * A browser will only start several downloads from a single gesture if they
-   * are spaced out a little; Chrome also asks once whether multiple files are
-   * allowed. The per-picture links stay underneath for the case where that
-   * permission is refused, or the phone only takes the first.
+   * Fired synchronously, with no await between files: a browser only treats a
+   * download as wanted if it happens inside the gesture that asked for it, and
+   * anything awaited first has already ended that gesture — which is why a
+   * spaced-out burst made Safari ask three separate times.
+   *
+   * Even so this is the consolation prize. Over HTTPS the share sheet takes all
+   * three at once and no saving happens at all; these downloads exist for the
+   * plain-http dev server and for phones without the share API.
    */
-  async function saveAll(items: { id: number; url: string }[]) {
-    for (const [i, item] of items.entries()) {
+  function saveAll(items: { id: number; url: string }[]) {
+    for (const item of items) {
       const link = document.createElement("a")
       link.href = item.url
       link.download = `rak-${item.id}.jpg`
+      link.rel = "noopener"
       document.body.appendChild(link)
       link.click()
       link.remove()
-      if (i < items.length - 1) await new Promise((r) => setTimeout(r, 350))
     }
   }
 
