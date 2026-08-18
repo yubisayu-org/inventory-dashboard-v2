@@ -231,7 +231,21 @@ export async function matchPostByImage(
   groupJid: string,
   replyPath: string,
 ): Promise<{ post: WaPost; marks: Mark[] } | null> {
-  const recent = await listRecentPosts(groupJid, FRAME_CANDIDATES)
+  return matchAmongPosts(await listRecentPosts(groupJid, FRAME_CANDIDATES), replyPath)
+}
+
+/**
+ * The same search, over a set of shelves the caller chose.
+ *
+ * A photo forwarded from a private message belongs to no group, so "recent in
+ * this chat" cannot select the candidates — the caller passes the shelves of
+ * the trips still running instead. The matching itself is identical, which is
+ * the point: a DM is read exactly as a group reply is.
+ */
+export async function matchAmongPosts(
+  recent: WaPost[],
+  replyPath: string,
+): Promise<{ post: WaPost; marks: Mark[] } | null> {
 
   // Pass one: the same frame, marked or not. Around thirty milliseconds per
   // shelf, so it is worth trying against everything recent.
