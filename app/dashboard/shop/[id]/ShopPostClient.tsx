@@ -158,11 +158,9 @@ export default function ShopPostClient({ postId }: { postId: number }) {
 
       <div className="flex flex-col rounded-xl border border-cream-border bg-white overflow-hidden">
         {data.slots.map((s) => (
-          <button
+          <div
             key={s.id}
-            type="button"
-            onClick={() => setOpenSlot(s.id)}
-            className="flex items-center gap-3 px-4 py-3 border-b border-cream-border last:border-b-0 text-left hover:bg-cream transition-colors"
+            className="flex items-center gap-3 px-4 py-3 border-b border-cream-border last:border-b-0"
           >
             <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${dot(s.claimed, s.bought)}`} />
             {/* A database id says nothing about which pyjamas these are. The
@@ -182,17 +180,23 @@ export default function ShopPostClient({ postId }: { postId: number }) {
             <span className="text-xs text-gray-400 tabular-nums shrink-0">
               {s.bought}/{s.claimed}
             </span>
-            {/* A basket and a number rather than the word BUY: it is the same
-                instruction in the language of the job, and it survives being
-                glanced at from arm's length in a shop. A tick means the row is
-                finished. The whole row already opens the tally, so this reads as
-                the button it is. */}
-            <span className={`flex items-center gap-1 text-xs font-bold tabular-nums shrink-0 ${tone(s.claimed, s.bought)}`}>
+            {/* Only the basket opens the tally. The row is where you read what
+                the SKU is — crop, name, size, counts — and reading should not
+                risk a sheet covering the thing being read. */}
+            <button
+              type="button"
+              onClick={() => setOpenSlot(s.id)}
+              aria-label={
+                s.claimed - s.bought === 0
+                  ? "Done — open the tally"
+                  : `${s.claimed - s.bought} still to buy — open the tally`
+              }
+              className={`flex items-center gap-1 shrink-0 rounded-lg border border-cream-border px-2.5 py-1.5 text-xs font-bold tabular-nums hover:border-brand transition-colors ${tone(s.claimed, s.bought)}`}
+            >
               {s.claimed - s.bought === 0 ? (
                 <svg
                   width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                   strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"
-                  aria-label="Done"
                 >
                   <path d="M20 6 9 17l-5-5" />
                 </svg>
@@ -201,7 +205,6 @@ export default function ShopPostClient({ postId }: { postId: number }) {
                   <svg
                     width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                     strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                    aria-label="Still to buy"
                   >
                     <circle cx="9" cy="21" r="1" />
                     <circle cx="20" cy="21" r="1" />
@@ -210,8 +213,8 @@ export default function ShopPostClient({ postId }: { postId: number }) {
                   {s.claimed - s.bought}
                 </>
               )}
-            </span>
-          </button>
+            </button>
+          </div>
         ))}
       </div>
 
