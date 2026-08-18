@@ -12,14 +12,15 @@ import { useState } from "react"
  * Name, valas and gram — nothing else. Store, country, event and pricing method
  * come from the post, because the owner set them once when posting and
  * re-typing them per item would be fifteen chances to disagree.
+ *
+ * Creates the product alone. The orders are a separate act on the card, so the
+ * price can be read back and checked before anybody is charged it.
  */
 export default function SlotNameForm({
-  slotId, defaultName, needsPrice, blocked, claimCount, onNamed, compact = false,
+  slotId, defaultName, needsPrice, blocked, onNamed, compact = false,
 }: {
   slotId: number
   defaultName: string
-  /** How many claims are waiting, so the button can say what it will create. */
-  claimCount: number
   /** Target Price is the one method whose price a human decides. */
   needsPrice: boolean
   /** A claim here has no customer yet, so naming would drop somebody's order. */
@@ -103,42 +104,25 @@ export default function SlotNameForm({
       {error ? <p className="text-xs text-red-600">{error}</p> : null}
       {blocked ? (
         <p className="text-xs text-amber-700">
-          One of these senders is not a customer yet. Link them first — naming now
-          would drop their order.
+          One of these senders is not a customer yet. The product can be created;
+          their order cannot, until they are linked.
         </p>
       ) : null}
 
-      {/* Two acts, two buttons. Creating the product settles what the thing is
-          and what it costs; creating the orders puts it on invoices. They
-          usually happen together, which is why the first is the primary one —
-          but a rack catalogued before its customers have decided wants the
-          product without the lines, and the card then shows the claims as
-          waiting for one. */}
-      <div className="flex gap-2">
-        <button
-          type="button"
-          disabled={busy || blocked || !name.trim()}
-          onClick={() => create(true)}
-          className={`flex-1 rounded-lg bg-brand font-bold text-white disabled:opacity-40 ${
-            compact ? "py-2.5 text-sm" : "py-1.5 text-xs"
-          }`}
-        >
-          {claimCount > 0 ? `Buat produk & ${claimCount} order` : "Buat produk"}
-        </button>
-        {claimCount > 0 ? (
-          <button
-            type="button"
-            disabled={busy || !name.trim()}
-            onClick={() => create(false)}
-            title="The orders can be created later, from the card"
-            className={`rounded-lg border border-cream-border font-bold text-brand disabled:opacity-40 ${
-              compact ? "px-3 py-2.5 text-sm" : "px-2.5 py-1.5 text-xs"
-            }`}
-          >
-            Produk saja
-          </button>
-        ) : null}
-      </div>
+      {/* Naming only. Creating the product settles what the thing is and what
+          it costs; putting it on somebody's invoice is the next decision, and
+          the card makes it — so a mistyped valas can be caught before anyone is
+          charged for it. */}
+      <button
+        type="button"
+        disabled={busy || !name.trim()}
+        onClick={() => create(false)}
+        className={`rounded-lg bg-brand font-bold text-white disabled:opacity-40 ${
+          compact ? "py-2.5 text-sm" : "py-1.5 text-xs"
+        }`}
+      >
+        {busy ? "Membuat…" : "Buat produk"}
+      </button>
     </div>
   )
 }
