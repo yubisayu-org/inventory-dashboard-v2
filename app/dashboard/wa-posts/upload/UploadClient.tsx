@@ -24,6 +24,7 @@ export default function UploadClient() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
   const [dragging, setDragging] = useState(false)
+  const [announce, setAnnounce] = useState(true)
 
   useEffect(() => {
     fetch("/api/whatsapp/posts/upload", { cache: "no-store" })
@@ -79,6 +80,7 @@ export default function UploadClient() {
       body.append("event", event)
       body.append("store", store)
       body.append("note", note)
+      body.append("announce", String(announce))
 
       try {
         const res = await fetch("/api/whatsapp/posts/upload", { method: "POST", body })
@@ -229,6 +231,24 @@ export default function UploadClient() {
           ))}
         </div>
       ) : null}
+
+      {/* The bot sends what you upload, at the size it was stored — WhatsApp
+          only shrinks what a phone app uploads, so a rack posted this way
+          reaches the group sharper than one sent by hand. */}
+      <label className="flex items-start gap-2.5 text-sm">
+        <input
+          type="checkbox"
+          checked={announce}
+          onChange={(e) => setAnnounce(e.target.checked)}
+          className="mt-0.5 w-4 h-4 accent-brand"
+        />
+        <span>
+          Post to the WhatsApp group
+          <span className="block text-[11px] text-gray-500">
+            Sent by the bot at full resolution, a few seconds after upload.
+          </span>
+        </span>
+      </label>
 
       <div className="flex gap-2">
         <button

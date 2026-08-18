@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
 import sql from "@/lib/db-pool"
 import { storeShelf } from "@/lib/whatsapp/shelf"
+import { queueShelfPost } from "@/lib/db/outbox"
 
 /**
  * Add a shelf from the dashboard rather than from the group.
@@ -82,7 +83,13 @@ export async function POST(req: NextRequest) {
       path,
     })
 
-    return NextResponse.json({ ...shelf, event, store })
+    // The bot posts it, because the dashboard has no socket. Off means the
+    // shelf is shoppable and in the catalogue but never announced — which is
+    // what you want for a rack photographed for your own reference.
+    const announce = String(form.get("announce") ?? "true") !== "false"
+    const queued = announce ? await queueShelfPost(shelf.id, event) : false
+
+    return NextResponse.json({ ...shelf, event, store, queued })
   } catch (err) {
     console.error("Failed to upload a shelf:", err)
     return NextResponse.json({ error: "Failed to upload" }, { status: 500 })
