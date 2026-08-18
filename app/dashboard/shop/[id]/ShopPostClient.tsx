@@ -5,6 +5,7 @@ import Link from "next/link"
 import { senderDigits, claimedAt } from "@/lib/format"
 import { alternativeSizes } from "@/lib/claims/size"
 import { neighbours, type Neighbours, type ShopPost } from "../stores"
+import SlotZoom from "@/components/SlotZoom"
 
 interface Slot {
   id: number
@@ -43,6 +44,10 @@ export default function ShopPostClient({ postId }: { postId: number }) {
   const [data, setData] = useState<PostPayload | null>(null)
   const [error, setError] = useState("")
   const [openSlot, setOpenSlot] = useState<number | null>(null)
+  // The crop, big. Separate from the tally: "which pyjamas are these" and "how
+  // many did I find" are different questions, and in a shop the first is asked
+  // far more often.
+  const [zoomSlot, setZoomSlot] = useState<number | null>(null)
   // The other shelves in this shop, so the next rack is one tap rather than a
   // trip back to the list. Fetched separately because it is a different
   // question — "what else is in this shop" — and a stale answer costs nothing.
@@ -162,12 +167,19 @@ export default function ShopPostClient({ postId }: { postId: number }) {
             {/* A database id says nothing about which pyjamas these are. The
                 crop does, and it is the only label an unnamed SKU has. */}
             {s.point ? (
-              // eslint-disable-next-line @next/next/no-img-element -- our own crop route.
-              <img
-                src={`/api/whatsapp/slots/${s.id}/thumb`}
-                alt=""
-                className="w-10 h-10 rounded object-cover shrink-0 border border-cream-border"
-              />
+              <button
+                type="button"
+                onClick={() => setZoomSlot(s.id)}
+                aria-label="Look closer at this item"
+                className="shrink-0"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element -- our own crop route. */}
+                <img
+                  src={`/api/whatsapp/slots/${s.id}/thumb`}
+                  alt=""
+                  className="w-10 h-10 rounded object-cover border border-cream-border hover:border-brand transition-colors"
+                />
+              </button>
             ) : null}
             <span className="flex-1 min-w-0 text-sm font-medium text-foreground truncate">
               {s.label || `SKU ${s.id}`}
@@ -227,6 +239,10 @@ export default function ShopPostClient({ postId }: { postId: number }) {
           </span>
           <NeighbourLink post={siblings.next} direction="next" />
         </div>
+      ) : null}
+
+      {zoomSlot !== null ? (
+        <SlotZoom slotId={zoomSlot} onClose={() => setZoomSlot(null)} />
       ) : null}
 
       {slot ? (
