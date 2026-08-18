@@ -15,6 +15,8 @@ interface Slot {
   claimed: number
   bought: number
   productId: number | null
+  /** What it was named as, once it has been. */
+  productName: string | null
 }
 
 interface Claim {
@@ -181,8 +183,11 @@ export default function ShopPostClient({ postId }: { postId: number }) {
                 />
               </button>
             ) : null}
+            {/* The product name once there is one, then the working name typed
+                in the shop, and only then the id. A named SKU showing "SKU 1171"
+                looks unnamed, and sends you back to the naming screen to check. */}
             <span className="flex-1 min-w-0 text-sm font-medium text-foreground truncate">
-              {s.label || `SKU ${s.id}`}
+              {s.productName || s.label || `SKU ${s.id}`}
               {s.size ? <span className="text-gray-500 font-normal"> · {s.size}</span> : null}
             </span>
             <span className="text-xs text-gray-400 tabular-nums shrink-0">
@@ -326,8 +331,9 @@ function SlotSheet({
             <input
               value={label}
               onChange={(e) => setLabel(e.target.value)}
+              disabled={slot.productName !== null}
               onBlur={() => label !== slot.label && onRename(label)}
-              placeholder="Name it — e.g. brown bear set"
+              placeholder={slot.productName ?? "Name it — e.g. brown bear set"}
               className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
             />
             <p className="text-xs text-gray-500 tabular-nums">
