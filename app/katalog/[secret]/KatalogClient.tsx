@@ -199,6 +199,15 @@ function MarkSheet({
   const pinchMid = useRef<{ x: number; y: number } | null>(null)
   /** When and where the last tap landed, for spotting a double one. */
   const lastTap = useRef<{ at: number; x: number; y: number } | null>(null)
+  /**
+   * Points in the stroke being drawn right now.
+   *
+   * Counted here rather than read back from state: a setStrokes updater runs
+   * when React gets round to it, so asking it "was that a tap?" during the
+   * pointerup handler answered about the previous render and swallowed every
+   * double tap.
+   */
+  const strokePoints = useRef(0)
   const pinch = useRef<{ dist: number; k: number; cx: number; cy: number } | null>(null)
 
   const colour = penColour(shelf.hues)
@@ -471,6 +480,7 @@ function MarkSheet({
 
               drawing.current = true
               started.current = true
+              strokePoints.current = 1
               const p = pointFrom(e)
               setStrokes((all) => [...all, [p]])
             }}
@@ -501,6 +511,7 @@ function MarkSheet({
               }
 
               if (!drawing.current) return
+              strokePoints.current += 1
               const p = pointFrom(e)
               setStrokes((all) => {
                 const next = [...all]
@@ -522,14 +533,14 @@ function MarkSheet({
 
               // A tap leaves a one-point stroke, which draws nothing but would
               // count the rack as marked and send it. Dropped here, which also
-              // makes the tap available to mean something else.
-              let wasTap = false
+              // frees the tap to mean something else.
+              const wasTap = strokePoints.current < 3
+              strokePoints.current = 0
+              if (!wasTap) return
               setStrokes((all) => {
                 const last = all[all.length - 1]
-                wasTap = Boolean(last) && last.length < 2
-                return wasTap ? all.slice(0, -1) : all
+                return last && last.length < 3 ? all.slice(0, -1) : all
               })
-              if (!wasTap) return
 
               // Two taps in the same spot: zoom to it, or back out if already
               // in. The habit comes from Photos and Maps, so it needs no
