@@ -569,9 +569,6 @@ function UnknownPanel({
       {unknown.map((claim) => (
         <div key={claim.id} className="flex flex-col gap-1">
           <div className="text-[11px] text-gray-600 tabular-nums">
-            {/* The same mark the claimant carries in the list below, so the two
-                are recognisably the same person. */}
-            <span className="mr-1">❔</span>
             {senderDigits(claim.sender)} · {claimedAt(claim.createdAt)} · {claim.quantity}×
             {claim.note ? <span className="text-gray-500"> · “{claim.note}”</span> : null}
           </div>
