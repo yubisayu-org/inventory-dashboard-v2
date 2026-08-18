@@ -91,7 +91,7 @@ async function captureImageClaim(input: {
     // not answerable without the picture that produced it.
     if (process.env.WA_DEBUG) await keepForInspection(input, scratch)
 
-    const { claimIds } = await ingestImageReply({
+    const { claimIds, repeats } = await ingestImageReply({
       postId: input.post.id,
       sender: input.sender,
       messageId: input.messageId,
@@ -110,7 +110,12 @@ async function captureImageClaim(input: {
     // owner's job to fix and something the customer cannot know about or act
     // on. Reading it here told someone who had marked the shelf perfectly that
     // their claim was missing a detail.
-    const emoji = reactionForClaims(mine)
+    // Nothing new, but not nothing understood: she marked something she had
+    // already claimed, so her order stands and 😢 would tell her it had been
+    // lost. 📝 says what is true — it is written down.
+    const emoji = claimIds.length === 0 && repeats > 0
+      ? CAPTURE_REACTIONS.recorded
+      : reactionForClaims(mine)
 
     await resolveSenders(input.post.id)
     await recluster(input.post.id)

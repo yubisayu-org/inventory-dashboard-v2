@@ -32,7 +32,7 @@ export async function ingestImageReply(input: {
   messageId: string
   replyPath: string
   caption: string
-}): Promise<{ claimIds: number[] }> {
+}): Promise<{ claimIds: number[]; repeats: number }> {
   const post = await getPost(input.postId)
   if (post === null) throw new Error(`no such post: ${input.postId}`)
 
@@ -53,6 +53,10 @@ export async function ingestImageReply(input: {
   const postFile = await localPostImage(post.imagePath)
   const result = await resolveImageReply(postFile, input.replyPath)
   const claimIds: number[] = []
+  // Marks skipped because this sender already claims that spot. Counted rather
+  // than swallowed: "you already ordered that" and "I could not read this" are
+  // different answers, and the caller has to tell the customer which.
+  let repeats = 0
 
   const record = async (
     source: "ink" | "crop" | "repost" | "manual",
@@ -82,7 +86,10 @@ export async function ingestImageReply(input: {
         // Same person, same spot, already recorded. Skipped rather than stored
         // and reconciled later: a duplicate that exists is a duplicate that can
         // reach the shopping list.
-        if (isRepeat(mark.point)) continue
+        if (isRepeat(mark.point)) {
+          repeats += 1
+          continue
+        }
         await record("ink", mark.point, 1, "pending")
         alreadyClaimed.push(mark.point)
       }
@@ -116,7 +123,7 @@ export async function ingestImageReply(input: {
   }
 
   await recluster(input.postId)
-  return { claimIds }
+  return { claimIds, repeats }
 }
 
 /**

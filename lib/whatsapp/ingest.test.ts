@@ -220,3 +220,23 @@ test("a photo of something else matches no shelf", async () => {
   // 60% of their pixels, well past what a marked copy ever does.
   assert.equal(await matchPostByImage(lonely, FIXTURES.greenTicked), null)
 })
+
+test("marking the same spot twice adds nothing, and says it was a repeat", async () => {
+  const { id: postId } = await shelfPost()
+  const first = await ingestImageReply({
+    postId, sender: "628111019159", messageId: "r1",
+    replyPath: FIXTURES.ticked, caption: "size 90",
+  })
+  assert.equal(first.claimIds.length, 2)
+  assert.equal(first.repeats, 0)
+
+  // The same customer, the same marks, sent again — a resend, not a second
+  // order. Counted rather than silently dropped: the caller has to tell her
+  // "already noted" apart from "I could not read that".
+  const again = await ingestImageReply({
+    postId, sender: "628111019159", messageId: "r2",
+    replyPath: FIXTURES.ticked, caption: "size 90 mau 3 yah",
+  })
+  assert.equal(again.claimIds.length, 0)
+  assert.equal(again.repeats, 2)
+})
