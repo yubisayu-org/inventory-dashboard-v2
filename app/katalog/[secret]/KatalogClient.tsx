@@ -675,21 +675,20 @@ function MarkSheet({
             reset button while zoomed, which removed the only sign that she can
             still draw at exactly the moment she is closest to the item and most
             likely to want to. */}
-        {/* A coloured circle alone read as decoration. The pen inside says what
-            the colour is for, and is drawn in the shelf's own contrasting hue
-            so it stays visible on the disc it sits on. */}
+        {/* Shaped and bordered like Undo beside it, so the row reads as one set
+            of controls. The pencil is stroked in this shelf's colour, so the
+            swatch shows what she will draw with rather than merely being a
+            coloured thing. */}
         <span
-          className="w-11 h-11 rounded-full border-2 border-white/60 shrink-0 flex items-center justify-center bg-white/10"
-          aria-label={`Warna pena untuk rak ini`}
+          className="w-11 h-11 rounded-xl border border-white/30 shrink-0 flex items-center justify-center"
+          aria-label="Warna pensil untuk rak ini"
         >
           <svg
             width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={colour}
-            strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
+            strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
           >
-            <path d="M12 19l7-7 3 3-7 7-3-3z" />
-            <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" />
-            <path d="M2 2l7.586 7.586" />
-            <circle cx="11" cy="11" r="2" />
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
           </svg>
         </span>
 
