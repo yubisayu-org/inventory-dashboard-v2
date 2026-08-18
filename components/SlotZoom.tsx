@@ -65,7 +65,7 @@ export default function SlotZoom({
         />
 
         {info ? (
-          <span className="absolute top-2 left-2 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-semibold text-white tabular-nums">
+          <span className="absolute bottom-2 left-2 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-semibold text-white tabular-nums">
             {info}
           </span>
         ) : null}
@@ -85,12 +85,13 @@ export default function SlotZoom({
           </svg>
         </button>
 
-        {/* Down the left edge rather than along the bottom.
-            The naming sheet covers the bottom of the crop, and the whole point
-            of naming here is to read the tag while typing it — so the zoom has
-            to stay reachable with the fields open. A column at the edge is clear
-            of both the sheet and the close button. */}
-        <div className="absolute left-2 top-1/2 -translate-y-1/2 flex flex-col items-center gap-1 rounded-full bg-black/60 px-1.5 py-2">
+        {/* Top left, in a column.
+            The naming sheet opens over the bottom of the crop and grows with
+            the keyboard, so anything lower than this ends up underneath it —
+            and the point of naming here is to read the tag while typing it. The
+            top corner is the one place the sheet can never reach; the close
+            button holds the other one. */}
+        <div className="absolute left-2 top-2 flex flex-col items-center gap-1 rounded-full bg-black/60 px-1.5 py-2">
           <button
             type="button"
             onClick={() => setStep((n) => Math.min(ZOOM_STEPS.length - 1, n + 1))}
