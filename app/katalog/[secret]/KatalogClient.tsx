@@ -171,6 +171,15 @@ function MarkSheet({
     }
   }, [strokes, colour])
 
+  // The load handler paints through this rather than waiting for an effect.
+  // Setting canvas.width clears the bitmap, and on a cached image — going back
+  // to a rack already seen — the ready flag goes false and true inside one
+  // batch, so React sees no change, runs no effect, and the shelf stays blank.
+  const repaintRef = useRef(repaint)
+  useEffect(() => {
+    repaintRef.current = repaint
+  }, [repaint])
+
   // A preview belongs to the shelf it was made from.
   useEffect(() => {
     setSaved((url) => {
@@ -188,10 +197,13 @@ function MarkSheet({
     image.onload = () => {
       const canvas = canvasRef.current
       if (!canvas) return
+      // Assigning either dimension wipes the canvas, so the paint has to follow
+      // in the same turn.
       canvas.width = image.naturalWidth
       canvas.height = image.naturalHeight
       imageRef.current = image
       setReady(true)
+      repaintRef.current()
     }
     image.src = `/api/public/katalog/${secret}/shelf/${shelf.id}`
   }, [secret, shelf.id])
