@@ -299,19 +299,17 @@ export default function ShopClient() {
                   <path d="M20 6 9 17l-5-5" />
                 </svg>
                         ) : (
-                          <>
-                            <svg
-                  width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                  strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                >
-                  <path d="m5 11 4-7" />
-                  <path d="m19 11-4-7" />
-                  <path d="M2 11h20l-1.8 8.1a2 2 0 0 1-2 1.9H5.8a2 2 0 0 1-2-1.9z" />
-                  <path d="M9 15v3" />
-                  <path d="M15 15v3" />
-                </svg>
-                            {left}
-                          </>
+                          <svg
+                            width="15" height="15" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="m5 11 4-7" />
+                            <path d="m19 11-4-7" />
+                            <path d="M2 11h20l-1.8 8.1a2 2 0 0 1-2 1.9H5.8a2 2 0 0 1-2-1.9z" />
+                            <path d="M9 15v3" />
+                            <path d="M15 15v3" />
+                          </svg>
                         )}
                       </div>
                     </Link>
