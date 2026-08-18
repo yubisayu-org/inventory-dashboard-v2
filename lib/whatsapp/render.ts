@@ -169,6 +169,14 @@ export async function renderSlotCrop(slotId: number, share = CROP_SHARE): Promis
   // step. A WhatsApp photo never reaches it: twice its crop is smaller.
   const out = Math.min(box * 2, 1400)
 
+  // The ring is dropped once the crop is tight enough to be unambiguous.
+  //
+  // It exists to say which of several things in shot is this one, which is a
+  // question a wide crop raises and a close one answers by itself. Kept at every
+  // step it did the opposite: at the closest zoom it covered the price tag the
+  // owner had zoomed in to read.
+  const ringed = bounded > 0.2
+
   // A ring on the item this crop is about.
   //
   // The crop deliberately includes the neighbours, which is what makes two
@@ -192,11 +200,12 @@ export async function renderSlotCrop(slotId: number, share = CROP_SHARE): Promis
     </svg>`,
   )
 
-  return sharp(file)
+  const crop = sharp(file)
     .extract({ left, top, width: box, height: box })
     .resize({ width: out })
     .sharpen()
-    .composite([{ input: ring, top: 0, left: 0 }])
+
+  return (ringed ? crop.composite([{ input: ring, top: 0, left: 0 }]) : crop)
     .jpeg({ quality: 88 })
     .toBuffer()
 }
