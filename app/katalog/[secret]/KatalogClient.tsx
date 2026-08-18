@@ -533,9 +533,12 @@ function MarkSheet({
           />
 
           {view.k === 1 ? (
-            <span className="pointer-events-none absolute bottom-2 left-2 flex items-center gap-1.5 rounded-full bg-black/55 px-2.5 py-1 text-[11px] text-white">
+            <span
+              className="pointer-events-none absolute bottom-2 left-2 w-9 h-9 rounded-full bg-black/55 text-white flex items-center justify-center"
+              aria-label="Cubit untuk memperbesar"
+            >
               <svg
-                width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                 strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
               >
                 <circle cx="11" cy="11" r="7" />
@@ -543,7 +546,6 @@ function MarkSheet({
                 <line x1="11" y1="8" x2="11" y2="14" />
                 <line x1="8" y1="11" x2="14" y2="11" />
               </svg>
-              Cubit untuk zoom harga
             </span>
           ) : null}
         </div>
