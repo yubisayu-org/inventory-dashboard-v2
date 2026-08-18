@@ -90,7 +90,16 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    await createCatalogueRequest({ customerHandle, productId, qty, note }, catalogueSql)
+    const postIdRaw = b.postId
+    let postId: number | null = null
+    if (postIdRaw !== undefined && postIdRaw !== null) {
+      postId = Number(postIdRaw)
+      if (!Number.isInteger(postId) || postId < 1) {
+        return NextResponse.json({ error: "postId must be a positive integer" }, { status: 400, headers: corsHeaders() })
+      }
+    }
+
+    await createCatalogueRequest({ customerHandle, productId, qty, note, postId }, catalogueSql)
     return NextResponse.json({ success: true }, { headers: corsHeaders() })
   } catch (err) {
     console.error("Failed to save catalogue request:", err)
