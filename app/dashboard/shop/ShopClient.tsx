@@ -221,7 +221,7 @@ export default function ShopClient() {
                 {group.name}
                 <span className="font-normal text-gray-400 tabular-nums">
                   {" · "}
-                  {group.posts.length} {group.posts.length === 1 ? "shelf" : "shelves"}
+                  {group.posts.length} {group.posts.length === 1 ? "SHELF" : "SHELVES"}
                 </span>
               </span>
               <span className="ml-auto" />
