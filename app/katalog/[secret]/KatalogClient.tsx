@@ -61,7 +61,9 @@ export default function KatalogClient({ secret }: { secret: string }) {
 
   return (
     <main className="min-h-screen bg-cream">
-      <header className="flex items-center gap-3 px-4 py-3 border-b border-cream-border bg-white sticky top-0 z-10">
+      {/* Aligned at the top rather than centred: whatever the font's own metrics
+          do to the two lines, the title starts level with the mark. */}
+      <header className="flex items-start gap-3 px-4 py-3 border-b border-cream-border bg-white sticky top-0 z-10">
         {/* The same mark the dashboard uses, round here: this is the one screen
             a customer sees, so it should say whose shop it is before it says
             anything else. No logo file exists yet — when one does, it replaces
