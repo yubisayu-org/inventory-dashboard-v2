@@ -43,6 +43,8 @@ interface Payload {
     pricingMethod: PricingMethod | null
     /** What that amounts to right now, so the option can be named. */
     effectivePricingMethod: PricingMethod
+    /** What the price tag is written in, for the naming fields. */
+    currency: string
     countryId: number | null
   }
   slots: Slot[]
@@ -192,6 +194,7 @@ export default function PostReviewClient({ postId }: { postId: number }) {
             slot={slot}
             claims={data.claims.filter((c) => c.slotId === slot.id && c.state !== "rejected")}
             unordered={new Set(data.unordered ?? [])}
+            currency={data.post.currency}
             needsPrice={
               (data.post.pricingMethod ?? data.post.effectivePricingMethod) === "target_price"
             }
@@ -311,12 +314,13 @@ function ReviewQueue({ claims, onDone }: { claims: Claim[]; onDone: () => void }
 
 /** One SKU: who wants it, and the form that turns it into a product. */
 function SlotCard({
-  slot, claims, unordered, needsPrice, onDone,
+  slot, claims, unordered, currency, needsPrice, onDone,
 }: {
   slot: Slot
   claims: Claim[]
   /** Ids of claims on this slot with no order yet. */
   unordered: Set<number>
+  currency: string
   /** Target Price is the one method whose price a human decides. */
   needsPrice: boolean
   onDone: () => void
@@ -465,6 +469,7 @@ function SlotCard({
               <SlotNameForm
                 slotId={slot.id}
                 defaultName={slot.label}
+                currency={currency}
                 needsPrice={needsPrice}
                 blocked={blocked}
                 onNamed={onDone}
@@ -506,6 +511,7 @@ function SlotCard({
               defaultGram={slot.productGram}
               named={slot.productId !== null}
               missing={missing.length}
+              currency={currency}
               needsPrice={needsPrice}
               blocked={blocked}
               onNamed={() => {

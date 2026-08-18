@@ -17,7 +17,7 @@ import { useState } from "react"
  * price can be read back and checked before anybody is charged it.
  */
 export default function SlotNameForm({
-  slotId, defaultName, defaultValas, defaultGram, named, missing,
+  slotId, defaultName, defaultValas, defaultGram, named, missing, currency,
   needsPrice, blocked, onNamed, compact = false,
 }: {
   slotId: number
@@ -29,6 +29,8 @@ export default function SlotNameForm({
   named?: boolean
   /** Claims on this slot with no order yet. */
   missing?: number
+  /** What the price tag is written in — JPY, KRW — from the shelf's country. */
+  currency?: string
   /** Target Price is the one method whose price a human decides. */
   needsPrice: boolean
   /** A claim here has no customer yet, so naming would drop somebody's order. */
@@ -106,22 +108,32 @@ export default function SlotNameForm({
           placeholder="Product name"
           className={`col-span-2 ${field}`}
         />
-        <input
-          value={valas}
-          onChange={(e) => setValas(e.target.value)}
-          disabled={named}
-          inputMode="decimal"
-          placeholder="Valas (price tag)"
-          className={field}
-        />
-        <input
-          value={gram}
-          onChange={(e) => setGram(e.target.value)}
-          disabled={named}
-          inputMode="numeric"
-          placeholder="Gram"
-          className={field}
-        />
+        {/* The unit is printed in the field rather than left to the
+            placeholder, which disappears the moment anything is typed — and a
+            bare number is exactly where a price tag and a weight get confused
+            for one another. */}
+        <span className={`flex items-center gap-1.5 ${field}`}>
+          <span className="text-gray-400 text-xs shrink-0">{currency || "Valas"}</span>
+          <input
+            value={valas}
+            onChange={(e) => setValas(e.target.value)}
+            disabled={named}
+            inputMode="decimal"
+            placeholder="price tag"
+            className="w-full min-w-0 bg-transparent outline-none disabled:text-gray-500"
+          />
+        </span>
+        <span className={`flex items-center gap-1.5 ${field}`}>
+          <input
+            value={gram}
+            onChange={(e) => setGram(e.target.value)}
+            disabled={named}
+            inputMode="numeric"
+            placeholder="weight"
+            className="w-full min-w-0 bg-transparent outline-none disabled:text-gray-500"
+          />
+          <span className="text-gray-400 text-xs shrink-0">g</span>
+        </span>
         {/* Only where the method has no formula to derive a price from. Every
             other method computes one from the valas, the kurs and the weight, so
             the box was a permanent invitation to type a number that would be

@@ -26,6 +26,10 @@ export async function GET(_req: Request, { params }: Params) {
     const post = await getPost(id)
     if (post === null) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
+    const [country] = post.countryId === null
+      ? [null]
+      : await sql`SELECT currency FROM countries WHERE id = ${post.countryId}`
+
     const [slots, claims, effective] = await Promise.all([
       listSlots(id),
       listClaims(id),
@@ -48,7 +52,17 @@ export async function GET(_req: Request, { params }: Params) {
     // amounts to right now. A screen needs the first to render the control and
     // the second to name the option inside it.
     return NextResponse.json(
-      { post: { ...post, effectivePricingMethod: effective }, slots, claims, unordered },
+      {
+        post: {
+          ...post,
+          effectivePricingMethod: effective,
+          // What the price tag is written in, for the field that asks for it.
+          currency: (country?.currency as string) ?? "",
+        },
+        slots,
+        claims,
+        unordered,
+      },
       { headers: { "Cache-Control": "no-store" } },
     )
   } catch (err) {
