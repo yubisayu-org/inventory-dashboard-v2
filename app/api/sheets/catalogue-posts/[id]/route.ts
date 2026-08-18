@@ -28,8 +28,8 @@ export async function PUT(req: NextRequest, { params }: Params) {
       await setCataloguePostVisible(id, body.visible)
     }
     if (body.highlightId !== undefined) {
-      if (body.highlightId !== null && !Number.isInteger(body.highlightId)) {
-        return NextResponse.json({ error: "highlightId must be an integer or null" }, { status: 400 })
+      if (body.highlightId !== null && (!Number.isInteger(body.highlightId) || body.highlightId < 1)) {
+        return NextResponse.json({ error: "highlightId must be a positive integer or null" }, { status: 400 })
       }
       await setCataloguePostHighlight(id, body.highlightId)
     }

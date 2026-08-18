@@ -72,7 +72,10 @@ export default function CataloguePostsClient() {
         throw new Error(data.error ?? "Failed to update highlight")
       }
     } catch (err) {
-      setPosts((prev) => prev.map((p) => p.id === post.id ? { ...p, highlightId: post.highlightId } : p))
+      // Re-read server truth instead of guessing at a rollback value —
+      // avoids the same-row race where a slow failed request's rollback
+      // could clobber a faster, later successful change.
+      reload()
       setError(err instanceof Error ? err.message : "Failed to update highlight")
     }
   }
@@ -126,7 +129,7 @@ export default function CataloguePostsClient() {
                 >
                   <option value="">No highlight</option>
                   {highlights.map((h) => (
-                    <option key={h.id} value={h.id}>{h.name}</option>
+                    <option key={h.id} value={h.id}>{h.name}{h.visible ? "" : " (hidden)"}</option>
                   ))}
                 </select>
                 <button
@@ -208,7 +211,7 @@ function UploadForm({ options, highlights, onCreated }: { options: ReturnType<ty
       >
         <option value="">No highlight</option>
         {highlights.map((h) => (
-          <option key={h.id} value={h.id}>{h.name}</option>
+          <option key={h.id} value={h.id}>{h.name}{h.visible ? "" : " (hidden)"}</option>
         ))}
       </select>
       <div className="flex flex-col gap-1 max-h-48 overflow-y-auto border border-cream-border rounded-lg p-2">

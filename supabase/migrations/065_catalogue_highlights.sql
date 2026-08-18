@@ -42,3 +42,12 @@ GRANT SELECT (id, name, visible, sort_order) ON catalogue_highlights TO catalogu
 -- (only the owner-side event-prefill query, which runs as the
 -- unrestricted app role, reads it).
 GRANT INSERT (post_id) ON catalogue_requests TO catalogue_public;
+
+-- Explicit, idempotent grant for catalogue_posts.highlight_id, even though
+-- 059's table-wide GRANT SELECT ON catalogue_posts already covers it today.
+-- getVisibleCataloguePosts (the public posts feed) now hard-references
+-- p.highlight_id, so if that table-wide grant ever narrows to a column
+-- list, the whole public catalogue feed would 500 instead of just this
+-- column being missing. Migration 061's comment documents this exact class
+-- of grant drift happening before in this series — don't repeat it here.
+GRANT SELECT (highlight_id) ON catalogue_posts TO catalogue_public;

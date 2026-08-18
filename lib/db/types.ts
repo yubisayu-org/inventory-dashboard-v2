@@ -607,10 +607,12 @@ export interface CatalogueRequest {
   gram: number | null
   estimatedPrice: number | null
   postId: number | null
-  /** Resolved from post -> highlight -> default_event, only when it
-   *  currently matches an active event. Owner-read path only — the public
-   *  status-lookup path never populates this (stays null), since a
-   *  customer has no use for staff's purchasing-event bookkeeping. */
+  /** Resolved from post -> highlight -> default_event, unconditionally —
+   *  the caller (ConvertModal) is responsible for checking it's still in
+   *  the active events list before using it as a picker default. Owner-read
+   *  path only, see getCatalogueRequests — the public status-lookup path
+   *  never populates this (stays null), since a customer has no use for
+   *  staff's purchasing-event bookkeeping. */
   defaultEvent: string | null
 }
 
