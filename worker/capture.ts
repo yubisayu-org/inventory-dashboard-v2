@@ -19,13 +19,18 @@ const HISTOGRAM_WIDTH = 240
 /**
  * Longest edge a stored shelf may have.
  *
- * A photo sent through WhatsApp arrives about 1600 across and is kept as-is. A
+ * A photo sent through WhatsApp arrives about 1280 across and is kept as-is. A
  * photo sent as a file arrives at whatever the camera shot — 3000, 4000 — which
- * is worth having for the price tags and not worth storing whole: the bytes are
- * ten to twenty times larger, every render reads them, and Supabase charges for
- * egress. This keeps roughly twice WhatsApp's detail at a fraction of the cost.
+ * is worth having for the price tags and not worth storing whole: every render
+ * reads the original and Supabase charges for egress.
+ *
+ * 3000 after reading tags at 2000 and finding them almost legible. It puts a
+ * naming crop at about 630 real pixels against WhatsApp's 269, for roughly
+ * 1.8 MB a shelf. Going further is the camera's job: a tag that is thirty
+ * pixels tall in the frame does not become readable by storing more of the
+ * shelf around it.
  */
-const MAX_STORED_EDGE = 2000
+const MAX_STORED_EDGE = 3000
 
 /**
  * Turn a photo the owner sent into a post — if it was one.

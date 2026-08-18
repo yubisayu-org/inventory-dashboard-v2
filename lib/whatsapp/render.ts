@@ -159,7 +159,11 @@ export async function renderSlotCrop(slotId: number, share = CROP_SHARE): Promis
   // photograph, and enlarging past what the sensor recorded makes it blurrier
   // rather than more legible — the honest answer to "I cannot read it" is a
   // tighter crop, not a bigger one.
-  const out = Math.min(box * 2, 1000)
+  //
+  // The 1400 ceiling exists for shelves sent as files, which carry enough real
+  // pixels that the old 1000 was throwing detail away at the tightest zoom
+  // step. A WhatsApp photo never reaches it: twice its crop is smaller.
+  const out = Math.min(box * 2, 1400)
 
   // A ring on the item this crop is about.
   //
