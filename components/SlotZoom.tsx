@@ -29,6 +29,13 @@ export default function SlotZoom({
   form?: ReactNode
   /** What is being named, so the sheet says which SKU it belongs to. */
   caption?: string
+  /**
+   * Whether the fields start unfolded.
+   *
+   * Open on a slot with no product, because naming is why it was opened;
+   * closed once there is one, because then the visit is to look.
+   */
+  startOpen?: boolean
 }) {
   const [step, setStep] = useState(1)
   const [open, setOpen] = useState(startOpen)
@@ -137,21 +144,16 @@ export default function SlotZoom({
               {caption ?? "Beri nama"}
             </span>
             {/* A pencil rather than a chevron: it says what is behind the row,
-                not merely that something is. Filled in while the fields are
-                open, so the row still reports its own state. */}
-            <span
-              className={`ml-auto shrink-0 flex items-center justify-center w-8 h-8 rounded-lg ${
-                open ? "bg-brand text-white" : "border border-cream-border text-brand"
-              }`}
+                not merely that something is. Darkened while the fields are open,
+                so the row still reports its own state without a box around it. */}
+            <svg
+              width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+              className={`ml-auto shrink-0 ${open ? "text-brand" : "text-gray-400"}`}
             >
-              <svg
-                width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-              >
-                <path d="M12 20h9" />
-                <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
-              </svg>
-            </span>
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+            </svg>
           </button>
 
           {open ? <div className="px-3 pb-3">{form}</div> : null}
