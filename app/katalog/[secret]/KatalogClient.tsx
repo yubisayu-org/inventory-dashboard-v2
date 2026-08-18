@@ -595,6 +595,19 @@ function MarkSheet({
               dots; the movement is the part that means something. It stops
               being drawn the moment she zooms, and honours a reduced-motion
               preference by simply holding still. */}
+          {/* On the picture rather than in the bar: it acts on the shelf, and
+              the bar is for the pen. Top right keeps it clear of the pinch hint
+              in the opposite corner. */}
+          {view.k > 1 ? (
+            <button
+              type="button"
+              onClick={() => setView({ k: 1, cx: 0.5, cy: 0.5 })}
+              className="absolute top-2 right-2 rounded-full bg-black/55 px-3 py-1.5 text-[11px] font-bold text-white tabular-nums"
+            >
+              {view.k.toFixed(1)}× ✕
+            </button>
+          ) : null}
+
           {view.k === 1 ? (
             <span
               className="katalog-hint pointer-events-none absolute bottom-2 left-2 w-10 h-10 rounded-full bg-black/55 flex items-center justify-center"
@@ -665,15 +678,7 @@ function MarkSheet({
           style={{ background: colour }}
           aria-label="Warna pena"
         />
-        {view.k > 1 ? (
-          <button
-            type="button"
-            onClick={() => setView({ k: 1, cx: 0.5, cy: 0.5 })}
-            className="rounded-xl border border-white/30 px-3 py-2.5 text-xs font-bold text-white tabular-nums shrink-0"
-          >
-            {view.k.toFixed(1)}× ✕
-          </button>
-        ) : null}
+
         <button
           type="button"
           onClick={share}
