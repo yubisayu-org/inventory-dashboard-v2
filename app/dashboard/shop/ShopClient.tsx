@@ -13,6 +13,9 @@ export default function ShopClient() {
   // every deliberate change to that.
   const [closed, setClosed] = useState<Record<string, boolean>>({})
   const [search, setSearch] = useState("")
+  // What the server was last asked. Typing is not a request: a shop's wifi
+  // would send one per keystroke.
+  const [query, setQuery] = useState("")
   // Whether racks nobody claimed on are listed. Off by default: they are the
   // majority, and none of them is anything to buy.
   const [showEmpty, setShowEmpty] = useState(false)
@@ -28,11 +31,12 @@ export default function ShopClient() {
   const [shut, setShut] = useState<Set<string>>(new Set())
 
   useEffect(() => {
-    const query = new URLSearchParams({ page: String(page) })
-    if (showEmpty) query.set("all", "true")
-    if (showArchived) query.set("archived", "true")
+    const params = new URLSearchParams({ page: String(page) })
+    if (showEmpty) params.set("all", "true")
+    if (showArchived) params.set("archived", "true")
+    if (query) params.set("search", query)
 
-    fetch(`/api/whatsapp/shop${query.size ? `?${query}` : ""}`, { cache: "no-store" })
+    fetch(`/api/whatsapp/shop?${params}`, { cache: "no-store" })
       .then((r) => r.json())
       .then((data: {
         posts?: ShopPost[]
@@ -48,7 +52,17 @@ export default function ShopClient() {
         }
       })
       .catch(() => setError("Failed to load"))
-  }, [showEmpty, showArchived, page])
+  }, [showEmpty, showArchived, page, query])
+
+  // A quarter second after the last keystroke. Long enough that a typed handle
+  // is one request, short enough to feel like filtering.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPage(1)
+      setQuery(search.trim())
+    }, 250)
+    return () => clearTimeout(timer)
+  }, [search])
 
   const events = useMemo(() => [...new Set((posts ?? []).map((p) => p.event))], [posts])
 
@@ -88,19 +102,7 @@ export default function ShopClient() {
     })
   }
 
-  // Filtered here rather than at the API: a trip is a hundred shelves at most,
-  // they are already in the browser, and typing should narrow the list on the
-  // keystroke rather than after a round trip in a shop's wifi.
-  const groups = useMemo(() => {
-    const query = search.trim().toLowerCase()
-    const matching = query
-      ? (posts ?? []).filter(
-          (p) =>
-            p.store.toLowerCase().includes(query) || p.event.toLowerCase().includes(query),
-        )
-      : posts ?? []
-    return groupByStore(matching)
-  }, [posts, search])
+  const groups = useMemo(() => groupByStore(posts ?? []), [posts])
 
   if (error) return <p className="text-sm text-red-600">{error}</p>
   if (!posts) return <p className="text-sm text-gray-500">Loading…</p>
@@ -114,7 +116,7 @@ export default function ShopClient() {
         <SearchInput
           value={search}
           onChange={setSearch}
-          placeholder="Search store or trip…"
+          placeholder="Search shop, SKU, handle or number…"
           className="max-w-sm flex-1"
         />
         {/* Racks the group ignored. Hidden by default because none of them is
@@ -218,8 +220,8 @@ export default function ShopClient() {
         </p>
       ) : null}
 
-      {groups.length === 0 && search ? (
-        <p className="text-sm text-gray-500">No shelf matches “{search}”.</p>
+      {groups.length === 0 && query ? (
+        <p className="text-sm text-gray-500">No shelf matches “{query}”.</p>
       ) : null}
 
       {groups.map((group) => {
