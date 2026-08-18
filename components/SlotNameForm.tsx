@@ -147,7 +147,7 @@ export default function SlotNameForm({
             compact ? "py-2.5 text-sm" : "py-1.5 text-xs"
           }`}
         >
-          {named ? "Produk dibuat" : busy ? "Membuat…" : "Buat produk"}
+          {named ? "Product added" : busy ? "Adding…" : "Add product"}
         </button>
 
         <button
@@ -158,7 +158,9 @@ export default function SlotNameForm({
             compact ? "py-2.5 text-sm" : "py-1.5 text-xs"
           }`}
         >
-          {(missing ?? 0) > 0 ? `Buat ${missing} order` : "Order dibuat"}
+          {(missing ?? 0) > 0
+            ? `Create ${missing} order${missing === 1 ? "" : "s"}`
+            : "Orders created"}
         </button>
       </div>
     </div>
