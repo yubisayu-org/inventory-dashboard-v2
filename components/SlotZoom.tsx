@@ -158,23 +158,13 @@ export default function SlotZoom({
             above the field it is being typed into. */}
         {form && naming ? (
           <div className="absolute inset-x-0 bottom-0 max-h-[60%] overflow-auto rounded-b-xl bg-white p-3 lg:hidden">
-            {/* Its own way out. The sheet covers the bottom of the crop, and the
-                zoom bar — with the pencil that opened it — is under there. */}
-            <div className="flex items-center gap-2 mb-2">
-              {caption ? (
-                <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500 truncate">
-                  {caption}
-                </p>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => setNaming(false)}
-                aria-label="Back to the picture"
-                className="ml-auto shrink-0 rounded-full border border-cream-border px-2 py-1 text-[11px] font-bold text-gray-500"
-              >
-                Tutup
-              </button>
-            </div>
+            {/* No close button of its own: the pencil that opened this sits in
+                the top corner, which the sheet cannot cover. */}
+            {caption ? (
+              <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500 truncate mb-2">
+                {caption}
+              </p>
+            ) : null}
             {form}
           </div>
         ) : null}
@@ -184,21 +174,11 @@ export default function SlotZoom({
           fields sit beside it. Naming happens at a desk more often than not. */}
       {form && naming ? (
         <div className="hidden lg:block w-80 rounded-xl bg-white p-4" onClick={(e) => e.stopPropagation()}>
-          <div className="flex items-center gap-2 mb-2">
-            {caption ? (
-              <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500 truncate">
-                {caption}
-              </p>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => setNaming(false)}
-              aria-label="Close the naming fields"
-              className="ml-auto shrink-0 rounded-full border border-cream-border px-2 py-1 text-[11px] font-bold text-gray-500"
-            >
-              Tutup
-            </button>
-          </div>
+          {caption ? (
+            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500 truncate mb-2">
+              {caption}
+            </p>
+          ) : null}
           {form}
         </div>
       ) : null}
