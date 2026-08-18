@@ -15,8 +15,8 @@ export default function ShopClient() {
   // Whether racks nobody claimed on are listed. Off by default: they are the
   // majority, and none of them is anything to buy.
   const [showEmpty, setShowEmpty] = useState(false)
-  // Whether finished trips are listed. Off by default: nobody shops a trip that
-  // is over.
+  // Which trips are listed: the ones running, or the ones over. Never both —
+  // shelves from a finished trip look exactly like today's.
   const [showArchived, setShowArchived] = useState(false)
   // Shops closed for orders, keyed "event|store". Per trip, because the same
   // shop can be open on one trip and finished on another.
@@ -143,8 +143,8 @@ export default function ShopClient() {
         <button
           type="button"
           onClick={() => setShowArchived((shown) => !shown)}
-          aria-label={showArchived ? "Hide finished trips" : "Show finished trips"}
-          title={showArchived ? "Finished trips shown" : "Only the trips still running"}
+          aria-label={showArchived ? "Back to the trips running" : "Show finished trips only"}
+          title={showArchived ? "Showing finished trips" : "Showing the trips still running"}
           className={`shrink-0 rounded-xl border px-3 py-2 ${
             showArchived
               ? "border-brand bg-brand/5 text-brand"
@@ -170,6 +170,13 @@ export default function ShopClient() {
           Upload
         </Link>
       </div>
+
+      {showArchived ? (
+        <p className="text-xs text-gray-500">
+          Finished trips. Nothing here can be shopped — the counts are what they
+          ended at.
+        </p>
+      ) : null}
 
       {groups.length === 0 && search ? (
         <p className="text-sm text-gray-500">No shelf matches “{search}”.</p>
@@ -261,14 +268,7 @@ export default function ShopClient() {
                         </div>
                         <div className="mt-0.5 text-[11px] text-gray-400 tabular-nums">
                           {post.event} · {post.createdAt} · {post.bought} of {post.claimed} units
-                          {/* A shelf from a finished trip says so: its store may
-                              be the same as today's, and the rows are otherwise
-                              identical. */}
-                          {post.active ? null : (
-                            <span className="ml-1.5 rounded-full bg-cream px-1.5 py-0.5 text-[10px] font-bold text-gray-500">
-                              selesai
-                            </span>
-                          )}
+
                         </div>
                       </div>
                       {/* Bold is what is left to buy, exactly as the shopping

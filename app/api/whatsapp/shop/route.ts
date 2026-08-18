@@ -20,8 +20,8 @@ export async function GET(req: Request) {
   // the question is "did that rack ever get posted?".
   const params = new URL(req.url).searchParams
   const all = params.get("all") === "true"
-  // Finished trips are left out by default: nobody shops a trip that is over,
-  // and the shelves of one would sit among today's looking identical.
+  // One or the other, never both: a finished trip's shelves cannot be shopped,
+  // and mixed into today's they would sit there looking identical.
   const archived = params.get("archived") === "true"
 
   try {
@@ -31,7 +31,7 @@ export async function GET(req: Request) {
              COALESCE(SUM(c.quantity), 0)::int AS claimed,
              COALESCE(SUM(c.obtained), 0)::int AS bought
       FROM wa_posts p
-      JOIN events e ON e.name = p.event ${archived ? sql`` : sql`AND e.is_active`}
+      JOIN events e ON e.name = p.event AND ${archived ? sql`NOT e.is_active` : sql`e.is_active`}
       LEFT JOIN wa_slots s ON s.post_id = p.id
       LEFT JOIN wa_claims c ON c.slot_id = s.id AND c.state <> 'rejected'
       GROUP BY p.id, e.is_active
