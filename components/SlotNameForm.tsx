@@ -44,6 +44,17 @@ export default function SlotNameForm({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
 
+  // All three are needed to price the thing. Without a valas there is nothing to
+  // convert, and without a weight the cargo share is missing — both produce a
+  // plausible-looking number that is not a price, which is worse than a refusal.
+  const ready =
+    Boolean(name.trim()) &&
+    Number(valas) > 0 &&
+    Number(gram) > 0 &&
+    // Target Price derives nothing, so the selling price is typed as well —
+    // otherwise the server refuses after the button has already been pressed.
+    (!needsPrice || Number(price) > 0)
+
   const field = `border border-cream-border rounded-lg px-2 disabled:bg-cream disabled:text-gray-500 ${
     compact ? "py-2 text-[13px]" : "py-1.5 text-sm"
   }`
@@ -141,7 +152,7 @@ export default function SlotNameForm({
       <div className="flex gap-2">
         <button
           type="button"
-          disabled={busy || named || !name.trim()}
+          disabled={busy || named || !ready}
           onClick={() => create(false)}
           className={`flex-1 rounded-lg bg-brand font-bold text-white disabled:opacity-40 ${
             compact ? "py-2.5 text-sm" : "py-1.5 text-xs"
