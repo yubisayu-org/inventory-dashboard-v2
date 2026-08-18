@@ -667,7 +667,13 @@ function ShortPanel({ claims, count }: { claims: Claim[]; count: number }) {
     <div className="flex flex-col gap-1.5 rounded-xl bg-cream p-2">
       {rows.map(({ claim, gets }) => (
         <div key={claim.id} className="flex items-center gap-2 text-xs">
-          <span className="shrink-0">{gets >= claim.quantity ? "✅" : "❔"}</span>
+          {/* Three different facts, three different marks. A tick is bought in
+              full; a question mark is a sender nobody has identified, which is
+              a question for you rather than a shortage; and a shortage says so
+              in the count on the right, which is where the number belongs. */}
+          <span className="shrink-0">
+            {claim.customer === null ? "❔" : gets >= claim.quantity ? "✅" : "○"}
+          </span>
           <span className="flex-1 min-w-0">
             <span className="font-semibold truncate block">
               {claim.customer ?? senderDigits(claim.sender)}
