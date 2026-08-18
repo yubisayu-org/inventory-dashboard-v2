@@ -8,6 +8,7 @@ import { hueHistogram, loadRgb, safePenHues } from "@/lib/claims"
 import { createPost, findPostByMessage } from "@/lib/db/claims"
 import { currentCapture, isBotAdmin } from "@/lib/db/whatsapp-groups"
 import { uploadPostImage } from "@/lib/storage"
+import { decodable } from "@/lib/whatsapp/heic"
 import sql from "@/lib/db-pool"
 import { quietLogger } from "./logger"
 import { senderNumber } from "./handle-command"
@@ -59,12 +60,15 @@ export async function capturePost(input: {
   const event = (group?.event as string | null) ?? null
   if (!event) return null
 
-  const buffer = (await downloadMediaMessage(
+  // decodable, not the raw download: a shelf sent as a file from an iPhone is
+  // HEIC, which sharp cannot read at all. Everything below assumes bytes it can
+  // open.
+  const buffer = await decodable((await downloadMediaMessage(
     input.message,
     "buffer",
     {},
     { logger: quietLogger, reuploadRequest: input.sock.updateMediaMessage },
-  )) as Buffer
+  )) as Buffer)
 
   // sharp reads a path, and the resolver library takes paths throughout, so the
   // bytes touch disk once here rather than the library growing a second entry

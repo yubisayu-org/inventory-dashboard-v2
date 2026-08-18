@@ -10,6 +10,7 @@ import { ingestImageReply, recluster } from "@/lib/whatsapp/ingest"
 import { resolveImageReply } from "@/lib/claims"
 import { getPost } from "@/lib/db/claims"
 import { resolveSenders } from "@/lib/whatsapp/identity"
+import { decodable } from "@/lib/whatsapp/heic"
 import { quietLogger } from "./logger"
 import { CAPTURE_REACTIONS } from "./reactions"
 
@@ -71,12 +72,13 @@ async function captureImageClaim(input: {
   messageId: string
   text: string
 }): Promise<string> {
-  const buffer = (await downloadMediaMessage(
+  // A customer can mark a shelf on an iPhone and send it back as a file too.
+  const buffer = await decodable((await downloadMediaMessage(
     input.message,
     "buffer",
     {},
     { logger: quietLogger, reuploadRequest: input.sock.updateMediaMessage },
-  )) as Buffer
+  )) as Buffer)
 
   const dir = await mkdtemp(join(tmpdir(), "wa-reply-"))
   const scratch = join(dir, "reply.jpg")

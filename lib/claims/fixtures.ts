@@ -14,4 +14,6 @@ export const FIXTURES = {
   // customer ticked in green.
   greenPost: join(here, "__fixtures__", "green-post.jpg"),
   greenTicked: join(here, "__fixtures__", "green-ticked.jpg"),
+  /** The same shelf as a HEIC, which is what an iPhone sends as a document. */
+  heic: join(here, "__fixtures__", "shelf.heic"),
 } as const

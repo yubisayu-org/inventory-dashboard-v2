@@ -89,6 +89,20 @@ async function trace(sock: WASocket, message: WAMessage) {
         message.message?.extendedTextMessage?.contextInfo ??
         {}) as object,
     ),
+    // What an image message actually carries. Ticking HD sends a copy that is
+    // SMALLER than a plain send, so the question is whether a better one is
+    // referenced here and merely not downloaded — every field name is printed
+    // rather than a chosen few, because the field that answers it is the one
+    // nobody thought to look for.
+    imageFields: message.message?.imageMessage
+      ? {
+          size: `${message.message.imageMessage.width}x${message.message.imageMessage.height}`,
+          bytes: Number(message.message.imageMessage.fileLength ?? 0),
+          keys: Object.keys(message.message.imageMessage).filter(
+            (k) => (message.message?.imageMessage as Record<string, unknown>)[k] != null,
+          ),
+        }
+      : undefined,
   })
 }
 
