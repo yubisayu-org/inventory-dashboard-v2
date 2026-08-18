@@ -87,7 +87,7 @@ export default function KatalogClient({ secret }: { secret: string }) {
       </div>
 
       <p className="px-4 pb-8 pt-2 text-[11px] text-gray-500 leading-snug">
-        Ketuk rak untuk melihat detail dan menandai barang yang kakak mau, lalu
+        Ketuk rak untuk melihat detail dan menandai barang yang diinginkan, lalu
         kirim ke grup.
       </p>
 
