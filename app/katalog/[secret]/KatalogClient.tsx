@@ -61,15 +61,16 @@ export default function KatalogClient({ secret }: { secret: string }) {
 
   return (
     <main className="min-h-screen bg-cream">
-      <header className="flex items-stretch gap-3 px-4 py-3 border-b border-cream-border bg-white sticky top-0 z-10">
+      <header className="flex items-center gap-3 px-4 py-3 border-b border-cream-border bg-white sticky top-0 z-10">
         {/* The same mark the dashboard uses, round here: this is the one screen
             a customer sees, so it should say whose shop it is before it says
             anything else. No logo file exists yet — when one does, it replaces
             the letter and nothing else changes. */}
-        {/* Stretched to the two lines beside it rather than given a size of its
-            own, so it stays exactly as tall as the title and event line
-            whatever the type does. */}
-        <span className="self-stretch aspect-square shrink-0 rounded-full bg-brand flex items-center justify-center">
+        {/* 40px is the height of the two lines beside it — 24 for the title,
+            16 for the event — so the circle matches them exactly. Fixed rather
+            than stretched: an aspect ratio on a flex child takes its width from
+            content in some browsers and comes out an oval. */}
+        <span className="w-10 h-10 shrink-0 rounded-full bg-brand flex items-center justify-center">
           <span className="text-white text-base font-bold">Y</span>
         </span>
         <div className="min-w-0">
