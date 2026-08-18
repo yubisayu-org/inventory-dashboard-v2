@@ -19,7 +19,7 @@ export const viewport: Viewport = {
 }
 
 export const metadata = {
-  title: "Katalog rak",
+  title: "Group Catalogue",
   // A shelf photo is not something to have indexed: the link is meant to be
   // shared by the owner, not found.
   robots: { index: false, follow: false },
