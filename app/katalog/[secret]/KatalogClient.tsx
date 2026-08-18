@@ -197,6 +197,8 @@ function MarkSheet({
   const pointers = useRef(new Map<number, { x: number; y: number }>())
   /** Screen midpoint the current pinch started from. */
   const pinchMid = useRef<{ x: number; y: number } | null>(null)
+  /** When and where the last tap landed, for spotting a double one. */
+  const lastTap = useRef<{ at: number; x: number; y: number } | null>(null)
   const pinch = useRef<{ dist: number; k: number; cx: number; cy: number } | null>(null)
 
   const colour = penColour(shelf.hues)
@@ -507,6 +509,7 @@ function MarkSheet({
               })
             }}
             onPointerUp={(e) => {
+              const wasDrawing = drawing.current && started.current
               pointers.current.delete(e.pointerId)
               down.current = pointers.current.size
               if (pointers.current.size < 2) {
@@ -515,6 +518,48 @@ function MarkSheet({
               }
               drawing.current = false
               started.current = false
+              if (!wasDrawing) return
+
+              // A tap leaves a one-point stroke, which draws nothing but would
+              // count the rack as marked and send it. Dropped here, which also
+              // makes the tap available to mean something else.
+              let wasTap = false
+              setStrokes((all) => {
+                const last = all[all.length - 1]
+                wasTap = Boolean(last) && last.length < 2
+                return wasTap ? all.slice(0, -1) : all
+              })
+              if (!wasTap) return
+
+              // Two taps in the same spot: zoom to it, or back out if already
+              // in. The habit comes from Photos and Maps, so it needs no
+              // explaining — the dots are for everyone who never tries it.
+              const now = Date.now()
+              const previous = lastTap.current
+              const near =
+                previous &&
+                now - previous.at < 320 &&
+                Math.hypot(e.clientX - previous.x, e.clientY - previous.y) < 30
+
+              if (near) {
+                lastTap.current = null
+                const image = imageRef.current
+                if (!image) return
+                if (view.k > 1) {
+                  setView({ k: 1, cx: 0.5, cy: 0.5 })
+                  return
+                }
+                const p = pointFrom(e)
+                const k = 3
+                const half = 1 / (2 * k)
+                setView({
+                  k,
+                  cx: Math.min(1 - half, Math.max(half, p.x / image.naturalWidth)),
+                  cy: Math.min(1 - half, Math.max(half, p.y / image.naturalHeight)),
+                })
+                return
+              }
+              lastTap.current = { at: now, x: e.clientX, y: e.clientY }
             }}
             onPointerCancel={(e) => {
               pointers.current.delete(e.pointerId)
