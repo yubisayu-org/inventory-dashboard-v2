@@ -688,8 +688,8 @@ function MarkSheet({
           {busy
             ? "Menyiapkan…"
             : marked.length > 1
-              ? `Kirim ${marked.length} rak ke WhatsApp`
-              : "Kirim ke WhatsApp"}
+              ? `Kirim ${marked.length} rak ke WhatsApp Group`
+              : "Kirim ke WhatsApp Group"}
         </button>
         </>
         )}
