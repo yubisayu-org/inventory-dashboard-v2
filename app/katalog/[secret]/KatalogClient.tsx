@@ -545,12 +545,6 @@ function MarkSheet({
               <span className="relative block w-6 h-6">
                 <span className="katalog-pinch katalog-pinch-a absolute w-2 h-2 rounded-full bg-white" />
                 <span className="katalog-pinch katalog-pinch-b absolute w-2 h-2 rounded-full bg-white" />
-                <svg
-                  viewBox="0 0 24 24" className="absolute inset-0 w-6 h-6 text-white/50"
-                  fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"
-                >
-                  <line x1="7" y1="7" x2="17" y2="17" strokeDasharray="2 3" />
-                </svg>
               </span>
               <style>{`
                 /* Plays twice and stops, then the badge fades out: a loop
