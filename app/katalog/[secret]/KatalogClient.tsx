@@ -359,7 +359,7 @@ function MarkSheet({
           <div className="flex flex-col items-center gap-4 py-2">
             <p className="text-xs text-white/80 text-center leading-snug">
               Simpan {saved.length === 1 ? "gambar ini" : `${saved.length} gambar ini`} lewat
-              tombol di bawah, lalu kirim ke grup ya kak 🙏
+              tombol di bawah, lalu kirim ke grup
             </p>
             {saved.map((item) => (
               <div key={item.id} className="w-full flex flex-col items-center gap-2">
