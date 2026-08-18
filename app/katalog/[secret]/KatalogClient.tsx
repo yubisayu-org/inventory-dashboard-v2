@@ -299,8 +299,12 @@ function MarkSheet({
             {shelf.store}
             <span className="opacity-60 font-normal tabular-nums"> · {index + 1}/{shelves.length}</span>
           </span>
+          {/* The header line is the running instruction: what to do now, which
+              changes the moment the marks become pictures to save. */}
           <p className="text-[11px] opacity-70 leading-snug">
-            Lingkari atau centang barang yang diinginkan
+            {saved
+              ? `Simpan ${saved.length === 1 ? "gambar" : `${saved.length} gambar`} ini satu per satu, lalu kirim ke grup`
+              : "Lingkari atau centang barang yang diinginkan"}
           </p>
         </div>
         {/* Arrows rather than a swipe: a horizontal drag on the photograph is
@@ -337,10 +341,6 @@ function MarkSheet({
       <div className="flex-1 min-h-0 overflow-auto px-2">
         {saved ? (
           <div className="flex flex-col items-center gap-4 py-2">
-            <p className="text-xs text-white/80 text-center leading-snug">
-              Simpan {saved.length === 1 ? "gambar ini" : `${saved.length} gambar ini`} satu per
-              satu, lalu kirim ke grup
-            </p>
             {saved.map((item) => (
               <div key={item.id} className="w-full flex flex-col items-center gap-2">
                 {/* eslint-disable-next-line @next/next/no-img-element -- a blob we just made. */}
