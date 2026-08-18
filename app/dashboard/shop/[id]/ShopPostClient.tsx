@@ -183,7 +183,7 @@ export default function ShopPostClient({
           ←
         </Link>
         <div className="min-w-0 flex-1">
-          <h1 className="text-xl font-bold text-foreground truncate">
+          <h1 className="text-xl font-bold uppercase text-foreground truncate">
             {data.post.store || "Untitled shelf"}
           </h1>
           <p className="text-xs text-gray-500 tabular-nums">

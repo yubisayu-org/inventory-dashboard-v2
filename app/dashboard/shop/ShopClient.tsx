@@ -216,7 +216,10 @@ export default function ShopClient() {
               {/* The count belongs to the name, not to the far edge: "9 shelves"
                   says how big this shop is, which is read with the shop rather
                   than with what is left to buy. */}
-              <span className="min-w-0 truncate text-sm font-bold text-foreground">
+              {/* Upper-cased on screen rather than in the data: the name is typed
+                  by hand when a capture window opens, and half the trip arrives
+                  as "Birthday" and half as "BIRTHDAY". */}
+              <span className="min-w-0 truncate text-sm font-bold uppercase text-foreground">
                 {group.name}
                 <span className="font-normal text-gray-400 tabular-nums">
                   {" · "}
