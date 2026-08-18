@@ -73,6 +73,20 @@ export default function ShopPostClient({
   // many did I find" are different questions, and in a shop the first is asked
   // far more often.
   const [zoomSlot, setZoomSlot] = useState<number | null>(null)
+  /**
+   * Recording an order that arrived privately.
+   *
+   * A mode rather than a permanent behaviour: the shelf photograph is something
+   * you touch to scroll and pinch, and a tap that always created a claim would
+   * put an order on somebody's invoice by accident. Null when off; a slot id or
+   * a point on the photo once there is something to record.
+   */
+  const [adding, setAdding] = useState<
+    | null
+    | { kind: "picking" }
+    | { kind: "slot"; slotId: number }
+    | { kind: "point"; x: number; y: number }
+  >(null)
   // The other shelves in this shop, so the next rack is one tap rather than a
   // trip back to the list. Fetched separately because it is a different
   // question — "what else is in this shop" — and a stale answer costs nothing.
@@ -158,6 +172,29 @@ export default function ShopPostClient({
     load()
   }
 
+  async function addClaim(input: {
+    slotId?: number
+    point?: { x: number; y: number }
+    customer: string
+    quantity: number
+    note: string
+  }) {
+    const res = await fetch(`/api/whatsapp/posts/${postId}/claims`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ error: "Failed to save" }))
+      return (body.error as string) ?? "Failed to save"
+    }
+    setAdding(null)
+    setOpenSlot(null)
+    setVersion((v) => v + 1)
+    load()
+    return ""
+  }
+
   async function rename(slotId: number, label: string) {
     await fetch(`/api/whatsapp/slots/${slotId}`, {
       method: "PATCH",
@@ -217,12 +254,44 @@ export default function ShopPostClient({
         ) : null}
       </div>
 
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setAdding(adding ? null : { kind: "picking" })}
+          className={`rounded-xl border px-3 py-1.5 text-xs font-bold ${
+            adding
+              ? "border-brand bg-brand text-white"
+              : "border-cream-border bg-white text-brand"
+          }`}
+        >
+          {adding ? "Batal" : "+ Add order"}
+        </button>
+        {adding?.kind === "picking" ? (
+          <span className="text-xs text-gray-500">
+            Tap the shelf where she pointed, or a SKU below.
+          </span>
+        ) : null}
+      </div>
+
       {/* eslint-disable-next-line @next/next/no-img-element -- a rendered JPEG
           from our own route; next/image would proxy it for no benefit. */}
       <img
         src={`/api/whatsapp/posts/${postId}/rekap?v=${version}`}
         alt="The shelf with a badge on each SKU showing how many are still to buy"
-        className="w-full rounded-xl border border-cream-border"
+        onClick={(e) => {
+          if (adding?.kind !== "picking") return
+          // Where on the photograph, in the same 0..1 coordinates a customer's
+          // mark produces — so a typed order clusters exactly like a drawn one.
+          const box = e.currentTarget.getBoundingClientRect()
+          setAdding({
+            kind: "point",
+            x: (e.clientX - box.left) / box.width,
+            y: (e.clientY - box.top) / box.height,
+          })
+        }}
+        className={`w-full rounded-xl border border-cream-border ${
+          adding?.kind === "picking" ? "cursor-crosshair ring-2 ring-brand" : ""
+        }`}
       />
 
       <div className="flex flex-col rounded-xl border border-cream-border bg-white overflow-hidden">
@@ -263,7 +332,11 @@ export default function ShopPostClient({
                 risk a sheet covering the thing being read. */}
             <button
               type="button"
-              onClick={() => setOpenSlot(s.id)}
+              onClick={() =>
+                adding?.kind === "picking"
+                  ? setAdding({ kind: "slot", slotId: s.id })
+                  : setOpenSlot(s.id)
+              }
               aria-label={
                 s.claimed - s.bought === 0
                   ? "Done — open the tally"
@@ -315,6 +388,14 @@ export default function ShopPostClient({
           from the same crop — the tag being read for the count is the tag whose
           price is typed — so the drawer travels with the picture rather than
           living on a screen of its own. */}
+      {adding && adding.kind !== "picking" ? (
+        <AddOrderSheet
+          target={adding}
+          onClose={() => setAdding({ kind: "picking" })}
+          onSave={addClaim}
+        />
+      ) : null}
+
       {zoomed ? (
         <SlotZoom
           slotId={zoomed.id}
@@ -400,6 +481,96 @@ function NeighbourLink({
     <Link href={`/dashboard/shop/${post.id}`} className={`${shared} bg-white hover:border-brand`}>
       {label}
     </Link>
+  )
+}
+
+/**
+ * An order taken privately, typed in.
+ *
+ * The customer must already exist: orders, invoices and the public invoice site
+ * all key on the handle, so inventing one here would make a customer nobody can
+ * find again. The server refuses an unknown handle and says so.
+ */
+function AddOrderSheet({
+  target, onClose, onSave,
+}: {
+  target: { kind: "slot"; slotId: number } | { kind: "point"; x: number; y: number }
+  onClose: () => void
+  onSave: (input: {
+    slotId?: number
+    point?: { x: number; y: number }
+    customer: string
+    quantity: number
+    note: string
+  }) => Promise<string>
+}) {
+  const [customer, setCustomer] = useState("")
+  const [quantity, setQuantity] = useState("1")
+  const [note, setNote] = useState("")
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState("")
+
+  async function save() {
+    setBusy(true)
+    const message = await onSave({
+      ...(target.kind === "slot" ? { slotId: target.slotId } : { point: { x: target.x, y: target.y } }),
+      customer,
+      quantity: Number(quantity) || 1,
+      note,
+    })
+    setBusy(false)
+    setError(message)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40" onClick={onClose}>
+      <div
+        className="w-full max-w-md rounded-t-2xl bg-white p-4 flex flex-col gap-3"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mx-auto h-1 w-9 rounded-full bg-gray-300" />
+        <div>
+          <h2 className="text-sm font-bold text-foreground">Pesanan dari DM</h2>
+          <p className="text-[11px] text-gray-500">
+            {target.kind === "slot"
+              ? "Ditambahkan ke SKU yang dipilih."
+              : "Ditandai di titik yang kakak tap — SKU baru dibuat kalau belum ada."}
+          </p>
+        </div>
+
+        <input
+          value={customer}
+          onChange={(e) => setCustomer(e.target.value)}
+          placeholder="instagram handle"
+          className="border border-cream-border rounded-lg px-3 py-2 text-sm"
+        />
+        <div className="flex gap-2">
+          <input
+            value={quantity}
+            onChange={(e) => setQuantity(e.target.value)}
+            inputMode="numeric"
+            className="w-20 border border-cream-border rounded-lg px-3 py-2 text-sm tabular-nums"
+          />
+          <input
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="catatan — size 95, yang kuning"
+            className="flex-1 min-w-0 border border-cream-border rounded-lg px-3 py-2 text-sm"
+          />
+        </div>
+
+        {error ? <p className="text-xs text-red-600">{error}</p> : null}
+
+        <button
+          type="button"
+          disabled={busy || !customer.trim()}
+          onClick={save}
+          className="rounded-xl bg-brand py-2.5 text-sm font-bold text-white disabled:opacity-40"
+        >
+          {busy ? "Menyimpan…" : "Catat pesanan"}
+        </button>
+      </div>
+    </div>
   )
 }
 
