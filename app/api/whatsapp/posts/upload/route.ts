@@ -20,6 +20,31 @@ import { storeShelf } from "@/lib/whatsapp/shelf"
  * rack out of forty — the client uploads them one at a time and can retry the
  * one that fell over.
  */
+/**
+ * The trips a shelf may be added to.
+ *
+ * Its own listing rather than /api/sheets/events, which is owner-only: an admin
+ * can upload, so an admin has to be able to choose the trip. Only open trips —
+ * a closed one is what archiving deletes the originals of.
+ */
+export async function GET() {
+  const { session, error: authError } = await requireSession()
+  if (authError) return authError
+  const roleError = requireRole(session)
+  if (roleError) return roleError
+
+  try {
+    const rows = await sql`SELECT name FROM events WHERE is_active ORDER BY id DESC`
+    return NextResponse.json(
+      { events: rows.map((r) => r.name as string) },
+      { headers: { "Cache-Control": "no-store" } },
+    )
+  } catch (err) {
+    console.error("Failed to list trips for upload:", err)
+    return NextResponse.json({ error: "Failed to load" }, { status: 500 })
+  }
+}
+
 export async function POST(req: NextRequest) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError

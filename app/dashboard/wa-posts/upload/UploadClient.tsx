@@ -3,12 +3,6 @@
 import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 
-interface EventRow {
-  name: string
-  isActive?: boolean
-  is_active?: boolean
-}
-
 type Status = "queued" | "uploading" | "done" | "failed"
 
 interface Job {
@@ -32,14 +26,11 @@ export default function UploadClient() {
   const picker = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
-    fetch("/api/sheets/events", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((rows: EventRow[]) => {
-        const open = rows
-          .filter((r) => r.isActive ?? r.is_active ?? true)
-          .map((r) => r.name)
-        setEvents(open)
-        setEvent((current) => current || open[0] || "")
+    fetch("/api/whatsapp/posts/upload", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((data: { events: string[] }) => {
+        setEvents(data.events)
+        setEvent((current) => current || data.events[0] || "")
       })
       .catch(() => setError("Could not load the trips"))
   }, [])
