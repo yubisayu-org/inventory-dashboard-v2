@@ -77,6 +77,10 @@ export interface WaSlot {
    *  Carried here so a screen showing slots never has to fetch products too. */
   productName: string | null
   productPrice: number | null
+  /** What was typed when naming it: the price tag and the weight. Shown beside
+   *  the crop so the two can be checked against each other. */
+  productValas: number | null
+  productGram: number | null
 }
 
 export async function createPost(input: {
@@ -348,12 +352,14 @@ export async function listSlots(postId: number): Promise<WaSlot[]> {
            COALESCE(SUM(c.quantity), 0)::int AS claimed,
            COALESCE(SUM(c.obtained), 0)::int AS bought,
            p.name AS product_name,
-           p.price AS product_price
+           p.price AS product_price,
+           p.valas AS product_valas,
+           p.gram AS product_gram
     FROM wa_slots s
     LEFT JOIN wa_claims c ON c.slot_id = s.id AND c.state <> 'rejected'
     LEFT JOIN products p ON p.id = s.product_id
     WHERE s.post_id = ${postId}
-    GROUP BY s.id, p.name, p.price
+    GROUP BY s.id, p.name, p.price, p.valas, p.gram
     ORDER BY s.id ASC
   `
   return rows.map((r) => {
@@ -370,6 +376,8 @@ export async function listSlots(postId: number): Promise<WaSlot[]> {
       bought: (r.bought as number) ?? 0,
       productId: (r.product_id as number | null) ?? null,
       productName: (r.product_name as string | null) ?? null,
+      productValas: r.product_valas != null ? Number(r.product_valas) : null,
+      productGram: r.product_gram != null ? Number(r.product_gram) : null,
       productPrice: r.product_price != null ? Number(r.product_price) : null,
     }
   })

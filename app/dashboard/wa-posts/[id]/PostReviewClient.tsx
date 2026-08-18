@@ -17,6 +17,8 @@ interface Slot {
   productId: number | null
   productName: string | null
   productPrice: number | null
+  productValas: number | null
+  productGram: number | null
 }
 
 interface Claim {
@@ -477,6 +479,19 @@ function SlotCard({
           slotId={slot.id}
           onClose={() => setZoom(false)}
           caption={`${slot.label || `SKU ${slot.id}`}${slot.size ? ` · ${slot.size}` : ""}`}
+          // For a named SKU, what was typed — the check being made while
+          // looking at the tag.
+          info={
+            slot.productId !== null
+              ? [
+                  slot.productValas ? `¥${fmt(slot.productValas)}` : null,
+                  slot.productGram ? `${fmt(slot.productGram)} g` : null,
+                  slot.productPrice !== null ? `Rp ${fmt(slot.productPrice)}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")
+              : undefined
+          }
           // Only where there is still something to name. A slot that already
           // became a product wants the late-orders button on the card, not a
           // second form that would refuse.
