@@ -366,6 +366,10 @@ export default function ShopPostClient({
           onSave={(n) => save(slot.id, n)}
           onRename={(label) => rename(slot.id, label)}
           onSwap={swap}
+          onLinked={() => {
+            setVersion((v) => v + 1)
+            load()
+          }}
         />
       ) : null}
     </div>
@@ -400,7 +404,7 @@ function NeighbourLink({
 }
 
 function SlotSheet({
-  slot, claims, onClose, onSave, onRename, onSwap,
+  slot, claims, onClose, onSave, onRename, onSwap, onLinked,
 }: {
   slot: Slot
   claims: Claim[]
@@ -408,6 +412,7 @@ function SlotSheet({
   onSave: (bought: number) => void
   onRename: (label: string) => void
   onSwap: (claimId: number, size: string) => void
+  onLinked: () => void
 }) {
   const [count, setCount] = useState(slot.bought)
   const [label, setLabel] = useState(slot.label)
@@ -494,6 +499,8 @@ function SlotSheet({
           </button>
         </div>
 
+        <UnknownPanel claims={claims} onLinked={onLinked} />
+
         <FallbackPanel claims={claims} onSwap={onSwap} />
 
         {short > 0 && claims.length > 0 ? <ShortPanel claims={claims} count={count} /> : null}
@@ -506,6 +513,83 @@ function SlotSheet({
           Save
         </button>
       </div>
+    </div>
+  )
+}
+
+/**
+ * Claimants nobody has a name for, and the box that gives them one.
+ *
+ * Here rather than in a queue at the top of the page: the number alone says
+ * nothing, and what identifies somebody is usually what they claimed — this
+ * item, this size, this many. Naming the slot refuses while one of these is
+ * outstanding, so the fix belongs beside the thing it blocks.
+ *
+ * Linking writes the number onto that customer, so the same person is never
+ * asked twice, and their waiting claims are picked up with it.
+ */
+function UnknownPanel({
+  claims, onLinked,
+}: {
+  claims: Claim[]
+  onLinked: () => void
+}) {
+  const [handles, setHandles] = useState<Record<number, string>>({})
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState("")
+
+  const unknown = claims.filter((c) => c.customer === null)
+  if (unknown.length === 0) return null
+
+  async function link(claimId: number) {
+    const handle = (handles[claimId] ?? "").trim()
+    if (!handle) return
+    setBusy(true)
+    setError("")
+    const res = await fetch(`/api/whatsapp/claims/${claimId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customer: handle }),
+    })
+    setBusy(false)
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ error: "Failed to link" }))
+      setError(body.error ?? "Failed to link")
+      return
+    }
+    onLinked()
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-amber-200 bg-amber-50 p-2">
+      <p className="text-xs font-semibold text-amber-900">
+        {unknown.length} {unknown.length === 1 ? "claim has" : "claims have"} no customer yet
+      </p>
+      {error ? <p className="text-[11px] text-red-600">{error}</p> : null}
+      {unknown.map((claim) => (
+        <div key={claim.id} className="flex flex-col gap-1">
+          <div className="text-[11px] text-gray-600 tabular-nums">
+            {senderDigits(claim.sender)} · {claimedAt(claim.createdAt)} · {claim.quantity}×
+            {claim.note ? <span className="text-gray-500"> · “{claim.note}”</span> : null}
+          </div>
+          <div className="flex gap-1.5">
+            <input
+              value={handles[claim.id] ?? ""}
+              onChange={(e) => setHandles((all) => ({ ...all, [claim.id]: e.target.value }))}
+              placeholder="instagram handle"
+              className="flex-1 min-w-0 rounded-lg border border-cream-border bg-white px-2 py-1.5 text-xs"
+            />
+            <button
+              type="button"
+              disabled={busy || !(handles[claim.id] ?? "").trim()}
+              onClick={() => link(claim.id)}
+              className="rounded-lg bg-brand px-3 py-1.5 text-xs font-bold text-white disabled:opacity-40"
+            >
+              Link
+            </button>
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
