@@ -228,24 +228,34 @@ export default function ShopClient() {
               </span>
             </button>
 
-            {/* Closed hides the shop from the customer catalogue and nothing
-                else: its shelves, their claims and this list are untouched, and
+            {/* A switch, not a label: closing a shop is something you do, and
+                a pill reading "Open" looked like a status somebody else set.
+                It hides the shop from the customer catalogue and nothing else —
+                its shelves, their claims and this list are untouched, and
                 anyone still holding the photo in WhatsApp can still mark it. */}
             <button
               type="button"
+              role="switch"
+              aria-checked={!shopShut}
               onClick={() => setStoreClosed(event, group.key, !shopShut)}
               title={
                 shopShut
                   ? "Closed for orders — hidden from the catalogue"
                   : "Open for orders — visible in the catalogue"
               }
-              className={`shrink-0 mr-3 ml-2 rounded-full border px-2.5 py-1 text-[11px] font-bold ${
-                shopShut
-                  ? "border-cream-border bg-cream text-gray-500"
-                  : "border-green-200 bg-green-50 text-green-700"
-              }`}
+              className="shrink-0 mr-3 ml-2 flex items-center gap-2"
             >
-              {shopShut ? "Closed" : "Open"}
+              <span
+                className={`relative h-5 w-9 rounded-full transition-colors ${
+                  shopShut ? "bg-gray-300" : "bg-green-600"
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${
+                    shopShut ? "left-0.5" : "left-[1.125rem]"
+                  }`}
+                />
+              </span>
             </button>
             </div>
 
