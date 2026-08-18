@@ -240,3 +240,26 @@ test("marking the same spot twice adds nothing, and says it was a repeat", async
   assert.equal(again.claimIds.length, 0)
   assert.equal(again.repeats, 2)
 })
+
+test("a caption asking for three records three, not one", async () => {
+  const { id: postId } = await shelfPost()
+  await ingestImageReply({
+    postId, sender: "62811900001", messageId: "q1",
+    replyPath: FIXTURES.ticked, caption: "size 90 mau 3 yah",
+  })
+
+  const claims = await listClaims(postId)
+  assert.ok(claims.length > 0)
+  assert.ok(claims.every((c) => c.quantity === 3), "each marked item is claimed three times over")
+})
+
+test("a size in the caption is not mistaken for a quantity", async () => {
+  const { id: postId } = await shelfPost()
+  await ingestImageReply({
+    postId, sender: "62811900002", messageId: "q2",
+    replyPath: FIXTURES.ticked, caption: "mau size 100 ya kak",
+  })
+
+  const claims = await listClaims(postId)
+  assert.ok(claims.every((c) => c.quantity === 1), "a hundred units is not what she asked for")
+})

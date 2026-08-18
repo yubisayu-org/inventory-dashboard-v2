@@ -1,5 +1,6 @@
 import {
-  resolveImageReply, clusterPoints, normalizeSize, DEFAULT_CLUSTER_RADIUS, type Point,
+  resolveImageReply, clusterPoints, normalizeSize, parseQuantity, DEFAULT_CLUSTER_RADIUS,
+  type Point,
 } from "@/lib/claims"
 import { addClaim, getPost, listClaims, listRecentPosts, setSlots, type WaPost } from "@/lib/db/claims"
 import { compareFrames, loadRgbWithin, locateInPost, type Mark } from "@/lib/claims"
@@ -52,6 +53,11 @@ export async function ingestImageReply(input: {
   // image_path is a bucket key, not a file path — the resolver needs the latter.
   const postFile = await localPostImage(post.imagePath)
   const result = await resolveImageReply(postFile, input.replyPath)
+  // How many of each marked item she asked for. One unless the caption says
+  // otherwise, and applied per mark: "mau 3" beside two ticks reads as three of
+  // each, which is what "masing-masing" spells out and what a customer ticking
+  // two colours of the same pyjama means.
+  const quantity = parseQuantity(input.caption)
   const claimIds: number[] = []
   // Marks skipped because this sender already claims that spot. Counted rather
   // than swallowed: "you already ordered that" and "I could not read this" are
@@ -71,7 +77,7 @@ export async function ingestImageReply(input: {
       source,
       point,
       variantId: null,
-      quantity: 1,
+      quantity,
       note: input.caption,
       confidence,
       state,
