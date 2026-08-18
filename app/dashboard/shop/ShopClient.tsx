@@ -217,12 +217,35 @@ export default function ShopClient() {
               <span className="ml-auto text-xs text-gray-400 tabular-nums shrink-0">
                 {group.posts.length} {group.posts.length === 1 ? "shelf" : "shelves"}
               </span>
+              {/* The same basket and tick the shelf rows use, so a count means
+                  the same thing at every level of this screen. */}
               <span
-                className={`text-sm font-bold tabular-nums shrink-0 ${
+                className={`flex items-center gap-1 text-sm font-bold tabular-nums shrink-0 ${
                   group.left === 0 ? "text-green-700" : "text-red-700"
                 }`}
               >
-                {group.left === 0 ? "Done" : `Buy ${group.left}`}
+                {group.left === 0 ? (
+                  <svg
+                  width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"
+                >
+                  <path d="M20 6 9 17l-5-5" />
+                </svg>
+                ) : (
+                  <>
+                    <svg
+                  width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                >
+                  <path d="m5 11 4-7" />
+                  <path d="m19 11-4-7" />
+                  <path d="M2 11h20l-1.8 8.1a2 2 0 0 1-2 1.9H5.8a2 2 0 0 1-2-1.9z" />
+                  <path d="M9 15v3" />
+                  <path d="M15 15v3" />
+                </svg>
+                    {group.left}
+                  </>
+                )}
               </span>
             </button>
 
@@ -275,16 +298,32 @@ export default function ShopClient() {
                           list reads it — the faded figure is context, never the
                           number acted on. */}
                       <div
-                        className={`text-sm font-bold tabular-nums whitespace-nowrap ${
-                          left === 0 ? "text-green-700" : "text-foreground"
+                        className={`flex items-center gap-1 text-sm font-bold tabular-nums whitespace-nowrap ${
+                          left === 0 ? "text-green-700" : "text-red-700"
                         }`}
                       >
-                        {left === 0 ? "Done" : left}
-                        {left > 0 && left < post.claimed ? (
-                          <span className="text-gray-400 font-normal" title="Partially bought">
-                            {" "}/ {post.claimed}
-                          </span>
-                        ) : null}
+                        {left === 0 ? (
+                          <svg
+                  width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"
+                >
+                  <path d="M20 6 9 17l-5-5" />
+                </svg>
+                        ) : (
+                          <>
+                            <svg
+                  width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                >
+                  <path d="m5 11 4-7" />
+                  <path d="m19 11-4-7" />
+                  <path d="M2 11h20l-1.8 8.1a2 2 0 0 1-2 1.9H5.8a2 2 0 0 1-2-1.9z" />
+                  <path d="M9 15v3" />
+                  <path d="M15 15v3" />
+                </svg>
+                            {left}
+                          </>
+                        )}
                       </div>
                     </Link>
                   )
