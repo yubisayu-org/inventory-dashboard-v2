@@ -229,23 +229,13 @@ function MarkSheet({
 
       <div className="flex-1 min-h-0 overflow-auto px-2">
         {saved ? (
-          <div className="flex flex-col items-center gap-3">
+          <div className="h-full flex flex-col items-center justify-center gap-2">
+            {/* Fitted rather than full width: the action lives in the bar below,
+                and a tall image pushed it off the bottom of the screen. */}
             {/* eslint-disable-next-line @next/next/no-img-element -- a blob we just made. */}
-            <img src={saved} alt="" className="max-w-full rounded-lg" />
-            {/* A button, because long-pressing an image is a gesture plenty of
-                people never discover and iOS sometimes swallows. The download
-                lands in Files rather than Photos on iOS, so the long-press hint
-                stays as the alternative rather than being replaced by this. */}
-            <a
-              href={saved}
-              download={`rak-${shelf.id}.jpg`}
-              className="w-full max-w-xs rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-center text-foreground"
-            >
-              Simpan gambar
-            </a>
-            <p className="text-xs text-white/80 text-center pb-4 leading-snug">
-              Atau tekan lama gambar di atas → Simpan.<br />
-              Setelah tersimpan, kirim ke grup ya kak 🙏
+            <img src={saved} alt="" className="max-w-full max-h-[70vh] object-contain rounded-lg" />
+            <p className="text-xs text-white/80 text-center leading-snug">
+              Atau tekan lama gambar di atas → Simpan
             </p>
           </div>
         ) : (
@@ -296,10 +286,29 @@ function MarkSheet({
       </div>
 
       <div className="flex items-center gap-2 p-3 shrink-0">
+        {saved ? (
+          <>
+            <button
+              type="button"
+              onClick={() => setSaved(null)}
+              className="rounded-xl border border-white/30 px-4 py-2.5 text-sm font-semibold text-white"
+            >
+              Kembali
+            </button>
+            <a
+              href={saved}
+              download={`rak-${shelf.id}.jpg`}
+              className="flex-1 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-center text-foreground"
+            >
+              Simpan gambar
+            </a>
+          </>
+        ) : (
+        <>
         <button
           type="button"
           onClick={() => setStrokes((s) => s.slice(0, -1))}
-          disabled={strokes.length === 0 || Boolean(saved)}
+          disabled={strokes.length === 0}
           className="rounded-xl border border-white/30 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-30"
         >
           Undo
@@ -312,11 +321,13 @@ function MarkSheet({
         <button
           type="button"
           onClick={share}
-          disabled={strokes.length === 0 || busy || Boolean(saved)}
+          disabled={strokes.length === 0 || busy}
           className="flex-1 rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40"
         >
           {busy ? "Menyiapkan…" : "Kirim ke WhatsApp"}
         </button>
+        </>
+        )}
       </div>
     </div>
   )
