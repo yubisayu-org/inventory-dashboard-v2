@@ -667,7 +667,10 @@ function MarkSheet({
           type="button"
           onClick={() => setStrokes((s) => s.slice(0, -1))}
           disabled={strokes.length === 0}
-          className="h-11 rounded-xl border border-white/30 px-4 text-sm font-semibold text-white disabled:opacity-30"
+          // Disabled fades the label, not the box: opacity on the whole button
+          // dimmed its border too, so beside the pencil — same radius, same
+          // border, never disabled — the two looked drawn with different pens.
+          className="h-11 rounded-xl border border-white/30 px-4 text-sm font-semibold text-white disabled:text-white/35"
         >
           Undo
         </button>
