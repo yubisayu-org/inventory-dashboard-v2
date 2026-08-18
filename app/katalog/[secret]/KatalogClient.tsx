@@ -127,6 +127,10 @@ function MarkSheet({
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState<string | null>(null)
   const drawing = useRef(false)
+  // Fingers currently on the canvas, and whether the current one opened a
+  // stroke — enough to tell a drag from the start of a pinch.
+  const down = useRef(0)
+  const started = useRef(false)
 
   const colour = penColour(shelf.hues)
 
@@ -236,8 +240,18 @@ function MarkSheet({
           <canvas
             ref={canvasRef}
             onPointerDown={(e) => {
+              down.current += 1
+              // A second finger means she is pinching to read a tag, not
+              // drawing. Whatever the first finger started is thrown away, so a
+              // zoom never leaves a stray line across the shelf.
+              if (down.current > 1) {
+                drawing.current = false
+                setStrokes((s) => (started.current ? s.slice(0, -1) : s))
+                started.current = false
+                return
+              }
               drawing.current = true
-              e.currentTarget.setPointerCapture(e.pointerId)
+              started.current = true
               const p = pointFrom(e)
               setStrokes((s) => [...s, [p]])
             }}
@@ -250,8 +264,21 @@ function MarkSheet({
                 return next
               })
             }}
-            onPointerUp={() => (drawing.current = false)}
-            className="w-full h-auto rounded-lg touch-none select-none"
+            onPointerUp={() => {
+              down.current = Math.max(0, down.current - 1)
+              drawing.current = false
+              started.current = false
+            }}
+            onPointerCancel={() => {
+              down.current = 0
+              drawing.current = false
+              started.current = false
+            }}
+            // pinch-zoom rather than none: the browser keeps two-finger zoom,
+            // which is how she reads the price tag, while single-pointer moves
+            // still reach the canvas to draw with.
+            style={{ touchAction: "pinch-zoom" }}
+            className="w-full h-auto rounded-lg select-none"
           />
         )}
       </div>
