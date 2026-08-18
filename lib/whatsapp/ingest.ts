@@ -2,9 +2,12 @@ import {
   resolveImageReply, clusterPoints, normalizeSize, parseQuantity, DEFAULT_CLUSTER_RADIUS,
   type Point,
 } from "@/lib/claims"
-import { addClaim, getPost, listClaims, listRecentPosts, setSlots, type WaPost } from "@/lib/db/claims"
+import {
+  addClaim, getPost, listClaims, listRecentPosts, listSlots, setSlots, type WaPost,
+} from "@/lib/db/claims"
 import { compareFrames, loadRgbWithin, locateInPost, type Mark } from "@/lib/claims"
 import { localPostImage } from "./post-image"
+import { addMissingOrders } from "./naming"
 
 /**
  * How far a crop must beat the next-best position to be trusted with one.
@@ -188,6 +191,27 @@ export async function recluster(postId: number): Promise<void> {
   }))
 
   await setSlots(postId, [...positional, ...variantSlots])
+
+  // A claim that lands on a slot already named becomes an order straight away.
+  //
+  // The rack stays in the group and the trip carries on, so people keep
+  // claiming a shelf that has already become a product. Those claims were
+  // counted in the shop and reached no invoice — visible to the owner, invisible
+  // in the accounts, and only noticed when somebody thought to press a button.
+  //
+  // Only ever adds what is missing, at the product's own price, so a customer
+  // pays what everybody else on that slot paid. A claim whose sender is still
+  // unknown is skipped and picked up when they are identified.
+  for (const slot of await listSlots(postId)) {
+    if (slot.productId === null) continue
+    try {
+      await addMissingOrders(slot.id)
+    } catch (err) {
+      // A shelf must still cluster if one slot cannot be invoiced. The claim is
+      // recorded either way, which is the part that cannot be recovered later.
+      console.error(`failed to invoice late claims on slot ${slot.id}:`, err)
+    }
+  }
 }
 
 /**

@@ -315,30 +315,8 @@ function SlotCard({
   onDone: () => void
 }) {
   const [zoom, setZoom] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState("")
 
   const blocked = claims.some((c) => c.customer === null)
-
-  /**
-   * Orders for the claims that arrived after this slot was named.
-   *
-   * The rack stays in the group and the trip carries on, so people keep
-   * claiming a shelf that already became a product. Those claims are counted in
-   * the shop and, until this, reached no invoice at all.
-   */
-  async function addOrders() {
-    setBusy(true)
-    setError("")
-    const res = await fetch(`/api/whatsapp/slots/${slot.id}/orders`, { method: "POST" })
-    setBusy(false)
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({ error: "Failed to add orders" }))
-      setError(body.error ?? "Failed to add orders")
-      return
-    }
-    onDone()
-  }
 
   return (
     <div className="rounded-xl border border-cream-border bg-white p-3">
@@ -416,27 +394,20 @@ function SlotCard({
                   {slot.productPrice !== null ? `Rp ${fmt(slot.productPrice)}` : "—"}
                 </span>
               </div>
+              {/* Claims that land after naming are invoiced as they arrive, so
+                  this is a statement rather than a thing to press. A sender
+                  nobody has identified yet is the one case that waits — and it
+                  is settled the moment they are linked, above. */}
               <div className="text-[11px] text-green-800 mt-0.5">
-                {claims.length} {claims.length === 1 ? "claim" : "claims"} · product #
-                {slot.productId}
+                {claims.length} {claims.length === 1 ? "claim" : "claims"} · ordered
+                automatically · product #{slot.productId}
               </div>
-              {/* A shelf keeps taking claims after it is named — the rack is
-                  still in the group and the trip is still running — and those
-                  claims used to reach the tally but no invoice. This is how they
-                  get their line, at the price everyone else on this slot paid. */}
-              <button
-                type="button"
-                onClick={addOrders}
-                disabled={busy}
-                className="mt-2 w-full rounded-lg border border-green-300 bg-white py-1.5 text-[11px] font-bold text-green-900 disabled:opacity-40"
-              >
-                {busy ? "Adding…" : "Add orders for new claims"}
-              </button>
-              {error ? <p className="text-[11px] text-red-600 mt-1">{error}</p> : null}
+
             </div>
           ) : (
             <>
-              {error ? <p className="text-xs text-red-600">{error}</p> : null}
+              {/* The form reports its own failures; the card has none of its own
+                  left to report. */}
               <SlotNameForm
                 slotId={slot.id}
                 defaultName={slot.label}

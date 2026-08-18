@@ -6,6 +6,7 @@ import { calcAbroadPrice, landedCost, type PricingMethod } from "../pricing"
 import { getProductDefaults } from "../db/settings"
 import { createPost, addClaim, setSlots, listSlots, setSlotBought } from "../db/claims"
 import { nameSlot, addMissingOrders } from "./naming"
+import { recluster } from "./ingest"
 
 const EVENT = `TESTNAME${process.hrtime.bigint()}`
 const HANDLE = `testcust${process.hrtime.bigint()}`
@@ -366,4 +367,31 @@ test("an unresolved late claim is counted, not invoiced to nobody", async () => 
   const result = await addMissingOrders(slot.id)
   assert.equal(result.added, 0)
   assert.equal(result.blocked, 1, "somebody has to say who that number is first")
+})
+
+test("a late claim is invoiced as it lands, without anyone pressing anything", async () => {
+  const { postId, slot } = await slotWithClaims([1])
+  const { productId } = await name({
+    slotId: slot.id, name: `Auto Ordered ${process.hrtime.bigint()}`, valas: 1699, gram: 250,
+  })
+
+  // She claims the same peg an hour after the slot became a product. recluster
+  // runs on every ingest, and that is where the order now appears.
+  const { id: late } = await addClaim({
+    postId, sender: "628119990321", customer: HANDLE, source: "ink",
+    point: { x: 0.24, y: 0.78 }, variantId: null, quantity: 2, note: "mau 2",
+    confidence: 1, state: "pending", messageId: "auto-late",
+  })
+  assert.ok(late > 0)
+  await recluster(postId)
+
+  const orders = await sql`SELECT unit FROM orders WHERE product_id = ${productId} ORDER BY unit`
+  assert.deepEqual(orders.map((o) => o.unit), [1, 2], "no button was pressed")
+
+  // And clustering again does not bill her twice.
+  await recluster(postId)
+  const [{ count }] = await sql`
+    SELECT COUNT(*)::int AS count FROM orders WHERE product_id = ${productId}
+  `
+  assert.equal(count, 2)
 })

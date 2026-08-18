@@ -1,6 +1,7 @@
 import sql from "@/lib/db-pool"
 import { normalizeCustomer } from "@/lib/db/helpers"
 import { normalizeNumber } from "@/lib/db/whatsapp-groups"
+import { addMissingOrders } from "./naming"
 
 /**
  * The digits-only form of customers.whatsapp, as SQL.
@@ -96,6 +97,26 @@ export async function linkSenderToCustomer(number: string, handle: string): Prom
         AND regexp_replace(sender, '\\D', '', 'g') = ${digits}
     `
   })
+
+  // Some of those claims may sit on slots that were named while nobody knew who
+  // she was — skipped then, because an order needs somebody to invoice. Now that
+  // there is a name, they get their lines.
+  const slots = await sql`
+    SELECT DISTINCT s.id
+    FROM wa_claims c JOIN wa_slots s ON s.id = c.slot_id
+    WHERE s.product_id IS NOT NULL
+      AND c.customer = ${customer}
+      AND c.state <> 'rejected'
+  `
+  for (const slot of slots) {
+    try {
+      await addMissingOrders(slot.id as number)
+    } catch (err) {
+      // Linking must succeed even if one slot cannot be invoiced: knowing who
+      // she is, is the part that unblocks everything else.
+      console.error(`failed to invoice claims on slot ${slot.id} after linking:`, err)
+    }
+  }
 }
 
 /**
