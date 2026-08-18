@@ -532,20 +532,42 @@ function MarkSheet({
             className="w-full h-auto select-none"
           />
 
+          {/* The gesture, shown rather than named: two fingertips closing and
+              opening on a diagonal. A still picture of a pinch reads as two
+              dots; the movement is the part that means something. It stops
+              being drawn the moment she zooms, and honours a reduced-motion
+              preference by simply holding still. */}
           {view.k === 1 ? (
             <span
-              className="pointer-events-none absolute bottom-2 left-2 w-9 h-9 rounded-full bg-black/55 text-white flex items-center justify-center"
+              className="pointer-events-none absolute bottom-2 left-2 w-10 h-10 rounded-full bg-black/55 flex items-center justify-center"
               aria-label="Cubit untuk memperbesar"
             >
-              <svg
-                width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-              >
-                <circle cx="11" cy="11" r="7" />
-                <line x1="20" y1="20" x2="16.65" y2="16.65" />
-                <line x1="11" y1="8" x2="11" y2="14" />
-                <line x1="8" y1="11" x2="14" y2="11" />
-              </svg>
+              <span className="relative block w-6 h-6">
+                <span className="katalog-pinch katalog-pinch-a absolute w-2 h-2 rounded-full bg-white" />
+                <span className="katalog-pinch katalog-pinch-b absolute w-2 h-2 rounded-full bg-white" />
+                <svg
+                  viewBox="0 0 24 24" className="absolute inset-0 w-6 h-6 text-white/50"
+                  fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"
+                >
+                  <line x1="7" y1="7" x2="17" y2="17" strokeDasharray="2 3" />
+                </svg>
+              </span>
+              <style>{`
+                .katalog-pinch { animation: katalog-pinch 1.8s ease-in-out infinite; }
+                .katalog-pinch-a { top: 2px; left: 2px; }
+                .katalog-pinch-b { bottom: 2px; right: 2px; animation-name: katalog-pinch-rev; }
+                @keyframes katalog-pinch {
+                  0%, 100% { transform: translate(0, 0); }
+                  50% { transform: translate(6px, 6px); }
+                }
+                @keyframes katalog-pinch-rev {
+                  0%, 100% { transform: translate(0, 0); }
+                  50% { transform: translate(-6px, -6px); }
+                }
+                @media (prefers-reduced-motion: reduce) {
+                  .katalog-pinch { animation: none; }
+                }
+              `}</style>
             </span>
           ) : null}
         </div>
