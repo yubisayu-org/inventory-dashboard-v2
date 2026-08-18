@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import { fmt, senderDigits, claimedAt } from "@/lib/format"
+import { PRICING_METHODS, PRICING_METHOD_LABEL, type PricingMethod } from "@/lib/pricing"
 import { alternativeSizes } from "@/lib/claims/size"
 import { neighbours, type Neighbours, type ShopPost } from "../stores"
 import SlotZoom from "@/components/SlotZoom"
@@ -42,8 +43,10 @@ interface PostPayload {
     id: number
     event: string
     store: string
-    /** For the one field that has no formula behind it. */
-    effectivePricingMethod: string
+    /** Null while the shelf still follows the WhatsApp setting. */
+    pricingMethod: PricingMethod | null
+    /** What that amounts to now — and the one field with no formula behind it. */
+    effectivePricingMethod: PricingMethod
     /** What the price tag is written in, for the naming fields. */
     currency: string
   }
@@ -139,6 +142,22 @@ export default function ShopPostClient({
     load()
   }
 
+  /**
+   * Which method prices this shelf.
+   *
+   * Here as well as on the naming screen because naming happens here now, and
+   * the method decides what every SKU on the shelf will cost — a decision that
+   * has to be settled before the first Add product, not on another page.
+   */
+  async function setPricingMethod(pricingMethod: string) {
+    await fetch(`/api/whatsapp/posts/${postId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pricingMethod }),
+    })
+    load()
+  }
+
   async function rename(slotId: number, label: string) {
     await fetch(`/api/whatsapp/slots/${slotId}`, {
       method: "PATCH",
@@ -163,7 +182,7 @@ export default function ShopPostClient({
         <Link href="/dashboard/shop" className="text-sm text-gray-500 hover:text-foreground">
           ←
         </Link>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h1 className="text-xl font-bold text-foreground truncate">
             {data.post.store || "Untitled shelf"}
           </h1>
@@ -171,6 +190,31 @@ export default function ShopPostClient({
             {data.post.event} · {data.slots.length} SKU · {bought} of {claimed} units
           </p>
         </div>
+
+        {/* Default follows Settings → WhatsApp, so changing that setting moves
+            every shelf not yet named. Picking one here opts this shelf out, and
+            naming pins whatever was in force — from then on it is a price
+            customers have been quoted. Owners only: it decides what everything
+            on the shelf costs. */}
+        {canName ? (
+          <label className="flex items-center gap-2 text-xs text-gray-500 shrink-0">
+            Pricing
+            <select
+              value={data.post.pricingMethod ?? ""}
+              onChange={(e) => setPricingMethod(e.target.value)}
+              className="border border-cream-border rounded-lg px-2 py-1.5 text-sm bg-white"
+            >
+              <option value="">
+                Default · {PRICING_METHOD_LABEL[data.post.effectivePricingMethod]}
+              </option>
+              {PRICING_METHODS.map((method) => (
+                <option key={method} value={method}>
+                  {PRICING_METHOD_LABEL[method]}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
       </div>
 
       {/* eslint-disable-next-line @next/next/no-img-element -- a rendered JPEG
