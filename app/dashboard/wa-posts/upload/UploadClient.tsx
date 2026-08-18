@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 
 type Status = "queued" | "uploading" | "done" | "failed"
@@ -23,7 +23,7 @@ export default function UploadClient() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
-  const picker = useRef<HTMLInputElement | null>(null)
+  const [dragging, setDragging] = useState(false)
 
   useEffect(() => {
     fetch("/api/whatsapp/posts/upload", { cache: "no-store" })
@@ -94,7 +94,7 @@ export default function UploadClient() {
         update(job.id, {
           status: "done",
           postId: payload.id,
-          detail: `${payload.width}×${payload.height} · ${kb(payload.bytes)}`,
+          detail: `${payload.width}×${payload.height} · ${kb(payload.bytes ?? 0)}`,
         })
       } catch (err) {
         update(job.id, { status: "failed", detail: (err as Error).message || "connection lost" })
@@ -147,23 +147,37 @@ export default function UploadClient() {
         </label>
       </div>
 
-      <button
-        type="button"
-        onClick={() => picker.current?.click()}
-        className="rounded-xl border border-dashed border-cream-border bg-white py-8 text-sm text-gray-500"
+      {/* A label rather than a button that clicks a hidden input: the label is
+          what a browser is built to route to a file field, and it doubles as the
+          drop target. Dragging did nothing before because nothing handled it. */}
+      <label
+        htmlFor="shelf-picker"
+        onDragOver={(e) => {
+          e.preventDefault()
+          setDragging(true)
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(e) => {
+          e.preventDefault()
+          setDragging(false)
+          add(e.dataTransfer.files)
+        }}
+        className={`block cursor-pointer rounded-xl border border-dashed py-8 text-center text-sm text-gray-500 transition-colors ${
+          dragging ? "border-brand bg-brand/5" : "border-cream-border bg-white"
+        }`}
       >
         <span className="block text-base mb-1">📷</span>
-        Choose photos — HEIC, JPEG or PNG
+        Drag photos here, or tap to choose — HEIC, JPEG or PNG
         <span className="block text-[11px] mt-1">
           Stored at 3000px. Sending the same photo through WhatsApp gives about 1280.
         </span>
-      </button>
+      </label>
       <input
-        ref={picker}
+        id="shelf-picker"
         type="file"
         accept="image/*,.heic,.heif"
         multiple
-        hidden
+        className="sr-only"
         onChange={(e) => {
           add(e.target.files)
           e.target.value = ""
