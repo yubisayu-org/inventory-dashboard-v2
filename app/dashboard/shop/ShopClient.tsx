@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import SearchInput from "@/components/SearchInput"
+import { PaginationButton } from "@/components/Pagination"
 import { groupByStore, type ShopPost } from "./stores"
 
 export default function ShopClient() {
@@ -18,23 +19,35 @@ export default function ShopClient() {
   // Which trips are listed: the ones running, or the ones over. Never both —
   // shelves from a finished trip look exactly like today's.
   const [showArchived, setShowArchived] = useState(false)
+  const [page, setPage] = useState(1)
+  const [totalCount, setTotalCount] = useState(0)
+  const [pageSize, setPageSize] = useState(100)
   // Shops closed for orders, keyed "event|store". Per trip, because the same
   // shop can be open on one trip and finished on another.
   const [shut, setShut] = useState<Set<string>>(new Set())
 
   useEffect(() => {
-    const query = new URLSearchParams()
+    const query = new URLSearchParams({ page: String(page) })
     if (showEmpty) query.set("all", "true")
     if (showArchived) query.set("archived", "true")
 
     fetch(`/api/whatsapp/shop${query.size ? `?${query}` : ""}`, { cache: "no-store" })
       .then((r) => r.json())
-      .then((data: { posts?: ShopPost[]; error?: string }) => {
+      .then((data: {
+        posts?: ShopPost[]
+        totalCount?: number
+        pageSize?: number
+        error?: string
+      }) => {
         if (data.error) setError(data.error)
-        else setPosts(data.posts ?? [])
+        else {
+          setPosts(data.posts ?? [])
+          setTotalCount(data.totalCount ?? 0)
+          setPageSize(data.pageSize ?? 100)
+        }
       })
       .catch(() => setError("Failed to load"))
-  }, [showEmpty, showArchived])
+  }, [showEmpty, showArchived, page])
 
   const events = useMemo(() => [...new Set((posts ?? []).map((p) => p.event))], [posts])
 
@@ -108,7 +121,10 @@ export default function ShopClient() {
             posted at all. */}
         <button
           type="button"
-          onClick={() => setShowEmpty((shown) => !shown)}
+          onClick={() => {
+            setPage(1)
+            setShowEmpty((shown) => !shown)
+          }}
           aria-label={showEmpty ? "Hide shelves with no claims" : "Show shelves with no claims"}
           title={showEmpty ? "Hiding nothing" : "Shelves with no claims are hidden"}
           className={`shrink-0 rounded-xl border px-3 py-2 ${
@@ -142,7 +158,10 @@ export default function ShopClient() {
             can answer as well as the archive can. */}
         <button
           type="button"
-          onClick={() => setShowArchived((shown) => !shown)}
+          onClick={() => {
+            setPage(1)
+            setShowArchived((shown) => !shown)
+          }}
           aria-label={showArchived ? "Back to the trips running" : "Show finished trips only"}
           title={showArchived ? "Showing finished trips" : "Showing the trips still running"}
           className={`shrink-0 rounded-xl border px-3 py-2 ${
@@ -164,7 +183,7 @@ export default function ShopClient() {
         {/* The other way a shelf gets in. Here rather than on the archive page:
             uploading happens in the shop, which is where this screen is used. */}
         <Link
-          href="/dashboard/wa-posts/upload"
+          href="/dashboard/shop/upload"
           className="shrink-0 rounded-xl bg-brand px-4 py-2 text-sm font-bold text-white"
         >
           Upload
@@ -332,6 +351,25 @@ export default function ShopClient() {
           </div>
         )
       })}
+
+      {/* Only when a page is not the whole list. A running trip fits in one;
+          a season of finished ones does not. */}
+      {totalCount > pageSize ? (
+        <div className="flex items-center gap-2">
+          <PaginationButton onClick={() => setPage((p) => p - 1)} disabled={page <= 1}>
+            Prev
+          </PaginationButton>
+          <span className="text-xs text-gray-500 tabular-nums">
+            {page} / {Math.ceil(totalCount / pageSize)}
+          </span>
+          <PaginationButton
+            onClick={() => setPage((p) => p + 1)}
+            disabled={page >= Math.ceil(totalCount / pageSize)}
+          >
+            Next
+          </PaginationButton>
+        </div>
+      ) : null}
     </div>
   )
 }

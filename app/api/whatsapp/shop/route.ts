@@ -24,6 +24,11 @@ export async function GET(req: Request) {
   // and mixed into today's they would sit there looking identical.
   const archived = params.get("archived") === "true"
 
+  // A running trip fits in one request; a season of finished ones does not, and
+  // silently truncating an archive is how a shelf becomes unreachable.
+  const pageSize = Math.min(200, Math.max(1, Number(params.get("pageSize")) || 100))
+  const page = Math.max(1, Number(params.get("page")) || 1)
+
   try {
     const rows = await sql`
       SELECT p.id, p.event, p.store, p.created_at, e.is_active,
@@ -41,7 +46,20 @@ export async function GET(req: Request) {
       -- still has claims, so it stays, marked Done.
       HAVING ${all ? sql`TRUE` : sql`COALESCE(SUM(c.quantity), 0) > 0`}
       ORDER BY p.id DESC
-      LIMIT 100
+      LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}
+    `
+
+    const [{ total }] = await sql`
+      SELECT COUNT(*)::int AS total
+      FROM (
+        SELECT p.id
+        FROM wa_posts p
+        JOIN events e ON e.name = p.event AND ${archived ? sql`NOT e.is_active` : sql`e.is_active`}
+        LEFT JOIN wa_slots s ON s.post_id = p.id
+        LEFT JOIN wa_claims c ON c.slot_id = s.id AND c.state <> 'rejected'
+        GROUP BY p.id
+        HAVING ${all ? sql`TRUE` : sql`COALESCE(SUM(c.quantity), 0) > 0`}
+      ) AS counted
     `
     return NextResponse.json(
       {
@@ -59,6 +77,9 @@ export async function GET(req: Request) {
           claimed: r.claimed as number,
           bought: r.bought as number,
         })),
+        totalCount: total as number,
+        page,
+        pageSize,
       },
       { headers: { "Cache-Control": "no-store" } },
     )

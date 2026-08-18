@@ -204,7 +204,7 @@ export default function UploadClient() {
               </span>
               {job.postId ? (
                 <Link
-                  href={`/dashboard/wa-posts/${job.postId}`}
+                  href={`/dashboard/shop/${job.postId}`}
                   className="text-[11px] font-semibold text-brand shrink-0"
                 >
                   open
