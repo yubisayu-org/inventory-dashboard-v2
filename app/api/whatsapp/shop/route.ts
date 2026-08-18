@@ -9,11 +9,16 @@ import { tsToString } from "@/lib/db/helpers"
  * Its own route rather than a filter on /api/whatsapp/posts, which is
  * owner-only. An admin counting a shelf needs the shelves, not the archive.
  */
-export async function GET() {
+export async function GET(req: Request) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
   const roleError = requireRole(session)
   if (roleError) return roleError
+
+  // Shelves nobody claimed anything on are hidden by default — a rack the group
+  // ignored is nothing to shop for — but they are still shelves, and sometimes
+  // the question is "did that rack ever get posted?".
+  const all = new URL(req.url).searchParams.get("all") === "true"
 
   try {
     const rows = await sql`
@@ -30,7 +35,7 @@ export async function GET() {
       -- common — a rack is photographed, the group ignores it — and each one
       -- listed is a rack walked to for no reason. A shelf that is fully bought
       -- still has claims, so it stays, marked Done.
-      HAVING COALESCE(SUM(c.quantity), 0) > 0
+      HAVING ${all ? sql`TRUE` : sql`COALESCE(SUM(c.quantity), 0) > 0`}
       ORDER BY p.id DESC
       LIMIT 100
     `
