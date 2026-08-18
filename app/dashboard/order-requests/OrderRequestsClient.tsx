@@ -131,6 +131,7 @@ export default function OrderRequestsClient() {
           needsProduct={converting.productId === null}
           events={options?.activeEvents ?? []}
           items={options?.items ?? []}
+          defaultEvent={converting.defaultEvent}
           onClose={() => setConvertingId(null)}
           onDone={() => { setConvertingId(null); reload() }}
         />
@@ -165,15 +166,16 @@ export default function OrderRequestsClient() {
   )
 }
 
-function ConvertModal({ requestId, needsProduct, events, items, onClose, onDone }: {
+function ConvertModal({ requestId, needsProduct, events, items, defaultEvent, onClose, onDone }: {
   requestId: number
   needsProduct: boolean
   events: string[]
   items: { id: number; name: string; store: string; price: number; active: boolean }[]
+  defaultEvent: string | null
   onClose: () => void
   onDone: () => void
 }) {
-  const [event, setEvent] = useState("")
+  const [event, setEvent] = useState(() => (defaultEvent && events.includes(defaultEvent)) ? defaultEvent : "")
   const [productId, setProductId] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState("")
