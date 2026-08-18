@@ -31,6 +31,10 @@ export default function SlotZoom({
   caption?: string
 }) {
   const [step, setStep] = useState(1)
+  // Closed to start with: the crop is why this screen opens, and on a naming
+  // pass the fields are one tap away rather than permanently taking a third of
+  // the picture.
+  const [open, setOpen] = useState(false)
   const share = ZOOM_STEPS[step]
 
   return (
@@ -119,18 +123,34 @@ export default function SlotZoom({
 
       </div>
 
-      {/* Under the picture, not over it. Always there, because the fields are
-          why this screen is open on a naming pass — and in normal flow rather
-          than overlaid, so nothing ever covers the crop and the keyboard simply
-          scrolls the page instead of fighting the sheet for room. */}
+      {/* Under the picture, in flow rather than over it, so nothing ever covers
+          the crop and the keyboard simply scrolls the page. A drawer, because
+          most visits here are to look rather than to type. */}
       {form ? (
-        <div className="w-full max-w-[min(90vw,640px)] rounded-b-xl bg-white p-3 lg:hidden" onClick={(e) => e.stopPropagation()}>
-          {caption ? (
-            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500 truncate mb-2">
-              {caption}
-            </p>
-          ) : null}
-          {form}
+        <div
+          className="w-full max-w-[min(90vw,640px)] rounded-b-xl bg-white lg:hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            onClick={() => setOpen((shown) => !shown)}
+            className="flex w-full items-center gap-2 px-3 py-2.5 text-left"
+          >
+            <span className="text-[11px] font-bold uppercase tracking-wide text-gray-500 truncate">
+              {caption ?? "Beri nama"}
+            </span>
+            <svg
+              width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+              className={`ml-auto shrink-0 text-gray-400 transition-transform ${
+                open ? "" : "-rotate-90"
+              }`}
+            >
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </button>
+
+          {open ? <div className="px-3 pb-3">{form}</div> : null}
         </div>
       ) : null}
 
