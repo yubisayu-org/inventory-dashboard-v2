@@ -559,8 +559,11 @@ function SlotZoom({ slotId, onClose }: { slotId: number; onClose: () => void }) 
               <line x1="8" y1="11" x2="14" y2="11" />
             </svg>
           </button>
+          {/* How much closer than the widest step, rather than which step of
+              four: "2.2×" says what you are looking at, "3/4" says where you are
+              in a list nobody knew existed. */}
           <span className="text-[11px] text-white/80 tabular-nums">
-            {step + 1}/{ZOOM_STEPS.length}
+            {(ZOOM_STEPS[0] / share).toFixed(1)}×
           </span>
           <button
             type="button"
