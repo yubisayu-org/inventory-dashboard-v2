@@ -132,7 +132,7 @@ export default function SlotNameForm({
             placeholder="weight"
             className="w-full min-w-0 bg-transparent outline-none disabled:text-gray-500"
           />
-          <span className="text-gray-400 text-xs shrink-0">g</span>
+          <span className="text-gray-400 text-xs shrink-0">gr</span>
         </span>
         {/* Only where the method has no formula to derive a price from. Every
             other method computes one from the valas, the kurs and the weight, so
