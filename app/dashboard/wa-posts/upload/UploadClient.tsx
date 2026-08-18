@@ -147,11 +147,11 @@ export default function UploadClient() {
         </label>
       </div>
 
-      {/* A label rather than a button that clicks a hidden input: the label is
-          what a browser is built to route to a file field, and it doubles as the
-          drop target. Dragging did nothing before because nothing handled it. */}
-      <label
-        htmlFor="shelf-picker"
+      {/* The file field itself covers the box, invisible. A label pointed at a
+          hidden input is the tidier markup and did not reliably open the dialog
+          here; a click that lands on the input cannot fail to. Drops are handled
+          on the wrapper, which the input does not intercept. */}
+      <div
         onDragOver={(e) => {
           e.preventDefault()
           setDragging(true)
@@ -162,27 +162,27 @@ export default function UploadClient() {
           setDragging(false)
           add(e.dataTransfer.files)
         }}
-        className={`block cursor-pointer rounded-xl border border-dashed py-8 text-center text-sm text-gray-500 transition-colors ${
+        className={`relative rounded-xl border border-dashed py-8 text-center text-sm text-gray-500 transition-colors ${
           dragging ? "border-brand bg-brand/5" : "border-cream-border bg-white"
         }`}
       >
         <span className="block text-base mb-1">📷</span>
-        Drag photos here, or tap to choose — HEIC, JPEG or PNG
+        Drag photos here, or click to choose — HEIC, JPEG or PNG
         <span className="block text-[11px] mt-1">
           Stored at 3000px. Sending the same photo through WhatsApp gives about 1280.
         </span>
-      </label>
-      <input
-        id="shelf-picker"
-        type="file"
-        accept="image/*,.heic,.heif"
-        multiple
-        className="sr-only"
-        onChange={(e) => {
-          add(e.target.files)
-          e.target.value = ""
-        }}
-      />
+        <input
+          type="file"
+          accept="image/*,.heic,.heif"
+          multiple
+          onChange={(e) => {
+            add(e.target.files)
+            e.target.value = ""
+          }}
+          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+          aria-label="Choose shelf photos"
+        />
+      </div>
 
       {jobs.length > 0 ? (
         <div className="rounded-xl border border-cream-border bg-white overflow-hidden">
