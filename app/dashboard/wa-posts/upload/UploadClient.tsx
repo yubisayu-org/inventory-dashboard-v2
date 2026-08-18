@@ -37,15 +37,20 @@ export default function UploadClient() {
 
   function add(files: FileList | null) {
     if (!files) return
-    setJobs((all) => [
-      ...all,
-      ...[...files].map((file, i) => ({
-        id: `${Date.now()}-${i}-${file.name}`,
-        file,
-        status: "queued" as Status,
-        detail: kb(file.size),
-      })),
-    ])
+
+    // Copied out of the FileList before the state update, not inside it. The
+    // list belongs to the input, the change handler clears the input straight
+    // after, and React runs the updater later — so reading it in there found an
+    // empty list and queued nothing. A drop was unaffected, because a
+    // DataTransfer's list is nobody's to clear, which is why dragging worked
+    // and choosing did not.
+    const chosen = [...files].map((file, i) => ({
+      id: `${Date.now()}-${i}-${file.name}`,
+      file,
+      status: "queued" as Status,
+      detail: kb(file.size),
+    }))
+    setJobs((all) => [...all, ...chosen])
   }
 
   function update(id: string, patch: Partial<Job>) {
