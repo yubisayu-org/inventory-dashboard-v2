@@ -68,7 +68,9 @@ export default function KatalogClient({ secret }: { secret: string }) {
         </p>
       </header>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-2">
+      {/* Same horizontal padding as the header and the hint below it, so the
+          first rack lines up with the words above it. */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 px-4 py-3">
         {shelves.map((shelf, index) => (
           <button
             key={shelf.id}
@@ -88,7 +90,7 @@ export default function KatalogClient({ secret }: { secret: string }) {
         ))}
       </div>
 
-      <p className="px-4 pb-8 pt-2 text-[11px] text-gray-500 leading-snug">
+      <p className="px-4 pb-8 text-[11px] text-gray-500 leading-snug">
         Ketuk rak untuk melihat detail dan menandai barang yang diinginkan, lalu
         kirim ke grup.
       </p>
