@@ -30,6 +30,9 @@ export async function POST(req: NextRequest, { params }: Params) {
       valas: Number(body.valas) || 0,
       gram: Number(body.gram) || 0,
       price: body.price != null ? Number(body.price) : undefined,
+      // Explicitly false only: an older client that says nothing still gets the
+      // orders it has always got.
+      withOrders: body.withOrders !== false,
     })
     return NextResponse.json(result)
   } catch (err) {

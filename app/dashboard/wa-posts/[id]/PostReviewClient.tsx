@@ -465,6 +465,7 @@ function SlotCard({
               <SlotNameForm
                 slotId={slot.id}
                 defaultName={slot.label}
+                claimCount={claims.length}
                 needsPrice={needsPrice}
                 blocked={blocked}
                 onNamed={onDone}
@@ -500,6 +501,7 @@ function SlotCard({
               <SlotNameForm
                 slotId={slot.id}
                 defaultName={slot.label}
+                claimCount={claims.length}
                 needsPrice={needsPrice}
                 blocked={blocked}
                 onNamed={() => {

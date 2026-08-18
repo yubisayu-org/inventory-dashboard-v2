@@ -29,6 +29,16 @@ export async function nameSlot(input: {
   gram: number
   /** Only for target_price, whose price is an input rather than an output. */
   price?: number
+  /**
+   * Whether to invoice the claims at the same time. Default yes, which is the
+   * usual case: the slot exists because people claimed it.
+   *
+   * Naming without ordering is for a rack being catalogued ahead of its
+   * customers — the product exists, the prices are settled, and the orders
+   * follow when it is clear who is actually taking one. addMissingOrders is
+   * what creates them afterwards, and the card shows the gap in the meantime.
+   */
+  withOrders?: boolean
 }): Promise<{ productId: number; orderCount: number }> {
   const [slotRow] = await sql`SELECT * FROM wa_slots WHERE id = ${input.slotId}`
   if (!slotRow) throw new Error(`no such slot: ${input.slotId}`)
@@ -56,10 +66,13 @@ export async function nameSlot(input: {
     (c) => c.slotId === input.slotId && c.state !== "rejected",
   )
 
+  const withOrders = input.withOrders !== false
+
   // A claim whose sender was never matched to a customer has nobody to invoice.
   // Blocking here keeps the failure visible; creating the product and silently
-  // dropping that order would not.
-  const unresolved = claims.filter((c) => c.customer === null)
+  // dropping that order would not. Only when orders are being created: naming
+  // the product alone harms nobody, and the orders wait for the name anyway.
+  const unresolved = withOrders ? claims.filter((c) => c.customer === null) : []
   if (unresolved.length > 0) {
     throw new Error(
       `slot ${input.slotId} has ${unresolved.length} claim(s) with an unresolved customer`,
@@ -156,15 +169,17 @@ export async function nameSlot(input: {
       profitFixed: priced.profitFixed ?? 0,
     }, tx)
 
-    const orders: OrderRow[] = claims.map((claim) => ({
-      event: post.event,
-      customer: claim.customer as string,
-      productId,
-      unitPrice: priced.price,
-      unit: claim.quantity,
-      note: claim.note,
-    }))
-    await appendOrders(orders, tx)
+    const orders: OrderRow[] = withOrders
+      ? claims.map((claim) => ({
+          event: post.event,
+          customer: claim.customer as string,
+          productId,
+          unitPrice: priced.price,
+          unit: claim.quantity,
+          note: claim.note,
+        }))
+      : []
+    if (orders.length > 0) await appendOrders(orders, tx)
 
     await tx`
       UPDATE wa_slots SET product_id = ${productId}, updated_at = NOW()
@@ -175,7 +190,7 @@ export async function nameSlot(input: {
     // already knows what was bought. The same function the tally screen uses
     // carries that onto the orders just created — one road from claim to order,
     // so the two cannot drift apart depending on which end moved first.
-    await syncOrdersToClaims(input.slotId, tx)
+    if (withOrders) await syncOrdersToClaims(input.slotId, tx)
 
     // From here the shelf has a price on somebody's invoice, so it stops
     // following the setting. In the same transaction as the product, because a
@@ -183,7 +198,7 @@ export async function nameSlot(input: {
     // shelf whose remaining SKU could be named at a different method tomorrow.
     await freezePricingMethod(post.id, pricingMethod, tx)
 
-    return { productId, orderCount: claims.length }
+    return { productId, orderCount: orders.length }
   })
 }
 

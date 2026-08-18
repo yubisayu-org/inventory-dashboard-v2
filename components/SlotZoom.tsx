@@ -85,29 +85,12 @@ export default function SlotZoom({
           </svg>
         </button>
 
-        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full bg-black/60 px-2 py-1.5">
-          <button
-            type="button"
-            onClick={() => setStep((n) => Math.max(0, n - 1))}
-            disabled={step === 0}
-            aria-label="Show more of the shelf"
-            className="w-8 h-8 rounded-full text-white flex items-center justify-center disabled:opacity-30"
-          >
-            <svg
-              width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-              strokeWidth="2" strokeLinecap="round"
-            >
-              <circle cx="11" cy="11" r="7" />
-              <line x1="20" y1="20" x2="16.65" y2="16.65" />
-              <line x1="8" y1="11" x2="14" y2="11" />
-            </svg>
-          </button>
-          {/* How much closer than the widest step, rather than which step of
-              four: "2.2×" says what you are looking at, "3/4" says where you are
-              in a list nobody knew existed. */}
-          <span className="text-[11px] text-white/80 tabular-nums">
-            {(ZOOM_STEPS[0] / share).toFixed(1)}×
-          </span>
+        {/* Down the left edge rather than along the bottom.
+            The naming sheet covers the bottom of the crop, and the whole point
+            of naming here is to read the tag while typing it — so the zoom has
+            to stay reachable with the fields open. A column at the edge is clear
+            of both the sheet and the close button. */}
+        <div className="absolute left-2 top-1/2 -translate-y-1/2 flex flex-col items-center gap-1 rounded-full bg-black/60 px-1.5 py-2">
           <button
             type="button"
             onClick={() => setStep((n) => Math.min(ZOOM_STEPS.length - 1, n + 1))}
@@ -126,12 +109,30 @@ export default function SlotZoom({
             </svg>
           </button>
 
-          {/* Naming lives in the same strip as the zoom, because the thumb is
-              already there — with a divider, so reaching for "closer" cannot
-              commit anything. Only when a form was supplied. */}
+          <span className="text-[10px] text-white/80 tabular-nums">
+            {(ZOOM_STEPS[0] / share).toFixed(1)}×
+          </span>
+
+          <button
+            type="button"
+            onClick={() => setStep((n) => Math.max(0, n - 1))}
+            disabled={step === 0}
+            aria-label="Show more of the shelf"
+            className="w-8 h-8 rounded-full text-white flex items-center justify-center disabled:opacity-30"
+          >
+            <svg
+              width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              strokeWidth="2" strokeLinecap="round"
+            >
+              <circle cx="11" cy="11" r="7" />
+              <line x1="20" y1="20" x2="16.65" y2="16.65" />
+              <line x1="8" y1="11" x2="14" y2="11" />
+            </svg>
+          </button>
+
           {form ? (
             <>
-              <span className="w-px h-5 bg-white/25" />
+              <span className="h-px w-5 bg-white/25" />
               <button
                 type="button"
                 onClick={() => setNaming((open) => !open)}
@@ -155,7 +156,7 @@ export default function SlotZoom({
         {/* Over the bottom of the crop on a phone, so the tag stays visible
             above the field it is being typed into. */}
         {form && naming ? (
-          <div className="absolute inset-x-0 bottom-0 rounded-b-xl bg-white p-3 lg:hidden">
+          <div className="absolute inset-x-0 bottom-0 max-h-[60%] overflow-auto rounded-b-xl bg-white p-3 lg:hidden">
             {/* Its own way out. The sheet covers the bottom of the crop, and the
                 zoom bar — with the pencil that opened it — is under there. */}
             <div className="flex items-center gap-2 mb-2">

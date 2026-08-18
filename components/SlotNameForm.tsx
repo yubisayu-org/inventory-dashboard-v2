@@ -14,10 +14,12 @@ import { useState } from "react"
  * re-typing them per item would be fifteen chances to disagree.
  */
 export default function SlotNameForm({
-  slotId, defaultName, needsPrice, blocked, onNamed, compact = false,
+  slotId, defaultName, needsPrice, blocked, claimCount, onNamed, compact = false,
 }: {
   slotId: number
   defaultName: string
+  /** How many claims are waiting, so the button can say what it will create. */
+  claimCount: number
   /** Target Price is the one method whose price a human decides. */
   needsPrice: boolean
   /** A claim here has no customer yet, so naming would drop somebody's order. */
@@ -37,7 +39,7 @@ export default function SlotNameForm({
     compact ? "py-2 text-[13px]" : "py-1.5 text-sm"
   }`
 
-  async function create() {
+  async function create(withOrders: boolean) {
     setBusy(true)
     setError("")
     const res = await fetch(`/api/whatsapp/slots/${slotId}/name`, {
@@ -48,6 +50,7 @@ export default function SlotNameForm({
         valas: Number(valas) || 0,
         gram: Number(gram) || 0,
         ...(price ? { price: Number(price) } : {}),
+        withOrders,
       }),
     })
     setBusy(false)
@@ -105,16 +108,37 @@ export default function SlotNameForm({
         </p>
       ) : null}
 
-      <button
-        type="button"
-        disabled={busy || blocked || !name.trim()}
-        onClick={create}
-        className={`rounded-lg bg-brand font-bold text-white disabled:opacity-40 ${
-          compact ? "py-2.5 text-sm" : "py-1.5 text-xs"
-        }`}
-      >
-        Create product and orders
-      </button>
+      {/* Two acts, two buttons. Creating the product settles what the thing is
+          and what it costs; creating the orders puts it on invoices. They
+          usually happen together, which is why the first is the primary one —
+          but a rack catalogued before its customers have decided wants the
+          product without the lines, and the card then shows the claims as
+          waiting for one. */}
+      <div className="flex gap-2">
+        <button
+          type="button"
+          disabled={busy || blocked || !name.trim()}
+          onClick={() => create(true)}
+          className={`flex-1 rounded-lg bg-brand font-bold text-white disabled:opacity-40 ${
+            compact ? "py-2.5 text-sm" : "py-1.5 text-xs"
+          }`}
+        >
+          {claimCount > 0 ? `Buat produk & ${claimCount} order` : "Buat produk"}
+        </button>
+        {claimCount > 0 ? (
+          <button
+            type="button"
+            disabled={busy || !name.trim()}
+            onClick={() => create(false)}
+            title="The orders can be created later, from the card"
+            className={`rounded-lg border border-cream-border font-bold text-brand disabled:opacity-40 ${
+              compact ? "px-3 py-2.5 text-sm" : "px-2.5 py-1.5 text-xs"
+            }`}
+          >
+            Produk saja
+          </button>
+        ) : null}
+      </div>
     </div>
   )
 }
