@@ -109,6 +109,46 @@ export default function KatalogClient({ secret }: { secret: string }) {
 type Stroke = { x: number; y: number }[]
 
 /**
+ * Draw one shelf and its marks into a JPEG, away from the screen.
+ *
+ * The visible canvas holds whichever rack she is looking at, but she may have
+ * circled things on five of them. Each one is redrawn here at the photograph's
+ * own size — the image is already in the browser cache, so this costs no
+ * bandwidth and no round trip.
+ */
+async function renderMarked(
+  url: string,
+  strokes: Stroke[],
+  colour: string,
+): Promise<Blob | null> {
+  const image = new Image()
+  image.crossOrigin = "anonymous"
+  image.src = url
+  await image.decode()
+
+  const canvas = document.createElement("canvas")
+  canvas.width = image.naturalWidth
+  canvas.height = image.naturalHeight
+  const ctx = canvas.getContext("2d")
+  if (!ctx) return null
+
+  ctx.drawImage(image, 0, 0, canvas.width, canvas.height)
+  ctx.lineWidth = Math.max(6, canvas.width / 150)
+  ctx.lineCap = "round"
+  ctx.lineJoin = "round"
+  ctx.strokeStyle = colour
+  for (const stroke of strokes) {
+    if (stroke.length < 2) continue
+    ctx.beginPath()
+    ctx.moveTo(stroke[0].x, stroke[0].y)
+    for (const point of stroke.slice(1)) ctx.lineTo(point.x, point.y)
+    ctx.stroke()
+  }
+
+  return new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9))
+}
+
+/**
  * One shelf, with a finger to draw on it.
  *
  * The whole point is that what she sends back is the file she was shown, not a
@@ -139,7 +179,7 @@ function MarkSheet({
   )
   const [ready, setReady] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [saved, setSaved] = useState<string | null>(null)
+  const [saved, setSaved] = useState<{ id: number; store: string; url: string }[] | null>(null)
   const drawing = useRef(false)
   // Fingers currently on the canvas, and whether the current one opened a
   // stroke — enough to tell a drag from the start of a pinch.
@@ -180,14 +220,6 @@ function MarkSheet({
     repaintRef.current = repaint
   }, [repaint])
 
-  // A preview belongs to the shelf it was made from.
-  useEffect(() => {
-    setSaved((url) => {
-      if (url) URL.revokeObjectURL(url)
-      return null
-    })
-  }, [shelf.id])
-
   useEffect(() => {
     setReady(false)
     const image = new Image()
@@ -221,33 +253,40 @@ function MarkSheet({
     }
   }
 
+  /** Every rack she has circled something on, in the order she saw them. */
+  const marked = shelves.filter((each) => (byShelf[each.id] ?? []).length > 0)
+
   async function share() {
-    const canvas = canvasRef.current
-    if (!canvas) return
     setBusy(true)
-    setSaved(null)
 
-    const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob((b) => resolve(b), "image/jpeg", 0.9),
-    )
+    const files: File[] = []
+    const previews: { id: number; store: string; url: string }[] = []
+    for (const each of marked) {
+      const blob = await renderMarked(
+        `/api/public/katalog/${secret}/shelf/${each.id}`,
+        byShelf[each.id] ?? [],
+        penColour(each.hues),
+      )
+      if (!blob) continue
+      files.push(new File([blob], `rak-${each.id}.jpg`, { type: "image/jpeg" }))
+      previews.push({ id: each.id, store: each.store, url: URL.createObjectURL(blob) })
+    }
     setBusy(false)
-    if (!blob) return
+    if (files.length === 0) return
 
-    const file = new File([blob], `rak-${shelf.id}.jpg`, { type: "image/jpeg" })
-
-    // The share sheet is the whole trick: she picks WhatsApp, then the group,
-    // and what lands there is an ordinary marked reply the bot already
-    // understands. Where it is unsupported, a long press on the picture is the
-    // universal fallback.
-    if (navigator.canShare?.({ files: [file] })) {
+    // One share sheet for the lot: she picks the group once, and every marked
+    // rack goes as its own photo, which is what the bot expects — one message
+    // per shelf, each matching a shelf it stored.
+    if (navigator.canShare?.({ files })) {
       try {
-        await navigator.share({ files: [file] })
+        await navigator.share({ files })
+        previews.forEach((p) => URL.revokeObjectURL(p.url))
         return
       } catch {
-        // Cancelled, or refused. Fall through to the saveable copy.
+        // Cancelled or refused; fall through to saving them by hand.
       }
     }
-    setSaved(URL.createObjectURL(blob))
+    setSaved(previews)
   }
 
   return (
@@ -297,14 +336,28 @@ function MarkSheet({
           keeps the bitmap and its dimensions. */}
       <div className="flex-1 min-h-0 overflow-auto px-2">
         {saved ? (
-          <div className="h-full flex flex-col items-center justify-center gap-2">
-            {/* Fitted rather than full width: the action lives in the bar below,
-                and a tall image pushed it off the bottom of the screen. */}
-            {/* eslint-disable-next-line @next/next/no-img-element -- a blob we just made. */}
-            <img src={saved} alt="" className="max-w-full max-h-[70vh] object-contain rounded-lg" />
+          <div className="flex flex-col items-center gap-4 py-2">
             <p className="text-xs text-white/80 text-center leading-snug">
-              Atau tekan lama gambar di atas → Simpan
+              Simpan {saved.length === 1 ? "gambar ini" : `${saved.length} gambar ini`}, lalu
+              kirim ke grup ya kak 🙏
             </p>
+            {saved.map((item) => (
+              <div key={item.id} className="w-full flex flex-col items-center gap-2">
+                {/* eslint-disable-next-line @next/next/no-img-element -- a blob we just made. */}
+                <img
+                  src={item.url}
+                  alt={item.store}
+                  className="max-w-full max-h-[60vh] object-contain rounded-lg"
+                />
+                <a
+                  href={item.url}
+                  download={`rak-${item.id}.jpg`}
+                  className="w-full max-w-xs rounded-xl bg-white px-4 py-2 text-sm font-bold text-center text-foreground"
+                >
+                  Simpan · {item.store}
+                </a>
+              </div>
+            ))}
           </div>
         ) : null}
 
@@ -355,27 +408,18 @@ function MarkSheet({
 
       <div className="flex items-center gap-2 p-3 shrink-0">
         {saved ? (
-          <>
-            <button
-              type="button"
-              onClick={() => {
-                // The blob stays alive for the tab's lifetime otherwise, and a
-                // customer flipping between shelves would accumulate megabytes.
-                URL.revokeObjectURL(saved)
-                setSaved(null)
-              }}
-              className="rounded-xl border border-white/30 px-4 py-2.5 text-sm font-semibold text-white"
-            >
-              Kembali
-            </button>
-            <a
-              href={saved}
-              download={`rak-${shelf.id}.jpg`}
-              className="flex-1 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-center text-foreground"
-            >
-              Simpan gambar
-            </a>
-          </>
+          <button
+            type="button"
+            onClick={() => {
+              // The blobs stay alive for the tab's lifetime otherwise, and a
+              // customer marking rack after rack would accumulate megabytes.
+              saved.forEach((item) => URL.revokeObjectURL(item.url))
+              setSaved(null)
+            }}
+            className="flex-1 rounded-xl border border-white/30 px-4 py-2.5 text-sm font-semibold text-white"
+          >
+            Kembali
+          </button>
         ) : (
         <>
         <button
@@ -394,10 +438,14 @@ function MarkSheet({
         <button
           type="button"
           onClick={share}
-          disabled={strokes.length === 0 || busy}
+          disabled={marked.length === 0 || busy}
           className="flex-1 rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40"
         >
-          {busy ? "Menyiapkan…" : "Kirim ke WhatsApp"}
+          {busy
+            ? "Menyiapkan…"
+            : marked.length > 1
+              ? `Kirim ${marked.length} rak ke WhatsApp`
+              : "Kirim ke WhatsApp"}
         </button>
         </>
         )}
