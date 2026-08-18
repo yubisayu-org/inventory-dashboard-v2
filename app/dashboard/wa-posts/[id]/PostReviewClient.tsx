@@ -495,20 +495,25 @@ function SlotCard({
           // Only where there is still something to name. A slot that already
           // became a product wants the late-orders button on the card, not a
           // second form that would refuse.
+          // Present whether or not the slot is named: unnamed it is the form,
+          // named it is the record — with the orders button live if somebody on
+          // this slot still has none.
           form={
-            slot.productId === null ? (
-              <SlotNameForm
-                slotId={slot.id}
-                defaultName={slot.label}
-                needsPrice={needsPrice}
-                blocked={blocked}
-                onNamed={() => {
-                  setZoom(false)
-                  onDone()
-                }}
-                compact
-              />
-            ) : undefined
+            <SlotNameForm
+              slotId={slot.id}
+              defaultName={slot.productName ?? slot.label}
+              defaultValas={slot.productValas}
+              defaultGram={slot.productGram}
+              named={slot.productId !== null}
+              missing={missing.length}
+              needsPrice={needsPrice}
+              blocked={blocked}
+              onNamed={() => {
+                setZoom(false)
+                onDone()
+              }}
+              compact
+            />
           }
         />
       ) : null}

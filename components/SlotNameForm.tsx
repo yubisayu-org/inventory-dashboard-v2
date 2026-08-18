@@ -17,10 +17,18 @@ import { useState } from "react"
  * price can be read back and checked before anybody is charged it.
  */
 export default function SlotNameForm({
-  slotId, defaultName, needsPrice, blocked, onNamed, compact = false,
+  slotId, defaultName, defaultValas, defaultGram, named, missing,
+  needsPrice, blocked, onNamed, compact = false,
 }: {
   slotId: number
   defaultName: string
+  /** What was typed when it was named, for a slot that already has a product. */
+  defaultValas?: number | null
+  defaultGram?: number | null
+  /** Already a product: the fields become a record rather than a form. */
+  named?: boolean
+  /** Claims on this slot with no order yet. */
+  missing?: number
   /** Target Price is the one method whose price a human decides. */
   needsPrice: boolean
   /** A claim here has no customer yet, so naming would drop somebody's order. */
@@ -30,15 +38,29 @@ export default function SlotNameForm({
   compact?: boolean
 }) {
   const [name, setName] = useState(defaultName)
-  const [valas, setValas] = useState("")
-  const [gram, setGram] = useState("")
+  const [valas, setValas] = useState(defaultValas ? String(defaultValas) : "")
+  const [gram, setGram] = useState(defaultGram ? String(defaultGram) : "")
   const [price, setPrice] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
 
-  const field = `border border-cream-border rounded-lg px-2 ${
+  const field = `border border-cream-border rounded-lg px-2 disabled:bg-cream disabled:text-gray-500 ${
     compact ? "py-2 text-[13px]" : "py-1.5 text-sm"
   }`
+
+  /** Give the claims here their lines, at the price this slot already has. */
+  async function addOrders() {
+    setBusy(true)
+    setError("")
+    const res = await fetch(`/api/whatsapp/slots/${slotId}/orders`, { method: "POST" })
+    setBusy(false)
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ error: "Failed to add orders" }))
+      setError(body.error ?? "Failed to add orders")
+      return
+    }
+    onNamed()
+  }
 
   async function create(withOrders: boolean) {
     setBusy(true)
@@ -69,12 +91,14 @@ export default function SlotNameForm({
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
+          disabled={named}
           placeholder="Product name"
           className={`col-span-2 ${field}`}
         />
         <input
           value={valas}
           onChange={(e) => setValas(e.target.value)}
+          disabled={named}
           inputMode="decimal"
           placeholder="Valas (price tag)"
           className={field}
@@ -82,6 +106,7 @@ export default function SlotNameForm({
         <input
           value={gram}
           onChange={(e) => setGram(e.target.value)}
+          disabled={named}
           inputMode="numeric"
           placeholder="Gram"
           className={field}
@@ -111,18 +136,34 @@ export default function SlotNameForm({
 
       {/* Naming only. Creating the product settles what the thing is and what
           it costs; putting it on somebody's invoice is the next decision, and
-          the card makes it — so a mistyped valas can be caught before anyone is
-          charged for it. */}
+          the button below makes it — so a mistyped valas is caught before anyone
+          is charged for it. */}
       <button
         type="button"
-        disabled={busy || !name.trim()}
+        disabled={busy || named || !name.trim()}
         onClick={() => create(false)}
         className={`rounded-lg bg-brand font-bold text-white disabled:opacity-40 ${
           compact ? "py-2.5 text-sm" : "py-1.5 text-xs"
         }`}
       >
-        {busy ? "Membuat…" : "Buat produk"}
+        {named ? "Produk sudah dibuat" : busy ? "Membuat…" : "Buat produk"}
       </button>
+
+      {/* Live only while somebody on this slot has no order. A named slot keeps
+          taking claims — the rack is still in the group — and this is how they
+          reach an invoice. */}
+      {named && (missing ?? 0) > 0 ? (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={addOrders}
+          className={`rounded-lg border border-amber-300 bg-white font-bold text-amber-800 disabled:opacity-40 ${
+            compact ? "py-2.5 text-sm" : "py-1.5 text-xs"
+          }`}
+        >
+          {busy ? "Membuat…" : `Buat ${missing} order lagi`}
+        </button>
+      ) : null}
     </div>
   )
 }
