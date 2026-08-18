@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
-import { senderDigits, claimedAt } from "@/lib/format"
+import { fmt, senderDigits, claimedAt } from "@/lib/format"
 import { alternativeSizes } from "@/lib/claims/size"
 import { neighbours, type Neighbours, type ShopPost } from "../stores"
 import SlotZoom from "@/components/SlotZoom"
+import SlotNameForm from "@/components/SlotNameForm"
 
 interface Slot {
   id: number
@@ -17,6 +18,9 @@ interface Slot {
   productId: number | null
   /** What it was named as, once it has been. */
   productName: string | null
+  productPrice: number | null
+  productValas: number | null
+  productGram: number | null
 }
 
 interface Claim {
@@ -34,15 +38,31 @@ interface Claim {
 }
 
 interface PostPayload {
-  post: { id: number; event: string; store: string }
+  post: {
+    id: number
+    event: string
+    store: string
+    /** For the one field that has no formula behind it. */
+    effectivePricingMethod: string
+    /** What the price tag is written in, for the naming fields. */
+    currency: string
+  }
   slots: Slot[]
   claims: Claim[]
+  /** Claims on a named slot with no order yet. */
+  unordered: number[]
 }
 
 const tone = (claimed: number, bought: number) =>
   bought >= claimed ? "text-green-700" : bought > 0 ? "text-amber-600" : "text-red-700"
 
-export default function ShopPostClient({ postId }: { postId: number }) {
+export default function ShopPostClient({
+  postId, canName,
+}: {
+  postId: number
+  /** Naming creates products and orders — owners only. */
+  canName: boolean
+}) {
   const [data, setData] = useState<PostPayload | null>(null)
   const [error, setError] = useState("")
   const [openSlot, setOpenSlot] = useState<number | null>(null)
@@ -135,6 +155,7 @@ export default function ShopPostClient({ postId }: { postId: number }) {
   const claimed = data.slots.reduce((n, s) => n + s.claimed, 0)
   const bought = data.slots.reduce((n, s) => n + s.bought, 0)
   const slot = data.slots.find((s) => s.id === openSlot) ?? null
+  const zoomed = data.slots.find((s) => s.id === zoomSlot) ?? null
 
   return (
     <div className="flex flex-col gap-4">
@@ -246,8 +267,50 @@ export default function ShopPostClient({ postId }: { postId: number }) {
         </div>
       ) : null}
 
-      {zoomSlot !== null ? (
-        <SlotZoom slotId={zoomSlot} onClose={() => setZoomSlot(null)} />
+      {/* The same sheet the naming screen uses. A shelf is counted and named
+          from the same crop — the tag being read for the count is the tag whose
+          price is typed — so the drawer travels with the picture rather than
+          living on a screen of its own. */}
+      {zoomed ? (
+        <SlotZoom
+          slotId={zoomed.id}
+          onClose={() => setZoomSlot(null)}
+          caption={[
+            zoomed.productName || zoomed.label || `SKU ${zoomed.id}`,
+            zoomed.size || null,
+            zoomed.productPrice !== null ? `Rp ${fmt(zoomed.productPrice)}` : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+          startOpen={canName && zoomed.productId === null}
+          form={
+            canName ? (
+              <SlotNameForm
+                slotId={zoomed.id}
+                defaultName={zoomed.productName ?? zoomed.label}
+                defaultValas={zoomed.productValas}
+                defaultGram={zoomed.productGram}
+                named={zoomed.productId !== null}
+                missing={
+                  data.claims.filter(
+                    (c) => c.slotId === zoomed.id && (data.unordered ?? []).includes(c.id),
+                  ).length
+                }
+                currency={data.post.currency}
+                needsPrice={data.post.effectivePricingMethod === "target_price"}
+                blocked={data.claims.some(
+                  (c) => c.slotId === zoomed.id && c.state !== "rejected" && c.customer === null,
+                )}
+                onNamed={() => {
+                  setZoomSlot(null)
+                  setVersion((v) => v + 1)
+                  load()
+                }}
+                compact
+              />
+            ) : undefined
+          }
+        />
       ) : null}
 
       {slot ? (
