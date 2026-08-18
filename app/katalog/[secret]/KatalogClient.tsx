@@ -539,7 +539,7 @@ function MarkSheet({
               preference by simply holding still. */}
           {view.k === 1 ? (
             <span
-              className="pointer-events-none absolute bottom-2 left-2 w-10 h-10 rounded-full bg-black/55 flex items-center justify-center"
+              className="katalog-hint pointer-events-none absolute bottom-2 left-2 w-10 h-10 rounded-full bg-black/55 flex items-center justify-center"
               aria-label="Cubit untuk memperbesar"
             >
               <span className="relative block w-6 h-6">
@@ -553,7 +553,9 @@ function MarkSheet({
                 </svg>
               </span>
               <style>{`
-                .katalog-pinch { animation: katalog-pinch 1.8s ease-in-out infinite; }
+                /* Plays twice and stops, then the badge fades out: a loop
+                   over a dense rack pulls the eye away from the products. */
+                .katalog-pinch { animation: katalog-pinch 1.4s ease-in-out 2 both; }
                 .katalog-pinch-a { top: 2px; left: 2px; }
                 .katalog-pinch-b { bottom: 2px; right: 2px; animation-name: katalog-pinch-rev; }
                 @keyframes katalog-pinch {
@@ -564,8 +566,13 @@ function MarkSheet({
                   0%, 100% { transform: translate(0, 0); }
                   50% { transform: translate(-6px, -6px); }
                 }
+                .katalog-hint { animation: katalog-hint-out 0.6s ease-in 3.2s both; }
+                @keyframes katalog-hint-out {
+                  to { opacity: 0; }
+                }
                 @media (prefers-reduced-motion: reduce) {
                   .katalog-pinch { animation: none; }
+                  .katalog-hint { animation-delay: 4s; }
                 }
               `}</style>
             </span>
