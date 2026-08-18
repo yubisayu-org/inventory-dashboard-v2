@@ -193,12 +193,24 @@ function MarkSheet({
    * viewport moves. Transforming the canvas instead leaves the controls where
    * her thumb expects them.
    */
-  const [view, setView] = useState({ k: 1, x: 0, y: 0 })
+  const [view, setView] = useState({ k: 1, cx: 0.5, cy: 0.5 })
   const pointers = useRef(new Map<number, { x: number; y: number }>())
-  const pinch = useRef<{ dist: number; k: number; x: number; y: number; cx: number; cy: number } | null>(null)
+  /** Screen midpoint the current pinch started from. */
+  const pinchMid = useRef<{ x: number; y: number } | null>(null)
+  const pinch = useRef<{ dist: number; k: number; cx: number; cy: number } | null>(null)
 
   const colour = penColour(shelf.hues)
 
+  /**
+   * Draw the part of the shelf she is looking at, at the canvas's own
+   * resolution.
+   *
+   * Zoom used to be a CSS transform on the element, which magnifies the
+   * rasterised canvas — about 380 device-independent pixels wide — rather than
+   * the 2250 pixels the file actually holds. A price tag went soft at exactly
+   * the moment she zoomed in to read it. Redrawing the source region instead
+   * uses the pixels that are there.
+   */
   const repaint = useCallback(() => {
     const canvas = canvasRef.current
     const image = imageRef.current
@@ -206,21 +218,34 @@ function MarkSheet({
     const ctx = canvas.getContext("2d")
     if (!ctx) return
 
-    ctx.drawImage(image, 0, 0, canvas.width, canvas.height)
-    // Thick relative to the photograph, not to the screen: a hairline circle is
-    // the first thing WhatsApp's compression eats.
-    ctx.lineWidth = Math.max(6, canvas.width / 150)
+    const iw = image.naturalWidth
+    const ih = image.naturalHeight
+    // The window into the photograph: the whole of it at 1×, a k-th of it at k.
+    const vw = iw / view.k
+    const vh = ih / view.k
+    const sx = Math.min(iw - vw, Math.max(0, view.cx * iw - vw / 2))
+    const sy = Math.min(ih - vh, Math.max(0, view.cy * ih - vh / 2))
+
+    ctx.imageSmoothingQuality = "high"
+    ctx.drawImage(image, sx, sy, vw, vh, 0, 0, canvas.width, canvas.height)
+
+    // Strokes are kept in the photograph's coordinates so they stay put under
+    // zoom and export at full size; only the drawing of them is scaled.
+    const scale = canvas.width / vw
+    ctx.lineWidth = Math.max(6, iw / 150) * scale
     ctx.lineCap = "round"
     ctx.lineJoin = "round"
     ctx.strokeStyle = colour
     for (const stroke of strokes) {
       if (stroke.length < 2) continue
       ctx.beginPath()
-      ctx.moveTo(stroke[0].x, stroke[0].y)
-      for (const point of stroke.slice(1)) ctx.lineTo(point.x, point.y)
+      ctx.moveTo((stroke[0].x - sx) * scale, (stroke[0].y - sy) * scale)
+      for (const point of stroke.slice(1)) {
+        ctx.lineTo((point.x - sx) * scale, (point.y - sy) * scale)
+      }
       ctx.stroke()
     }
-  }, [strokes, colour])
+  }, [strokes, colour, view])
 
   // The load handler paints through this rather than waiting for an effect.
   // Setting canvas.width clears the bitmap, and on a cached image — going back
@@ -234,7 +259,7 @@ function MarkSheet({
   // A new rack starts unzoomed; carrying a zoom across would land her in the
   // corner of a shelf she has not seen yet.
   useEffect(() => {
-    setView({ k: 1, x: 0, y: 0 })
+    setView({ k: 1, cx: 0.5, cy: 0.5 })
     pointers.current.clear()
     pinch.current = null
   }, [shelf.id])
@@ -248,10 +273,14 @@ function MarkSheet({
     image.onload = () => {
       const canvas = canvasRef.current
       if (!canvas) return
-      // Assigning either dimension wipes the canvas, so the paint has to follow
-      // in the same turn.
-      canvas.width = image.naturalWidth
-      canvas.height = image.naturalHeight
+      // Sized to the space it occupies, times the device's pixel ratio — the
+      // photograph itself is far larger and is sampled into this. Assigning
+      // either dimension wipes the bitmap, so the paint follows in the same
+      // turn.
+      const css = canvas.clientWidth || canvas.parentElement?.clientWidth || 360
+      const dpr = Math.min(3, window.devicePixelRatio || 1)
+      canvas.width = Math.round(css * dpr)
+      canvas.height = Math.round(css * dpr * (image.naturalHeight / image.naturalWidth))
       imageRef.current = image
       setReady(true)
       repaintRef.current()
@@ -273,14 +302,21 @@ function MarkSheet({
     }
   }
 
-  /** Canvas coordinates from a touch, whatever size the canvas is displayed at. */
+  /** Where a touch lands in the photograph, whatever the zoom. */
   function pointFrom(e: React.PointerEvent<HTMLCanvasElement>) {
     const canvas = canvasRef.current
-    if (!canvas) return { x: 0, y: 0 }
+    const image = imageRef.current
+    if (!canvas || !image) return { x: 0, y: 0 }
     const rect = canvas.getBoundingClientRect()
+    const iw = image.naturalWidth
+    const ih = image.naturalHeight
+    const vw = iw / view.k
+    const vh = ih / view.k
+    const sx = Math.min(iw - vw, Math.max(0, view.cx * iw - vw / 2))
+    const sy = Math.min(ih - vh, Math.max(0, view.cy * ih - vh / 2))
     return {
-      x: ((e.clientX - rect.left) / rect.width) * canvas.width,
-      y: ((e.clientY - rect.top) / rect.height) * canvas.height,
+      x: sx + ((e.clientX - rect.left) / rect.width) * vw,
+      y: sy + ((e.clientY - rect.top) / rect.height) * vh,
     }
   }
 
@@ -425,7 +461,8 @@ function MarkSheet({
                 started.current = false
                 if (down.current === 2) {
                   const { dist, cx, cy } = twoFingers()
-                  pinch.current = { dist, k: view.k, x: view.x, y: view.y, cx, cy }
+                  pinch.current = { dist, k: view.k, cx: view.cx, cy: view.cy }
+                  pinchMid.current = { x: cx, y: cy }
                 }
                 return
               }
@@ -443,12 +480,20 @@ function MarkSheet({
                 const { dist, cx, cy } = twoFingers()
                 const from = pinch.current
                 const k = Math.min(MAX_ZOOM, Math.max(1, (from.k * dist) / from.dist))
-                // Keep whatever sits between her fingers under her fingers, and
-                // follow them as they travel: pinch and pan in one gesture.
+
+                // Pan by where the fingers have travelled since the pinch
+                // began, in fractions of the visible window — so the shelf
+                // follows the hand rather than the hand chasing the shelf.
+                const canvas = canvasRef.current
+                const rect = canvas?.getBoundingClientRect()
+                const startMid = pinchMid.current
+                const dx = rect && startMid ? (cx - startMid.x) / rect.width / k : 0
+                const dy = rect && startMid ? (cy - startMid.y) / rect.height / k : 0
+                const half = 1 / (2 * k)
                 setView({
                   k,
-                  x: cx - ((from.cx - from.x) / from.k) * k,
-                  y: cy - ((from.cy - from.y) / from.k) * k,
+                  cx: Math.min(1 - half, Math.max(half, from.cx - dx)),
+                  cy: Math.min(1 - half, Math.max(half, from.cy - dy)),
                 })
                 return
               }
@@ -464,7 +509,10 @@ function MarkSheet({
             onPointerUp={(e) => {
               pointers.current.delete(e.pointerId)
               down.current = pointers.current.size
-              if (pointers.current.size < 2) pinch.current = null
+              if (pointers.current.size < 2) {
+                pinch.current = null
+                pinchMid.current = null
+              }
               drawing.current = false
               started.current = false
             }}
@@ -472,16 +520,15 @@ function MarkSheet({
               pointers.current.delete(e.pointerId)
               down.current = pointers.current.size
               pinch.current = null
+              pinchMid.current = null
               drawing.current = false
               started.current = false
             }}
             // Every gesture is handled here now, so the browser is told to keep
             // its hands off: its own pinch would scale the controls with it.
-            style={{
-              touchAction: "none",
-              transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})`,
-              transformOrigin: "0 0",
-            }}
+            // No CSS transform: zoom is drawn, not scaled, so the pixels come
+            // from the photograph rather than from a magnified screenshot of it.
+            style={{ touchAction: "none" }}
             className="w-full h-auto select-none"
           />
         </div>
@@ -514,7 +561,7 @@ function MarkSheet({
         {view.k > 1 ? (
           <button
             type="button"
-            onClick={() => setView({ k: 1, x: 0, y: 0 })}
+            onClick={() => setView({ k: 1, cx: 0.5, cy: 0.5 })}
             className="rounded-xl border border-white/30 px-3 py-2.5 text-xs font-bold text-white tabular-nums shrink-0"
           >
             {view.k.toFixed(1)}× ✕
