@@ -61,11 +61,20 @@ export default function KatalogClient({ secret }: { secret: string }) {
 
   return (
     <main className="min-h-screen bg-cream">
-      <header className="px-4 py-3 border-b border-cream-border bg-white sticky top-0 z-10">
-        <h1 className="text-base font-bold text-foreground">Group Catalogue</h1>
-        <p className="text-xs text-gray-500 tabular-nums">
-          {event} · {shelves.length} SHELVES
-        </p>
+      <header className="flex items-center gap-3 px-4 py-3 border-b border-cream-border bg-white sticky top-0 z-10">
+        {/* The same mark the dashboard uses, round here: this is the one screen
+            a customer sees, so it should say whose shop it is before it says
+            anything else. No logo file exists yet — when one does, it replaces
+            the letter and nothing else changes. */}
+        <span className="w-10 h-10 shrink-0 rounded-full bg-brand flex items-center justify-center">
+          <span className="text-white text-base font-bold">Y</span>
+        </span>
+        <div className="min-w-0">
+          <h1 className="text-base font-bold text-foreground">Group Catalogue</h1>
+          <p className="text-xs text-gray-500 tabular-nums truncate">
+            {event} · {shelves.length} SHELVES
+          </p>
+        </div>
       </header>
 
       {/* Same horizontal padding as the header and the hint below it, so the
