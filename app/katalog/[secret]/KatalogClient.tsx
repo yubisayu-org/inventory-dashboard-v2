@@ -217,19 +217,18 @@ function MarkSheet({
 
   return (
     <div className="fixed inset-0 z-40 bg-black/80 flex flex-col">
-      {/* The close button sits beside a column, so the instruction lines up with
-          the store name by construction rather than by a guessed margin — the ✕
-          is as wide as its glyph, which is not a number this file should know. */}
+      {/* Both lines start at the same left edge by construction; the close
+          button is pushed to the far side and takes no part in that. */}
       <div className="flex items-start gap-3 px-3 py-2 text-white shrink-0">
-        <button type="button" onClick={onClose} className="text-sm leading-6">
-          ✕
-        </button>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <span className="block text-sm font-semibold leading-6 truncate">{shelf.store}</span>
           <p className="text-[11px] opacity-70 leading-snug">
             Lingkari atau centang barang yang diinginkan
           </p>
         </div>
+        <button type="button" onClick={onClose} className="text-sm leading-6 shrink-0 px-1">
+          ✕
+        </button>
       </div>
 
       {/* The canvas is never unmounted, only hidden. Remounting it gave React a
