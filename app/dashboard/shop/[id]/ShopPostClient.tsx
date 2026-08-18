@@ -417,8 +417,6 @@ function SlotSheet({
   const [count, setCount] = useState(slot.bought)
   const [label, setLabel] = useState(slot.label)
 
-  const short = slot.claimed - count
-
   return (
     <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/40" onClick={onClose}>
       <div
@@ -503,7 +501,7 @@ function SlotSheet({
 
         <FallbackPanel claims={claims} onSwap={onSwap} />
 
-        {short > 0 && claims.length > 0 ? <ShortPanel claims={claims} count={count} /> : null}
+        {claims.length > 0 ? <ShortPanel claims={claims} count={count} /> : null}
 
         <button
           type="button"
@@ -648,7 +646,11 @@ function FallbackPanel({
 }
 
 /**
- * Who walks away with nothing.
+ * Who is behind this SKU, and what each of them gets.
+ *
+ * Shown whether or not anybody misses out: "who wanted this" is the question
+ * asked in a shop holding the item, and it was disappearing exactly when the
+ * slot was fully bought — which is when the owner is deciding whose it is.
  *
  * The order is not arbitrary and is not recomputed here: the server spends the
  * count across claims by paid priority, so this previews the same ordering the
