@@ -645,6 +645,8 @@ function MarkSheet({
         </div>
       </div>
 
+      {/* One height for every control: padding plus a border made Undo two
+          pixels taller than Kirim, and the pen swatch six shorter than both. */}
       <div className="flex items-center gap-2 p-3 shrink-0">
         {saved ? (
           <button
@@ -655,7 +657,7 @@ function MarkSheet({
               saved.forEach((item) => URL.revokeObjectURL(item.url))
               setSaved(null)
             }}
-            className="flex-1 rounded-xl border border-white/30 px-4 py-2.5 text-sm font-semibold text-white"
+            className="h-11 flex-1 rounded-xl border border-white/30 px-4 text-sm font-semibold text-white"
           >
             Kembali
           </button>
@@ -665,7 +667,7 @@ function MarkSheet({
           type="button"
           onClick={() => setStrokes((s) => s.slice(0, -1))}
           disabled={strokes.length === 0}
-          className="rounded-xl border border-white/30 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-30"
+          className="h-11 rounded-xl border border-white/30 px-4 text-sm font-semibold text-white disabled:opacity-30"
         >
           Undo
         </button>
@@ -674,7 +676,7 @@ function MarkSheet({
             still draw at exactly the moment she is closest to the item and most
             likely to want to. */}
         <span
-          className="w-9 h-9 rounded-full border-2 border-white/60 shrink-0"
+          className="w-11 h-11 rounded-full border-2 border-white/60 shrink-0"
           style={{ background: colour }}
           aria-label="Warna pena"
         />
@@ -683,7 +685,7 @@ function MarkSheet({
           type="button"
           onClick={share}
           disabled={marked.length === 0 || busy}
-          className="flex-1 rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40"
+          className="h-11 flex-1 rounded-xl bg-brand px-4 text-sm font-bold text-white disabled:opacity-40"
         >
           {busy
             ? "Menyiapkan…"
