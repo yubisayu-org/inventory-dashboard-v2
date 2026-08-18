@@ -30,8 +30,7 @@ const VIEW_EDGE = 2250
 export async function GET(_req: Request, { params }: Params) {
   const { secret, id } = await params
   try {
-    const events = await sql`SELECT name FROM events WHERE is_active ORDER BY name`
-    const event = eventForSecret(secret, events.map((r) => r.name as string))
+    const event = await eventForSecret(secret)
     if (event === null) return new NextResponse("Not found", { status: 404 })
 
     // Scoped to the trip the secret unlocks: a shelf id from another event must

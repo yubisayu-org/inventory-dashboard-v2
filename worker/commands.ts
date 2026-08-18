@@ -3,6 +3,7 @@ export type Command =
   | { kind: "open"; store: string }
   | { kind: "close" }
   | { kind: "rekap" }
+  | { kind: "katalog" }
 
 /**
  * Read a command out of a message, or decide it was not one.
@@ -34,6 +35,8 @@ export function parseCommand(text: string): Command | null {
       return { kind: "close" }
     case "/rekap":
       return { kind: "rekap" }
+    case "/katalog":
+      return { kind: "katalog" }
     default:
       return null
   }

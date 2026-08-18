@@ -21,8 +21,7 @@ type Params = { params: Promise<{ secret: string }> }
 export async function GET(_req: Request, { params }: Params) {
   const { secret } = await params
   try {
-    const events = await sql`SELECT name FROM events WHERE is_active ORDER BY name`
-    const event = eventForSecret(secret, events.map((r) => r.name as string))
+    const event = await eventForSecret(secret)
     if (event === null) {
       return NextResponse.json({ error: "Not found" }, { status: 404 })
     }

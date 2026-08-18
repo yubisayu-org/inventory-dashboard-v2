@@ -46,3 +46,9 @@ test("an unknown slash word is not a command", () => {
 test("a command must be the whole first word, not part of one", () => {
   assert.equal(parseCommand("/rekapitulasi"), null)
 })
+
+test("/katalog asks for the trip's link", () => {
+  assert.deepEqual(parseCommand("/katalog"), { kind: "katalog" })
+  assert.deepEqual(parseCommand("  /KATALOG  "), { kind: "katalog" })
+  assert.equal(parseCommand("katalog dong kak"), null, "a word in chatter is not a command")
+})

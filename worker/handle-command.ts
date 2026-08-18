@@ -4,6 +4,7 @@ import {
 } from "@/lib/db/whatsapp-groups"
 import type { WAMessageKey } from "baileys"
 import type { Command } from "./commands"
+import { catalogueUrl, katalogSecret } from "@/lib/katalog/secret"
 
 export interface CommandResult {
   /** A message to send back. Used only where a reaction cannot carry the answer. */
@@ -111,5 +112,27 @@ export async function runCommand(input: {
       // Any admin. Staff helping run a trip can pull the list without being
       // trusted to re-point the whole event.
       return { rekap: true }
+
+    case "katalog": {
+      // The link for whoever joined after the shelves were posted. Posted on
+      // request rather than automatically, because the useful thing to do with
+      // it is pin it — and pinning is a human act.
+      const [group] = await sql`
+        SELECT event FROM wa_groups WHERE jid = ${input.groupJid} AND event IS NOT NULL
+      `
+      if (!group) return { reply: "This group is not connected to a trip yet." }
+
+      const secret = await katalogSecret(group.event as string)
+      if (!secret) return { reply: "That trip no longer exists." }
+
+      const lines = [
+        `📚 Katalog rak ${group.event}`,
+        catalogueUrl(secret),
+        "",
+        "Semua rak trip ini ada di sini — buka, tandai barang yang diinginkan, lalu kirim ke grup.",
+        "Sematkan pesan ini biar yang baru gabung gampang cari.",
+      ]
+      return { reply: lines.join("\n") }
+    }
   }
 }
