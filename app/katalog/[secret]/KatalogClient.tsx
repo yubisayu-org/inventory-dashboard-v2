@@ -8,7 +8,19 @@ interface Shelf {
   width: number
   height: number
   hues: number[]
+  /** The stored catalogue copy, served straight from the bucket. */
+  url: string | null
 }
+
+/**
+ * Where a rack's picture comes from.
+ *
+ * The bucket when a copy has been written — no app in the path, so the CDN
+ * answers every repeat view. The route otherwise, which encodes one on demand
+ * for shelves captured before the copies existed.
+ */
+const shelfSrc = (secret: string, shelf: Shelf) =>
+  shelf.url ?? `/api/public/katalog/${secret}/shelf/${shelf.id}`
 
 /**
  * A pen colour this shelf does not already contain.
@@ -98,7 +110,7 @@ export default function KatalogClient({ secret }: { secret: string }) {
           >
             {/* eslint-disable-next-line @next/next/no-img-element -- our own AVIF route. */}
             <img
-              src={`/api/public/katalog/${secret}/shelf/${shelf.id}`}
+              src={shelfSrc(secret, shelf)}
               alt={shelf.store}
               loading="lazy"
               className="w-full aspect-[3/4] object-cover rounded-lg border border-cream-border bg-white"
@@ -316,7 +328,7 @@ function MarkSheet({
       setReady(true)
       repaintRef.current()
     }
-    image.src = `/api/public/katalog/${secret}/shelf/${shelf.id}`
+    image.src = shelfSrc(secret, shelf)
   }, [secret, shelf.id])
 
   useEffect(repaint, [repaint, ready])
@@ -361,7 +373,7 @@ function MarkSheet({
     const previews: { id: number; store: string; url: string }[] = []
     for (const each of marked) {
       const blob = await renderMarked(
-        `/api/public/katalog/${secret}/shelf/${each.id}`,
+        shelfSrc(secret, each),
         byShelf[each.id] ?? [],
         penColour(each.hues),
       )

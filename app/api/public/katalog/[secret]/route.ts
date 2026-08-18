@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import sql from "@/lib/db-pool"
 import { eventForSecret } from "@/lib/katalog/secret"
+import { catalogueImageUrl } from "@/lib/storage"
 
 type Params = { params: Promise<{ secret: string }> }
 
@@ -27,7 +28,7 @@ export async function GET(_req: Request, { params }: Params) {
     }
 
     const rows = await sql`
-      SELECT p.id, p.store, p.image_width, p.image_height, p.safe_hues, p.created_at
+      SELECT p.id, p.store, p.image_width, p.image_height, p.safe_hues, p.view_path
       FROM wa_posts p
       WHERE p.event = ${event}
       ORDER BY p.id ASC
@@ -42,6 +43,11 @@ export async function GET(_req: Request, { params }: Params) {
           width: (r.image_width as number) ?? 0,
           height: (r.image_height as number) ?? 0,
           hues: ((r.safe_hues as number[]) ?? []).map(Number),
+          // The public URL of the stored copy, when there is one. Serving it
+          // straight from the bucket is what makes the caching work: the app is
+          // not in the path at all, so a device fetches a rack once and the CDN
+          // answers everyone else.
+          url: r.view_path ? catalogueImageUrl(r.view_path as string) : null,
         })),
       },
       // Short: a trip gains shelves through the day, and a latecomer opening the

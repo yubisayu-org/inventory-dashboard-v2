@@ -2,7 +2,7 @@ import { existsSync } from "node:fs"
 import { mkdir, rename, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { downloadPostImage } from "@/lib/storage"
+import { downloadPostImage, downloadCatalogueImage } from "@/lib/storage"
 
 /**
  * Where downloaded post images are kept.
@@ -47,4 +47,37 @@ export async function localPostImage(imagePath: string): Promise<string> {
   await writeFile(partial, buffer)
   await rename(partial, cached)
   return cached
+}
+
+/** The same, for a catalogue copy in the public bucket. */
+async function localCatalogueImage(viewPath: string): Promise<string> {
+  // As above: a path that already exists on disk is a fixture, not a bucket key.
+  if (existsSync(viewPath)) return viewPath
+
+  const cached = join(CACHE_DIR, cacheName(viewPath))
+  if (existsSync(cached)) return cached
+
+  await mkdir(CACHE_DIR, { recursive: true })
+  const temporary = `${cached}.${process.pid}.part`
+  await writeFile(temporary, await downloadCatalogueImage(viewPath))
+  await rename(temporary, cached)
+  return cached
+}
+
+/**
+ * A readable file for a shelf, whichever copies still exist.
+ *
+ * A closed trip keeps only its catalogue AVIF — 2250px rather than 3000 — so
+ * the screens that read a shelf degrade instead of failing: the rekap picture
+ * and the naming crops still render from an archived trip, just softer. Nobody
+ * is shopping it any more; they are looking something up.
+ */
+export async function localShelfImage(post: {
+  imagePath: string
+  viewPath: string
+  archivedAt: string | null
+}): Promise<string> {
+  if (post.archivedAt === null) return localPostImage(post.imagePath)
+  if (!post.viewPath) throw new Error(`post has no image left: ${post.imagePath}`)
+  return localCatalogueImage(post.viewPath)
 }

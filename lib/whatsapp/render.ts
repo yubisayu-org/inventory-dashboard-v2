@@ -1,7 +1,7 @@
 import sharp from "sharp"
 import sql from "@/lib/db-pool"
 import { getPost, listSlots, type WaSlot } from "@/lib/db/claims"
-import { localPostImage } from "./post-image"
+import { localShelfImage } from "./post-image"
 
 /** Width the picture is rendered at. Wide enough to read on a phone, small
  *  enough to send over a mobile connection in a shop. */
@@ -73,7 +73,7 @@ export async function renderShoppingList(postId: number): Promise<Buffer> {
   if (post === null) throw new Error(`no such post: ${postId}`)
 
   const slots = await listSlots(postId)
-  const photo = sharp(await localPostImage(post.imagePath)).resize({ width: SHOPPING_LIST_WIDTH })
+  const photo = sharp(await localShelfImage(post)).resize({ width: SHOPPING_LIST_WIDTH })
   const base = await photo.toBuffer()
   const { width = SHOPPING_LIST_WIDTH, height = 0 } = await sharp(base).metadata()
 
@@ -133,13 +133,17 @@ const CROP_SHARE = 0.28
  */
 export async function renderSlotCrop(slotId: number, share = CROP_SHARE): Promise<Buffer | null> {
   const [row] = await sql`
-    SELECT s.point_x, s.point_y, p.image_path
+    SELECT s.point_x, s.point_y, p.image_path, p.view_path, p.archived_at
     FROM wa_slots s JOIN wa_posts p ON p.id = s.post_id
     WHERE s.id = ${slotId}
   `
   if (!row || row.point_x === null || row.point_y === null) return null
 
-  const file = await localPostImage(row.image_path as string)
+  const file = await localShelfImage({
+    imagePath: row.image_path as string,
+    viewPath: (row.view_path as string) ?? "",
+    archivedAt: row.archived_at ? String(row.archived_at) : null,
+  })
   const meta = await sharp(file).metadata()
   const width = meta.width ?? 0
   const height = meta.height ?? 0

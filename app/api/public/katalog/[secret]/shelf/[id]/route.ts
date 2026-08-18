@@ -3,6 +3,7 @@ import sharp from "sharp"
 import sql from "@/lib/db-pool"
 import { eventForSecret } from "@/lib/katalog/secret"
 import { localPostImage } from "@/lib/whatsapp/post-image"
+import { catalogueImageUrl } from "@/lib/storage"
 
 type Params = { params: Promise<{ secret: string; id: string }> }
 
@@ -22,8 +23,9 @@ const VIEW_EDGE = 2250
  * image taints the canvas and toBlob throws, which would fail at the very last
  * step — after she has drawn her circle.
  *
- * Encoded per request in this prototype. Before this carries traffic the AVIF
- * belongs beside the original in storage, written once at capture.
+ * A fallback now rather than the main road: capture writes this file into the
+ * public bucket and the page links straight to it. This covers the shelves
+ * captured before that existed, and any whose copy failed to write.
  */
 export async function GET(_req: Request, { params }: Params) {
   const { secret, id } = await params
@@ -35,9 +37,17 @@ export async function GET(_req: Request, { params }: Params) {
     // Scoped to the trip the secret unlocks: a shelf id from another event must
     // not be readable by editing the number in the URL.
     const [post] = await sql`
-      SELECT image_path FROM wa_posts WHERE id = ${Number(id)} AND event = ${event}
+      SELECT image_path, view_path, archived_at FROM wa_posts
+      WHERE id = ${Number(id)} AND event = ${event}
     `
     if (!post) return new NextResponse("Not found", { status: 404 })
+
+    // Archived trips keep only the catalogue copy, so there is nothing here to
+    // encode from — the caller wants the stored file's public URL instead.
+    if (post.archived_at !== null) {
+      if (!post.view_path) return new NextResponse("Gone", { status: 410 })
+      return NextResponse.redirect(catalogueImageUrl(post.view_path as string), 308)
+    }
 
     const file = await localPostImage(post.image_path as string)
     const body = await sharp(file)

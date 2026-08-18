@@ -8,6 +8,7 @@ import { hueHistogram, loadRgb, safePenHues } from "@/lib/claims"
 import { createPost, findPostByMessage } from "@/lib/db/claims"
 import { currentCapture, isBotAdmin } from "@/lib/db/whatsapp-groups"
 import { uploadPostImage } from "@/lib/storage"
+import { writeCatalogueCopy } from "@/lib/whatsapp/catalogue"
 import { decodable } from "@/lib/whatsapp/heic"
 import sql from "@/lib/db-pool"
 import { quietLogger } from "./logger"
@@ -134,6 +135,11 @@ export async function capturePost(input: {
       messageId: input.messageId,
       groupJid: input.groupJid,
     })
+
+    // The copy customers browse, written now rather than per request — and the
+    // one that outlives the original when the trip is archived.
+    await writeCatalogueCopy(id, path, stored)
+
     return id
   } finally {
     await rm(dir, { recursive: true, force: true })

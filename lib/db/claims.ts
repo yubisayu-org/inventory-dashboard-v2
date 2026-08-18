@@ -22,6 +22,10 @@ export interface WaPost {
   pricingMethod: PricingMethod | null
   note: string
   safeHues: number[]
+  /** The AVIF customers browse, in the public bucket. Empty until written. */
+  viewPath: string
+  /** When the full-size original was deleted. Null while it exists. */
+  archivedAt: string | null
   /** The WhatsApp message this post was sent as. Empty for dashboard uploads. */
   messageId: string
   groupJid: string
@@ -115,6 +119,8 @@ function mapPost(r: Record<string, unknown>): WaPost {
     pricingMethod: r.pricing_method === null ? null : toPricingMethod(r.pricing_method),
     note: (r.note as string) ?? "",
     safeHues: ((r.safe_hues as number[]) ?? []).map(Number),
+    viewPath: (r.view_path as string) ?? "",
+    archivedAt: r.archived_at ? tsToString(r.archived_at as Date) : null,
     messageId: (r.message_id as string) ?? "",
     groupJid: (r.group_jid as string) ?? "",
     createdAt: tsToString(r.created_at as Date | null),
