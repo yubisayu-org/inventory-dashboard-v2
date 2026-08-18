@@ -47,6 +47,9 @@ export default function PostsClient() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [closed, setClosed] = useState<Record<string, boolean>>({})
+  // Shops closed for orders, keyed "event|store". Read per trip, because the
+  // same shop can be open on one trip and finished on another.
+  const [shut, setShut] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     setLoading(true)
@@ -65,6 +68,36 @@ export default function PostsClient() {
       .catch(() => setError("Failed to load"))
       .finally(() => setLoading(false))
   }, [page, search])
+
+  const events = useMemo(() => [...new Set(rows.map((r) => r.event))], [rows])
+
+  useEffect(() => {
+    if (events.length === 0) return
+    Promise.all(
+      events.map((event) =>
+        fetch(`/api/whatsapp/store-closures?event=${encodeURIComponent(event)}`, {
+          cache: "no-store",
+        })
+          .then((r) => (r.ok ? r.json() : { closed: [] }))
+          .then((data: { closed: string[] }) => data.closed.map((store) => `${event}|${store}`)),
+      ),
+    ).then((all) => setShut(new Set(all.flat())))
+  }, [events])
+
+  async function setStoreClosed(event: string, store: string, isClosed: boolean) {
+    const key = `${event}|${store.trim().toLowerCase()}`
+    setShut((all) => {
+      const next = new Set(all)
+      if (isClosed) next.add(key)
+      else next.delete(key)
+      return next
+    })
+    await fetch("/api/whatsapp/store-closures", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ event, store, closed: isClosed }),
+    })
+  }
 
   const groups = useMemo(() => groupPage(rows), [rows])
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
@@ -105,12 +138,18 @@ export default function PostsClient() {
         const id = `${group.key}#${index}`
         const open = closed[id] !== true
 
+        // The trip these shelves belong to, for the closure toggle. A page can
+        // hold two trips; the shelves in one store group never do.
+        const event = group.posts[0].event
+        const shopShut = shut.has(`${event}|${group.key}`)
+
         return (
           <div key={id} className="rounded-xl border border-cream-border bg-white overflow-hidden">
+            <div className="flex items-center border-l-[3px] border-brand">
             <button
               type="button"
               onClick={() => setClosed((c) => ({ ...c, [id]: open }))}
-              className="w-full flex items-center gap-2.5 px-4 py-3 border-l-[3px] border-brand text-left"
+              className="flex-1 min-w-0 flex items-center gap-2.5 px-4 py-3 text-left"
             >
               <svg
                 width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -124,6 +163,28 @@ export default function PostsClient() {
                 {group.posts.length} {group.posts.length === 1 ? "shelf" : "shelves"}
               </span>
             </button>
+
+            {/* Closing a shop hides it from the catalogue and nothing else: the
+                shelves, their claims and the shopping list are untouched, and a
+                customer still holding the photo in WhatsApp can still mark it.
+                What stops is browsing to a rack nobody is going back to. */}
+            <button
+              type="button"
+              onClick={() => setStoreClosed(event, group.key, !shopShut)}
+              title={
+                shopShut
+                  ? "Closed for orders — hidden from the catalogue"
+                  : "Open for orders — visible in the catalogue"
+              }
+              className={`shrink-0 mr-3 rounded-full border px-2.5 py-1 text-[11px] font-bold ${
+                shopShut
+                  ? "border-cream-border bg-cream text-gray-500"
+                  : "border-green-200 bg-green-50 text-green-700"
+              }`}
+            >
+              {shopShut ? "Closed" : "Open"}
+            </button>
+            </div>
 
             {open
               ? group.posts.map((post) => (

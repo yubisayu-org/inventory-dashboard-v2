@@ -26,10 +26,17 @@ export async function GET(_req: Request, { params }: Params) {
       return NextResponse.json({ error: "Not found" }, { status: 404 })
     }
 
+    // A shop closed for orders is left out. The trip is still running, so its
+    // other shops are unaffected — and a customer who already has the photo in
+    // WhatsApp can still mark it, because the group's history is not ours to
+    // retract.
     const rows = await sql`
       SELECT p.id, p.store, p.image_width, p.image_height, p.safe_hues, p.view_path
       FROM wa_posts p
       WHERE p.event = ${event}
+        AND lower(trim(p.store)) NOT IN (
+          SELECT store FROM wa_store_closures WHERE event = ${event}
+        )
       ORDER BY p.id ASC
     `
 

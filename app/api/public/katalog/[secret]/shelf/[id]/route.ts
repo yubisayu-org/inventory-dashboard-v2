@@ -35,9 +35,14 @@ export async function GET(_req: Request, { params }: Params) {
 
     // Scoped to the trip the secret unlocks: a shelf id from another event must
     // not be readable by editing the number in the URL.
+    // Same closure rule as the listing: a link to a closed shop's rack must not
+    // keep working just because somebody kept the URL.
     const [post] = await sql`
       SELECT image_path, view_path, archived_at FROM wa_posts
       WHERE id = ${Number(id)} AND event = ${event}
+        AND lower(trim(store)) NOT IN (
+          SELECT store FROM wa_store_closures WHERE event = ${event}
+        )
     `
     if (!post) return new NextResponse("Not found", { status: 404 })
 
