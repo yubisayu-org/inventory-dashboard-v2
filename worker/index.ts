@@ -262,7 +262,11 @@ async function tryIdentityAnswer(
   // customer has answered and deserves to know it did not land.
   await sock.sendMessage(
     groupJid,
-    { text: `Belum ketemu akun "${handle}" kak. Coba cek lagi ya 🙏` },
+    {
+      text:
+        `Belum ketemu akun "${handle}" di database. Boleh dipastikan dulu form ` +
+        "registrasinya sudah diisi, lalu infokan kembali disini ya, Mak. Terima kasih.",
+    },
     { quoted: message },
   )
   return true
