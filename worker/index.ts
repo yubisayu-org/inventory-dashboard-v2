@@ -202,7 +202,8 @@ async function onMessage(sock: WASocket, message: WAMessage) {
  */
 /** What the bot says, once, to a number it cannot place. */
 const IDENTITY_QUESTION =
-  "Halo kak! Boleh info username Instagram-nya? Biar orderannya tercatat atas nama kakak 🙏"
+  "Halo, Mak! Apakah sudah isi data pengiriman di form registrasi? Kalau belum, boleh isi dulu " +
+  "ya. Kalau sudah isi, boleh info username-nya? Biar orderannya bisa direkap, terima kasih."
 
 /**
  * Ask an unrecognised claimant who they are — once, ever.
