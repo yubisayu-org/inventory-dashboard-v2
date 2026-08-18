@@ -206,9 +206,11 @@ export default function ShopPostClient({ postId }: { postId: number }) {
                     width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                     strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
                   >
-                    <circle cx="9" cy="21" r="1" />
-                    <circle cx="20" cy="21" r="1" />
-                    <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
+                    <path d="m5 11 4-7" />
+                    <path d="m19 11-4-7" />
+                    <path d="M2 11h20l-1.8 8.1a2 2 0 0 1-2 1.9H5.8a2 2 0 0 1-2-1.9z" />
+                    <path d="M9 15v3" />
+                    <path d="M15 15v3" />
                   </svg>
                   {s.claimed - s.bought}
                 </>
