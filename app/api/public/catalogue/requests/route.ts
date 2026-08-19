@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createCatalogueRequest, getCatalogueRequestsByHandle } from "@/lib/db"
+import { createCatalogueRequest, getCatalogueRequestsByCustomer } from "@/lib/db"
+import { customerFromRequest } from "@/lib/catalogue-bearer"
 import catalogueSql from "@/lib/db-catalogue-public"
 
 // Public, no-login endpoints for the customer-facing catalogue site (a
@@ -10,7 +11,6 @@ import catalogueSql from "@/lib/db-catalogue-public"
 const ALLOWED_ORIGIN = "https://yubisayu-catalogue.netlify.app"
 
 const MAX_BODY_BYTES = 4 * 1024
-const MAX_HANDLE_LEN = 30 // Instagram's own max handle length
 const MAX_NOTE_LEN = 300
 
 function corsHeaders(): Record<string, string> {
@@ -26,12 +26,18 @@ export async function OPTIONS() {
 }
 
 export async function GET(req: NextRequest) {
-  const handle = req.nextUrl.searchParams.get("handle")?.trim()
-  if (!handle) {
-    return NextResponse.json({ error: "handle is required" }, { status: 400, headers: corsHeaders() })
+  // The handle is never read from the request. Identity comes from the session
+  // and nowhere else — a handle in a query string is a handle any stranger can
+  // type, which is precisely how someone else's orders used to be readable.
+  const customer = await customerFromRequest(req)
+  if (!customer) {
+    return NextResponse.json(
+      { error: "Not signed in" },
+      { status: 401, headers: { ...corsHeaders(), "Cache-Control": "no-store" } },
+    )
   }
   try {
-    const requests = await getCatalogueRequestsByHandle(handle, catalogueSql)
+    const requests = await getCatalogueRequestsByCustomer(customer.id, catalogueSql)
     return NextResponse.json(
       { requests },
       { headers: { ...corsHeaders(), "Cache-Control": "no-store" } },
@@ -64,19 +70,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400, headers: corsHeaders() })
   }
 
+  const customer = await customerFromRequest(req)
+  if (!customer) {
+    return NextResponse.json(
+      { error: "Not signed in" },
+      { status: 401, headers: { ...corsHeaders(), "Cache-Control": "no-store" } },
+    )
+  }
+
   try {
     const b = body as Record<string, unknown>
-    const customerHandle = String(b.customerHandle ?? "").trim()
+    // Taken from the session, not the body: otherwise a caller could place an
+    // order in somebody else's name.
+    const customerHandle = customer.instagramId
     const productId = Number(b.productId)
     const qty = Number(b.qty)
     const note = String(b.note ?? "").trim()
 
-    if (!customerHandle || customerHandle.length > MAX_HANDLE_LEN) {
-      return NextResponse.json({ error: "A valid customerHandle is required" }, { status: 400, headers: corsHeaders() })
-    }
-    if (!/^@?[a-zA-Z0-9._]{1,30}$/.test(customerHandle)) {
-      return NextResponse.json({ error: "Invalid customerHandle" }, { status: 400, headers: corsHeaders() })
-    }
     if (!Number.isInteger(productId) || productId < 1) {
       return NextResponse.json({ error: "productId must be a positive integer" }, { status: 400, headers: corsHeaders() })
     }
@@ -99,7 +109,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    await createCatalogueRequest({ customerHandle, productId, qty, note, postId }, catalogueSql)
+    await createCatalogueRequest(
+      { customerHandle, customerId: customer.id, productId, qty, note, postId },
+      catalogueSql,
+    )
     return NextResponse.json({ success: true }, { headers: corsHeaders() })
   } catch (err) {
     console.error("Failed to save catalogue request:", err)

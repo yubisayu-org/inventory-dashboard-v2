@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createCatalogueRequest } from "@/lib/db"
+import { customerFromRequest } from "@/lib/catalogue-bearer"
 import catalogueSql from "@/lib/db-catalogue-public"
 
 // Public, no-login endpoint for submitting a custom (product-less)
@@ -12,7 +13,6 @@ import catalogueSql from "@/lib/db-catalogue-public"
 const ALLOWED_ORIGIN = "https://yubisayu-catalogue.netlify.app"
 
 const MAX_BODY_BYTES = 4 * 1024
-const MAX_HANDLE_LEN = 30
 const MAX_NOTE_LEN = 300
 const MAX_DESCRIPTION_LEN = 500
 
@@ -57,20 +57,24 @@ export async function POST(req: NextRequest) {
     ? `${process.env.SUPABASE_URL}/storage/v1/object/public/catalogue-reference/`
     : null
 
+  const customer = await customerFromRequest(req)
+  if (!customer) {
+    return NextResponse.json(
+      { error: "Not signed in" },
+      { status: 401, headers: { ...corsHeaders(), "Cache-Control": "no-store" } },
+    )
+  }
+
   try {
     const b = body as Record<string, unknown>
-    const customerHandle = String(b.customerHandle ?? "").trim()
+    // From the session, not the body — a custom request must belong to the
+    // person who is signed in.
+    const customerHandle = customer.instagramId
     const description = String(b.description ?? "").trim()
     const qty = Number(b.qty)
     const note = String(b.note ?? "").trim()
     const referenceImageUrl = b.referenceImageUrl ? String(b.referenceImageUrl).trim() : null
 
-    if (!customerHandle || customerHandle.length > MAX_HANDLE_LEN) {
-      return NextResponse.json({ error: "A valid customerHandle is required" }, { status: 400, headers: corsHeaders() })
-    }
-    if (!/^@?[a-zA-Z0-9._]{1,30}$/.test(customerHandle)) {
-      return NextResponse.json({ error: "Invalid customerHandle" }, { status: 400, headers: corsHeaders() })
-    }
     if (!description || description.length > MAX_DESCRIPTION_LEN) {
       return NextResponse.json(
         { error: `description is required and must be ${MAX_DESCRIPTION_LEN} characters or fewer` },
@@ -111,7 +115,15 @@ export async function POST(req: NextRequest) {
     }
 
     await createCatalogueRequest(
-      { customerHandle, productId: null, description, qty, note, referenceImageUrl: storedReferenceImageUrl },
+      {
+        customerHandle,
+        customerId: customer.id,
+        productId: null,
+        description,
+        qty,
+        note,
+        referenceImageUrl: storedReferenceImageUrl,
+      },
       catalogueSql,
     )
     return NextResponse.json({ success: true }, { headers: corsHeaders() })

@@ -124,6 +124,11 @@ GRANT USAGE, SELECT ON catalogue_access_requests_id_seq TO catalogue_public;
 -- migration 059; this is a no-op there but states the dependency.
 GRANT SELECT (customer_id) ON catalogue_requests TO catalogue_public;
 
+-- Writes now stamp the customer from the session. Column-scoped like the rest
+-- of migration 059's INSERT grant, so the public role still cannot set status
+-- or staff_note.
+GRANT INSERT (customer_id) ON catalogue_requests TO catalogue_public;
+
 -- Deliberately NOT granted: any privilege on customer_invites (redemption is
 -- a main-pool operation) or customer_one_time_codes (the exchange endpoint
 -- runs on the main pool too).
