@@ -1144,7 +1144,17 @@ type="text">`, and a "Lanjut ke produk" button. On submit:
 3. Call `POST /api/whatsapp/sends` with the new `postId`, the selected
    `event`, and `title`.
 4. On success, transition to the product step (Task 9) with the new send's
-   id in local state.
+   id in local state. **`mediaUrl` for this path:** the existing
+   `POST /api/sheets/catalogue-posts` route only returns `{ success, id }`
+   — it does not return `media_url`, and extending that shared route's
+   response shape is out of scope for this task. Use a client-side object
+   URL instead: `URL.createObjectURL(file)` on the same `File` you already
+   have from the file input, and pass that as `mediaUrl` to the product
+   step. This is fine — the product step's photo is display-only preview
+   for pin placement, never re-uploaded or read server-side; the real
+   stored `media_url` is irrelevant to what the browser shows here. Revoke
+   it (`URL.revokeObjectURL`) when the composer unmounts or moves on, to
+   avoid leaking the blob.
 
 **"Pakai post lama" tab:** fetch `GET /api/whatsapp/sends/library` on tab
 open, render a card grid (thumbnail via `mediaUrl`, `title`, a line reading
