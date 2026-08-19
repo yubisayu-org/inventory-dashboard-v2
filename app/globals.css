@@ -1,13 +1,16 @@
 @import "tailwindcss";
 
+/* Paper rather than cream: the ground is warmer and greyer than the pink-cream
+   it replaces, which is what makes the maroon read as deliberate rather than as
+   the same hue family as its background. The brand itself is unchanged. */
 :root {
   --background: #ffffff;
-  --foreground: #1a1a1a;
+  --foreground: #221F1C;
   --brand: #7B1A1A;
   --brand-dark: #5C1212;
-  --brand-light: #f9f0f0;
-  --cream: #FDF5EE;
-  --cream-border: #EDE3D8;
+  --brand-light: #F6EDEB;
+  --cream: #F2EFE9;
+  --cream-border: #E2DED7;
 }
 
 @theme inline {
