@@ -438,7 +438,7 @@ test("creating a send and attaching two products issues sequential codes", async
 test("attaching an already-tagged product does not duplicate the tag", async () => {
   const { id: sendId } = await createSend({ postId, event: EVENT, title: "Repost" })
   await attachProductToSend(sendId, productAId)
-  await attachProductToSend(sendId, productAId === productAId ? productBId : productAId) // second product, distinct code
+  await attachProductToSend(sendId, productBId) // a second, distinct product on the same send
   const [{ count }] = await sql`SELECT count(*)::int FROM catalogue_post_products WHERE post_id = ${postId} AND product_id = ${productAId}`
   assert.equal(count, 1)
 })
