@@ -597,7 +597,7 @@ export interface CatalogueRequest {
   referenceImageUrl: string | null
   qty: number
   note: string
-  status: "pending" | "offer_pending" | "approved" | "converted" | "rejected"
+  status: "pending" | "offer_pending" | "approved" | "asking" | "converted" | "rejected"
   staffNote: string
   convertedOrderId: number | null
   createdAt: string
