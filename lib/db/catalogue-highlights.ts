@@ -27,7 +27,7 @@ export async function getCatalogueHighlights(db: DBExecutor = sql): Promise<Cata
 }
 
 /** Public path: visible highlights only, id+name only (never
- *  default_event — staff-only, see migration 065's grant comment). `db`
+ *  default_event — staff-only, see migration 080's grant comment). `db`
  *  must be the scoped `catalogue_public` connection — no default. */
 export async function getVisibleCatalogueHighlights(
   db: postgres.Sql,

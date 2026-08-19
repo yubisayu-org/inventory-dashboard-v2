@@ -2,7 +2,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js"
 
 const CATALOGUE_MEDIA_BUCKET = "catalogue-media"
 // Separate, policy-constrained bucket for anonymous customer reference-photo
-// uploads (custom order requests) — see migration 062. Kept distinct from
+// uploads (custom order requests) — see migration 077. Kept distinct from
 // CATALOGUE_MEDIA_BUCKET (staff-only catalogue post media) so the anonymous
 // upload path is never widened onto the shared staff bucket.
 const REFERENCE_BUCKET = "catalogue-reference"
@@ -182,7 +182,7 @@ const EXT_BY_CONTENT_TYPE: Record<string, string> = {
  *  server-side for the equivalent staff-upload case (this signed-URL path
  *  can't enforce a byte cap itself since the browser uploads directly to
  *  Storage — REFERENCE_BUCKET's own file_size_limit/allowed_mime_types,
- *  set in migration 062, IS the real DB-enforced backstop; this cap is a
+ *  set in migration 077, IS the real DB-enforced backstop; this cap is a
  *  documentation anchor matching that policy, not a separate mechanism). */
 export async function createCatalogueUploadUrl(
   contentType: string,

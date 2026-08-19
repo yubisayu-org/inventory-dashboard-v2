@@ -6,7 +6,7 @@ import { clientIp, createRateLimiter } from "@/lib/catalogue-rate-limit"
 // Public, no-login endpoint estimating a price for a custom order request,
 // from a foreign-currency purchase price and weight. Computes server-side
 // using the country's real kurs/cargo_per_kg (readable by this connection
-// per migration 063, never included in the response) and the same
+// per migration 078, never included in the response) and the same
 // calcAbroadPrice formula the "Profit Margin" product pricing method
 // already uses in production — fixed 15% margin, no fees. Returns ONLY the
 // final price: `.cogs` (landed cost) is deliberately never returned.

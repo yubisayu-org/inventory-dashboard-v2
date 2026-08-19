@@ -261,7 +261,7 @@ export async function cancelEditCatalogueRequest(
 
 /** Public path: customer approves a revised offer. `db` must be the
  *  scoped `catalogue_public` connection (has UPDATE(status) only, per
- *  migration 064 — this function never sets any other column). Guarded on
+ *  migration 079 — this function never sets any other column). Guarded on
  *  both the id AND the handle, so one customer can't approve/reject
  *  another's offer by guessing an id — the handle is exactly as visible
  *  to the customer as the id is (both come back from the same status
