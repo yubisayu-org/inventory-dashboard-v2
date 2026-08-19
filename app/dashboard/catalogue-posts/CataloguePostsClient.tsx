@@ -86,7 +86,12 @@ export default function CataloguePostsClient() {
   }
 
   if (composerOpen) {
-    return <ComposerFlow activeEvents={options?.activeEvents ?? []} onClose={() => setComposerOpen(false)} />
+    return (
+      <ComposerFlow
+        activeEvents={options?.activeEvents ?? []}
+        onClose={() => { setComposerOpen(false); reload() }}
+      />
+    )
   }
 
   return (
@@ -167,7 +172,11 @@ export default function CataloguePostsClient() {
 /**
  * The composer's two-step flow: `ComposerUploadStep` (Task 8) creates a
  * fresh `wa_sends` row and hands off `sendId`/`mediaUrl`/`prefillFromPostId`;
- * `ComposerProductStep` (a Task 9 stub for now) continues from there.
+ * `ComposerProductStep` (Task 9) continues from there. `onClose` doubles as
+ * both steps' exit path (the header's "Back to posts" and the product
+ * step's "Simpan draf"/post-send `onDone`), and always reloads the plain
+ * post list — the composer can create a real `catalogue_posts` row and tag
+ * products on it, so the list is stale otherwise until a manual refresh.
  */
 function ComposerFlow({ activeEvents, onClose }: { activeEvents: string[]; onClose: () => void }) {
   const [state, setState] = useState<

@@ -32,10 +32,21 @@ interface WaSendCode {
  * Removing an already-attached product is deliberately NOT built here: no
  * `DELETE /api/whatsapp/sends/[id]/products/[codeId]` route exists anywhere
  * in this plan, and manual testing (see the report) didn't turn up a case
- * where its absence made the composer feel unusable — a wrong pick can
- * still be abandoned by discarding the whole draft send (`DELETE
- * /api/whatsapp/sends/[id]`, only available before it's sent) and starting
- * over. YAGNI: add it later if real usage proves this too rigid.
+ * where its absence made the composer feel unusable. YAGNI: add it later if
+ * real usage proves this too rigid.
+ *
+ * Discarding the whole draft (`DELETE /api/whatsapp/sends/[id]`, only
+ * available before it's sent) is NOT a full undo for a wrong pick, despite
+ * how it might look: `attachProductToSend` also inserts into
+ * `catalogue_post_products`, tagging the product onto the underlying
+ * `catalogue_posts` row directly — the send's own cascade (`wa_send_codes`/
+ * `wa_outbox` via `send_id`) never touches that table, so the tag survives
+ * a discarded draft permanently. On the "Pakai post lama" path specifically
+ * this means a bad tag keeps getting re-attached on every future repost of
+ * that post, since prefill reads the post's *current* tags. The mitigation
+ * is that a fresh post defaults to `catalogue_posts.visible = false`, so a
+ * stray tag isn't publicly exposed by itself — but it is a real, persistent
+ * data artifact, not something this step can clean up.
  */
 export default function ComposerProductStep({
   sendId,
