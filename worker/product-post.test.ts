@@ -108,17 +108,104 @@ test("a message quoting a closed trip's send is refused", async () => {
   await sql`DELETE FROM events WHERE name = ${closedEvent}`
 })
 
-test("no code and no candidate returns a disambiguation request with no candidates", async () => {
+test("unquoted chatter with an open send but zero engagement falls through untouched, not a disambiguation ask", async () => {
+  // No code, no quote of the send's own post, and (per the fixture product
+  // names) no plausible name candidate either — before this fix, this used
+  // to come back needsDisambiguation with an empty candidate list, which
+  // meant ordinary group chatter ("halo kak", "ini ready kapan") earned a
+  // quoted "Kodenya yang mana kak?" reply and a permanent 'asking' row for
+  // every such message while any send was open.
   const result = await resolveProductPostClaim({
     groupJid: GROUP, messageId: "her-6", sender: HER, text: "ini ready berapa hari lagi ya kak", quoted: "",
   })
-  assert.equal(result.kind, "needsDisambiguation")
-  if (result.kind === "needsDisambiguation") assert.deepEqual(result.candidates, [])
-  // This function only decides there IS an ambiguity to ask about — it does
-  // not write a row itself (Task 9's askDisambiguation does, after posting
-  // the question), so no catalogue_requests row exists yet at this point.
+  assert.equal(result.kind, "notApplicable")
   const [row] = await sql`SELECT 1 FROM catalogue_requests WHERE message_id = 'her-6'`
   assert.equal(row, undefined)
+})
+
+test("quoting the send's own post with no code and no candidate still asks — she engaged with it", async () => {
+  // Same text and same zero-candidate outcome as the previous test, but
+  // this time she quoted the post itself, which is a real engagement
+  // signal — the ❔ ask must still happen here.
+  const result = await resolveProductPostClaim({
+    groupJid: GROUP, messageId: "her-6b", sender: HER, text: "ini ready berapa hari lagi ya kak", quoted: "post-msg-1",
+  })
+  assert.equal(result.kind, "needsDisambiguation")
+  if (result.kind === "needsDisambiguation") assert.deepEqual(result.candidates, [])
+  // As before, this function only decides there IS an ambiguity — it writes
+  // nothing itself.
+  const [row] = await sql`SELECT 1 FROM catalogue_requests WHERE message_id = 'her-6b'`
+  assert.equal(row, undefined)
+})
+
+test("a generic short product-name token does not substring-match an unrelated word", async () => {
+  // Both fixture products' names contain the token "bag" ("... Bag Brown").
+  // Before word-boundary matching, "bagus" substring-matched "bag" and (as
+  // the only match) this became a direct pending order claim for two units
+  // of a product she never named.
+  const result = await resolveProductPostClaim({
+    groupJid: GROUP, messageId: "her-11", sender: HER, text: "kakak mau 2 yang bagus", quoted: "",
+  })
+  assert.equal(result.kind, "notApplicable", "'bagus' must not word-boundary-match the 'bag' token")
+  const [row] = await sql`SELECT 1 FROM catalogue_requests WHERE message_id = 'her-11'`
+  assert.equal(row, undefined)
+})
+
+test("two valid codes in one message ask which one, instead of falling through to name matching", async () => {
+  const result = await resolveProductPostClaim({
+    groupJid: GROUP, messageId: "her-12", sender: HER, text: `${codeA} sama ${codeB} masing-masing 1`, quoted: "",
+  })
+  assert.equal(result.kind, "needsDisambiguation")
+  if (result.kind !== "needsDisambiguation") return
+  assert.deepEqual(result.candidates.map((c) => c.code).sort(), [codeA, codeB].sort())
+  const [row] = await sql`SELECT 1 FROM catalogue_requests WHERE message_id = 'her-12'`
+  assert.equal(row, undefined, "resolveProductPostClaim itself writes nothing")
+})
+
+test("two codes where only one actually resolves offers just the one that did", async () => {
+  const result = await resolveProductPostClaim({
+    groupJid: GROUP, messageId: "her-13", sender: HER, text: `${codeA} atau Z99, mana ada`, quoted: "",
+  })
+  assert.equal(result.kind, "needsDisambiguation")
+  if (result.kind !== "needsDisambiguation") return
+  assert.equal(result.candidates.length, 1)
+  assert.equal(result.candidates[0].code, codeA)
+})
+
+test("token matching against an OLDER still-open send of the same trip also resolves as a direct claim, with send_id from that older send", async () => {
+  // A second, older send of the same trip — set up and torn down within
+  // this one test so it doesn't grow the token-matching pool for every
+  // other test in this file. getOpenSendForGroup only ever resolves to the
+  // NEWEST send (the fixture `sendId` from before()); this older one must
+  // still be reachable by name/token matching, since a trip can have more
+  // than one live post at once.
+  const olderSend = await createSend({ postId, event: EVENT, title: "earlier restock" })
+  const [productC] = await sql`
+    INSERT INTO products (name, store, price) VALUES ('Uniquely Distinctive Tumbler', 'ZHG', 50000) RETURNING id
+  `
+  const productCId = productC.id as number
+  await attachProductToSend(olderSend.id, productCId)
+  await setSendMessageId(olderSend.id, "old-post-1", GROUP)
+
+  try {
+    const result = await resolveProductPostClaim({
+      groupJid: GROUP, messageId: "her-14", sender: HER, text: "tumbler nya mau 1", quoted: "",
+    })
+    assert.equal(result.kind, "reacted")
+    if (result.kind === "reacted") assert.equal(result.emoji, "📝")
+    const [row] = await sql`SELECT product_id, send_id FROM catalogue_requests WHERE message_id = 'her-14'`
+    assert.equal(row.product_id, productCId)
+    // The row's send_id must come from the send the matched product code
+    // actually belongs to (the older send), not from whichever send
+    // getOpenSendForGroup picked for the closed-trip check (the newer one).
+    assert.equal(row.send_id, olderSend.id)
+  } finally {
+    await sql`DELETE FROM catalogue_requests WHERE message_id = 'her-14'`
+    await sql`DELETE FROM wa_send_codes WHERE send_id = ${olderSend.id}`
+    await sql`DELETE FROM wa_sends WHERE id = ${olderSend.id}`
+    await sql`DELETE FROM catalogue_post_products WHERE post_id = ${postId} AND product_id = ${productCId}`
+    await sql`DELETE FROM products WHERE id = ${productCId}`
+  }
 })
 
 test("ordinary chat with no group bound to any send is not a product-post claim at all", async () => {

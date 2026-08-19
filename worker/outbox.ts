@@ -1,5 +1,5 @@
 import type { WASocket } from "baileys"
-import { nextPending, markSent, markFailed, nextPendingSend, markSendSent } from "@/lib/db/outbox"
+import { nextPending, markSent, markFailed, nextPendingSend, markSendSent, markSendFailed } from "@/lib/db/outbox"
 import { localPostImage } from "@/lib/whatsapp/post-image"
 
 /** How often the worker looks for a shelf to post. */
@@ -58,10 +58,12 @@ export async function sendNextSend(sock: WASocket): Promise<boolean> {
     await markSendSent(item.id, item.sendId, messageId, item.groupJid)
     return true
   } catch (err) {
-    // There is no markSendFailed: a send that fails to post is rare enough,
-    // and important enough, that silently marking it failed and moving on
-    // would bury it. Logging and returning true keeps the sweep going
-    // without losing the row's pending state, so it is retried next sweep.
+    // Marked failed rather than retried forever — same reasoning as
+    // sendNextShelf above. Leaving the row 'pending' here meant the sweep
+    // picked the exact same row again every 1.2s, unboundedly: a failure
+    // after a successful sock.sendMessage (the post-send bookkeeping) would
+    // re-post the same photo to the group on every pass.
+    await markSendFailed(item.id, (err as Error).message)
     console.error(`failed to post send ${item.sendId}:`, err)
     return true
   }

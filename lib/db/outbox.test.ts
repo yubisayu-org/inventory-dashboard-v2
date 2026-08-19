@@ -6,7 +6,7 @@ import { createPost, getPost } from "./claims"
 import { createSend } from "./wa-sends"
 import {
   queueShelfPost, nextPending, markSent, markFailed,
-  queueSend, nextPendingSend, markSendSent,
+  queueSend, nextPendingSend, markSendSent, markSendFailed,
 } from "./outbox"
 
 const EVENT = `TESTOUT${process.hrtime.bigint()}`
@@ -178,6 +178,24 @@ test("markSendSent records the message id on both the outbox row and the send", 
   const [sendRow] = await sql`SELECT message_id, group_jid FROM wa_sends WHERE id = ${sendId}`
   assert.equal(sendRow.message_id, "msg-1")
   assert.equal(sendRow.group_jid, SEND_GROUP)
+})
+
+test("markSendFailed is kept with its reason, and stops being offered by nextPendingSend (finding #2 — no infinite retry)", async () => {
+  const { id: sendId } = await createSend({ postId: sendPostId, event: SEND_EVENT, title: "t" })
+  await queueSend(sendId, SEND_EVENT, "caption")
+  const item = await nextPendingSend()
+
+  await markSendFailed(item!.id, "group not found")
+
+  const [row] = await sql`SELECT state, error FROM wa_outbox WHERE id = ${item!.id}`
+  assert.equal(row.state, "failed")
+  assert.equal(row.error, "group not found")
+
+  // The row that just failed must never come back around — this is exactly
+  // what made sendNextSend's old catch-and-log-only behaviour an unbounded
+  // retry loop (the same photo re-posted to the group every 1.2s).
+  const again = await nextPendingSend()
+  assert.notEqual(again?.id, item!.id, "a failed row must not be picked up again")
 })
 
 test("nextPendingSend skips a shelf row (post_id) and only returns send rows", async () => {

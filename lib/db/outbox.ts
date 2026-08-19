@@ -135,3 +135,12 @@ export async function markSendSent(id: number, sendId: number, messageId: string
     await tx`UPDATE wa_sends SET message_id = ${messageId}, group_jid = ${groupJid}, updated_at = NOW() WHERE id = ${sendId}`
   })
 }
+
+/** Record why a composed send did not go out. Mirrors markFailed exactly —
+ *  kept, not deleted, and (critically) moved OUT of 'pending' so the sweep
+ *  stops picking the same row back up every 1.2s forever. */
+export async function markSendFailed(id: number, reason: string): Promise<void> {
+  await sql`
+    UPDATE wa_outbox SET state = 'failed', error = ${reason.slice(0, 500)} WHERE id = ${id}
+  `
+}

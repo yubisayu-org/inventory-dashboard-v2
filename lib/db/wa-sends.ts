@@ -152,6 +152,24 @@ export async function getOpenSendForGroup(groupJid: string, db: DBExecutor = sql
   return row ? toSend(row) : null
 }
 
+/**
+ * Every send for this event that has actually gone out (has a message_id),
+ * newest first.
+ *
+ * A trip can have more than one live post — a restock, a second rack of the
+ * same shop — so a claim's name/token matching must be scoped to ALL of
+ * them, not just the group's single newest one (getOpenSendForGroup). That
+ * function still exists and is unchanged: it answers "which send does an
+ * unquoted message resolve to / is the trip still open", a different
+ * question from "which products can a store-code-free message match".
+ */
+export async function listOpenSendsForEvent(event: string, db: DBExecutor = sql): Promise<WaSend[]> {
+  const rows = await db`
+    SELECT * FROM wa_sends WHERE event = ${event} AND message_id <> '' ORDER BY id DESC
+  `
+  return rows.map(toSend)
+}
+
 export async function getSendByMessage(
   groupJid: string,
   messageId: string,
