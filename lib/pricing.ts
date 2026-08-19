@@ -5,10 +5,11 @@
  *  replaced `country_id IS NULL` as the formula discriminator — a Tier Kurs product
  *  has a country but must not use the overseas formula. `flat_fee` was added in
  *  migration 052, `flat_kurs` in 053. */
-export type PricingMethod = "overseas" | "tier_fee" | "tier_kurs" | "flat_fee" | "flat_kurs"
+export type PricingMethod =
+  | "overseas" | "tier_fee" | "tier_kurs" | "flat_fee" | "flat_kurs" | "target_price"
 
 export const PRICING_METHODS: readonly PricingMethod[] = [
-  "overseas", "tier_fee", "flat_fee", "tier_kurs", "flat_kurs",
+  "overseas", "tier_fee", "flat_fee", "tier_kurs", "flat_kurs", "target_price",
 ]
 
 /** Labels used by the product form and the products table.
@@ -26,6 +27,7 @@ export const PRICING_METHOD_LABEL: Record<PricingMethod, string> = {
   flat_fee: "Flat Fee",
   tier_kurs: "Tier Rate",
   flat_kurs: "Flat Rate",
+  target_price: "Target Price",
 }
 
 /** The two methods priced from a charged exchange rate, reached through the Rate tab's
@@ -247,6 +249,23 @@ export interface TierFeeValasPriceInput {
 export function calcTierFeeValasPrice(p: TierFeeValasPriceInput): { cogs: number; price: number } {
   const cogs = landedCost(p)
   return { cogs, price: ceilTo(cogs + p.fee, p.roundTo) }
+}
+
+/**
+ * The margin implied by a Target Price row = price − cost.
+ *
+ * Target Price inverts every other method: the price is the INPUT, typed by the owner and
+ * stored verbatim (migration 061), so there is no price formula to write here — only this,
+ * the number that falls out of it.
+ *
+ * Rounded to whole rupiah because it is snapshotted onto products.profit_fixed, an INTEGER
+ * column, exactly as flatFeeAmount rounds for the same reason.
+ *
+ * No fees are subtracted, unlike abroadProfit and kursProfit: this method has no fee fields.
+ * Whatever the owner wants recovered is already inside the price they typed.
+ */
+export function targetMargin(p: { price: number; cost: number }): number {
+  return Math.round(p.price - p.cost)
 }
 
 export interface KursPriceInput {

@@ -60,7 +60,7 @@ function collapseMerged(rows: ShippingRecord[]): DisplayShipment[] {
     )
     result.push({
       ...primary,
-      event: sorted.map((s) => s.event).join(" + "),
+      event: sorted.map((s) => s.event).join(", "),
       // All rows of a merge share one shipping_id, so show it once.
       shippingId: primary.shippingId,
       invoicing: lines.join("\n"),
@@ -85,6 +85,26 @@ type CopyState =
   | { status: "loading" }
   | { status: "copied" }
   | { status: "error"; message: string }
+
+// Marks a shipment that collapses several events into one parcel. Icon instead
+// of a "Gabung" pill so it doesn't wrap under the (already stacked) event names;
+// the count lives in the tooltip.
+function MergedIcon({ count }: { count: number }) {
+  return (
+    <svg
+      role="img"
+      aria-label={`Konsolidasi ${count} event`}
+      className="ml-1 inline-block align-[-0.15em] text-amber-600 shrink-0"
+      width="13" height="13" viewBox="0 0 24 24"
+      fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+    >
+      <title>{`Konsolidasi ${count} event`}</title>
+      <path d="m8 6 4-4 4 4" />
+      <path d="M12 2v10.3a4 4 0 0 1-1.172 2.872L4 22" />
+      <path d="m20 22-5-5" />
+    </svg>
+  )
+}
 
 function CopyShipmentMessageButton({ record }: { record: DisplayShipment }) {
   const [state, setState] = useState<CopyState>({ status: "idle" })
@@ -606,15 +626,20 @@ export default function ShipmentsClient() {
         accessorKey: "event",
         header: "Event",
         filterFn: "textContains",
-        size: 120,
+        // Wide enough for one full event code ("LSKR202603") plus the " +"
+        // separator and the cell's px-4 padding, so a merged row breaks one
+        // event per line instead of mid-name.
+        size: 160,
         cell: ({ row, getValue }) => (
-          <span className="flex items-center gap-1.5 flex-wrap">
-            <span>{getValue<string>()}</span>
-            {row.original.mergedCount > 1 && (
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700">
-                Gabung
-              </span>
-            )}
+          // A merged shipment joins its events with ", ", which wraps to one
+          // line per token in a narrow column — four rows for a two-event merge.
+          // Clamp to two and hang the full list off the tooltip. The icon is
+          // inline content so it trails the last event name instead of parking
+          // at the column's right edge (line-clamp makes the text a block that
+          // fills the cell, so a sibling icon gets pushed all the way over).
+          <span className="line-clamp-2 break-words" title={getValue<string>()}>
+            {getValue<string>()}
+            {row.original.mergedCount > 1 && <MergedIcon count={row.original.mergedCount} />}
           </span>
         ),
       },
@@ -632,14 +657,14 @@ export default function ShipmentsClient() {
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); setEditTempRecord(r) }}
-                  title={`Alamat sementara:\n${r.tempAddress}`}
-                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-purple-100 text-purple-700 hover:bg-purple-200 transition-colors"
+                  title={`Temporary:\n${r.tempAddress}`}
+                  aria-label="Temporary"
+                  className="inline-flex items-center text-purple-600 hover:text-purple-800 transition-colors"
                 >
-                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M20 10c0 7-8 12-8 12s-8-5-8-12a8 8 0 0 1 16 0z" />
                     <circle cx="12" cy="10" r="3" />
                   </svg>
-                  Alamat sementara
                 </button>
               ) : (
                 <button
@@ -819,9 +844,7 @@ export default function ShipmentsClient() {
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-sm font-semibold text-foreground">{r.event}</span>
             <span className="text-xs text-gray-400 uppercase truncate">{displayIg(r.customer)}</span>
-            {r.mergedCount > 1 && (
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700">Gabung</span>
-            )}
+            {r.mergedCount > 1 && <MergedIcon count={r.mergedCount} />}
           </div>
         </div>
         <div className="flex items-center gap-1 shrink-0">

@@ -15,7 +15,7 @@ import SearchInput from "@/components/SearchInput"
 import {
   calcAbroadPrice, calcRupiahFeePrice, abroadProfit, calcKursPrice, kursProfit,
   calcFlatFeeValasPrice, flatFeeAmount, flatFeeFloorApplies, landedCost, type FlatFeeMode,
-  calcTierFeeValasPrice, ceilTo,
+  calcTierFeeValasPrice, ceilTo, targetMargin,
   PRICING_METHOD_LABEL, isKursMethod, type PricingMethod,
 } from "@/lib/pricing"
 import { resolveTieredKurs, resolveFlatKurs, tiersForCountry } from "@/lib/kurs-tiers"
@@ -39,7 +39,9 @@ const PAGE_SIZE = 25
 // from the single Settings value. They stay SEPARATE pricing_method values in the
 // database (migration 052), because that difference decides who has authority over the
 // fee, so this is a grouping of the picker and nothing more.
-const METHOD_TABS: readonly PricingMethod[] = ["overseas", "tier_fee", "tier_kurs"]
+// Target Price gets a tab of its own and no toggle: it has no second member to pair with,
+// because its price is not derived from anything a toggle could switch.
+const METHOD_TABS: readonly PricingMethod[] = ["overseas", "tier_fee", "tier_kurs", "target_price"]
 const isFeeMethod = (m: PricingMethod) => m === "tier_fee" || m === "flat_fee"
 
 
@@ -140,7 +142,11 @@ function isKursProduct(p: ProductRow) {
  *  The superseded shape gave a valas-mode Markup row a foreign-currency fee in its own
  *  column, which is why this used to exclude it. */
 function usesRupiahCost(p: ProductRow) {
+  // target_price stores both columns the same way (migration 061): cost typed or derived
+  // exactly as above, and profit_fixed holding price − cost. The Fee column therefore reads
+  // as this row's margin, which is the closest thing it has to a fee.
   return p.pricingMethod === "flat_fee" || p.pricingMethod === "tier_fee"
+    || p.pricingMethod === "target_price"
 }
 
 /** True for the methods that CANNOT price without a country. Tier Fee is absent on
@@ -416,6 +422,9 @@ export default function ProductsPageClient() {
           // One step from its sibling: the pair reads as a family without the two being
           // mistakable for each other at a glance down the column.
           flat_kurs: "bg-violet-50 text-violet-600",
+          // Deliberately outside both families' hues — this is the one method that does not
+          // derive its price, so it should not read as a variant of one that does.
+          target_price: "bg-rose-50 text-rose-600",
         }
         return (
           <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-medium ${tone[method]}`}>
@@ -886,6 +895,9 @@ function AddProductForm({
   const [cost, setCost] = useState("")
   const [profitFixed, setProfitFixed] = useState("")
   const [profitManual, setProfitManual] = useState(false)
+  /** Target Price only: the selling price, TYPED. Every other method computes its price
+   *  into pricePreview, so this is the one method with a price in form state at all. */
+  const [targetPrice, setTargetPrice] = useState("")
   /** Flat Fee only: whether its fee is the fixed Settings amount or a share of base cost
    *  (migration 054). Stored per row, so it is form state rather than a setting. */
   const [flatFeeMode, setFlatFeeMode] = useState<FlatFeeMode>("fixed")
@@ -923,6 +935,11 @@ function AddProductForm({
   // rupiah cost is derived (converted goods + freight); without one it is typed.
   const flatFeeValas = type === "flat_fee" && countryId != null
   const flatFeeRupiah = type === "flat_fee" && countryId == null
+  // Target Price splits on the country the same way the fee methods do, and for the same
+  // reason: with one, the base cost is landed cost and derived; without one it is typed.
+  // Only the price differs — it is typed either way.
+  const targetPriceForm = type === "target_price"
+  const targetValas = targetPriceForm && countryId != null
   /** Either fee method priced in foreign currency: no typed Base Cost, and Gram belongs
    *  in the header row beside Product Name. */
   const valasFeeForm = tierFeeValas || flatFeeValas
@@ -1031,6 +1048,14 @@ function AddProductForm({
         // re-derived from valas in valas mode, which makes copying it a rupiah-mode concern.
         setFlatFeeMode(seed.flatFeeMode)
         setCost(String(seed.cost ?? 0))
+        break
+      case "target_price":
+        // The PRICE is this method's input, so it is the one thing a duplicate must carry —
+        // re-deriving it is impossible, there being no formula to re-derive it from.
+        setTargetPrice(String(seed.price ?? 0))
+        // Rupiah mode's base cost is typed, so it copies; in valas mode it is derived from
+        // the valas and rate already copied above, and copying it would imply otherwise.
+        if (seed.countryId == null) setCost(String(seed.cost ?? 0))
         break
       default: {
         // Unreachable by construction; `void` rather than a return, because anything an effect
@@ -1199,13 +1224,27 @@ function AddProductForm({
       const base = Number(cost) || 0
       return { cogs: base, price: calcRupiahFeePrice(base, flatFee) }
     }
+    // Target Price: the only branch that computes a COST and reads the price rather than
+    // the other way round. No rounding step — the owner's figure is stored as typed.
+    if (targetPriceForm) {
+      const cogs = targetValas
+        ? landedCost({
+            valas: Number(valas) || 0,
+            kurs: selectedCountry?.kurs ?? 0,
+            gram: Number(gram) || 0,
+            cargoPerKg: selectedCountry?.cargoPerKg ?? 0,
+          })
+        : Number(cost) || 0
+      return { cogs, price: Number(targetPrice) || 0 }
+    }
     // Rupiah-mode Tier Fee. cogs is the typed base cost — it used to return 0 here, which
     // was harmless while nothing read it, but the readout below does now. Rounded, unlike
     // Flat Fee just above (same calcRupiahFeePrice arithmetic) — see RUPIAH_TIER_FEE_ROUND_TO.
     const base = Number(cost) || 0
     return { cogs: base, price: ceilTo(calcRupiahFeePrice(base, Number(profitFixed) || 0), RUPIAH_TIER_FEE_ROUND_TO) }
   }, [type, valas, gram, profitPct, opFee, packFee, cost, profitFixed, selectedCountry,
-      chargedKurs, costRate, productDefaults, flatFee, tierFeeValas, valasFee])
+      chargedKurs, costRate, productDefaults, flatFee, tierFeeValas, valasFee,
+      targetPriceForm, targetValas, targetPrice])
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault()
@@ -1272,6 +1311,21 @@ function AddProductForm({
         // No profitFixed and no meaningful price: the server reads the flat fee
         // from product_defaults and ignores anything sent for either.
         body.cost = Number(cost) || 0
+      } else if (targetPriceForm) {
+        // body.price above is already the typed figure — pricePreview.price IS
+        // targetPrice for this method — and the server stores it verbatim.
+        //
+        // What it does NOT trust is the margin: it derives cost here (from these four in
+        // valas mode, from the typed one otherwise) and computes price − cost itself, so
+        // no profitFixed is sent.
+        body.countryId = countryId
+        if (targetValas) {
+          body.valas = Number(valas) || 0
+          body.kurs = selectedCountry?.kurs ?? 0
+          body.cargoPerKg = selectedCountry?.cargoPerKg ?? 0
+        } else {
+          body.cost = Number(cost) || 0
+        }
       } else {
         body.cost = Number(cost) || 0
         body.profitFixed = Number(profitFixed) || 0
@@ -1293,6 +1347,7 @@ function AddProductForm({
       setCost("")
       setProfitFixed("")
       setProfitManual(false)
+      setTargetPrice("")
       onAdded()
     } catch (err) {
       setAddError(err instanceof Error ? err.message : "Failed to add")
@@ -1556,6 +1611,24 @@ function AddProductForm({
         <span className={profitTone(flatFee)}>PROFIT: Rp {fmt(flatFee)}</span>
       </>,
     ),
+
+    // The only bar whose PROFIT is not a figure the owner set: here the price is the input
+    // and the margin is what falls out, so this is the readout that actually tells them
+    // whether the price they chose works. Negative is a real answer, hence profitTone.
+    target_price: readoutBar(
+      <>
+        {targetValas && selectedCountry && (
+          <>
+            <span>RATE: {fmt(selectedCountry.kurs)}</span>
+            <span>SHIPPING/KG: {fmt(selectedCountry.cargoPerKg)}</span>
+          </>
+        )}
+        <span>COST: {fmt(Math.round(pricePreview.cogs))}</span>
+        <span className={profitTone(targetMargin({ price: pricePreview.price, cost: pricePreview.cogs }))}>
+          PROFIT: Rp {fmt(targetMargin({ price: pricePreview.price, cost: pricePreview.cogs }))}
+        </span>
+      </>,
+    ),
   }
   const readout = readouts[type]
 
@@ -1761,11 +1834,69 @@ function AddProductForm({
         //
         // Gram shows for BOTH valas fee modes. Flat Fee's landed cost has a freight term,
         // so leaving it out priced every such product as if it weighed nothing.
+        //
+        // Target Price takes Gram here in EITHER mode: valas mode books freight into its
+        // landed cost, and rupiah mode still needs a shipping weight on the product like
+        // every other method does.
         <div className="grid grid-cols-6 gap-x-3 gap-y-4">
-          <div className={valasFeeForm ? "col-span-4 md:col-span-3" : "col-span-6 md:col-span-4"}>{nameField}</div>
-          {valasFeeForm && <div className="col-span-2 md:col-span-1">{gramField}</div>}
+          <div className={valasFeeForm || targetPriceForm ? "col-span-4 md:col-span-3" : "col-span-6 md:col-span-4"}>{nameField}</div>
+          {(valasFeeForm || targetPriceForm) && <div className="col-span-2 md:col-span-1">{gramField}</div>}
           <div className="col-span-6 md:col-span-2 md:order-first">{storeField}</div>
         </div>
+      )}
+
+      {/* Country decides the shape, as it does for the fee methods: with one, Valas appears
+          and Base Cost is derived; without one, Base Cost is typed and there is no Valas.
+          Price is an input in both — that is the whole method.
+
+            valas    2 + 2 + 4 + 4
+            rupiah       4 + 4 + 4                                                    */}
+      {targetPriceForm && (
+        <>
+          <div className="grid grid-cols-12 gap-x-3 gap-y-4">
+            <div className={targetValas ? "col-span-6 md:col-span-2" : "col-span-12 md:col-span-4"}>{countrySelect}</div>
+            {targetValas && (
+              <div className="col-span-6 md:col-span-2">
+                <Field label={`Valas${selectedCountry ? ` (${selectedCountry.currency})` : ""}`}>
+                  <input value={valas} onChange={(e) => setValas(e.target.value)} type="number" step="any" min="0" placeholder="0" disabled={adding} className={formInputCls} />
+                </Field>
+              </div>
+            )}
+            <div className="col-span-6 md:col-span-4">
+              <Field label="Base Cost (IDR)">
+                {targetValas ? (
+                  // valas × the country's rate plus freight, exactly as valas-mode Tier Fee
+                  // shows it. Derived, and the server recomputes it from the same four
+                  // inputs on save, so a typed value here would be a second authority.
+                  <div className={`${formInputCls} bg-gray-50 text-gray-500 flex items-center tabular-nums`}>
+                    Rp {fmt(Math.round(pricePreview.cogs))}
+                  </div>
+                ) : (
+                  <input
+                    value={cost}
+                    onChange={(e) => setCost(e.target.value)}
+                    type="number" min="0" placeholder="0" disabled={adding} className={formInputCls}
+                  />
+                )}
+              </Field>
+            </div>
+            {/* The one editable Price field in this form. Every other method renders a
+                read-only preview here, because every other method derives it. */}
+            <div className="col-span-6 md:col-span-4">
+              <Field label="Price (IDR)">
+                <input
+                  value={targetPrice}
+                  onChange={(e) => setTargetPrice(e.target.value)}
+                  type="number" min="0" placeholder="0" disabled={adding}
+                  className={formInputCls}
+                />
+              </Field>
+            </div>
+          </div>
+
+          {/* Mobile copy of the readout; desktop renders it in the button row. */}
+          <div className="md:hidden">{readout}</div>
+        </>
       )}
 
       {type === "overseas" && (
@@ -2266,6 +2397,9 @@ function EditProductModal({
     flatFeeMode: row.flatFeeMode,
     cost: String(row.cost),
     profitFixed: String(row.profitFixed),
+    // Target Price only: its price is an INPUT, so unlike every other method the modal has
+    // to seed an editable field from the stored row rather than recompute it.
+    price: String(row.price),
   })
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -2284,6 +2418,10 @@ function EditProductModal({
   // so the modal needs no extra toggle: clearing the Country field switches to rupiah.
   const draftTierFeeValas = draft.method === "tier_fee" && draft.countryId != null
   const draftTierFeeRupiah = draft.method === "tier_fee" && draft.countryId == null
+  // Same country-driven split again: derived landed cost with one, typed rupiah cost
+  // without. The price is typed either way.
+  const draftTargetPrice = draft.method === "target_price"
+  const draftTargetValas = draftTargetPrice && draft.countryId != null
   const draftFeeBrackets = tierFeeBrackets
     ? bracketsForScope(tierFeeBrackets, draftTierFeeValas ? "valas" : "rupiah")
     : null
@@ -2411,6 +2549,19 @@ function EditProductModal({
       const base = Number(draft.cost) || 0
       return { price: calcRupiahFeePrice(base, flatFee), cogs: base, profit: flatFee }
     }
+    // Target Price: price in, margin out. No rounding — see migration 061.
+    if (draftTargetPrice) {
+      const cogs = draftTargetValas
+        ? Math.round(landedCost({
+            valas: Number(draft.valas) || 0,
+            kurs: draftCountry?.kurs ?? row.kurs,
+            gram: Number(draft.gram) || 0,
+            cargoPerKg: draftCountry?.cargoPerKg ?? row.cargoPerKg,
+          }))
+        : Number(draft.cost) || 0
+      const price = Number(draft.price) || 0
+      return { price, cogs, profit: targetMargin({ price, cost: cogs }) }
+    }
     // Rupiah-mode Tier Fee — rounded, unlike Flat Fee just above (same calcRupiahFeePrice
     // arithmetic) — see RUPIAH_TIER_FEE_ROUND_TO.
     return {
@@ -2419,6 +2570,7 @@ function EditProductModal({
       profit: null,
     }
   }, [draft, draftAbroad, draftKurs, draftFlatFee, draftFlatFeeValas, draftTierFeeValas,
+      draftTargetPrice, draftTargetValas,
       draftChargedKurs, draftCountry, row.kurs, row.cargoPerKg, productDefaults, flatFee, tierKursCostRate])
 
   async function handleSave() {
@@ -2450,8 +2602,11 @@ function EditProductModal({
         // Tier Kurs recovers a packing charge in its price too, so it stores its own.
         packingFee: draftAbroad || draftKurs ? Number(draft.packFee) || 0 : 5000,
         // Not sent for valas-mode Flat Fee: the server derives that cost from valas, the
-        // rate and the freight, and ignores anything here.
-        cost: draftTierFeeRupiah || draftFlatFeeRupiah ? Number(draft.cost) || 0 : 0,
+        // rate and the freight, and ignores anything here. Rupiah-mode Target Price types
+        // its own cost, so it joins the two rupiah fee modes.
+        cost: draftTierFeeRupiah || draftFlatFeeRupiah || (draftTargetPrice && draft.countryId == null)
+          ? Number(draft.cost) || 0
+          : 0,
         // Sent for both Tier Fee modes — rupiah has always typed it, valas mode is now
         // editable too (see the Fee (IDR) field above). Not sent for flat_fee: the
         // server resolves that fee from Settings and ignores this.
@@ -2874,6 +3029,52 @@ function EditProductModal({
               </div>
             )}
 
+          </>
+        )}
+
+        {/* Target Price: the Country + Valas row above already supplies the currency half,
+            so this adds the base cost, the weight, and the one editable Price field in the
+            modal. Margin is the readout — it is the only thing the owner cannot set here. */}
+        {draftTargetPrice && (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Base Cost">
+                {draftTargetValas ? (
+                  // Derived from the Country/Valas/Gram above; the server recomputes it from
+                  // the same inputs on save, so it is read-only rather than a second source.
+                  <div className={`${formInputCls} bg-gray-50 text-gray-500 flex items-center tabular-nums`}>
+                    Rp {fmt(editCalc.cogs ?? 0)}
+                  </div>
+                ) : (
+                  <input value={draft.cost} onChange={(e) => setDraft((d) => ({ ...d, cost: e.target.value }))} type="number" min="0" disabled={saving} className={formInputCls} />
+                )}
+              </Field>
+              <Field label="Gram">
+                <input value={draft.gram} onChange={(e) => setDraft((d) => ({ ...d, gram: e.target.value }))} type="number" min="0" disabled={saving} className={formInputCls} />
+              </Field>
+              <div className="col-span-2">
+                {/* An input, not the read-only preview every other method shows here: this
+                    IS the method's input, and the server stores it verbatim. */}
+                <Field label="Price (IDR)">
+                  <input value={draft.price} onChange={(e) => setDraft((d) => ({ ...d, price: e.target.value }))} type="number" min="0" disabled={saving} className={formInputCls} />
+                </Field>
+              </div>
+            </div>
+
+            {/* Unconditional, unlike the other bars: a rupiah-mode row has no country to
+                gate on, and the margin is exactly what this method needs to show. */}
+            <div className="flex items-center justify-between gap-1 flex-nowrap whitespace-nowrap rounded-lg bg-gray-50 border border-cream-border px-3 py-3 text-[8px] md:text-[9px] text-gray-500">
+              {draftTargetValas && draftCountry && (
+                <>
+                  <span>RATE: {fmt(draftCountry.kurs)}</span>
+                  <span>SHIPPING/KG: {fmt(draftCountry.cargoPerKg)}</span>
+                </>
+              )}
+              <span>COST: Rp {fmt(editCalc.cogs ?? 0)}</span>
+              <span className={`font-semibold ${(editCalc.profit ?? 0) >= 0 ? "text-green-700" : "text-red-600"}`}>
+                PROFIT: Rp {fmt(editCalc.profit ?? 0)}
+              </span>
+            </div>
           </>
         )}
 

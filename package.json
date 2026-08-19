@@ -8,21 +8,28 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "worker": "tsx --env-file-if-exists=.env.local --env-file-if-exists=.env.development.local worker/index.ts",
+    "test": "tsx --env-file-if-exists=.env.development.local --test lib/claims/*.test.ts lib/*.test.ts lib/db/*.test.ts lib/whatsapp/*.test.ts worker/*.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",
     "@tanstack/react-table": "^8.21.3",
+    "baileys": "^6.7.24",
+    "heic-convert": "^2.1.0",
     "jspdf": "^4.2.1",
     "next": "^16.2.6",
     "next-auth": "^5.0.0-beta.30",
     "postgres": "^3.4.9",
+    "qrcode-terminal": "^0.12.0",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/qrcode-terminal": "^0.12.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "googleapis": "^171.4.0",

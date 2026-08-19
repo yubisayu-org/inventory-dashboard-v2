@@ -50,6 +50,11 @@ export async function PATCH(req: NextRequest) {
     const defaultPricingMethod = has("defaultPricingMethod")
       ? toPricingMethod(body.defaultPricingMethod)
       : current.defaultPricingMethod
+    // Same narrowing, same "only when sent" rule, separate column: the WhatsApp
+    // default and the form default are edited from different cards.
+    const whatsappPricingMethod = has("whatsappPricingMethod")
+      ? toPricingMethod(body.whatsappPricingMethod)
+      : current.whatsappPricingMethod
     const flatFee = has("flatFee") ? Number(body.flatFee) : current.flatFee
     const flatFeePct = has("flatFeePct") ? Number(body.flatFeePct) : current.flatFeePct
     const flatFeeMin = has("flatFeeMin") ? Number(body.flatFeeMin) : current.flatFeeMin
@@ -106,7 +111,7 @@ export async function PATCH(req: NextRequest) {
         updateProductDefaults({
           profitPct, operationalFee, packingFee, markupPct, tierKursRoundTo,
           profitMarginRoundTo, flatFee, flatFeePct, flatFeeMin, defaultCountryId,
-          defaultPricingMethod, dpPercent,
+          defaultPricingMethod, whatsappPricingMethod, dpPercent,
         }, tx),
       )
     } catch (err) {
