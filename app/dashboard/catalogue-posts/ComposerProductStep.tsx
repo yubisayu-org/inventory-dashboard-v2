@@ -47,6 +47,20 @@ interface WaSendCode {
  * is that a fresh post defaults to `catalogue_posts.visible = false`, so a
  * stray tag isn't publicly exposed by itself — but it is a real, persistent
  * data artifact, not something this step can clean up.
+ *
+ * "Simpan & tutup" / "Buang draf" (final whole-branch review's finding 3):
+ * the spec calls a saved-not-sent send "resumable later", but nothing in
+ * this app can actually find or reopen one afterwards — there is no
+ * drafts-list UI anywhere, and grepping the whole codebase turns up zero
+ * callers of `GET`/`DELETE /api/whatsapp/sends/[id]` before this. Building
+ * a real resume flow (a drafts list on the composer's entry screen, wired
+ * to those routes) is the fuller fix; going with the minimum-viable one
+ * instead, matching this plan's YAGNI bias: don't call the exit button
+ * "draft" (which implies resumability that doesn't exist), and give the
+ * owner an explicit way to delete an abandoned one so it doesn't just pile
+ * up forever. A code minted on an unsent send can no longer resolve a real
+ * customer's claim either way (see finding 2's `getSendCodeByCode` fix), so
+ * leaving one behind by clicking "Simpan & tutup" is wasteful, not unsafe.
  */
 export default function ComposerProductStep({
   sendId,
@@ -66,6 +80,7 @@ export default function ComposerProductStep({
   const [caption, setCaption] = useState("")
   const [placingCodeId, setPlacingCodeId] = useState<number | null>(null)
   const [sending, setSending] = useState(false)
+  const [discarding, setDiscarding] = useState(false)
   const [prefilling, setPrefilling] = useState(Boolean(prefillFromPostId))
   const [error, setError] = useState("")
 
@@ -153,6 +168,27 @@ export default function ComposerProductStep({
       await loadCodes()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to place pin")
+    }
+  }
+
+  // Manual cleanup for a send abandoned via "Simpan & tutup" — there's no
+  // drafts list to find it from afterwards, so this is the only way it
+  // doesn't just accumulate forever (finding 3). Reuses the DELETE route
+  // Task 6 built and nothing has called until now; it already refuses once
+  // the send has actually gone out, so this is only ever reachable here,
+  // pre-send.
+  async function handleDiscard() {
+    if (!window.confirm("Buang draf ini? Produk yang sudah ditandai akan hilang.")) return
+    setDiscarding(true)
+    setError("")
+    try {
+      const res = await fetch(`/api/whatsapp/sends/${sendId}`, { method: "DELETE" })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "Failed to discard draft")
+      onDone()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to discard draft")
+      setDiscarding(false)
     }
   }
 
@@ -271,15 +307,24 @@ export default function ComposerProductStep({
       <div className="flex justify-end gap-2">
         <button
           type="button"
-          onClick={onDone}
-          className="px-4 py-2 rounded-lg border border-cream-border text-sm"
+          onClick={handleDiscard}
+          disabled={discarding || sending}
+          className="px-4 py-2 rounded-lg border border-red-200 text-red-600 text-sm disabled:opacity-50"
         >
-          Simpan draf
+          {discarding ? "Membuang…" : "Buang draf"}
+        </button>
+        <button
+          type="button"
+          onClick={onDone}
+          disabled={discarding}
+          className="px-4 py-2 rounded-lg border border-cream-border text-sm disabled:opacity-50"
+        >
+          Simpan & tutup
         </button>
         <button
           type="button"
           onClick={handleSend}
-          disabled={sending || codes.length === 0}
+          disabled={sending || discarding || codes.length === 0}
           className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-semibold disabled:opacity-50"
         >
           {sending ? "Mengirim…" : "Kirim ke grup"}

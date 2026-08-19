@@ -216,6 +216,7 @@ function ReusePostTab({
           >
             <img src={card.mediaUrl} alt="" className="w-full aspect-square object-cover rounded-lg" />
             <div className="text-xs font-medium text-foreground truncate">{card.title}</div>
+            <div className="text-xs text-gray-400">{card.taggedCount} produk ditandai</div>
             <div className="text-xs text-gray-400">
               {card.lastEvent} · {formatLastSent(card.lastSentAt)} · {card.orderCount} order
             </div>
