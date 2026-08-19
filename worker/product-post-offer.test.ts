@@ -11,6 +11,7 @@ const HER = "628111111111"
 let postId: number
 let productAId: number
 let productBId: number
+let productCId: number
 let sendId: number
 
 before(async () => {
@@ -24,12 +25,20 @@ before(async () => {
   postId = post.id as number
   const [a] = await sql`INSERT INTO products (name, store, price) VALUES ('Boston Bag 38L Greige', 'MUJI', 385000) RETURNING id`
   const [b] = await sql`INSERT INTO products (name, store, price) VALUES ('Boston Bag 38L Black', 'MUJI', 385000) RETURNING id`
+  // A third product whose tokens ("ransel"/"kuning"/"kecil") share nothing
+  // with A/B's ("boston"/"bag"/"38l"/"greige"/"black") — used by the
+  // one-candidate tests below so a fuzzy (not exact) match reliably narrows
+  // to exactly it, without fighting A/B's overlapping tokens. Verified
+  // empirically against the real resolver, not assumed.
+  const [c] = await sql`INSERT INTO products (name, store, price) VALUES ('Ransel Kuning Kecil', 'MUJI', 250000) RETURNING id`
   productAId = a.id as number
   productBId = b.id as number
+  productCId = c.id as number
   const send = await createSend({ postId, event: EVENT, title: "MUJI restock" })
   sendId = send.id
   await attachProductToSend(sendId, productAId)
   await attachProductToSend(sendId, productBId)
+  await attachProductToSend(sendId, productCId)
   await setSendMessageId(sendId, "post-msg-1", GROUP)
 })
 
@@ -39,7 +48,7 @@ after(async () => {
   await sql`DELETE FROM wa_sends WHERE id = ${sendId}`
   await sql`DELETE FROM catalogue_post_products WHERE post_id = ${postId}`
   await sql`DELETE FROM catalogue_posts WHERE id = ${postId}`
-  await sql`DELETE FROM products WHERE id IN (${productAId}, ${productBId})`
+  await sql`DELETE FROM products WHERE id IN (${productAId}, ${productBId}, ${productCId})`
   await sql`DELETE FROM wa_groups WHERE jid = ${GROUP}`
   await sql`DELETE FROM events WHERE name = ${EVENT}`
   await sql.end()
@@ -73,25 +82,34 @@ test("askDisambiguation with two candidates lists only the codes, never a bare n
 })
 
 test("askDisambiguation with one candidate asks a yes/no confirmation", async () => {
+  // "warna greijnya mau 1" is a typo'd/partial "greige" — it hits the
+  // resolver's FUZZY path (prefix match), not the exact-token path, so it
+  // narrows to exactly one candidate instead of resolving as a direct claim.
+  // A full "greige" would exact-match and short-circuit to "reacted" (see
+  // worker/product-post.test.ts's own "exact unique... is a direct claim"
+  // case) — verified empirically against the real resolver, not assumed.
+  const text = "warna greijnya mau 1"
   const resolution = await resolveProductPostClaim({
-    groupJid: GROUP, messageId: "her-2", sender: HER, text: "greige nya mau 1", quoted: "",
+    groupJid: GROUP, messageId: "her-2", sender: HER, text, quoted: "",
   })
-  // This fixture's simple token matcher may or may not narrow to one
-  // candidate for "greige" — assert on whatever it actually returned rather
-  // than assuming; the shape under test is askDisambiguation, not the
-  // resolver's fuzzy matching precision. (An exact unique token match is a
-  // direct claim per Task 8's own tests, so this can legitimately come back
-  // "reacted" instead — the same conditional-return idiom the
-  // trySendOfferThumbsUp test below uses for the same uncertainty.)
+  assert.equal(resolution.kind, "needsDisambiguation")
   if (resolution.kind !== "needsDisambiguation") return
+  assert.equal(resolution.candidates.length, 1, "fixture text is chosen to fuzzy-match exactly one candidate")
 
   const sock = fakeSock("bot-msg-2")
-  await askDisambiguation(sock, {
-    groupJid: GROUP, messageId: "her-2", sender: HER, text: "greige nya mau 1", quoted: "",
+  const emoji = await askDisambiguation(sock, {
+    groupJid: GROUP, messageId: "her-2", sender: HER, text, quoted: "",
   }, resolution)
+  assert.equal(emoji, "❔")
 
-  const [row] = await sql`SELECT candidate_send_code_ids FROM catalogue_requests WHERE message_id = 'her-2'`
-  assert.equal(row.candidate_send_code_ids.length, resolution.candidates.length)
+  const [sent] = sock.sendMessage.mock.calls
+  const caption = sent.arguments[1].text as string
+  assert.ok(/kalau betul/i.test(caption), "single-candidate offer should ask a yes/no confirmation, not list codes")
+
+  const [row] = await sql`SELECT status, bot_message_id, candidate_send_code_ids FROM catalogue_requests WHERE message_id = 'her-2'`
+  assert.equal(row.status, "asking")
+  assert.equal(row.bot_message_id, "bot-msg-2")
+  assert.equal(row.candidate_send_code_ids.length, 1)
 })
 
 test("trySendOfferAnswer settles a code reply against the offered candidates only", async () => {
@@ -140,13 +158,22 @@ test("trySendOfferAnswer returns null for a reply quoting no open offer", async 
 })
 
 test("trySendOfferThumbsUp settles a one-candidate offer", async () => {
+  // "kuni nya mau 1" fuzzy-matches only the third fixture product ("Ransel
+  // Kuning Kecil"'s "kuning" token, prefix "kuni") — a partial match, not
+  // the full word, so it takes the fuzzy path and narrows to exactly one
+  // candidate rather than exact-matching and short-circuiting to a direct
+  // claim. Verified empirically against the real resolver, not assumed.
+  const text = "kuni nya mau 1"
   const resolution = await resolveProductPostClaim({
-    groupJid: GROUP, messageId: "her-6", sender: HER, text: "yang hitam mau 1", quoted: "",
+    groupJid: GROUP, messageId: "her-6", sender: HER, text, quoted: "",
   })
-  if (resolution.kind !== "needsDisambiguation" || resolution.candidates.length !== 1) return
+  assert.equal(resolution.kind, "needsDisambiguation")
+  if (resolution.kind !== "needsDisambiguation") return
+  assert.equal(resolution.candidates.length, 1, "fixture text is chosen to fuzzy-match exactly one candidate")
+
   const sock = fakeSock("bot-msg-6")
   await askDisambiguation(sock, {
-    groupJid: GROUP, messageId: "her-6", sender: HER, text: "yang hitam mau 1", quoted: "",
+    groupJid: GROUP, messageId: "her-6", sender: HER, text, quoted: "",
   }, resolution)
 
   const emoji = await trySendOfferThumbsUp(GROUP, "bot-msg-6")
