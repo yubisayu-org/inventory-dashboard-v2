@@ -12,6 +12,7 @@ import { ReactionQueue } from "./reactions"
 import { applyOwnerReaction, outcomeFor } from "./outcomes"
 import { trySizeOffer, trySizeAnswer } from "./size-offer"
 import { sendNextShelf, sendNextSend, OUTBOX_INTERVAL_MS } from "./outbox"
+import { sendNextReply, REPLY_INTERVAL_MS } from "./replies"
 import { findPostByMessage, listClaims } from "@/lib/db/claims"
 import { renderShoppingList } from "@/lib/whatsapp/render"
 import sql from "@/lib/db-pool"
@@ -411,8 +412,27 @@ async function main() {
         console.error("outbox sweep failed:", err)
       }
     }, OUTBOX_INTERVAL_MS)
+
+    // Reactions/replies a DASHBOARD action needs sent into the group — the
+    // dashboard has no socket of its own, so it queues here and this sweep
+    // is what actually delivers them. A separate timer from the outbox above:
+    // the two queues serve different callers and there is no reason a stall
+    // in one should pace the other.
+    const replies = setInterval(async () => {
+      try {
+        while (await sendNextReply(sock)) {
+          await new Promise((resolve) => setTimeout(resolve, 1200))
+        }
+      } catch (err) {
+        console.error("reply sweep failed:", err)
+      }
+    }, REPLY_INTERVAL_MS)
+
     sock.ev.on("connection.update", ({ connection }) => {
-      if (connection === "close") clearInterval(outbox)
+      if (connection === "close") {
+        clearInterval(outbox)
+        clearInterval(replies)
+      }
     })
 
     sock.ev.on("messages.reaction", async (events) => {
