@@ -20,6 +20,7 @@ import type { CountryRow } from "@/lib/db"
 import KursTiersSection from "./KursTiersSection"
 import TierFeeBracketsSection from "./TierFeeBracketsSection"
 import WhatsAppSection from "./WhatsAppSection"
+import WarehouseOriginSection from "./WarehouseOriginSection"
 import MoneyInput from "@/components/MoneyInput"
 import InfoTooltip from "@/components/InfoTooltip"
 
@@ -135,8 +136,9 @@ export default function SettingsClient() {
 
       {/* Every panel stays mounted (each fetches its own data once) — only
           hidden ones are visually hidden, so switching tabs never refetches. */}
-      <div className={tab === "business" ? "" : "hidden"}>
+      <div className={`flex flex-col gap-6 ${tab === "business" ? "" : "hidden"}`}>
         <BusinessProfileSection />
+        <WarehouseOriginSection />
       </div>
       {/* Every card here is pricing config, so they share one tab. General holds what is
           common to more than one method; the rest are per method, in PRICING_METHODS order.
