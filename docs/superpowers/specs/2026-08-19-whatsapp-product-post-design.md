@@ -184,6 +184,29 @@ CREATE UNIQUE INDEX idx_wa_outbox_product_post
   ON wa_outbox (product_post_id) WHERE product_post_id IS NOT NULL;
 ```
 
+## Reposting to the next trip
+
+The photo and the products are worth keeping; only the codes are disposable.
+Sending the same products again on the next trip re-uploads nothing.
+
+A repost is a **new `wa_product_posts` row pointing at the same `image_path`**,
+with its items copied and given codes from the new event's sequence, and prices
+re-read from the catalogue. LSJP's post keeps `A19/A21/A22` forever; the LSKR
+copy might be `K07/K08/K09`. Pin positions copy across, since it is the same
+photograph.
+
+- **Prices are re-snapshotted at repost time** and the composer shows what moved,
+  rather than swallowing it. June's customers keep the price June quoted.
+- **A product deleted since the last post is skipped** — no code, listed struck
+  through. The photo then shows something the caption does not mention, which is
+  the owner's call to make, not the system's.
+- **Deleting a post must never delete its image**, because another post may point
+  at the same file. Product-post images are outside `archiveEvent`'s sweep, so
+  nothing deletes them today; that is a rule, not an accident.
+
+The upload step gets a second door — *Foto baru* or *Pakai post lama* — listing
+past product posts with their trip, date, and how many orders each produced.
+
 ## Modules
 
 | File | Responsibility |
@@ -330,3 +353,46 @@ bought, dispatched and invoiced like anything typed on the Order page.
 - Product posts in the public catalogue.
 - Claims by DM against a product post — the DM paths already built cover shelves
   only, and mixing the two is its own design.
+
+## Relationship to the catalogue branch
+
+`catalogue-order-requests` (in progress, not yet in `development`) already has
+`catalogue_posts` — one media asset, a caption, and several tagged products via
+`catalogue_post_products` — plus `catalogue_requests`, whose
+`pending/converted/rejected` and `converted_order_id` are this design's inbox
+under other names.
+
+The two therefore overlap almost exactly. The efficient end state is one post
+with two destinations:
+
+```
+catalogue_posts          media, caption, tagged products
+  ├─ visible             the public catalogue (that branch)
+  └─ wa_sends            one row per trip it is sent to
+       └─ wa_send_codes  product -> K42, price snapshot, pin position
+```
+
+with `catalogue_requests` gaining a source (`catalogue` / `whatsapp`) and the
+WhatsApp-only fields, so one Order Requests screen serves both.
+
+**This branch deliberately does not do that.** The catalogue branch is still
+being built, and blocking on it would stall this one. Product posts ship on
+their own tables, and the two are unified after `catalogue-order-requests`
+reaches `development`.
+
+The cost of that decision, so it is known rather than discovered:
+
+- Two upload screens, two media buckets, two product-tagging lists, two inboxes,
+  until unification.
+- Unification is a **data migration**, not a merge conflict: both tables will
+  hold production rows by then. `catalogue_posts` absorbs `wa_product_posts`,
+  `wa_sends` replaces it as the per-trip layer, and one screen is deleted.
+- Migration numbers do not collide — 058-060 are the catalogue branch's and are
+  free here — but after this branch merges, its 058 applies after 075. Renumber
+  the catalogue migrations to 076-078 when that branch is rebased, so the files
+  read in the order they were run.
+
+To keep unification cheap, `wa_product_posts` holds only what a media asset
+needs (event, image, title) and nothing about codes or claims. The WhatsApp
+layer lives entirely in `wa_product_items` and below, which is the layer that
+survives the swap.
