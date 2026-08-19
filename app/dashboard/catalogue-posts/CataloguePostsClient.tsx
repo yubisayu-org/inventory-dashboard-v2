@@ -1,12 +1,17 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { useSearchParams } from "next/navigation"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import type { CataloguePost, CatalogueHighlight } from "@/lib/db"
 import EventSelect from "@/components/EventSelect"
+import ComposerUploadStep from "./ComposerUploadStep"
+import ComposerProductStep from "./ComposerProductStep"
 
 export default function CataloguePostsClient() {
   const options = useSheetOptions()
+  const searchParams = useSearchParams()
+  const [composerOpen, setComposerOpen] = useState(searchParams.get("compose") === "1")
   const [posts, setPosts] = useState<CataloguePost[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -80,6 +85,10 @@ export default function CataloguePostsClient() {
     }
   }
 
+  if (composerOpen) {
+    return <ComposerFlow activeEvents={options?.activeEvents ?? []} onClose={() => setComposerOpen(false)} />
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <UploadForm options={options} highlights={highlights} onCreated={reload} />
@@ -149,6 +158,52 @@ export default function CataloguePostsClient() {
           activeEvents={options?.activeEvents ?? []}
           onClose={() => setEditingHighlight(null)}
           onSaved={() => { setEditingHighlight(null); reloadHighlights() }}
+        />
+      )}
+    </div>
+  )
+}
+
+/**
+ * The composer's two-step flow: `ComposerUploadStep` (Task 8) creates a
+ * fresh `wa_sends` row and hands off `sendId`/`mediaUrl`/`prefillFromPostId`;
+ * `ComposerProductStep` (a Task 9 stub for now) continues from there.
+ */
+function ComposerFlow({ activeEvents, onClose }: { activeEvents: string[]; onClose: () => void }) {
+  const [state, setState] = useState<
+    | { step: "upload" }
+    | { step: "product"; sendId: number; mediaUrl: string; prefillFromPostId?: number }
+  >({ step: "upload" })
+
+  // The "Foto baru" path hands off a client-side blob: URL (no stored
+  // media_url to read yet) — revoke it once the product step moves past it
+  // or the composer closes. A no-op for "Pakai post lama"'s real https URL:
+  // revokeObjectURL on a URL it didn't create simply does nothing.
+  useEffect(() => {
+    if (state.step !== "product") return
+    const url = state.mediaUrl
+    return () => URL.revokeObjectURL(url)
+  }, [state])
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-foreground">New product post</h2>
+        <button onClick={onClose} className="text-xs text-gray-500 underline">Back to posts</button>
+      </div>
+      {state.step === "upload" ? (
+        <ComposerUploadStep
+          activeEvents={activeEvents}
+          onCreated={(sendId, mediaUrl, prefillFromPostId) =>
+            setState({ step: "product", sendId, mediaUrl, prefillFromPostId })
+          }
+        />
+      ) : (
+        <ComposerProductStep
+          sendId={state.sendId}
+          mediaUrl={state.mediaUrl}
+          prefillFromPostId={state.prefillFromPostId}
+          onDone={onClose}
         />
       )}
     </div>
