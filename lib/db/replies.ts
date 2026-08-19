@@ -38,9 +38,24 @@ export async function queueText(
   `
 }
 
+/**
+ * The next queued reply, oldest first — atomically CLAIMED (moved to
+ * 'sending'), not merely read.
+ *
+ * Same overlapping-sweep hazard as lib/db/outbox.ts's nextPending: the
+ * reply sweep (worker/replies.ts) runs on a setInterval, and a plain
+ * `SELECT ... WHERE state = 'pending'` would let two overlapping sweeps
+ * both pick up and re-send the same queued reaction/text. Locking the row
+ * inside the subquery with FOR UPDATE SKIP LOCKED and flipping its state in
+ * the same statement makes the claim atomic.
+ */
 export async function nextPendingReply(db: DBExecutor = sql): Promise<ReplyItem | null> {
   const [row] = await db`
-    SELECT * FROM wa_replies WHERE state = 'pending' ORDER BY id ASC LIMIT 1
+    UPDATE wa_replies SET state = 'sending'
+    WHERE id = (
+      SELECT id FROM wa_replies WHERE state = 'pending' ORDER BY id ASC LIMIT 1 FOR UPDATE SKIP LOCKED
+    )
+    RETURNING *
   `
   if (!row) return null
   return {

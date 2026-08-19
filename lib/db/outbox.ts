@@ -33,14 +33,38 @@ export async function queueShelfPost(postId: number, event: string): Promise<boo
   return true
 }
 
-/** The next shelf waiting to be posted, oldest first. */
+/**
+ * The next shelf waiting to be posted, oldest first — and atomically
+ * CLAIMED (moved to 'sending'), not merely read.
+ *
+ * The outbox sweep (worker/outbox.ts) runs on a setInterval; if one tick's
+ * async body outlives its own interval (a hung sendMessage call, a slow
+ * network), the next tick starts a second, overlapping sweep. A plain
+ * `SELECT ... WHERE state = 'pending'` would hand the SAME row to both
+ * sweeps, re-posting the same photo to the group. Locking the row inside
+ * the subquery with FOR UPDATE SKIP LOCKED and flipping its state in the
+ * same statement makes the claim atomic: a second, concurrent caller's
+ * subquery simply skips a row that is mid-claim rather than also selecting
+ * it.
+ */
 export async function nextPending(): Promise<OutboxItem | null> {
+  const [claimed] = await sql`
+    UPDATE wa_outbox SET state = 'sending'
+    WHERE id = (
+      SELECT id FROM wa_outbox
+      WHERE state = 'pending' AND post_id IS NOT NULL
+      ORDER BY id ASC
+      LIMIT 1
+      FOR UPDATE SKIP LOCKED
+    )
+    RETURNING id
+  `
+  if (!claimed) return null
+
   const [row] = await sql`
     SELECT o.id, o.post_id, o.group_jid, p.image_path, p.store, p.note
     FROM wa_outbox o JOIN wa_posts p ON p.id = o.post_id
-    WHERE o.state = 'pending'
-    ORDER BY o.id ASC
-    LIMIT 1
+    WHERE o.id = ${claimed.id}
   `
   if (!row) return null
   return {
@@ -107,16 +131,30 @@ export async function queueSend(
   return true
 }
 
-/** The next composed send waiting to be posted, oldest first. */
+/** The next composed send waiting to be posted, oldest first — atomically
+ *  CLAIMED (moved to 'sending'), same reasoning and mechanism as
+ *  nextPending above (this shares the same table and the same
+ *  overlapping-sweep hazard). */
 export async function nextPendingSend(): Promise<SendOutboxItem | null> {
+  const [claimed] = await sql`
+    UPDATE wa_outbox SET state = 'sending'
+    WHERE id = (
+      SELECT id FROM wa_outbox
+      WHERE state = 'pending' AND send_id IS NOT NULL
+      ORDER BY id ASC
+      LIMIT 1
+      FOR UPDATE SKIP LOCKED
+    )
+    RETURNING id
+  `
+  if (!claimed) return null
+
   const [row] = await sql`
     SELECT o.id, o.send_id, o.group_jid, o.caption, p.media_url
     FROM wa_outbox o
     JOIN wa_sends s ON s.id = o.send_id
     JOIN catalogue_posts p ON p.id = s.post_id
-    WHERE o.state = 'pending' AND o.send_id IS NOT NULL
-    ORDER BY o.id ASC
-    LIMIT 1
+    WHERE o.id = ${claimed.id}
   `
   if (!row) return null
   return {

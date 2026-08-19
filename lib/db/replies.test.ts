@@ -42,6 +42,19 @@ test("nextPendingReply returns oldest-first", async () => {
   await markReplySent(second!.id)
 })
 
+test("two overlapping claims never return the same reply row (finding #11 — atomic claim via SKIP LOCKED)", async () => {
+  await queueText(GROUP, "msg-6", "one", HER)
+  await queueText(GROUP, "msg-7", "two", HER)
+
+  const [a, b] = await Promise.all([nextPendingReply(), nextPendingReply()])
+  assert.ok(a && b, "both queued rows must be claimed")
+  assert.notEqual(a!.id, b!.id, "two concurrent claims must never return the same row")
+  assert.deepEqual([a!.text, b!.text].sort(), ["one", "two"])
+
+  await markReplySent(a!.id)
+  await markReplySent(b!.id)
+})
+
 test("markReplyFailed leaves the row out of the pending queue", async () => {
   await queueText(GROUP, "msg-5", "will fail", HER)
   const item = await nextPendingReply()

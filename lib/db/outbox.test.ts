@@ -91,6 +91,21 @@ test("queueing the same shelf twice does not post it twice", async () => {
   assert.equal(count, 1)
 })
 
+test("two overlapping claims never return the same shelf row (finding #11 — atomic claim via SKIP LOCKED)", async () => {
+  const shelfA = await shelf()
+  const shelfB = await shelf()
+  await queueShelfPost(shelfA.id, EVENT)
+  await queueShelfPost(shelfB.id, EVENT)
+
+  // Not asserting exactly which two postIds come back: nextPending() is
+  // FIFO across the WHOLE queue (see the comment on rowFor below), so an
+  // earlier test's own queued-but-never-claimed row may legitimately be one
+  // of the two. What matters for this fix is the atomicity property itself.
+  const [a, b] = await Promise.all([nextPending(), nextPending()])
+  assert.ok(a && b, "both concurrent calls must claim a row")
+  assert.notEqual(a!.id, b!.id, "two concurrent claims must never return the same row")
+})
+
 /** This shelf's own outbox row. nextPending() is FIFO across the whole queue,
  *  so it hands back whatever an earlier test left waiting. */
 async function rowFor(postId: number): Promise<number> {
@@ -137,9 +152,10 @@ test("queueSend finds the group bound to the event and queues one row", async ()
   assert.equal(item?.caption, "the caption")
   assert.equal(item?.mediaUrl, "https://example.com/t.jpg")
 
-  // nextPendingSend() only reads the queue, it doesn't consume it — clean up
-  // this row explicitly (same pattern wa-sends.test.ts uses for wa_sends/
-  // wa_groups) so it doesn't leak into a later test's FIFO order.
+  // nextPendingSend() claims the row (moves it out of 'pending') but this
+  // test never calls markSendSent/markSendFailed on it — clean up the row
+  // explicitly (same pattern wa-sends.test.ts uses for wa_sends/wa_groups)
+  // so a leftover 'sending' row doesn't shadow a later test's FIFO order.
   await sql`DELETE FROM wa_outbox WHERE id = ${item!.id}`
 })
 
@@ -196,6 +212,26 @@ test("markSendFailed is kept with its reason, and stops being offered by nextPen
   // retry loop (the same photo re-posted to the group every 1.2s).
   const again = await nextPendingSend()
   assert.notEqual(again?.id, item!.id, "a failed row must not be picked up again")
+})
+
+test("two overlapping claims never return the same send row (finding #11 — atomic claim via SKIP LOCKED)", async () => {
+  const first = await createSend({ postId: sendPostId, event: SEND_EVENT, title: "t" })
+  const second = await createSend({ postId: sendPostId, event: SEND_EVENT, title: "t" })
+  await queueSend(first.id, SEND_EVENT, "caption 1")
+  await queueSend(second.id, SEND_EVENT, "caption 2")
+
+  // Simulates two overlapping sweeps (a hung sendMessage outliving its own
+  // interval tick, then the next tick starting a second sweep) racing to
+  // claim from the same two-row queue. A non-atomic "SELECT the oldest
+  // pending row" would let both resolve to the SAME row; the atomic claim
+  // must hand each caller a DIFFERENT one.
+  const [a, b] = await Promise.all([nextPendingSend(), nextPendingSend()])
+  assert.ok(a && b, "both queued rows must be claimed")
+  assert.notEqual(a!.id, b!.id, "two concurrent claims must never return the same row")
+  assert.deepEqual([a!.sendId, b!.sendId].sort(), [first.id, second.id].sort())
+
+  await sql`DELETE FROM wa_outbox WHERE send_id IN (${first.id}, ${second.id})`
+  await sql`DELETE FROM wa_sends WHERE id IN (${first.id}, ${second.id})`
 })
 
 test("nextPendingSend skips a shelf row (post_id) and only returns send rows", async () => {
