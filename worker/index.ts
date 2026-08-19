@@ -11,6 +11,8 @@ import {
 import { ReactionQueue } from "./reactions"
 import { applyOwnerReaction, outcomeFor } from "./outcomes"
 import { trySizeOffer, trySizeAnswer } from "./size-offer"
+import { resolveProductPostClaim } from "./product-post"
+import { askDisambiguation, trySendOfferAnswer, trySendOfferThumbsUp } from "./product-post-offer"
 import { sendNextShelf, sendNextSend, OUTBOX_INTERVAL_MS } from "./outbox"
 import { sendNextReply, REPLY_INTERVAL_MS } from "./replies"
 import { findPostByMessage, listClaims } from "@/lib/db/claims"
@@ -163,7 +165,6 @@ async function onMessage(sock: WASocket, message: WAMessage) {
     await claimWithoutReply(sock, message, groupJid, messageId, sender, text)
     return
   }
-  if (quoted === "") return
 
   // The owner answering a claim with a different size — "95 kosong, 100 ya".
   // Checked before the claim path because it quotes a claim, not a shelf, and
@@ -173,6 +174,31 @@ async function onMessage(sock: WASocket, message: WAMessage) {
     reactions?.push({ jid: groupJid, key: message.key, emoji: offered })
     return
   }
+
+  // A reply to the bot's own ❔ disambiguation question, or a fresh
+  // product-post claim. Checked ahead of the `quoted === ""` fallthrough
+  // below — unlike a shelf claim, an unquoted code reply is still valid here
+  // (it resolves against the group's one open send) — and ahead of
+  // postForReply, which only ever matches a shelf photo's message id.
+  const offerEmoji = await trySendOfferAnswer({ groupJid, messageId, sender, text, quoted })
+  if (offerEmoji !== null) {
+    reactions?.push({ jid: groupJid, key: message.key, emoji: offerEmoji })
+    return
+  }
+
+  const resolution = await resolveProductPostClaim({ groupJid, messageId, sender, text, quoted })
+  if (resolution.kind === "reacted") {
+    reactions?.push({ jid: groupJid, key: message.key, emoji: resolution.emoji })
+    return
+  }
+  if (resolution.kind === "needsDisambiguation") {
+    const emoji = await askDisambiguation(sock, { groupJid, messageId, sender, text, quoted }, resolution)
+    reactions?.push({ jid: groupJid, key: message.key, emoji })
+    return
+  }
+  // resolution.kind === "notApplicable" — fall through to the existing shelf/claim path below.
+
+  if (quoted === "") return
 
   const post = await postForReply(groupJid, quoted)
   if (post === null) return
@@ -444,6 +470,16 @@ async function main() {
           // reaction.key is the REACTOR's key; event.key is the message reacted
           // to. Skipping the bot's own stops it reading its own notes back.
           if (event.reaction.key?.fromMe) continue
+
+          // Her 👍 on the bot's own single-candidate product-post question.
+          // Checked first, ahead of trySizeAnswer, so a new product-post offer
+          // never has to rely on trySizeAnswer correctly returning null for a
+          // reaction it was never meant to see.
+          const sendAnswerEmoji = await trySendOfferThumbsUp(groupJid, event.key.id ?? "")
+          if (sendAnswerEmoji !== null) {
+            reactions?.push({ jid: groupJid, key: event.key, emoji: sendAnswerEmoji })
+            continue
+          }
 
           // Her 👍 on an offer of a different size. Tried first: the same emoji
           // means "bought" when the owner puts it on a claim, and these are told
