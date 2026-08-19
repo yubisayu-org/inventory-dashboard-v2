@@ -177,12 +177,15 @@ CREATE UNIQUE INDEX idx_wa_send_codes_code ON wa_send_codes (event, code);
 
 -- catalogue_requests becomes the one inbox for both a public-catalogue
 -- request and a WhatsApp claim.
+--
+-- product_id is ALREADY nullable and status ALREADY carries offer_pending/
+-- approved — both added by 076_custom_catalogue_requests.sql and
+-- 079_custom_request_edit_approval.sql, the custom-request/edit-approval
+-- work this branch picked up in the merge that brought it current. This
+-- migration extends what is actually there rather than the base shape this
+-- spec was first written against — see "A note on sequencing" below.
 ALTER TABLE catalogue_requests ADD COLUMN source TEXT NOT NULL DEFAULT 'catalogue'
   CHECK (source IN ('catalogue', 'whatsapp'));
-
--- Null while the row is 'asking' and the bot cannot yet tell which product she
--- meant. Every other status still requires it, enforced below.
-ALTER TABLE catalogue_requests ALTER COLUMN product_id DROP NOT NULL;
 
 ALTER TABLE catalogue_requests ADD COLUMN send_id INTEGER
   REFERENCES wa_sends(id) ON DELETE CASCADE;
@@ -201,17 +204,38 @@ ALTER TABLE catalogue_requests ADD COLUMN bot_message_id TEXT NOT NULL DEFAULT '
 -- exactly what she was shown, not the full send.
 ALTER TABLE catalogue_requests ADD COLUMN candidate_send_code_ids INTEGER[];
 
+-- Add 'asking' to the existing status list, changing nothing else in it.
 ALTER TABLE catalogue_requests DROP CONSTRAINT catalogue_requests_status_check;
 ALTER TABLE catalogue_requests ADD CONSTRAINT catalogue_requests_status_check
-  CHECK (status IN ('pending', 'asking', 'converted', 'rejected'));
--- Every status except 'asking' names a real product.
-ALTER TABLE catalogue_requests ADD CONSTRAINT catalogue_requests_product_or_asking
-  CHECK (product_id IS NOT NULL OR status = 'asking');
+  CHECK (status IN ('pending', 'offer_pending', 'approved', 'asking', 'converted', 'rejected'));
+
+-- The custom-request path already requires product_id OR a free-text
+-- description. Widen that existing rule rather than adding a second,
+-- independent one beside it — CHECK constraints AND together, so a second
+-- constraint written as this spec first had it (product_id IS NOT NULL OR
+-- status = 'asking') would itself have rejected every asking row, since an
+-- asking row's description is also empty.
+ALTER TABLE catalogue_requests DROP CONSTRAINT catalogue_requests_product_or_description;
+ALTER TABLE catalogue_requests ADD CONSTRAINT catalogue_requests_product_or_description
+  CHECK (product_id IS NOT NULL OR description <> '' OR status = 'asking');
 
 CREATE INDEX idx_catalogue_requests_send ON catalogue_requests (send_id);
 CREATE INDEX idx_catalogue_requests_asking
   ON catalogue_requests (id) WHERE status = 'asking';
 ```
+
+### A note on sequencing
+
+This spec was first drafted against `catalogue-order-requests`' base shape —
+`product_id NOT NULL`, status only `pending`/`converted`/`rejected`, no
+`description`. Since then, `custom-order-requests` (a second branch stacked
+on that same base, built independently this session for an unrelated
+feature — customer-submitted custom requests with owner price offers) was
+merged into this branch too, at the user's request, so both features live on
+one branch instead of two. That merge already made `product_id` nullable and
+already extended `status`, for its own reasons. The migration above targets
+what is actually on this branch **after** that merge — confirmed directly
+against the local dev DB, not assumed from an earlier read of the schema.
 
 ### Why one row, not a separate pre-claim table
 
