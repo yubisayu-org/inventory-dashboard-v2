@@ -630,5 +630,18 @@ export interface CatalogueRequest {
   messageId: string
   botMessageId: string
   candidateSendCodeIds: number[] | null
+  /** The code this row is claimed against, if any (via send_code_id) —
+   *  joined from wa_send_codes. null when send_code_id is null (a
+   *  'catalogue'-source row, or an unresolved 'asking' row). Owner-read
+   *  path only, see getCatalogueRequests. */
+  resolvedCode: string | null
+  /** Which send resolvedCode belongs to — for a future "view post" link.
+   *  null exactly when resolvedCode is null. */
+  resolvedCodeSendId: number | null
+  /** For an 'asking' row, the candidate codes she could mean — batch-resolved
+   *  from candidateSendCodeIds by getCatalogueRequests so the dashboard's
+   *  disambiguation picker needs no extra client-side fetch. null when
+   *  candidateSendCodeIds is null/empty. */
+  candidates: { id: number; code: string; productId: number; productName: string; price: number }[] | null
 }
 

@@ -6,11 +6,13 @@ import {
   createDirectClaim, createAskingRequest, createRejectedClaim,
   resolveAskingCandidate, findRequestByBotMessage,
   createCatalogueRequest, convertCatalogueRequest, rejectCatalogueRequest,
+  getCatalogueRequests,
 } from "./catalogue-requests"
 
 const EVENT = `TESTWACR${process.hrtime.bigint()}`
 let postId: number
 let productId: number
+let productBId: number
 let sendId: number
 let sendCodeId: number
 // Customer handles created ad hoc by a test below (for the "resolved
@@ -28,6 +30,8 @@ before(async () => {
   postId = post.id as number
   const [product] = await sql`INSERT INTO products (name, store, price) VALUES ('Test Product', 'ZHG', 100000) RETURNING id`
   productId = product.id as number
+  const [productB] = await sql`INSERT INTO products (name, store, price) VALUES ('Test Product B', 'ZHG', 150000) RETURNING id`
+  productBId = productB.id as number
   const send = await createSend({ postId, event: EVENT, title: "t" })
   sendId = send.id
   const code = await attachProductToSend(sendId, productId)
@@ -48,6 +52,7 @@ after(async () => {
   await sql`DELETE FROM catalogue_post_products WHERE post_id = ${postId}`
   await sql`DELETE FROM catalogue_posts WHERE id = ${postId}`
   await sql`DELETE FROM products WHERE id = ${productId}`
+  await sql`DELETE FROM products WHERE id = ${productBId}`
   await sql`DELETE FROM events WHERE name = ${EVENT}`
   await sql.end()
 })
@@ -214,4 +219,49 @@ test("rejectCatalogueRequest on a catalogue-web row still queues nothing (no mes
   await rejectCatalogueRequest(id, "n/a")
   const after = await sql`SELECT count(*)::int AS n FROM wa_replies`
   assert.equal(after[0].n, before[0].n)
+})
+
+test("getCatalogueRequests includes source/resolvedCode for a pending WhatsApp row", async () => {
+  const { id } = await createDirectClaim({
+    customerHandle: "628177000001", productId, qty: 1, note: "K42 mau 1",
+    sendId, sendCodeId, sender: "628177000001", messageId: "her-t1",
+  })
+  const rows = await getCatalogueRequests(true)
+  const row = rows.find((r) => r.id === id)
+  assert.ok(row, "the whatsapp row must appear in the default pending view")
+  assert.equal(row.source, "whatsapp")
+  assert.ok(row.resolvedCode, "resolvedCode must be populated for a resolved row")
+  assert.equal(row.resolvedCodeSendId, sendId)
+  assert.equal(row.candidates, null)
+})
+
+test("getCatalogueRequests includes candidates for an asking row", async () => {
+  const codeB = await attachProductToSend(sendId, productBId)
+  const { id } = await createAskingRequest({
+    customerHandle: "628177000002", qty: 1, note: "yang mana ya",
+    sendId, sender: "628177000002", messageId: "her-t2", botMessageId: "bot-t2",
+    candidateSendCodeIds: [sendCodeId, codeB.id],
+  })
+  const rows = await getCatalogueRequests(true)
+  const row = rows.find((r) => r.id === id)
+  assert.ok(row, "an asking row must appear in the default pending view (asking added to the status filter)")
+  assert.equal(row.status, "asking")
+  assert.equal(row.resolvedCode, null)
+  assert.ok(row.candidates)
+  assert.equal(row.candidates!.length, 2)
+  const candidateIds = row.candidates!.map((c) => c.id).sort((a, b) => a - b)
+  assert.deepEqual(candidateIds, [sendCodeId, codeB.id].sort((a, b) => a - b))
+})
+
+test("getCatalogueRequests(false) still includes a rejected closed-trip row, but true does not", async () => {
+  const { id } = await createRejectedClaim({
+    customerHandle: "628177000003", qty: 1, note: "A21 mau 1",
+    sendId, sender: "628177000003", messageId: "her-t3",
+  })
+  const pending = await getCatalogueRequests(true)
+  assert.equal(pending.some((r) => r.id === id), false)
+  const all = await getCatalogueRequests(false)
+  const row = all.find((r) => r.id === id)
+  assert.ok(row)
+  assert.equal(row.status, "rejected")
 })

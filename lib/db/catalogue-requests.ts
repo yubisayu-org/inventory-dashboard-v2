@@ -9,7 +9,10 @@ import { calcAbroadPrice } from "../pricing"
 import { getCountryRate } from "./catalog"
 import { queueText, queueReaction } from "./replies"
 
-function toRequest(r: Record<string, unknown>): CatalogueRequest {
+type Candidate = { id: number; code: string; productId: number; productName: string; price: number }
+
+function toRequest(r: Record<string, unknown>, candidateMap?: Map<number, Candidate>): CatalogueRequest {
+  const candidateIds = (r.candidate_send_code_ids as number[] | null | undefined) ?? null
   return {
     id: r.id as number,
     customerHandle: r.customer_handle as string,
@@ -41,7 +44,18 @@ function toRequest(r: Record<string, unknown>): CatalogueRequest {
     sender: (r.sender as string | undefined) ?? "",
     messageId: (r.message_id as string | undefined) ?? "",
     botMessageId: (r.bot_message_id as string | undefined) ?? "",
-    candidateSendCodeIds: (r.candidate_send_code_ids as number[] | null | undefined) ?? null,
+    candidateSendCodeIds: candidateIds,
+    // The two explicit-column callers below don't SELECT resolved_code/
+    // resolved_code_send_id either — undefined falls back to null, same
+    // convention as the WhatsApp fields above.
+    resolvedCode: (r.resolved_code as string | null | undefined) ?? null,
+    resolvedCodeSendId: (r.resolved_code_send_id as number | null | undefined) ?? null,
+    // Only getCatalogueRequests passes a candidateMap (built from a batched
+    // lookup across all rows); the two explicit-column callers above have no
+    // map and no candidate_send_code_ids column, so candidates stays null.
+    candidates: candidateIds && candidateIds.length > 0 && candidateMap
+      ? candidateIds.map((cid) => candidateMap.get(cid)).filter((c): c is Candidate => c != null)
+      : null,
   }
 }
 
@@ -96,10 +110,14 @@ export async function getCatalogueRequestsByHandle(
     WHERE lower(replace(r.customer_handle, '@', '')) = ${normalizeId(handle)}
     ORDER BY r.created_at DESC
   `
-  return rows.map(toRequest)
+  return rows.map((r) => toRequest(r))
 }
 
-/** Staff path. LEFT JOIN for the same reason as above. */
+/** Staff path. LEFT JOIN for the same reason as above. Also surfaces the
+ *  WhatsApp claim-inbox fields (source/sendId/etc.), the resolved code for a
+ *  claimed row (via the wa_send_codes join), and — for an 'asking' row — its
+ *  full candidate list, batch-resolved in one extra query below (never
+ *  N+1). */
 export async function getCatalogueRequests(
   onlyPending: boolean,
   db: DBExecutor = sql,
@@ -110,13 +128,17 @@ export async function getCatalogueRequests(
                r.description, r.reference_image_url,
                r.qty, r.note, r.status, r.staff_note, r.converted_order_id, r.created_at,
                r.country_id, c.name AS country_name, r.valas, r.gram, r.estimated_price,
-               r.post_id, h.default_event
+               r.post_id, h.default_event,
+               r.source, r.send_id, r.send_code_id, r.sender, r.message_id,
+               r.bot_message_id, r.candidate_send_code_ids,
+               sc.code AS resolved_code, sc.send_id AS resolved_code_send_id
         FROM catalogue_requests r
         LEFT JOIN products p ON p.id = r.product_id
         LEFT JOIN countries c ON c.id = r.country_id
         LEFT JOIN catalogue_posts cp ON cp.id = r.post_id
         LEFT JOIN catalogue_highlights h ON h.id = cp.highlight_id
-        WHERE r.status IN ('pending', 'offer_pending', 'approved')
+        LEFT JOIN wa_send_codes sc ON sc.id = r.send_code_id
+        WHERE r.status IN ('pending', 'asking', 'offer_pending', 'approved')
         ORDER BY r.created_at ASC
       `
     : await db`
@@ -124,15 +146,35 @@ export async function getCatalogueRequests(
                r.description, r.reference_image_url,
                r.qty, r.note, r.status, r.staff_note, r.converted_order_id, r.created_at,
                r.country_id, c.name AS country_name, r.valas, r.gram, r.estimated_price,
-               r.post_id, h.default_event
+               r.post_id, h.default_event,
+               r.source, r.send_id, r.send_code_id, r.sender, r.message_id,
+               r.bot_message_id, r.candidate_send_code_ids,
+               sc.code AS resolved_code, sc.send_id AS resolved_code_send_id
         FROM catalogue_requests r
         LEFT JOIN products p ON p.id = r.product_id
         LEFT JOIN countries c ON c.id = r.country_id
         LEFT JOIN catalogue_posts cp ON cp.id = r.post_id
         LEFT JOIN catalogue_highlights h ON h.id = cp.highlight_id
+        LEFT JOIN wa_send_codes sc ON sc.id = r.send_code_id
         ORDER BY r.created_at DESC
       `
-  return rows.map(toRequest)
+
+  // Batch-resolve every row's candidate codes in ONE additional query
+  // (not N+1) — collect every candidate id across all rows first.
+  const allCandidateIds = rows.flatMap((r) => (r.candidate_send_code_ids as number[] | null) ?? [])
+  const candidateRows = allCandidateIds.length > 0
+    ? await db`
+        SELECT c.id, c.code, c.product_id, p.name AS product_name, c.price
+        FROM wa_send_codes c JOIN products p ON p.id = c.product_id
+        WHERE c.id = ANY(${allCandidateIds})
+      `
+    : []
+  const candidateById = new Map<number, Candidate>(candidateRows.map((c) => [c.id as number, {
+    id: c.id as number, code: c.code as string, productId: c.product_id as number,
+    productName: c.product_name as string, price: Number(c.price),
+  }]))
+
+  return rows.map((r) => toRequest(r, candidateById))
 }
 
 /** Converts one request into a real order. A Fix request already carries
