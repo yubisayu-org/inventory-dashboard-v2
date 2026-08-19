@@ -794,6 +794,36 @@ export async function getWarehouses(): Promise<WarehouseRow[]> {
 }
 
 /**
+ * Add a shipping origin.
+ *
+ * Deliberately does NOT touch is_default: warehouses_one_default is a unique
+ * index, so promoting a new warehouse would have to demote the old one, and
+ * silently moving the default origin changes which rates every unspecified
+ * lookup uses.
+ *
+ * Returns whether the new code has any jne_rates rows. It usually will not,
+ * and until it does — or a Biteship origin is set — every customer's ongkir
+ * from this warehouse resolves to 0, which is free shipping by omission.
+ */
+export async function createWarehouse(data: {
+  code: string
+  name: string
+}): Promise<{ id: number; hasRates: boolean }> {
+  const code = data.code.trim().toUpperCase()
+  const [existing] = await sql`SELECT id FROM warehouses WHERE upper(code) = ${code}`
+  if (existing) throw new Error(`A warehouse with code ${code} already exists`)
+
+  const [row] = await sql`
+    INSERT INTO warehouses (code, name) VALUES (${code}, ${data.name.trim()})
+    RETURNING id
+  `
+  const [rates] = await sql<{ n: string }[]>`
+    SELECT count(*) AS n FROM jne_rates WHERE upper(trim(origin_code)) = ${code}
+  `
+  return { id: row.id as number, hasRates: Number(rates.n) > 0 }
+}
+
+/**
  * Set a warehouse's shipping origin.
  *
  * Nothing prices from a warehouse without one — rate lookups fall back to

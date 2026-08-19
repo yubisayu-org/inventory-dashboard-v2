@@ -36,6 +36,11 @@ export default function WarehouseOriginSection() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
+  const [adding, setAdding] = useState(false)
+  const [newCode, setNewCode] = useState("")
+  const [newName, setNewName] = useState("")
+  const [addWarning, setAddWarning] = useState("")
+
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Bumps per search so a slower earlier response cannot overwrite a newer one.
   const seq = useRef(0)
@@ -126,11 +131,58 @@ export default function WarehouseOriginSection() {
     }
   }
 
+  async function addWarehouse() {
+    const code = newCode.trim()
+    const name = newName.trim()
+    setError("")
+    setAddWarning("")
+    if (!code || !name) {
+      setError("Code and name are both required.")
+      return
+    }
+    setSaving(true)
+    try {
+      const res = await fetch("/api/warehouse-origin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "create", code, name }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? "Failed to add")
+      await load()
+      setSelectedId(data.id)
+      setNewCode("")
+      setNewName("")
+      setAdding(false)
+      if (!data.hasRates) {
+        // Said out loud rather than discovered on an invoice: with no rate
+        // rows and no origin, every customer's ongkir from here is 0.
+        setAddWarning(
+          `No JNE rates exist for origin "${code.toUpperCase()}". Until you set an origin below, ` +
+            "shipping from this warehouse will price at zero.",
+        )
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to add")
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <div className="rounded-xl border border-cream-border bg-white p-4 flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <h2 className="text-sm font-semibold text-foreground">Warehouse shipping origin</h2>
-        {saved && <span className="text-xs text-green-600">Saved</span>}
+        <div className="flex items-center gap-3">
+          {saved && <span className="text-xs text-green-600">Saved</span>}
+          <button
+            type="button"
+            onClick={() => { setAdding((v) => !v); setError(""); setAddWarning("") }}
+            className="px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-xs font-medium hover:border-brand hover:text-brand transition-colors"
+          >
+            {adding ? "Cancel" : "+ Add warehouse"}
+          </button>
+        </div>
       </div>
       <p className="text-xs text-gray-500">
         Where each warehouse ships from. Rates are priced origin to destination, so a
@@ -140,6 +192,44 @@ export default function WarehouseOriginSection() {
       {error && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
+        </div>
+      )}
+
+      {addWarning && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          {addWarning}
+        </div>
+      )}
+
+      {adding && (
+        <div className="rounded-lg border border-cream-border bg-cream p-3 flex flex-col gap-2">
+          <label className="text-xs text-gray-500">Code — must match jne_rates.origin_code to price from the rate table</label>
+          <input
+            className={inputCls}
+            value={newCode}
+            onChange={(e) => setNewCode(e.target.value)}
+            placeholder="JAKARTA"
+            maxLength={20}
+          />
+          <label className="text-xs text-gray-500">Name</label>
+          <input
+            className={inputCls}
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="Jakarta"
+            maxLength={80}
+          />
+          <button
+            type="button"
+            onClick={addWarehouse}
+            disabled={saving}
+            className="self-start px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
+          >
+            {saving ? "Adding…" : "Add warehouse"}
+          </button>
+          <p className="text-xs text-gray-500">
+            The default warehouse is not changed by adding one.
+          </p>
         </div>
       )}
 
