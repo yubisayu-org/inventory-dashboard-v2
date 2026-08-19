@@ -687,6 +687,21 @@ export async function replaceTierFeeBrackets(
 
 // ─── Countries ─────────────────────────────────────────────────────────────
 
+/** One country's kurs/cargoPerKg for a server-side price computation —
+ *  the single-row counterpart to getCountries()'s full list. Used by the
+ *  custom-request edit/preview-price paths, both of which need only one
+ *  country's rate, not the whole dropdown list. */
+export async function getCountryRate(
+  countryId: number,
+  db: DBExecutor = sql,
+): Promise<{ kurs: number; cargoPerKg: number } | null> {
+  const [row] = await db`SELECT kurs, cargo_per_kg FROM countries WHERE id = ${countryId}`
+  if (!row) return null
+  // kurs is NUMERIC(12,4) — postgres-js returns it as a string, so coerce,
+  // same as getCountries() above.
+  return { kurs: Number(row.kurs) || 0, cargoPerKg: (row.cargo_per_kg as number) ?? 0 }
+}
+
 export async function getCountries(): Promise<CountryRow[]> {
   const rows = await sql`
     SELECT id, name, currency, kurs, flat_kurs, cargo_per_kg, created_at, updated_at

@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { getVisibleCataloguePosts } from "@/lib/db"
 import catalogueSql from "@/lib/db-catalogue-public"
 
@@ -22,9 +22,18 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: corsHeaders() })
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const highlightIdRaw = req.nextUrl.searchParams.get("highlightId")
+  let highlightId: number | undefined
+  if (highlightIdRaw) {
+    highlightId = Number(highlightIdRaw)
+    if (!Number.isInteger(highlightId) || highlightId < 1) {
+      return NextResponse.json({ error: "highlightId must be a positive integer" }, { status: 400, headers: corsHeaders() })
+    }
+  }
+
   try {
-    const posts = await getVisibleCataloguePosts(catalogueSql)
+    const posts = await getVisibleCataloguePosts(catalogueSql, highlightId)
     const productIds = [...new Set(posts.flatMap((p) => p.productIds))]
     const products = productIds.length
       ? await catalogueSql`SELECT id, name, store, price FROM products WHERE id IN ${catalogueSql(productIds)}`

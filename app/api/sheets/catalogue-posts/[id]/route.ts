@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireOwner } from "@/lib/api"
-import { setCataloguePostVisible } from "@/lib/db"
+import { setCataloguePostVisible, setCataloguePostHighlight } from "@/lib/db"
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -18,10 +18,21 @@ export async function PUT(req: NextRequest, { params }: Params) {
 
   try {
     const body = await req.json()
-    if (typeof body.visible !== "boolean") {
-      return NextResponse.json({ error: "visible must be a boolean" }, { status: 400 })
+    if (body.visible === undefined && body.highlightId === undefined) {
+      return NextResponse.json({ error: "visible or highlightId is required" }, { status: 400 })
     }
-    await setCataloguePostVisible(id, body.visible)
+    if (body.visible !== undefined) {
+      if (typeof body.visible !== "boolean") {
+        return NextResponse.json({ error: "visible must be a boolean" }, { status: 400 })
+      }
+      await setCataloguePostVisible(id, body.visible)
+    }
+    if (body.highlightId !== undefined) {
+      if (body.highlightId !== null && (!Number.isInteger(body.highlightId) || body.highlightId < 1)) {
+        return NextResponse.json({ error: "highlightId must be a positive integer or null" }, { status: 400 })
+      }
+      await setCataloguePostHighlight(id, body.highlightId)
+    }
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error("Failed to update catalogue post:", err)

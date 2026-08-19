@@ -3,8 +3,9 @@ import postgres from "postgres"
 // Dedicated connection for the PUBLIC, no-login catalogue endpoints
 // (app/api/public/catalogue/*). Uses the `catalogue_public` role, which enforces
 // column-level grants: SELECT on (id, name, store, price) only on products
-// (never cost/profit), and SELECT/INSERT on catalogue_requests
-// (see supabase/migrations/059_catalogue_public_role.sql).
+// (never cost/profit), and SELECT/INSERT/UPDATE (status, updated_at) on
+// catalogue_requests (see supabase/migrations/059_catalogue_public_role.sql
+// and 064_custom_request_edit_approval.sql for the UPDATE grant).
 // NOTE: The role prevents reading product cost/profit (real DB-layer guarantee
 // via column grants), but does NOT enforce per-customer row scoping on
 // catalogue_requests — that responsibility lives in the API route's WHERE clause

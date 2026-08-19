@@ -1,6 +1,11 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js"
 
 const CATALOGUE_MEDIA_BUCKET = "catalogue-media"
+// Separate, policy-constrained bucket for anonymous customer reference-photo
+// uploads (custom order requests) — see migration 062. Kept distinct from
+// CATALOGUE_MEDIA_BUCKET (staff-only catalogue post media) so the anonymous
+// upload path is never widened onto the shared staff bucket.
+const REFERENCE_BUCKET = "catalogue-reference"
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024
 const MAX_VIDEO_BYTES = 50 * 1024 * 1024
 
@@ -155,4 +160,41 @@ export async function deleteCatalogueMedia(url: string): Promise<void> {
   if (error) {
     console.error(`Failed to delete orphaned catalogue media at ${path}:`, error.message)
   }
+}
+
+const EXT_BY_CONTENT_TYPE: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/gif": "gif",
+}
+
+/** Public path: lets an anonymous customer upload a reference photo
+ *  directly to Storage via a signed URL, without ever needing a Supabase
+ *  key in the browser (verified empirically: the returned uploadUrl works
+ *  with a plain unauthenticated `fetch(uploadUrl, {method:'PUT', ...})` —
+ *  no Authorization/apikey header required, matching Supabase's documented
+ *  signed-upload-URL contract). The caller
+ *  (app/api/public/catalogue/custom-upload-url/route.ts) is itself
+ *  public/no-login — this function does exactly what that route needs.
+ *  Images only (no video — reference photos, not catalogue post media),
+ *  reusing the same MAX_PHOTO_BYTES cap uploadCatalogueMedia enforces
+ *  server-side for the equivalent staff-upload case (this signed-URL path
+ *  can't enforce a byte cap itself since the browser uploads directly to
+ *  Storage — REFERENCE_BUCKET's own file_size_limit/allowed_mime_types,
+ *  set in migration 062, IS the real DB-enforced backstop; this cap is a
+ *  documentation anchor matching that policy, not a separate mechanism). */
+export async function createCatalogueUploadUrl(
+  contentType: string,
+): Promise<{ uploadUrl: string; publicUrl: string }> {
+  const ext = EXT_BY_CONTENT_TYPE[contentType]
+  if (!ext) throw new Error("contentType must be image/jpeg, image/png, image/webp, or image/gif")
+
+  const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+
+  const { data, error } = await storage().storage.from(REFERENCE_BUCKET).createSignedUploadUrl(path)
+  if (error) throw new Error(`Failed to create upload URL: ${error.message}`)
+
+  const { data: publicData } = storage().storage.from(REFERENCE_BUCKET).getPublicUrl(path)
+  return { uploadUrl: data.signedUrl, publicUrl: publicData.publicUrl }
 }
