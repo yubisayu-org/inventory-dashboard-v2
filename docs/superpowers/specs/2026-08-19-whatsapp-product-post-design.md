@@ -275,6 +275,47 @@ CREATE UNIQUE INDEX idx_wa_outbox_send
   ON wa_outbox (send_id) WHERE send_id IS NOT NULL;
 ```
 
+### Delivering a dashboard action to the group
+
+**Setuju**, **Tolak**, and an owner's pick in the ❔ picker (case C) all need
+to put something in the WhatsApp group — a ✅/❌ reaction, or the case C
+closing line — but they all run as a dashboard route, and the dashboard has
+no socket. This is the same constraint `wa_outbox` already exists to solve
+for a composed send, generalized to a reaction or a short quoted text instead
+of a photo-and-caption:
+
+```sql
+-- What a dashboard action needs the worker to say or react in the group,
+-- drained on the same kind of timer as wa_outbox. Exactly one of `reaction`
+-- or `text` is set per row.
+CREATE TABLE wa_replies (
+  id                 SERIAL PRIMARY KEY,
+  group_jid          TEXT NOT NULL,
+  quoted_message_id  TEXT NOT NULL DEFAULT '',
+  reaction           TEXT NOT NULL DEFAULT '',
+  text               TEXT NOT NULL DEFAULT '',
+  state              TEXT NOT NULL DEFAULT 'pending'
+                       CHECK (state IN ('pending', 'sent', 'failed')),
+  error              TEXT NOT NULL DEFAULT '',
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  sent_at            TIMESTAMPTZ
+);
+ALTER TABLE wa_replies ADD CONSTRAINT wa_replies_one_kind
+  CHECK ((reaction <> '') <> (text <> ''));
+CREATE INDEX idx_wa_replies_pending ON wa_replies (id) WHERE state = 'pending';
+```
+
+A live worker action (the customer's own 👍, or a code reply it is already
+handling in real time) never touches this table — it already holds the
+socket and the original message in hand, and replies or reacts directly, the
+same way `askWhoTheyAre` and the reaction handling in `worker/index.ts`
+already do. Only a dashboard-triggered action queues here. This also
+corrects the ❔ section's case C below: since the confirmation/candidates
+question is always sent synchronously and immediately by the worker the
+moment it detects ambiguity, it is always already in the group by the time
+an owner could act on the dashboard — case C queues one closing message, not
+two.
+
 ## Reposting to the next trip
 
 The photo and the tagged products are worth keeping; only the codes are
@@ -476,16 +517,19 @@ code claim does; the reply is matched against `candidate_send_code_ids`, not
 the whole send, so a code she types that wasn't among the options offered
 does not silently resolve here.
 
-**C — the owner answers first.** Picking a candidate in the inbox settles the
-row immediately — no waiting on a 👍 that may come tomorrow. The bot still
-posts **both** of its messages to the group, back to back, quoting her
-original text: the confirmation question it would have asked, *and* the
-closing line right under it — *"Sudah dicatat ya kak — K42 ×1 ✅"*. The
-question is never silently skipped; anyone scrolling the group later sees the
-full question-and-answer, not a claim that appears to have resolved itself. A
-👍 arriving afterwards finds `bot_message_id` already resolved (`status` no
-longer `asking`) and does nothing — idempotent by construction, since it can
-only ever move a row that is still `asking`.
+**C — the owner answers first.** The confirmation/candidates question (case A
+or B) is always posted **synchronously**, the moment the worker detects the
+ambiguity — before an owner could plausibly react from the dashboard, which
+has no socket of its own and reaches the group only through a queue the
+worker drains on a timer (see "Delivering a dashboard action to the group"
+below). So by the time the owner picks a candidate in the inbox, the question
+is already sitting in the group; picking a candidate settles the row
+immediately — no waiting on a 👍 that may come tomorrow — and queues exactly
+**one** new message: the closing line, quoting her original text —
+*"Sudah dicatat ya kak — K42 ×1 ✅"*. A 👍 arriving afterwards finds
+`bot_message_id` already resolved (`status` no longer `asking`) and does
+nothing — idempotent by construction, since it can only ever move a row that
+is still `asking`.
 
 **D — a reply to a closed trip's post.** She scrolls up and replies to last
 trip's post; the bot replies *"Maaf kak, trip LSJP sudah tutup 🙏"* per the
@@ -522,7 +566,10 @@ unchanged for a `catalogue`-source row, extended for `whatsapp`:
    row), customer, `product_id`, `unitPrice = wa_send_codes.price`,
    `unit = qty`, `note`.
 2. Write `converted_order_id` back and set `status = 'converted'`.
-3. For a WhatsApp row, react ✅ on her message (`message_id`).
+3. For a WhatsApp row, queue a ✅ reaction on her message (`message_id`) via
+   `wa_replies` — Setuju is a dashboard action, so it reaches the group
+   through the same queue as everything else in "Delivering a dashboard
+   action to the group" above, not a direct call.
 
 Refused when the row has no resolvable customer, when its event is closed, or
 when `converted_order_id` is already set — the existing guarded-`UPDATE`
@@ -530,8 +577,8 @@ race-protection (`FOR UPDATE` + re-checked `WHERE status = 'pending'`) covers
 a `pending` WhatsApp row exactly as it already does a catalogue-web one; an
 `asking` row is not eligible for Setuju until it has resolved to `pending`.
 
-**Tolak** sets `rejected`, and for a WhatsApp row reacts ❌, so she is not left
-waiting on something that never existed.
+**Tolak** sets `rejected`, and for a WhatsApp row queues a ❌ reaction the
+same way, so she is not left waiting on something that never existed.
 
 From that point it is an ordinary order: it appears on the Shopping List, is
 bought, dispatched and invoiced like anything typed on the Order page — the
