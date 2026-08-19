@@ -7,6 +7,7 @@ import { normalizeId } from "./helpers"
 import type { CatalogueRequest } from "./types"
 import { calcAbroadPrice } from "../pricing"
 import { getCountryRate } from "./catalog"
+import { queueText } from "./replies"
 
 function toRequest(r: Record<string, unknown>): CatalogueRequest {
   return {
@@ -315,4 +316,136 @@ export async function reopenCatalogueRequest(
     RETURNING id
   `
   if (rows.length === 0) throw new Error("Request not found or already handled")
+}
+
+// --- WhatsApp claim inbox -------------------------------------------------
+// The five functions below turn a WhatsApp group reply into the same
+// catalogue_requests inbox row the public catalogue path writes, sourced
+// 'whatsapp' instead of 'catalogue'. See migration 075 for the schema and
+// docs/superpowers/specs/2026-08-19-whatsapp-product-post-design.md for the
+// direct/asking/rejected shape.
+
+/** She quoted (or landed on) a code that resolves to exactly one product —
+ *  the common case. Writes straight to 'pending', same status a Fix
+ *  request lands on. */
+export async function createDirectClaim(
+  input: {
+    customerHandle: string; productId: number; qty: number; note: string
+    sendId: number; sendCodeId: number; sender: string; messageId: string
+  },
+  db: DBExecutor = sql,
+): Promise<{ id: number }> {
+  const [row] = await db`
+    INSERT INTO catalogue_requests
+      (customer_handle, product_id, qty, note, source, send_id, send_code_id, sender, message_id, status)
+    VALUES
+      (${input.customerHandle}, ${input.productId}, ${input.qty}, ${input.note},
+       'whatsapp', ${input.sendId}, ${input.sendCodeId}, ${input.sender}, ${input.messageId}, 'pending')
+    RETURNING id
+  `
+  return { id: row.id as number }
+}
+
+/** She named something ambiguous enough to match more than one candidate
+ *  code on the send — no product_id yet, status 'asking' until either she
+ *  or the owner picks one via resolveAskingCandidate. product_id NULL here
+ *  is what the 'asking' status check constraint exists for. */
+export async function createAskingRequest(
+  input: {
+    customerHandle: string; qty: number; note: string; sendId: number
+    sender: string; messageId: string; botMessageId: string; candidateSendCodeIds: number[]
+  },
+  db: DBExecutor = sql,
+): Promise<{ id: number }> {
+  const [row] = await db`
+    INSERT INTO catalogue_requests
+      (customer_handle, qty, note, source, send_id, sender, message_id, bot_message_id,
+       candidate_send_code_ids, status)
+    VALUES
+      (${input.customerHandle}, ${input.qty}, ${input.note}, 'whatsapp', ${input.sendId},
+       ${input.sender}, ${input.messageId}, ${input.botMessageId},
+       ${input.candidateSendCodeIds}, 'asking')
+    RETURNING id
+  `
+  return { id: row.id as number }
+}
+
+/** Written when a send's event is not the group's currently-bound one — she
+ *  quoted (or landed on, unquoted) a trip that has already closed.
+ *  product_id is NULL and status is 'rejected' (not 'asking'), so unlike
+ *  createDirectClaim/createAskingRequest this row only satisfies the
+ *  catalogue_requests_product_or_description check constraint if
+ *  description is non-empty — set from the note, mirroring how a custom
+ *  catalogue request's description carries the customer's own text. */
+export async function createRejectedClaim(
+  input: { customerHandle: string; qty: number; note: string; sendId: number; sender: string; messageId: string },
+  db: DBExecutor = sql,
+): Promise<{ id: number }> {
+  const [row] = await db`
+    INSERT INTO catalogue_requests
+      (customer_handle, qty, note, description, source, send_id, sender, message_id, status, staff_note)
+    VALUES
+      (${input.customerHandle}, ${input.qty}, ${input.note}, ${input.note}, 'whatsapp', ${input.sendId},
+       ${input.sender}, ${input.messageId}, 'rejected', 'trip sudah tutup')
+    RETURNING id
+  `
+  return { id: row.id as number }
+}
+
+/**
+ * Settle an 'asking' row onto one of its candidates. Guarded on
+ * `status = 'asking'` so a second call — her 👍 arriving after the owner
+ * already picked, or vice versa — is a no-op, which is what makes both
+ * sides of the ❔ question safely idempotent.
+ *
+ * `resolvedBy: "owner"` additionally queues the closing group message,
+ * because a dashboard action has no socket of its own (see
+ * "Delivering a dashboard action to the group" in the spec). The customer
+ * side never queues one — she is either already looking at the bot's live
+ * reply, or the worker sends it inline in the same pass that called this.
+ */
+export async function resolveAskingCandidate(
+  id: number,
+  sendCodeId: number,
+  resolvedBy: "customer" | "owner",
+  db: DBExecutor = sql,
+): Promise<void> {
+  const [resolved] = await db`
+    UPDATE catalogue_requests
+    SET product_id = (SELECT product_id FROM wa_send_codes WHERE id = ${sendCodeId}),
+        send_code_id = ${sendCodeId},
+        status = 'pending',
+        updated_at = NOW()
+    WHERE id = ${id} AND status = 'asking'
+    RETURNING message_id, qty
+  `
+  if (!resolved) return
+  if (resolvedBy !== "owner") return
+
+  const [send] = await db`
+    SELECT s.group_jid, sc.code
+    FROM wa_sends s JOIN wa_send_codes sc ON sc.id = ${sendCodeId}
+    WHERE s.id = sc.send_id
+  `
+  await queueText(
+    send.group_jid as string,
+    resolved.message_id as string,
+    `Sudah dicatat ya kak — ${send.code} ×${resolved.qty} ✅`,
+    db,
+  )
+}
+
+/** Find the still-open 'asking' row the bot itself posted (matched by the
+ *  bot's own outgoing message id, not the customer's) — how a 👍 reaction
+ *  to the bot's question routes back to the row it belongs to. Once
+ *  resolved the row falls out of this lookup (status is no longer
+ *  'asking'), so a reaction arriving late finds nothing to act on. */
+export async function findRequestByBotMessage(
+  botMessageId: string,
+  db: DBExecutor = sql,
+): Promise<CatalogueRequest | null> {
+  const [row] = await db`
+    SELECT * FROM catalogue_requests WHERE bot_message_id = ${botMessageId} AND status = 'asking'
+  `
+  return row ? toRequest(row) : null
 }
