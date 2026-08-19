@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireOwner } from "@/lib/api"
-import { convertCatalogueRequest, rejectCatalogueRequest, editCatalogueRequest, cancelEditCatalogueRequest, reopenCatalogueRequest } from "@/lib/db"
+import { convertCatalogueRequest, rejectCatalogueRequest, editCatalogueRequest, cancelEditCatalogueRequest, reopenCatalogueRequest, resolveAskingCandidate } from "@/lib/db"
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -98,7 +98,21 @@ export async function PUT(req: NextRequest, { params }: Params) {
       }
     }
 
-    return NextResponse.json({ error: "action must be 'convert', 'reject', 'edit', 'cancel-edit', or 'reopen'" }, { status: 400 })
+    if (body.action === "resolve-candidate") {
+      const sendCodeId = body.sendCodeId
+      if (typeof sendCodeId !== "number" || !Number.isInteger(sendCodeId) || sendCodeId <= 0) {
+        return NextResponse.json({ error: "sendCodeId must be a positive integer" }, { status: 400 })
+      }
+      try {
+        await resolveAskingCandidate(id, sendCodeId, "owner")
+        return NextResponse.json({ success: true })
+      } catch (err) {
+        console.error("resolve-candidate failed:", err)
+        return NextResponse.json({ error: "Failed to resolve" }, { status: 500 })
+      }
+    }
+
+    return NextResponse.json({ error: "action must be 'convert', 'reject', 'edit', 'cancel-edit', 'reopen', or 'resolve-candidate'" }, { status: 400 })
   } catch (err) {
     console.error("Failed to update order request:", err)
     return NextResponse.json({ error: err instanceof Error ? err.message : "Failed to update request" }, { status: 500 })
