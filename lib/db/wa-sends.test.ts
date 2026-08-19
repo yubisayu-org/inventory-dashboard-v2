@@ -4,6 +4,7 @@ import sql from "@/lib/db-pool"
 import {
   createSend, getSend, listSendCodes, attachProductToSend,
   getSendCodeByCode, getOpenSendForGroup, getSendByMessage, setSendMessageId,
+  listRepostLibrary,
 } from "./wa-sends"
 
 const EVENT = `TESTSEND${process.hrtime.bigint()}`
@@ -121,4 +122,29 @@ test("getSendByMessage resolves a quoted post back to its send", async () => {
   await setSendMessageId(sendId, "msg-99", GROUP)
   const found = await getSendByMessage(GROUP, "msg-99")
   assert.equal(found?.id, sendId)
+})
+
+test("listRepostLibrary lists only posts that have been sent at least once, with an order count", async () => {
+  // postId/productId/EVENT already exist from this file's before(); create
+  // a send, attach a product, mark it sent, and convert one claim against it
+  // to give it a real order count.
+  const send = await createSend({ postId, event: EVENT, title: "Repost me" })
+  await attachProductToSend(send.id, productAId)
+  await setSendMessageId(send.id, "lib-msg-1", GROUP)
+
+  const library = await listRepostLibrary()
+  const entry = library.find((e) => e.postId === postId)
+  assert.ok(entry, "a post with at least one sent send must appear")
+  assert.equal(entry!.taggedCount, 1)
+  assert.equal(entry!.lastEvent, EVENT)
+  assert.ok(entry!.lastSentAt)
+})
+
+test("listRepostLibrary excludes a post that has never been sent (draft only)", async () => {
+  const draftPostId = (await sql`INSERT INTO catalogue_posts (media_url, media_type) VALUES ('https://example.com/draft.jpg', 'photo') RETURNING id`)[0].id as number
+  const draftSend = await createSend({ postId: draftPostId, event: EVENT, title: "never sent" })
+  const library = await listRepostLibrary()
+  assert.equal(library.some((e) => e.postId === draftPostId), false)
+  await sql`DELETE FROM wa_sends WHERE id = ${draftSend.id}`
+  await sql`DELETE FROM catalogue_posts WHERE id = ${draftPostId}`
 })

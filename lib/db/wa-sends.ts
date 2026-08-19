@@ -181,6 +181,67 @@ export async function getSendByMessage(
   return row ? toSend(row) : null
 }
 
+export interface RepostCandidate {
+  postId: number
+  mediaUrl: string
+  title: string
+  taggedCount: number
+  lastEvent: string
+  lastSentAt: string
+  orderCount: number
+}
+
+/**
+ * Past posts worth sending again — only ones that have gone out at least
+ * once (a pure draft, never sent, isn't "past" anything). One row per post,
+ * summarizing its most recent send (title, event, when it went out, and how
+ * many products that specific send tagged — what the composer would
+ * pre-fill if the owner reposts it) alongside, across every send of the
+ * post, how many of its requests converted to real orders — the
+ * all-time performance signal that makes a post worth repeating.
+ *
+ * taggedCount deliberately reflects only the LATEST send, not a sum across
+ * every repost ever made: summing would double-count a product tagged again
+ * on each repost and mislead the composer about how many codes the post
+ * currently carries. orderCount deliberately does the opposite (sums across
+ * all sends) because conversions are a track record, not a snapshot.
+ */
+export async function listRepostLibrary(limit = 30, db: DBExecutor = sql): Promise<RepostCandidate[]> {
+  const rows = await db`
+    SELECT
+      cp.id AS post_id,
+      cp.media_url,
+      latest.title,
+      (SELECT count(*) FROM wa_send_codes sc WHERE sc.send_id = latest.send_id) AS tagged_count,
+      latest.event AS last_event,
+      latest.message_sent_at AS last_sent_at,
+      (
+        SELECT count(*) FROM catalogue_requests r
+        JOIN wa_sends s3 ON s3.id = r.send_id
+        WHERE s3.post_id = cp.id AND r.status = 'converted'
+      ) AS order_count
+    FROM catalogue_posts cp
+    JOIN LATERAL (
+      SELECT s.id AS send_id, s.title, s.event, s.updated_at AS message_sent_at
+      FROM wa_sends s
+      WHERE s.post_id = cp.id AND s.message_id <> ''
+      ORDER BY s.id DESC
+      LIMIT 1
+    ) latest ON true
+    ORDER BY latest.message_sent_at DESC NULLS LAST
+    LIMIT ${limit}
+  `
+  return rows.map((r) => ({
+    postId: r.post_id as number,
+    mediaUrl: r.media_url as string,
+    title: r.title as string,
+    taggedCount: Number(r.tagged_count),
+    lastEvent: r.last_event as string,
+    lastSentAt: (r.last_sent_at as Date).toISOString(),
+    orderCount: Number(r.order_count),
+  }))
+}
+
 export async function setSendMessageId(
   id: number,
   messageId: string,
