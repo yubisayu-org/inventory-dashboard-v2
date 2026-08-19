@@ -62,6 +62,21 @@ export async function getAllCataloguePosts(db: DBExecutor = sql): Promise<Catalo
   return rows.map(toPost)
 }
 
+/** Staff path: one post by id, including its tagged `catalogue_post_products`
+ *  (`productIds`) — the composer's "Pakai post lama" pre-fill reads this to
+ *  learn which products a past post was tagged with. */
+export async function getCataloguePost(id: number, db: DBExecutor = sql): Promise<CataloguePost | null> {
+  const rows = await db.unsafe(
+    `
+      ${POST_SELECT}
+      WHERE p.id = $1
+      GROUP BY p.id
+    `,
+    [id],
+  )
+  return rows.length > 0 ? toPost(rows[0]) : null
+}
+
 export async function createCataloguePost(
   data: { mediaUrl: string; mediaType: "photo" | "video"; caption: string; productIds: number[]; highlightId?: number | null },
   db: DBExecutor = sql,

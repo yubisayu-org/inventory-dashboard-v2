@@ -1,8 +1,29 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireOwner } from "@/lib/api"
-import { setCataloguePostVisible, setCataloguePostHighlight } from "@/lib/db"
+import { setCataloguePostVisible, setCataloguePostHighlight, getCataloguePost } from "@/lib/db"
 
 type Params = { params: Promise<{ id: string }> }
+
+/** One post, including its tagged `productIds` — the composer's "Pakai post
+ *  lama" pre-fill reads this to learn which products a past post carried,
+ *  so it can re-attach each to the new send in order. Owner-only, matching
+ *  every other route this composer talks to. */
+export async function GET(_req: NextRequest, { params }: Params) {
+  const { session, error: authError } = await requireSession()
+  if (authError) return authError
+  const ownerError = requireOwner(session)
+  if (ownerError) return ownerError
+
+  const { id: idStr } = await params
+  const id = Number(idStr)
+  if (!Number.isInteger(id) || id < 1) {
+    return NextResponse.json({ error: "Invalid id" }, { status: 400 })
+  }
+
+  const post = await getCataloguePost(id)
+  if (!post) return NextResponse.json({ error: "Not found" }, { status: 404 })
+  return NextResponse.json({ post }, { headers: { "Cache-Control": "no-store" } })
+}
 
 export async function PUT(req: NextRequest, { params }: Params) {
   const { session, error: authError } = await requireSession()
