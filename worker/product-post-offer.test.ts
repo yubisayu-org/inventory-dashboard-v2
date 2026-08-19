@@ -176,7 +176,7 @@ test("trySendOfferThumbsUp settles a one-candidate offer", async () => {
     groupJid: GROUP, messageId: "her-6", sender: HER, text, quoted: "",
   }, resolution)
 
-  const emoji = await trySendOfferThumbsUp(GROUP, "bot-msg-6")
+  const emoji = await trySendOfferThumbsUp(GROUP, "bot-msg-6", "👍", HER)
   assert.equal(emoji, "✅")
   const [row] = await sql`SELECT status FROM catalogue_requests WHERE message_id = 'her-6'`
   assert.equal(row.status, "pending")
@@ -191,6 +191,46 @@ test("trySendOfferThumbsUp does nothing for a multi-candidate offer", async () =
   await askDisambiguation(sock, {
     groupJid: GROUP, messageId: "her-7", sender: HER, text: "bostonnya mau 1", quoted: "",
   }, resolution)
-  const emoji = await trySendOfferThumbsUp(GROUP, "bot-msg-7")
+  const emoji = await trySendOfferThumbsUp(GROUP, "bot-msg-7", "👍", HER)
   assert.equal(emoji, null)
+})
+
+test("trySendOfferThumbsUp ignores a reaction that isn't a positive answer (a 👎, or a removed reaction reported as empty text)", async () => {
+  const text = "kuni nya mau 1"
+  const resolution = await resolveProductPostClaim({
+    groupJid: GROUP, messageId: "her-8", sender: HER, text, quoted: "",
+  })
+  if (resolution.kind !== "needsDisambiguation") return
+  const sock = fakeSock("bot-msg-8")
+  await askDisambiguation(sock, {
+    groupJid: GROUP, messageId: "her-8", sender: HER, text, quoted: "",
+  }, resolution)
+
+  assert.equal(await trySendOfferThumbsUp(GROUP, "bot-msg-8", "👎", HER), null, "a negative reaction must not settle it")
+  assert.equal(await trySendOfferThumbsUp(GROUP, "bot-msg-8", "", HER), null, "a removed reaction (empty text) must not settle it")
+
+  const [row] = await sql`SELECT status FROM catalogue_requests WHERE message_id = 'her-8'`
+  assert.equal(row.status, "asking", "the offer must still be open — neither reaction was hers agreeing")
+})
+
+test("trySendOfferThumbsUp does nothing for somebody else's thumb on her offer", async () => {
+  const OTHER = "628199999999"
+  const text = "kuni nya mau 1"
+  const resolution = await resolveProductPostClaim({
+    groupJid: GROUP, messageId: "her-9", sender: HER, text, quoted: "",
+  })
+  if (resolution.kind !== "needsDisambiguation") return
+  const sock = fakeSock("bot-msg-9")
+  await askDisambiguation(sock, {
+    groupJid: GROUP, messageId: "her-9", sender: HER, text, quoted: "",
+  }, resolution)
+
+  const emoji = await trySendOfferThumbsUp(GROUP, "bot-msg-9", "👍", OTHER)
+  assert.equal(emoji, null, "a stranger's thumb must not settle another customer's claim")
+  const [row] = await sql`SELECT status FROM catalogue_requests WHERE message_id = 'her-9'`
+  assert.equal(row.status, "asking")
+})
+
+test("trySendOfferThumbsUp rejects an empty quoted-message id outright", async () => {
+  assert.equal(await trySendOfferThumbsUp(GROUP, "", "👍", HER), null)
 })

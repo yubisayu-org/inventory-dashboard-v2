@@ -15,7 +15,10 @@ export async function sendNextReply(sock: WASocket): Promise<boolean> {
   const item = await nextPendingReply()
   if (item === null) return false
 
-  const key = { remoteJid: item.groupJid, id: item.quotedMessageId, fromMe: false }
+  // participant: without it, Baileys' own quoting logic falls back to using
+  // remoteJid (the GROUP's jid) as contextInfo.participant, and the quote
+  // renders against the wrong person on a real WhatsApp client.
+  const key = { remoteJid: item.groupJid, id: item.quotedMessageId, participant: item.participant, fromMe: false }
 
   try {
     if (item.reaction) {

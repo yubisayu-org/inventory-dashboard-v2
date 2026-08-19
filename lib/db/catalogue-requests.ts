@@ -164,7 +164,7 @@ export async function convertCatalogueRequest(
 ): Promise<{ orderId: number }> {
   return withActor(actor, async (tx) => {
     const [request] = await tx`
-      SELECT r.customer_handle, r.product_id, r.qty, r.note, r.source, r.message_id, ws.group_jid,
+      SELECT r.customer_handle, r.product_id, r.qty, r.note, r.source, r.message_id, r.sender, ws.group_jid,
              sc.price AS send_price
       FROM catalogue_requests r
       LEFT JOIN wa_sends ws ON ws.id = r.send_id
@@ -234,7 +234,9 @@ export async function convertCatalogueRequest(
     if (rows.length === 0) throw new Error("Request not found or already handled")
 
     if (request.source === "whatsapp" && request.message_id) {
-      await queueReaction(request.group_jid as string, request.message_id as string, "✅", tx)
+      await queueReaction(
+        request.group_jid as string, request.message_id as string, "✅", request.sender as string, tx,
+      )
     }
 
     return { orderId: created.id }
@@ -254,14 +256,14 @@ export async function rejectCatalogueRequest(
     UPDATE catalogue_requests
     SET status = 'rejected', staff_note = ${staffNote}, updated_at = NOW()
     WHERE id = ${id} AND status IN ('pending', 'approved')
-    RETURNING id, source, message_id, send_id
+    RETURNING id, source, message_id, send_id, sender
   `
   if (rows.length === 0) throw new Error("Request not found or already handled")
 
   const [row] = rows
   if (row.source === "whatsapp" && row.message_id) {
     const [send] = await db`SELECT group_jid FROM wa_sends WHERE id = ${row.send_id}`
-    await queueReaction(send.group_jid as string, row.message_id as string, "❌", db)
+    await queueReaction(send.group_jid as string, row.message_id as string, "❌", row.sender as string, db)
   }
 }
 
@@ -482,7 +484,7 @@ export async function resolveAskingCandidate(
         status = 'pending',
         updated_at = NOW()
     WHERE id = ${id} AND status = 'asking'
-    RETURNING message_id, qty
+    RETURNING message_id, qty, sender
   `
   if (!resolved) return
   if (resolvedBy !== "owner") return
@@ -496,6 +498,7 @@ export async function resolveAskingCandidate(
     send.group_jid as string,
     resolved.message_id as string,
     `Sudah dicatat ya kak — ${send.code} ×${resolved.qty} ✅`,
+    resolved.sender as string,
     db,
   )
 }

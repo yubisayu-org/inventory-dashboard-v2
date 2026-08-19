@@ -5,6 +5,9 @@ export interface ReplyItem {
   id: number
   groupJid: string
   quotedMessageId: string
+  /** The customer's own number — who the synthetic quoted message's
+   *  contextInfo.participant must be, not the group. See migration 082. */
+  participant: string
   reaction: string
   text: string
 }
@@ -13,11 +16,12 @@ export async function queueReaction(
   groupJid: string,
   quotedMessageId: string,
   reaction: string,
+  participant: string,
   db: DBExecutor = sql,
 ): Promise<void> {
   await db`
-    INSERT INTO wa_replies (group_jid, quoted_message_id, reaction)
-    VALUES (${groupJid}, ${quotedMessageId}, ${reaction})
+    INSERT INTO wa_replies (group_jid, quoted_message_id, reaction, participant)
+    VALUES (${groupJid}, ${quotedMessageId}, ${reaction}, ${participant})
   `
 }
 
@@ -25,11 +29,12 @@ export async function queueText(
   groupJid: string,
   quotedMessageId: string,
   text: string,
+  participant: string,
   db: DBExecutor = sql,
 ): Promise<void> {
   await db`
-    INSERT INTO wa_replies (group_jid, quoted_message_id, text)
-    VALUES (${groupJid}, ${quotedMessageId}, ${text})
+    INSERT INTO wa_replies (group_jid, quoted_message_id, text, participant)
+    VALUES (${groupJid}, ${quotedMessageId}, ${text}, ${participant})
   `
 }
 
@@ -42,6 +47,7 @@ export async function nextPendingReply(db: DBExecutor = sql): Promise<ReplyItem 
     id: row.id as number,
     groupJid: row.group_jid as string,
     quotedMessageId: row.quoted_message_id as string,
+    participant: (row.participant as string | undefined) ?? "",
     reaction: row.reaction as string,
     text: row.text as string,
   }

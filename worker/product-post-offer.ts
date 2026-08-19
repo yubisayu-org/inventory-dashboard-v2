@@ -2,6 +2,8 @@ import type { WASocket } from "baileys"
 import { getSend, getSendCodeByCode } from "@/lib/db/wa-sends"
 import { parseCodes } from "@/lib/whatsapp/codes"
 import { createAskingRequest, resolveAskingCandidate, findRequestByBotMessage } from "@/lib/db/catalogue-requests"
+import { classifyAnswer } from "./size-offer"
+import { senderNumber } from "./handle-command"
 import type { ProductPostResolution } from "./product-post"
 
 /**
@@ -21,10 +23,18 @@ export async function askDisambiguation(
         ? `Yang mana kak?\n${resolution.candidates.map((c) => `${c.code} ${c.productName}`).join(" · ")}\nBalas kodenya ya 🙏`
         : "Kodenya yang mana kak? 🙏"
 
+  // participant: without it, Baileys' own quoting logic falls back to using
+  // remoteJid (the GROUP's jid) as contextInfo.participant, and the quote
+  // renders against the wrong person on a real WhatsApp client.
   const sent = await sock.sendMessage(
     input.groupJid,
     { text: question },
-    { quoted: { key: { remoteJid: input.groupJid, id: input.messageId, fromMe: false }, message: {} } },
+    {
+      quoted: {
+        key: { remoteJid: input.groupJid, id: input.messageId, participant: input.sender, fromMe: false },
+        message: {},
+      },
+    },
   )
   const botMessageId = sent?.key?.id ?? ""
 
@@ -75,12 +85,33 @@ export async function trySendOfferAnswer(input: {
   return "📝"
 }
 
-/** A 👍 landing on the bot's own single-candidate question. */
-export async function trySendOfferThumbsUp(groupJid: string, quotedMessageId: string): Promise<string | null> {
+/**
+ * A 👍 landing on the bot's own single-candidate question.
+ *
+ * `groupJid` is unused by the lookup itself (findRequestByBotMessage keys
+ * on the bot's message id alone, which is globally unique) but kept in the
+ * signature for parity with the rest of this file's reaction handlers.
+ *
+ * Guarded the same way trySizeAnswer (worker/size-offer.ts) guards a size
+ * offer: which emoji was actually sent (a 👎, or a reaction being removed —
+ * which Baileys reports as empty text — must not settle it), and who sent
+ * it (only the customer whose own claim this is, never another group
+ * member's thumb on her offer).
+ */
+export async function trySendOfferThumbsUp(
+  groupJid: string,
+  quotedMessageId: string,
+  emoji: string,
+  reactorJid: string,
+): Promise<string | null> {
+  if (!quotedMessageId) return null
+  if (classifyAnswer(emoji) !== true) return null // only a positive reaction settles it
+
   const request = await findRequestByBotMessage(quotedMessageId)
   if (request === null) return null
   const candidateIds = request.candidateSendCodeIds ?? []
   if (candidateIds.length !== 1) return null // multi-candidate offers are never settled by a bare 👍
+  if (senderNumber(reactorJid) !== senderNumber(request.sender)) return null // not her thumb
 
   await resolveAskingCandidate(request.id, candidateIds[0], "customer")
   return "✅"

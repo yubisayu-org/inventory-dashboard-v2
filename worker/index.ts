@@ -475,7 +475,12 @@ async function main() {
           // Checked first, ahead of trySizeAnswer, so a new product-post offer
           // never has to rely on trySizeAnswer correctly returning null for a
           // reaction it was never meant to see.
-          const sendAnswerEmoji = await trySendOfferThumbsUp(groupJid, event.key.id ?? "")
+          const sendAnswerEmoji = await trySendOfferThumbsUp(
+            groupJid,
+            event.key.id ?? "",
+            event.reaction.text ?? "",
+            senderJid(event.reaction.key),
+          )
           if (sendAnswerEmoji !== null) {
             reactions?.push({ jid: groupJid, key: event.key, emoji: sendAnswerEmoji })
             continue
