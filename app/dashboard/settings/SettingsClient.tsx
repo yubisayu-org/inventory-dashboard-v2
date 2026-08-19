@@ -19,6 +19,7 @@ import {
 import type { CountryRow } from "@/lib/db"
 import KursTiersSection from "./KursTiersSection"
 import TierFeeBracketsSection from "./TierFeeBracketsSection"
+import WhatsAppSection from "./WhatsAppSection"
 import MoneyInput from "@/components/MoneyInput"
 import InfoTooltip from "@/components/InfoTooltip"
 
@@ -86,12 +87,13 @@ const SAMPLE_VARS: Record<TemplateKey, Record<string, string>> = {
 
 const textareaCls = "w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white font-mono focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors min-h-[240px] resize-y"
 
-type Tab = "business" | "product-defaults" | "messages"
+type Tab = "business" | "product-defaults" | "messages" | "whatsapp"
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "business", label: "Profile" },
   { key: "product-defaults", label: "Pricing" },
   { key: "messages", label: "Templates" },
+  { key: "whatsapp", label: "WhatsApp" },
 ]
 
 export default function SettingsClient() {
@@ -152,6 +154,9 @@ export default function SettingsClient() {
         {TEMPLATE_KEYS.map((key) => (
           <TemplateSection key={key} templateKey={key} initialBody={templates[key]} />
         ))}
+      </div>
+      <div className={tab === "whatsapp" ? "" : "hidden"}>
+        <WhatsAppSection />
       </div>
     </div>
   )
