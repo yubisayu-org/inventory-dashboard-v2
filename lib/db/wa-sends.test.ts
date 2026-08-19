@@ -61,6 +61,26 @@ test("creating a send and attaching two products issues sequential codes", async
   assert.ok(tag, "attaching a product tags it on the underlying post")
 })
 
+test("two concurrent attach calls for the SAME product on the SAME send never produce two codes", async () => {
+  // Simulates a double-click racing past the client-side alreadyAddedIds
+  // guard (which only greys a product out after the round trip AND a
+  // follow-up refresh both complete) — see the final whole-branch review's
+  // finding 6. Without the unique index + ON CONFLICT handling in
+  // attachProductToSend, this either 500s (both computed the same next
+  // code) or, worse, silently mints two wa_send_codes rows for the same
+  // product under two different codes.
+  const { id: sendId } = await createSend({ postId, event: EVENT, title: "double-click race" })
+  const [a, b] = await Promise.all([
+    attachProductToSend(sendId, productAId),
+    attachProductToSend(sendId, productAId),
+  ])
+  assert.equal(a.id, b.id, "both concurrent calls must settle on the SAME wa_send_codes row")
+  assert.equal(a.code, b.code)
+
+  const rows = await sql`SELECT id FROM wa_send_codes WHERE send_id = ${sendId} AND product_id = ${productAId}`
+  assert.equal(rows.length, 1, "exactly one code must exist for this (send, product) pair, never two")
+})
+
 test("attaching an already-tagged product does not duplicate the tag", async () => {
   const { id: sendId } = await createSend({ postId, event: EVENT, title: "Repost" })
   await attachProductToSend(sendId, productAId)
@@ -72,12 +92,34 @@ test("attaching an already-tagged product does not duplicate the tag", async () 
 test("getSendCodeByCode resolves within the right event only", async () => {
   const { id: sendId } = await createSend({ postId, event: EVENT, title: "t" })
   const issued = await attachProductToSend(sendId, productAId)
+  // Must have actually gone out — see the dedicated draft test below for the
+  // unsent case. A group jid of its own (not the shared GROUP constant),
+  // so this doesn't leak a newer "already posted" send into the
+  // getOpenSendForGroup tests below that bind GROUP to a fresh draft and
+  // expect it to find nothing.
+  await setSendMessageId(sendId, "gscbc-msg-1", "gscbc-group@g.us")
 
   const found = await getSendCodeByCode(EVENT, issued.code)
   assert.equal(found?.id, issued.id)
 
   const notFound = await getSendCodeByCode(`${EVENT}-other`, issued.code)
   assert.equal(notFound, null)
+
+  // getOpenSendForGroup matches by EVENT (via wa_groups), not by this row's
+  // own group_jid — an already-posted send left behind here would silently
+  // become "the trip's open send" for every other EVENT-scoped test below
+  // that expects no send has gone out yet. Clean it up explicitly.
+  await sql`DELETE FROM wa_sends WHERE id = ${sendId}`
+})
+
+test("getSendCodeByCode refuses to resolve a code issued on a draft (never-sent) send", async () => {
+  // No setSendMessageId call — this send never goes out, matching every
+  // abandoned "Simpan draf" session in the composer.
+  const { id: sendId } = await createSend({ postId, event: EVENT, title: "draft, never sent" })
+  const issued = await attachProductToSend(sendId, productAId)
+
+  const found = await getSendCodeByCode(EVENT, issued.code)
+  assert.equal(found, null, "a draft's code must not resolve a real customer's claim")
 })
 
 test("getOpenSendForGroup resolves via the group's bound event", async () => {

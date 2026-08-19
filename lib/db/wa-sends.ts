@@ -114,15 +114,42 @@ export async function attachProductToSend(
 
     const [position] = await tx`SELECT count(*)::int AS n FROM wa_send_codes WHERE send_id = ${sendId}`
 
-    const [row] = await tx`
+    // ON CONFLICT (send_id, product_id) DO NOTHING + the unique index from
+    // migration 084 is what actually closes the double-attach race
+    // (finding 6 of the final whole-branch review), regardless of what the
+    // client does: two concurrent calls for the SAME product on the SAME
+    // send can both read `existing` before either commits and compute the
+    // same next code, but only one INSERT can win the (send_id, product_id)
+    // slot — the loser's RETURNING comes back empty here, and it falls
+    // through to returning the WINNER's already-committed row instead of
+    // erroring or minting a second code for the same product.
+    const [inserted] = await tx`
       INSERT INTO wa_send_codes (send_id, product_id, code, event, price, position)
       VALUES (${sendId}, ${productId}, ${code}, ${send.event}, ${product.price}, ${position.n})
+      ON CONFLICT (send_id, product_id) DO NOTHING
       RETURNING *
     `
-    return toSendCode({ ...row, product_name: product.name })
+    if (inserted) return toSendCode({ ...inserted, product_name: product.name })
+
+    const [existingRow] = await tx`
+      SELECT * FROM wa_send_codes WHERE send_id = ${sendId} AND product_id = ${productId}
+    `
+    return toSendCode({ ...existingRow, product_name: product.name })
   })
 }
 
+/**
+ * Resolve a claimed code — but ONLY if the send it belongs to has actually
+ * gone out (has a message_id). Without this join, a code allocated on a
+ * never-sent draft (a real, everyday state now that "Simpan draf" is a
+ * first-class composer action — see the final whole-branch review's finding
+ * 2) would still resolve a customer's message into a claim against a post
+ * she was never shown; codes are allocated from the trip's SHARED sequence
+ * (attachProductToSend scans every send of the event, draft or not), so a
+ * draft's code is a real, live-looking code, not an obviously-fake one.
+ * Mirrors the exact `s.message_id <> ''` convention getOpenSendForGroup and
+ * listOpenSendsForEvent already established.
+ */
 export async function getSendCodeByCode(
   event: string,
   code: string,
@@ -130,8 +157,10 @@ export async function getSendCodeByCode(
 ): Promise<WaSendCode | null> {
   const [row] = await db`
     SELECT c.*, p.name AS product_name
-    FROM wa_send_codes c JOIN products p ON p.id = c.product_id
-    WHERE c.event = ${event} AND c.code = ${code}
+    FROM wa_send_codes c
+    JOIN products p ON p.id = c.product_id
+    JOIN wa_sends s ON s.id = c.send_id
+    WHERE c.event = ${event} AND c.code = ${code} AND s.message_id <> ''
   `
   return row ? toSendCode(row) : null
 }
