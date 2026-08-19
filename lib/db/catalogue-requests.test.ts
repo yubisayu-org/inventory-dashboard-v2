@@ -5,6 +5,7 @@ import { createSend, attachProductToSend } from "./wa-sends"
 import {
   createDirectClaim, createAskingRequest, createRejectedClaim,
   resolveAskingCandidate, findRequestByBotMessage,
+  createCatalogueRequest, convertCatalogueRequest, rejectCatalogueRequest,
 } from "./catalogue-requests"
 
 const EVENT = `TESTWACR${process.hrtime.bigint()}`
@@ -30,7 +31,13 @@ before(async () => {
 })
 
 after(async () => {
+  await sql`DELETE FROM orders WHERE event = ${EVENT}`
   await sql`DELETE FROM catalogue_requests WHERE send_id = ${sendId}`
+  await sql`DELETE FROM catalogue_requests WHERE customer_handle = 'web_user'`
+  // her-4 is also queued by the pre-existing resolveAskingCandidate
+  // (owner) test above — cleaned up here too so a repeat `npm test` run
+  // doesn't leave debris behind for lib/db/replies.test.ts to trip over.
+  await sql`DELETE FROM wa_replies WHERE quoted_message_id IN ('her-4', 'her-8', 'her-9')`
   await sql`DELETE FROM wa_send_codes WHERE send_id = ${sendId}`
   await sql`DELETE FROM wa_sends WHERE id = ${sendId}`
   await sql`DELETE FROM catalogue_post_products WHERE post_id = ${postId}`
@@ -139,4 +146,42 @@ test("createRejectedClaim writes a rejected, whatsapp-sourced row with no produc
   assert.equal(row.status, "rejected")
   assert.equal(row.product_id, null)
   assert.equal(row.staff_note, "trip sudah tutup")
+})
+
+test("convertCatalogueRequest on a WhatsApp row uses the send's price and event, and queues a ✅", async () => {
+  const { id } = await createDirectClaim({
+    customerHandle: "628188888888", productId, qty: 2, note: "t",
+    sendId, sendCodeId, sender: "628188888888", messageId: "her-8",
+  })
+  // convertCatalogueRequest requires a resolvable customer — createDirectClaim's
+  // customerHandle is a raw number, matching a real order's self-healing
+  // customers row (see appendOrders); no separate customer setup needed here.
+  const { orderId } = await convertCatalogueRequest(id, EVENT, "test@owner")
+
+  const [order] = await sql`SELECT unit_price, unit, event FROM orders WHERE id = ${orderId}`
+  assert.equal(Number(order.unit_price), 100000)
+  assert.equal(order.unit, 2)
+  assert.equal(order.event, EVENT)
+
+  const [reply] = await sql`SELECT reaction FROM wa_replies WHERE quoted_message_id = 'her-8'`
+  assert.equal(reply?.reaction, "✅")
+})
+
+test("rejectCatalogueRequest on a WhatsApp row queues a ❌", async () => {
+  const { id } = await createDirectClaim({
+    customerHandle: "628199999999", productId, qty: 1, note: "t",
+    sendId, sendCodeId, sender: "628199999999", messageId: "her-9",
+  })
+  await rejectCatalogueRequest(id, "out of stock")
+  const [reply] = await sql`SELECT reaction FROM wa_replies WHERE quoted_message_id = 'her-9'`
+  assert.equal(reply?.reaction, "❌")
+})
+
+test("rejectCatalogueRequest on a catalogue-web row still queues nothing (no message_id to react to)", async () => {
+  await createCatalogueRequest({ customerHandle: "web_user", productId, qty: 1, note: "t" }, sql)
+  const [{ id }] = await sql`SELECT id FROM catalogue_requests WHERE customer_handle = 'web_user'`
+  const before = await sql`SELECT count(*)::int AS n FROM wa_replies`
+  await rejectCatalogueRequest(id, "n/a")
+  const after = await sql`SELECT count(*)::int AS n FROM wa_replies`
+  assert.equal(after[0].n, before[0].n)
 })

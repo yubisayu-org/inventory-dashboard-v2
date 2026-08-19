@@ -7,7 +7,7 @@ import { normalizeId } from "./helpers"
 import type { CatalogueRequest } from "./types"
 import { calcAbroadPrice } from "../pricing"
 import { getCountryRate } from "./catalog"
-import { queueText } from "./replies"
+import { queueText, queueReaction } from "./replies"
 
 function toRequest(r: Record<string, unknown>): CatalogueRequest {
   return {
@@ -149,7 +149,13 @@ export async function getCatalogueRequests(
  *  the loser's SELECT blocks until the winner commits, then sees the
  *  already-flipped status and gets zero rows, throwing before any order is
  *  created. The SELECT no longer JOINs products (product_id may be null),
- *  so the lock now covers exactly one table — simpler, not weaker. */
+ *  and the LEFT JOIN to wa_sends below (added only to read group_jid for a
+ *  WhatsApp-sourced row) is excluded from the lock via `FOR UPDATE OF r`,
+ *  so the lock still covers exactly one table — simpler, not weaker.
+ *
+ *  A `source = 'whatsapp'` row additionally gets a ✅ reaction queued on the
+ *  customer's original group message, in the SAME transaction as the order
+ *  creation and status flip — a rollback of one rolls back the other. */
 export async function convertCatalogueRequest(
   id: number,
   event: string,
@@ -158,10 +164,11 @@ export async function convertCatalogueRequest(
 ): Promise<{ orderId: number }> {
   return withActor(actor, async (tx) => {
     const [request] = await tx`
-      SELECT customer_handle, product_id, qty, note
-      FROM catalogue_requests
-      WHERE id = ${id} AND status IN ('pending', 'approved')
-      FOR UPDATE
+      SELECT r.customer_handle, r.product_id, r.qty, r.note, r.source, r.message_id, ws.group_jid
+      FROM catalogue_requests r
+      LEFT JOIN wa_sends ws ON ws.id = r.send_id
+      WHERE r.id = ${id} AND r.status IN ('pending', 'approved')
+      FOR UPDATE OF r
     `
     if (!request) throw new Error("Request not found or already handled")
 
@@ -192,10 +199,19 @@ export async function convertCatalogueRequest(
       RETURNING id
     `
     if (rows.length === 0) throw new Error("Request not found or already handled")
+
+    if (request.source === "whatsapp" && request.message_id) {
+      await queueReaction(request.group_jid as string, request.message_id as string, "✅", tx)
+    }
+
     return { orderId: created.id }
   })
 }
 
+/** A `source = 'whatsapp'` row additionally gets a ❌ reaction queued on the
+ *  customer's original group message — read via a second query on the same
+ *  `db` handle, same pattern as resolveAskingCandidate's owner-side reply,
+ *  since (like that function) this one isn't wrapped in a transaction. */
 export async function rejectCatalogueRequest(
   id: number,
   staffNote: string,
@@ -205,9 +221,15 @@ export async function rejectCatalogueRequest(
     UPDATE catalogue_requests
     SET status = 'rejected', staff_note = ${staffNote}, updated_at = NOW()
     WHERE id = ${id} AND status IN ('pending', 'approved')
-    RETURNING id
+    RETURNING id, source, message_id, send_id
   `
   if (rows.length === 0) throw new Error("Request not found or already handled")
+
+  const [row] = rows
+  if (row.source === "whatsapp" && row.message_id) {
+    const [send] = await db`SELECT group_jid FROM wa_sends WHERE id = ${row.send_id}`
+    await queueReaction(send.group_jid as string, row.message_id as string, "❌", db)
+  }
 }
 
 const EDIT_PROFIT_PCT = 15
