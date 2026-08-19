@@ -221,6 +221,10 @@ export interface CustomerRow {
   invoiceCount: number
   totalInvoiced: number
   totalOutstanding: number
+  /** True once this customer has bound a Google account and can sign in to the
+   *  catalogue site. Derived from google_sub — the address itself is never
+   *  collected, since the OAuth request asks for `openid` scope only. */
+  catalogueSignedIn: boolean
   createdAt: string | null
   updatedAt: string | null
 }
