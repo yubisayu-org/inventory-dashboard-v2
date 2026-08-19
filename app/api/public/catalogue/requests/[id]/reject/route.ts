@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { rejectCatalogueRequestOffer } from "@/lib/db"
+import { customerFromRequest } from "@/lib/catalogue-bearer"
 import catalogueSql from "@/lib/db-catalogue-public"
 import { clientIp, createRateLimiter } from "@/lib/catalogue-rate-limit"
 
@@ -55,13 +56,19 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400, headers: corsHeaders() })
   }
 
-  const customerHandle = String((body as Record<string, unknown>).customerHandle ?? "").trim()
-  if (!customerHandle) {
-    return NextResponse.json({ error: "customerHandle is required" }, { status: 400, headers: corsHeaders() })
+  // Ownership comes from the session, not the body. With a handle in the body,
+  // anyone could accept or decline another customer's offer given only a
+  // request id — and ids are sequential.
+  const customer = await customerFromRequest(req)
+  if (!customer) {
+    return NextResponse.json(
+      { error: "Not signed in" },
+      { status: 401, headers: { ...corsHeaders(), "Cache-Control": "no-store" } },
+    )
   }
 
   try {
-    await rejectCatalogueRequestOffer(id, customerHandle, catalogueSql)
+    await rejectCatalogueRequestOffer(id, customer.id, catalogueSql)
     return NextResponse.json({ success: true }, { headers: corsHeaders() })
   } catch (err) {
     if (err instanceof Error && err.message === "Request not found or already handled") {

@@ -73,6 +73,9 @@ function toRequest(r: Record<string, unknown>, candidateMap?: Map<number, Candid
 export async function createCatalogueRequest(
   data: {
     customerHandle: string
+    // From the session, never from the request body. Nullable only for the
+    // staff-side call path, which has no session behind it.
+    customerId?: number | null
     productId: number | null
     qty: number
     note: string
@@ -83,9 +86,10 @@ export async function createCatalogueRequest(
   db: postgres.Sql,
 ): Promise<void> {
   await db`
-    INSERT INTO catalogue_requests (customer_handle, product_id, qty, note, description, reference_image_url, post_id)
+    INSERT INTO catalogue_requests (customer_handle, customer_id, product_id, qty, note, description, reference_image_url, post_id)
     VALUES (
       ${normalizeId(data.customerHandle)},
+      ${data.customerId ?? null},
       ${data.productId},
       ${data.qty},
       ${data.note},
@@ -96,11 +100,17 @@ export async function createCatalogueRequest(
   `
 }
 
-/** Public path: a handle's own requests. `db` must be the scoped
- *  `catalogue_public` connection — no default. LEFT JOIN (not JOIN) because
- *  a custom request has no product row to join to. */
-export async function getCatalogueRequestsByHandle(
-  handle: string,
+
+/**
+ * Public path: one customer's requests, by id.
+ *
+ * Replaces getCatalogueRequestsByHandle on the public path. A handle arrives
+ * from the client, and anything a client supplies it can supply for somebody
+ * else — which is exactly how a stranger could read another customer's orders.
+ * The id comes from the session and cannot be chosen by the caller.
+ */
+export async function getCatalogueRequestsByCustomer(
+  customerId: number,
   db: postgres.Sql,
 ): Promise<CatalogueRequest[]> {
   const rows = await db`
@@ -111,7 +121,7 @@ export async function getCatalogueRequestsByHandle(
     FROM catalogue_requests r
     LEFT JOIN products p ON p.id = r.product_id
     LEFT JOIN countries c ON c.id = r.country_id
-    WHERE lower(replace(r.customer_handle, '@', '')) = ${normalizeId(handle)}
+    WHERE r.customer_id = ${customerId}
     ORDER BY r.created_at DESC
   `
   return rows.map((r) => toRequest(r))
@@ -405,14 +415,14 @@ export async function cancelEditCatalogueRequest(
  *  rest of this feature already relies on. */
 export async function approveCatalogueRequestOffer(
   id: number,
-  customerHandle: string,
+  customerId: number,
   db: postgres.Sql,
 ): Promise<void> {
   const rows = await db`
     UPDATE catalogue_requests
     SET status = 'approved', updated_at = NOW()
     WHERE id = ${id}
-      AND lower(replace(customer_handle, '@', '')) = ${normalizeId(customerHandle)}
+      AND customer_id = ${customerId}
       AND status = 'offer_pending'
     RETURNING id
   `
@@ -423,14 +433,14 @@ export async function approveCatalogueRequestOffer(
  *  staff reject. */
 export async function rejectCatalogueRequestOffer(
   id: number,
-  customerHandle: string,
+  customerId: number,
   db: postgres.Sql,
 ): Promise<void> {
   const rows = await db`
     UPDATE catalogue_requests
     SET status = 'rejected', updated_at = NOW()
     WHERE id = ${id}
-      AND lower(replace(customer_handle, '@', '')) = ${normalizeId(customerHandle)}
+      AND customer_id = ${customerId}
       AND status = 'offer_pending'
     RETURNING id
   `
