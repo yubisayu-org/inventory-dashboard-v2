@@ -246,6 +246,11 @@ export interface WarehouseRow {
   code: string
   name: string
   isDefault: boolean
+  /** Biteship origin. Null until set in Settings; rate lookups stay dormant
+   *  and fall back to jne_rates until then. */
+  biteshipAreaId: string | null
+  biteshipAreaName: string | null
+  postalCode: string
 }
 
 // Free text — "overpayment" stays special-cased in code (materializeOverpaymentRefunds,

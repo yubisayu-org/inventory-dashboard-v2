@@ -758,7 +758,7 @@ export async function deleteCountry(id: number, db: DBExecutor = sql): Promise<v
 /** Shipping origins, default first. Used for event/customer ongkir UIs. */
 export async function getWarehouses(): Promise<WarehouseRow[]> {
   const rows = await sql`
-    SELECT id, code, name, is_default
+    SELECT id, code, name, is_default, biteship_area_id, biteship_area_name, postal_code
     FROM warehouses
     ORDER BY is_default DESC, code ASC
   `
@@ -767,7 +767,33 @@ export async function getWarehouses(): Promise<WarehouseRow[]> {
     code: r.code as string,
     name: r.name as string,
     isDefault: Boolean(r.is_default),
+    biteshipAreaId: (r.biteship_area_id as string) ?? null,
+    biteshipAreaName: (r.biteship_area_name as string) ?? null,
+    postalCode: (r.postal_code as string) ?? "",
   }))
+}
+
+/**
+ * Set a warehouse's shipping origin.
+ *
+ * Nothing prices from a warehouse without one — rate lookups fall back to
+ * jne_rates until this is filled in, which is why it lives in Settings rather
+ * than being inferred.
+ */
+export async function setWarehouseOrigin(
+  warehouseId: number,
+  origin: { biteshipAreaId: string; biteshipAreaName: string; postalCode: string },
+): Promise<void> {
+  const rows = await sql`
+    UPDATE warehouses SET
+      biteship_area_id   = ${origin.biteshipAreaId},
+      biteship_area_name = ${origin.biteshipAreaName},
+      postal_code        = ${origin.postalCode},
+      updated_at         = NOW()
+    WHERE id = ${warehouseId}
+    RETURNING id
+  `
+  if (rows.length === 0) throw new Error("Warehouse not found")
 }
 
 // ─── Events ───────────────────────────────────────────────────────────────
