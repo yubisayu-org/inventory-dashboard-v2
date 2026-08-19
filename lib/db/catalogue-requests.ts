@@ -50,6 +50,10 @@ function toRequest(r: Record<string, unknown>, candidateMap?: Map<number, Candid
     // convention as the WhatsApp fields above.
     resolvedCode: (r.resolved_code as string | null | undefined) ?? null,
     resolvedCodeSendId: (r.resolved_code_send_id as number | null | undefined) ?? null,
+    // Only getCatalogueRequests SELECTs this (via the wa_sends join above);
+    // the two explicit-column callers fall back to null, same convention as
+    // every other WhatsApp-only field on this row.
+    resolvedEvent: (r.resolved_event as string | null | undefined) ?? null,
     // Only getCatalogueRequests passes a candidateMap (built from a batched
     // lookup across all rows); the two explicit-column callers above have no
     // map and no candidate_send_code_ids column, so candidates stays null.
@@ -131,13 +135,15 @@ export async function getCatalogueRequests(
                r.post_id, h.default_event,
                r.source, r.send_id, r.send_code_id, r.sender, r.message_id,
                r.bot_message_id, r.candidate_send_code_ids,
-               sc.code AS resolved_code, sc.send_id AS resolved_code_send_id
+               sc.code AS resolved_code, sc.send_id AS resolved_code_send_id,
+               ws.event AS resolved_event
         FROM catalogue_requests r
         LEFT JOIN products p ON p.id = r.product_id
         LEFT JOIN countries c ON c.id = r.country_id
         LEFT JOIN catalogue_posts cp ON cp.id = r.post_id
         LEFT JOIN catalogue_highlights h ON h.id = cp.highlight_id
         LEFT JOIN wa_send_codes sc ON sc.id = r.send_code_id
+        LEFT JOIN wa_sends ws ON ws.id = r.send_id
         WHERE r.status IN ('pending', 'asking', 'offer_pending', 'approved')
         ORDER BY r.created_at ASC
       `
@@ -149,13 +155,15 @@ export async function getCatalogueRequests(
                r.post_id, h.default_event,
                r.source, r.send_id, r.send_code_id, r.sender, r.message_id,
                r.bot_message_id, r.candidate_send_code_ids,
-               sc.code AS resolved_code, sc.send_id AS resolved_code_send_id
+               sc.code AS resolved_code, sc.send_id AS resolved_code_send_id,
+               ws.event AS resolved_event
         FROM catalogue_requests r
         LEFT JOIN products p ON p.id = r.product_id
         LEFT JOIN countries c ON c.id = r.country_id
         LEFT JOIN catalogue_posts cp ON cp.id = r.post_id
         LEFT JOIN catalogue_highlights h ON h.id = cp.highlight_id
         LEFT JOIN wa_send_codes sc ON sc.id = r.send_code_id
+        LEFT JOIN wa_sends ws ON ws.id = r.send_id
         ORDER BY r.created_at DESC
       `
 
@@ -288,7 +296,21 @@ export async function convertCatalogueRequest(
 /** A `source = 'whatsapp'` row additionally gets a ❌ reaction queued on the
  *  customer's original group message — read via a second query on the same
  *  `db` handle, same pattern as resolveAskingCandidate's owner-side reply,
- *  since (like that function) this one isn't wrapped in a transaction. */
+ *  since (like that function) this one isn't wrapped in a transaction.
+ *
+ *  Also accepts a starting status of 'asking' — the owner's only action on
+ *  a zero-candidate asking row (the bot asked "kodenya yang mana kak?" and
+ *  found nothing to offer at all; see the final whole-branch review's
+ *  finding 1). Such a row has product_id NULL and description '' — legal
+ *  only while status = 'asking' (catalogue_requests_product_or_description,
+ *  migration 081) — so leaving 'asking' without also populating description
+ *  would violate that constraint on this exact UPDATE. The CASE below sets
+ *  description from the row's own `note` (the customer's original message,
+ *  same text createRejectedClaim already uses for its own closed-trip
+ *  'rejected' rows) ONLY when product_id/description are both still empty;
+ *  every other caller of this function (a normal pending/approved reject,
+ *  always already carrying a product_id or a real description) leaves its
+ *  description untouched. */
 export async function rejectCatalogueRequest(
   id: number,
   staffNote: string,
@@ -296,8 +318,12 @@ export async function rejectCatalogueRequest(
 ): Promise<void> {
   const rows = await db`
     UPDATE catalogue_requests
-    SET status = 'rejected', staff_note = ${staffNote}, updated_at = NOW()
-    WHERE id = ${id} AND status IN ('pending', 'approved')
+    SET status = 'rejected', staff_note = ${staffNote}, updated_at = NOW(),
+        description = CASE
+          WHEN product_id IS NULL AND description = '' THEN note
+          ELSE description
+        END
+    WHERE id = ${id} AND status IN ('pending', 'approved', 'asking')
     RETURNING id, source, message_id, send_id, sender
   `
   if (rows.length === 0) throw new Error("Request not found or already handled")

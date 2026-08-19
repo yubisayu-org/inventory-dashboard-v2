@@ -43,10 +43,14 @@ after(async () => {
   if (extraCustomers.length > 0) await sql`DELETE FROM customers WHERE instagram_id IN ${sql(extraCustomers)}`
   await sql`DELETE FROM catalogue_requests WHERE send_id = ${sendId}`
   await sql`DELETE FROM catalogue_requests WHERE customer_handle = 'web_user'`
-  // her-4 is also queued by the pre-existing resolveAskingCandidate
-  // (owner) test above — cleaned up here too so a repeat `npm test` run
-  // doesn't leave debris behind for lib/db/replies.test.ts to trip over.
-  await sql`DELETE FROM wa_replies WHERE quoted_message_id IN ('her-4', 'her-8', 'her-9')`
+  // her-4/her-8/her-9 are queued by the pre-existing resolveAskingCandidate
+  // (owner)/reject tests above, and her-t5 by the new "Tolak a zero-
+  // candidate asking row" test (rejectCatalogueRequest queues a ❌ for any
+  // whatsapp-sourced row with a message_id, asking rows included) — cleaned
+  // up here too so a repeat `npm test` run doesn't leave a pending row
+  // behind for another test FILE's un-scoped nextPendingReply() (lib/db/
+  // replies.test.ts) to pick up instead of its own freshly-queued one.
+  await sql`DELETE FROM wa_replies WHERE quoted_message_id IN ('her-4', 'her-8', 'her-9', 'her-t5')`
   await sql`DELETE FROM wa_send_codes WHERE send_id = ${sendId}`
   await sql`DELETE FROM wa_sends WHERE id = ${sendId}`
   await sql`DELETE FROM catalogue_post_products WHERE post_id = ${postId}`
@@ -264,4 +268,60 @@ test("getCatalogueRequests(false) still includes a rejected closed-trip row, but
   const row = all.find((r) => r.id === id)
   assert.ok(row)
   assert.equal(row.status, "rejected")
+})
+
+// See the final whole-branch review's finding 1: createAskingRequest's
+// spec'd zero-candidate shape (candidate_send_code_ids: []) — "no code, no
+// candidate at all" — was only ever covered by the 2-candidate case above.
+// This pins down exactly what the UI actually has to branch on: candidates
+// stays null (never an empty array), same as a row with no
+// candidate_send_code_ids at all — toRequest's `candidateIds.length > 0`
+// guard collapses both shapes.
+test("getCatalogueRequests reports null (not an empty array) candidates for a zero-candidate asking row", async () => {
+  const { id } = await createAskingRequest({
+    customerHandle: "628177000004", qty: 1, note: "ada baju baru?",
+    sendId, sender: "628177000004", messageId: "her-t4", botMessageId: "bot-t4",
+    candidateSendCodeIds: [],
+  })
+  const rows = await getCatalogueRequests(true)
+  const row = rows.find((r) => r.id === id)
+  assert.ok(row, "a zero-candidate asking row must still appear in the default pending view")
+  assert.equal(row.status, "asking")
+  assert.deepEqual(row.candidateSendCodeIds, [])
+  assert.equal(row.candidates, null, "zero candidates must read as null, not []")
+})
+
+// The owner's only action on a zero-candidate asking row (finding 1's UI
+// fix): Tolak. product_id is NULL and description is '' on such a row —
+// legal only while status = 'asking' (catalogue_requests_product_or_
+// description) — so this also exercises rejectCatalogueRequest's new
+// description-backfill, without which this UPDATE would violate that check
+// constraint the moment status leaves 'asking'.
+test("rejectCatalogueRequest can Tolak a zero-candidate asking row", async () => {
+  const { id } = await createAskingRequest({
+    customerHandle: "628177000005", qty: 1, note: "ada baju baru kah",
+    sendId, sender: "628177000005", messageId: "her-t5", botMessageId: "bot-t5",
+    candidateSendCodeIds: [],
+  })
+  await rejectCatalogueRequest(id, "")
+  const [row] = await sql`SELECT status, product_id, description FROM catalogue_requests WHERE id = ${id}`
+  assert.equal(row.status, "rejected")
+  assert.equal(row.product_id, null)
+  assert.equal(row.description, "ada baju baru kah", "description must backfill from note so the check constraint still holds outside 'asking'")
+})
+
+// See finding 4: a WhatsApp row's trip is authoritatively known from
+// wa_sends.event via send_id — surfaced as resolvedEvent — never from
+// defaultEvent (always null for a WhatsApp row, since post_id is always
+// null there).
+test("getCatalogueRequests surfaces resolvedEvent from wa_sends for a WhatsApp row", async () => {
+  const { id } = await createDirectClaim({
+    customerHandle: "628177000006", productId, qty: 1, note: "K42 mau 1",
+    sendId, sendCodeId, sender: "628177000006", messageId: "her-t6",
+  })
+  const rows = await getCatalogueRequests(true)
+  const row = rows.find((r) => r.id === id)
+  assert.ok(row)
+  assert.equal(row.defaultEvent, null, "a WhatsApp row's post_id is always null, so defaultEvent stays null")
+  assert.equal(row.resolvedEvent, EVENT)
 })

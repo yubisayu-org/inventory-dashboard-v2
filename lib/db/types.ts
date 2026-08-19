@@ -638,6 +638,19 @@ export interface CatalogueRequest {
   /** Which send resolvedCode belongs to — for a future "view post" link.
    *  null exactly when resolvedCode is null. */
   resolvedCodeSendId: number | null
+  /** The trip a WhatsApp-sourced row's claim was made against — joined from
+   *  wa_sends.event via send_id, NOT from postId/defaultEvent (a WhatsApp
+   *  row's post_id is always null, so defaultEvent is always null for it —
+   *  see the final whole-branch review's finding 4). Populated for BOTH a
+   *  resolved claim and a still-open 'asking' row (send_id is set from the
+   *  moment the row is created, independent of which candidate — if any —
+   *  it eventually resolves to). Distinct from defaultEvent (which stays
+   *  the catalogue-web highlight-derived suggestion for a 'catalogue'-
+   *  source row) — deliberately NOT merged into that field, since one is an
+   *  authoritative fact about a WhatsApp row and the other is only ever a
+   *  suggestion. Owner-read path only, see getCatalogueRequests; null for
+   *  a 'catalogue'-source row and for the public status-lookup path. */
+  resolvedEvent: string | null
   /** For an 'asking' row, the candidate codes she could mean — batch-resolved
    *  from candidateSendCodeIds by getCatalogueRequests so the dashboard's
    *  disambiguation picker needs no extra client-side fetch. null when

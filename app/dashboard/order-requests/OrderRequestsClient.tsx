@@ -107,11 +107,16 @@ export default function OrderRequestsClient() {
         <p className="text-sm text-gray-400">No pending requests.</p>
       ) : (
         requests.map((r) => {
-          // The only 'rejected'+'whatsapp' rows with productId still null are
-          // createRejectedClaim's closed-trip dead rows (case D) — an
-          // owner-rejected WhatsApp direct claim already has productId set
-          // from the claim, so this doesn't misclassify a normal Tolak.
+          // createRejectedClaim's closed-trip dead rows are the only
+          // 'rejected'+'whatsapp'+no-product rows stamped with this exact
+          // staffNote (set verbatim in lib/db/catalogue-requests.ts) — an
+          // owner-rejected direct claim always has productId set, and an
+          // owner-rejected zero-candidate asking row (Tolak below) is also
+          // 'rejected'+'whatsapp'+no-product but carries whatever staffNote
+          // the owner typed (usually ""), so checking staffNote too keeps
+          // this label scoped to the actual closed-trip case.
           const isDeadRow = r.status === "rejected" && r.source === "whatsapp" && r.productId === null
+            && r.staffNote === "trip sudah tutup"
           return (
           <div
             key={r.id}
@@ -129,6 +134,9 @@ export default function OrderRequestsClient() {
                 <div className="text-sm text-foreground">
                   {r.source === "whatsapp" && (
                     <span className="inline-block px-1.5 py-0.5 rounded bg-green-100 text-green-700 text-[10px] font-medium mr-1 align-middle">WhatsApp</span>
+                  )}
+                  {r.resolvedCode && (
+                    <span className="font-mono font-bold text-brand mr-1 align-middle">{r.resolvedCode}</span>
                   )}
                   {displayIg(r.customerHandle)} —{" "}
                   {r.status === "asking" ? (
@@ -173,13 +181,32 @@ export default function OrderRequestsClient() {
                   <button onClick={() => setRejectingId(r.id)} className="px-3 py-1.5 rounded-lg border border-cream-border text-xs">Reject</button>
                 </>
               )}
-              {r.status === "asking" && (
+              {r.status === "asking" && (r.candidates === null || r.candidates.length === 0) && (
+                // Zero-candidate asking row: the bot found nothing at all to
+                // offer ("kodenya yang mana kak?" with a bare candidate_send_
+                // code_ids = []). There is no picker to render and never a
+                // sole candidate to auto-select, so the only real owner
+                // action is Tolak — see the final whole-branch review's
+                // finding 1. Reuses the existing RejectModal/reject action;
+                // rejectCatalogueRequest now accepts 'asking' as a starting
+                // status specifically for this case.
+                <div className="flex flex-col gap-2 w-full">
+                  <span className="text-xs text-amber-600 font-medium">Ditanya di grup — belum ada kandidat</span>
+                  <button
+                    onClick={() => setRejectingId(r.id)}
+                    className="self-start px-3 py-1.5 rounded-lg border border-cream-border text-xs"
+                  >
+                    Tolak
+                  </button>
+                </div>
+              )}
+              {r.status === "asking" && r.candidates && r.candidates.length > 0 && (
                 <div className="flex flex-col gap-2 w-full">
                   <span className="text-xs text-amber-600 font-medium">
-                    {r.candidates && r.candidates.length === 1 ? "Ditanya di grup — menunggu 👍" : "Ditanya di grup — beberapa kemungkinan"}
+                    {r.candidates.length === 1 ? "Ditanya di grup — menunggu 👍" : "Ditanya di grup — beberapa kemungkinan"}
                   </span>
                   <div className="flex flex-col gap-1">
-                    {(r.candidates ?? []).map((c, i) => {
+                    {r.candidates.map((c, i) => {
                       const isSelected = selectedCandidate[r.id] === c.id || (r.candidates!.length === 1 && selectedCandidate[r.id] === undefined && i === 0)
                       return (
                         <label
@@ -201,7 +228,7 @@ export default function OrderRequestsClient() {
                     })}
                   </div>
                   <button
-                    disabled={resolvingId === r.id || (r.candidates?.length !== 1 && selectedCandidate[r.id] === undefined)}
+                    disabled={resolvingId === r.id || (r.candidates.length !== 1 && selectedCandidate[r.id] === undefined)}
                     onClick={() => resolveCandidate(r)}
                     className="self-start px-3 py-1.5 rounded-lg bg-brand text-white text-xs disabled:opacity-50"
                   >
@@ -223,7 +250,14 @@ export default function OrderRequestsClient() {
           needsProduct={converting.productId === null}
           events={options?.activeEvents ?? []}
           items={options?.items ?? []}
-          defaultEvent={converting.defaultEvent}
+          // A WhatsApp row's trip is authoritatively known (wa_sends.event,
+          // via resolvedEvent) — never the highlight-derived defaultEvent,
+          // which is always null for a WhatsApp row anyway (post_id is
+          // always null there). Locked, not just defaulted, for that same
+          // reason: this isn't a suggestion to override, it's the trip the
+          // claim was actually made against. See finding 4.
+          defaultEvent={converting.source === "whatsapp" ? converting.resolvedEvent : converting.defaultEvent}
+          lockEvent={converting.source === "whatsapp" && converting.resolvedEvent !== null}
           onClose={() => setConvertingId(null)}
           onDone={() => { setConvertingId(null); reload() }}
         />
@@ -258,19 +292,39 @@ export default function OrderRequestsClient() {
   )
 }
 
-function ConvertModal({ requestId, needsProduct, events, items, defaultEvent, onClose, onDone }: {
+function ConvertModal({ requestId, needsProduct, events, items, defaultEvent, lockEvent = false, onClose, onDone }: {
   requestId: number
   needsProduct: boolean
   events: string[]
   items: { id: number; name: string; store: string; price: number; active: boolean }[]
   defaultEvent: string | null
+  // True for a WhatsApp row whose trip is authoritatively known
+  // (resolvedEvent), not just suggested — locks the picker instead of only
+  // pre-filling it. See finding 4.
+  lockEvent?: boolean
   onClose: () => void
   onDone: () => void
 }) {
-  const [event, setEvent] = useState(() => (defaultEvent && events.includes(defaultEvent)) ? defaultEvent : "")
+  // A locked WhatsApp trip is used verbatim, even if it isn't in the active
+  // events list (e.g. the trip has since closed) — unlike the highlight-
+  // derived suggestion below, this isn't a guess that needs validating
+  // against "currently open for purchasing."
+  const [event, setEvent] = useState(() =>
+    lockEvent && defaultEvent
+      ? defaultEvent
+      : (defaultEvent && events.includes(defaultEvent)) ? defaultEvent : "",
+  )
   const [productId, setProductId] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState("")
+
+  // The picker's own option list must include a locked-but-inactive event,
+  // or SearchableSelect has no label to show for it and the locked box
+  // renders blank even though `event` state is correctly set.
+  const eventOptions = useMemo(
+    () => (lockEvent && event && !events.includes(event)) ? [...events, event] : events,
+    [events, lockEvent, event],
+  )
 
   const itemOptions = useMemo(
     () => items.filter((it) => it.active).map((it) => ({
@@ -312,7 +366,10 @@ function ConvertModal({ requestId, needsProduct, events, items, defaultEvent, on
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
       <div className="bg-white rounded-xl p-5 w-full max-w-sm flex flex-col gap-3" onClick={(e) => e.stopPropagation()}>
         <h3 className="text-sm font-semibold text-foreground">Convert to order</h3>
-        <EventSelect value={event} onChange={setEvent} events={events} placeholder="Select event…" />
+        <EventSelect value={event} onChange={setEvent} events={eventOptions} placeholder="Select event…" disabled={lockEvent} />
+        {lockEvent && (
+          <p className="text-xs text-gray-400">Trip terkunci — sudah diketahui dari klaim WhatsApp-nya.</p>
+        )}
         {needsProduct && (
           <SearchableSelect
             value={productId}
