@@ -13,6 +13,10 @@ let postId: number
 let productId: number
 let sendId: number
 let sendCodeId: number
+// Customer handles created ad hoc by a test below (for the "resolved
+// identity" guard) — deleted in after(), AFTER orders are deleted, since an
+// order row FK-references its customer.
+const extraCustomers: string[] = []
 
 before(async () => {
   await sql`
@@ -32,6 +36,7 @@ before(async () => {
 
 after(async () => {
   await sql`DELETE FROM orders WHERE event = ${EVENT}`
+  if (extraCustomers.length > 0) await sql`DELETE FROM customers WHERE instagram_id IN ${sql(extraCustomers)}`
   await sql`DELETE FROM catalogue_requests WHERE send_id = ${sendId}`
   await sql`DELETE FROM catalogue_requests WHERE customer_handle = 'web_user'`
   // her-4 is also queued by the pre-existing resolveAskingCandidate
@@ -148,23 +153,48 @@ test("createRejectedClaim writes a rejected, whatsapp-sourced row with no produc
   assert.equal(row.staff_note, "trip sudah tutup")
 })
 
-test("convertCatalogueRequest on a WhatsApp row uses the send's price and event, and queues a ✅", async () => {
+test("convertCatalogueRequest on a WhatsApp row uses the send's SNAPSHOT price, not the live (repriced) product, and queues a ✅", async () => {
+  // A resolved identity — a real customers row, not the raw-phone-number
+  // fallback — since convertCatalogueRequest now refuses an unresolved one
+  // (see the "refuses" test below).
+  const HANDLE = `wabuyer${process.hrtime.bigint()}`
+  extraCustomers.push(HANDLE)
+  await sql`INSERT INTO customers (instagram_id) VALUES (${HANDLE}) ON CONFLICT DO NOTHING`
+
   const { id } = await createDirectClaim({
-    customerHandle: "628188888888", productId, qty: 2, note: "t",
+    customerHandle: HANDLE, productId, qty: 2, note: "t",
     sendId, sendCodeId, sender: "628188888888", messageId: "her-8",
   })
-  // convertCatalogueRequest requires a resolvable customer — createDirectClaim's
-  // customerHandle is a raw number, matching a real order's self-healing
-  // customers row (see appendOrders); no separate customer setup needed here.
-  const { orderId } = await convertCatalogueRequest(id, EVENT, "test@owner")
 
-  const [order] = await sql`SELECT unit_price, unit, event FROM orders WHERE id = ${orderId}`
-  assert.equal(Number(order.unit_price), 100000)
-  assert.equal(order.unit, 2)
-  assert.equal(order.event, EVENT)
+  // Reprice the live product AFTER the send already snapshotted its price
+  // (100000, set when attachProductToSend ran in before()) — proves
+  // convertCatalogueRequest reads wa_send_codes.price, not the live
+  // products.price, for a WhatsApp-sourced row.
+  await sql`UPDATE products SET price = 250000 WHERE id = ${productId}`
+  try {
+    const { orderId } = await convertCatalogueRequest(id, EVENT, "test@owner")
 
-  const [reply] = await sql`SELECT reaction FROM wa_replies WHERE quoted_message_id = 'her-8'`
-  assert.equal(reply?.reaction, "✅")
+    const [order] = await sql`SELECT unit_price, unit, event FROM orders WHERE id = ${orderId}`
+    assert.equal(Number(order.unit_price), 100000, "must use the send's snapshot price, not the repriced live product")
+    assert.equal(order.unit, 2)
+    assert.equal(order.event, EVENT)
+
+    const [reply] = await sql`SELECT reaction FROM wa_replies WHERE quoted_message_id = 'her-8'`
+    assert.equal(reply?.reaction, "✅")
+  } finally {
+    await sql`UPDATE products SET price = 100000 WHERE id = ${productId}`
+  }
+})
+
+test("convertCatalogueRequest refuses a WhatsApp row whose identity was never resolved to a customer", async () => {
+  const { id } = await createDirectClaim({
+    customerHandle: `unresolved${process.hrtime.bigint()}`, productId, qty: 1, note: "t",
+    sendId, sendCodeId, sender: "628100000099", messageId: "her-10",
+  })
+  await assert.rejects(convertCatalogueRequest(id, EVENT, "test@owner"))
+  const [row] = await sql`SELECT status, converted_order_id FROM catalogue_requests WHERE id = ${id}`
+  assert.equal(row.status, "pending", "a refused conversion must not touch the row's status")
+  assert.equal(row.converted_order_id, null)
 })
 
 test("rejectCatalogueRequest on a WhatsApp row queues a ❌", async () => {

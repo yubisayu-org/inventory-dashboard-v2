@@ -164,28 +164,61 @@ export async function convertCatalogueRequest(
 ): Promise<{ orderId: number }> {
   return withActor(actor, async (tx) => {
     const [request] = await tx`
-      SELECT r.customer_handle, r.product_id, r.qty, r.note, r.source, r.message_id, ws.group_jid
+      SELECT r.customer_handle, r.product_id, r.qty, r.note, r.source, r.message_id, ws.group_jid,
+             sc.price AS send_price
       FROM catalogue_requests r
       LEFT JOIN wa_sends ws ON ws.id = r.send_id
+      LEFT JOIN wa_send_codes sc ON sc.id = r.send_code_id
       WHERE r.id = ${id} AND r.status IN ('pending', 'approved')
       FOR UPDATE OF r
     `
     if (!request) throw new Error("Request not found or already handled")
+
+    // Refused when the identity behind a WhatsApp claim was never resolved
+    // to a real customer record — the spec's third conversion guard. Without
+    // this, appendOrders' auto-create-on-conflict would silently key a new
+    // customers row off the raw phone-number fallback createDirectClaim/
+    // createAskingRequest/createRejectedClaim use when findCustomerByNumber
+    // comes back empty. A 'catalogue'-source row's customer_handle is always
+    // a real submitted handle, so this guard is scoped to source = 'whatsapp'
+    // only — unchanged behaviour for every other row.
+    if (request.source === "whatsapp") {
+      const [customer] = await tx`
+        SELECT 1 FROM customers WHERE instagram_id = ${normalizeId(request.customer_handle as string)}
+      `
+      if (!customer) {
+        throw new Error(
+          "This customer's identity has not been resolved to an Instagram account yet — cannot convert",
+        )
+      }
+    }
 
     const resolvedProductId = (request.product_id as number | null) ?? productIdOverride ?? null
     if (resolvedProductId === null) {
       throw new Error("A product must be selected to convert a custom request")
     }
 
-    const [product] = await tx`SELECT price FROM products WHERE id = ${resolvedProductId}`
-    if (!product) throw new Error("Selected product not found")
+    // A WhatsApp-sourced row converts at the price the send actually posted
+    // at (wa_send_codes.price, snapshotted when the product was tagged onto
+    // the send) — repricing the product afterwards must not silently change
+    // what she agreed to. A 'catalogue'-source row has no send_code_id, so
+    // send_price is always null there and this falls through to the live
+    // product price exactly as before.
+    let unitPrice: number
+    if (request.source === "whatsapp" && request.send_price != null) {
+      unitPrice = Number(request.send_price)
+    } else {
+      const [product] = await tx`SELECT price FROM products WHERE id = ${resolvedProductId}`
+      if (!product) throw new Error("Selected product not found")
+      unitPrice = product.price as number
+    }
 
     const [created] = await appendOrders(
       [{
         event,
         customer: request.customer_handle as string,
         productId: resolvedProductId,
-        unitPrice: product.price as number,
+        unitPrice,
         unit: request.qty as number,
         note: request.note as string,
       }],
@@ -353,7 +386,7 @@ export async function reopenCatalogueRequest(
 // --- WhatsApp claim inbox -------------------------------------------------
 // The five functions below turn a WhatsApp group reply into the same
 // catalogue_requests inbox row the public catalogue path writes, sourced
-// 'whatsapp' instead of 'catalogue'. See migration 075 for the schema and
+// 'whatsapp' instead of 'catalogue'. See migration 081 for the schema and
 // docs/superpowers/specs/2026-08-19-whatsapp-product-post-design.md for the
 // direct/asking/rejected shape.
 
