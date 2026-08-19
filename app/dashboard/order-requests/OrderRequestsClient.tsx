@@ -25,12 +25,18 @@ export default function OrderRequestsClient() {
   const [rejectingId, setRejectingId] = useState<number | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [creatingProductForId, setCreatingProductForId] = useState<number | null>(null)
+  const [selectedCandidate, setSelectedCandidate] = useState<Record<number, number>>({}) // requestId -> sendCodeId
+  const [resolvingId, setResolvingId] = useState<number | null>(null)
+  // Default view is pending-only (matches the API's default). Toggling shows
+  // converted/rejected rows too — including WhatsApp closed-trip dead rows,
+  // which never show up otherwise.
+  const [showAll, setShowAll] = useState(false)
 
   async function reload() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch("/api/sheets/order-requests", { cache: "no-store" })
+      const res = await fetch(`/api/sheets/order-requests${showAll ? "?all=true" : ""}`, { cache: "no-store" })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "Failed to load")
       setRequests(data.requests ?? [])
@@ -41,7 +47,7 @@ export default function OrderRequestsClient() {
     }
   }
 
-  useEffect(() => { reload() }, [])
+  useEffect(() => { reload() }, [showAll])
 
   async function cancelEdit(id: number) {
     try {
@@ -58,10 +64,40 @@ export default function OrderRequestsClient() {
     }
   }
 
+  async function resolveCandidate(r: CatalogueRequest) {
+    const sendCodeId = selectedCandidate[r.id] ?? (r.candidates?.length === 1 ? r.candidates[0].id : undefined)
+    if (sendCodeId === undefined) return
+    setResolvingId(r.id)
+    try {
+      const res = await fetch(`/api/sheets/order-requests/${r.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "resolve-candidate", sendCodeId }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "Failed")
+      await reload()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to resolve")
+    } finally {
+      setResolvingId(null)
+    }
+  }
+
   const converting = requests.find((r) => r.id === convertingId) ?? null
 
   return (
     <div className="flex flex-col gap-2">
+      <div className="flex justify-end">
+        <button
+          onClick={() => setShowAll((s) => !s)}
+          className={`px-3 py-1.5 rounded-lg border text-xs ${
+            showAll ? "border-brand bg-brand/5 text-brand" : "border-cream-border text-gray-500"
+          }`}
+        >
+          {showAll ? "Showing all" : "Show all"}
+        </button>
+      </div>
       {error && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
       )}
@@ -70,8 +106,19 @@ export default function OrderRequestsClient() {
       ) : requests.length === 0 ? (
         <p className="text-sm text-gray-400">No pending requests.</p>
       ) : (
-        requests.map((r) => (
-          <div key={r.id} className="rounded-xl border border-cream-border bg-white p-3 flex items-center justify-between gap-3">
+        requests.map((r) => {
+          // The only 'rejected'+'whatsapp' rows with productId still null are
+          // createRejectedClaim's closed-trip dead rows (case D) — an
+          // owner-rejected WhatsApp direct claim already has productId set
+          // from the claim, so this doesn't misclassify a normal Tolak.
+          const isDeadRow = r.status === "rejected" && r.source === "whatsapp" && r.productId === null
+          return (
+          <div
+            key={r.id}
+            className={`rounded-xl border border-cream-border p-3 flex items-center justify-between gap-3 ${
+              isDeadRow ? "opacity-60 bg-gray-50" : "bg-white"
+            }`}
+          >
             <div className="flex items-center gap-3">
               {r.referenceImageUrl && (
                 <a href={r.referenceImageUrl} target="_blank" rel="noopener noreferrer" className="shrink-0">
@@ -80,8 +127,13 @@ export default function OrderRequestsClient() {
               )}
               <div>
                 <div className="text-sm text-foreground">
+                  {r.source === "whatsapp" && (
+                    <span className="inline-block px-1.5 py-0.5 rounded bg-green-100 text-green-700 text-[10px] font-medium mr-1 align-middle">WhatsApp</span>
+                  )}
                   {displayIg(r.customerHandle)} —{" "}
-                  {r.productId === null ? (
+                  {r.status === "asking" ? (
+                    <>× {r.qty}</>
+                  ) : r.productId === null ? (
                     <>
                       <span className="inline-block px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-[10px] font-medium mr-1 align-middle">Custom</span>
                       {r.description} × {r.qty}
@@ -121,9 +173,49 @@ export default function OrderRequestsClient() {
                   <button onClick={() => setRejectingId(r.id)} className="px-3 py-1.5 rounded-lg border border-cream-border text-xs">Reject</button>
                 </>
               )}
+              {r.status === "asking" && (
+                <div className="flex flex-col gap-2 w-full">
+                  <span className="text-xs text-amber-600 font-medium">
+                    {r.candidates && r.candidates.length === 1 ? "Ditanya di grup — menunggu 👍" : "Ditanya di grup — beberapa kemungkinan"}
+                  </span>
+                  <div className="flex flex-col gap-1">
+                    {(r.candidates ?? []).map((c, i) => {
+                      const isSelected = selectedCandidate[r.id] === c.id || (r.candidates!.length === 1 && selectedCandidate[r.id] === undefined && i === 0)
+                      return (
+                        <label
+                          key={c.id}
+                          className={`flex items-center gap-2 border rounded-lg px-2 py-1.5 text-xs cursor-pointer ${isSelected ? "border-brand ring-1 ring-brand" : "border-cream-border"}`}
+                        >
+                          <input
+                            type="radio"
+                            name={`candidate-${r.id}`}
+                            checked={isSelected}
+                            onChange={() => setSelectedCandidate((s) => ({ ...s, [r.id]: c.id }))}
+                            className="accent-brand"
+                          />
+                          <span className="font-mono font-bold text-brand">{c.code}</span>
+                          <span>{c.productName}</span>
+                          <span className="ml-auto text-gray-500">Rp {c.price.toLocaleString("id-ID")}</span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                  <button
+                    disabled={resolvingId === r.id || (r.candidates?.length !== 1 && selectedCandidate[r.id] === undefined)}
+                    onClick={() => resolveCandidate(r)}
+                    className="self-start px-3 py-1.5 rounded-lg bg-brand text-white text-xs disabled:opacity-50"
+                  >
+                    {resolvingId === r.id ? "Menyimpan…" : "Pilih"}
+                  </button>
+                </div>
+              )}
+              {isDeadRow && (
+                <span className="text-xs text-gray-400">Trip sudah tutup — tidak dicatat</span>
+              )}
             </div>
           </div>
-        ))
+          )
+        })
       )}
       {converting && (
         <ConvertModal
