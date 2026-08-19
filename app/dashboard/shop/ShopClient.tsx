@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import SearchInput from "@/components/SearchInput"
 import { PaginationButton } from "@/components/Pagination"
@@ -29,6 +29,21 @@ export default function ShopClient() {
   // Shops closed for orders, keyed "event|store". Per trip, because the same
   // shop can be open on one trip and finished on another.
   const [shut, setShut] = useState<Set<string>>(new Set())
+  // The "+" menu (shelf upload, DM order, product post). Closed by default,
+  // and by anything outside it — see the click-outside effect below.
+  const [addMenuOpen, setAddMenuOpen] = useState(false)
+  const addMenuRef = useRef<HTMLDivElement>(null)
+
+  // Close on click outside, same mechanism SearchableSelect uses: a
+  // pointerdown listener on the document, gone the moment the menu is.
+  useEffect(() => {
+    if (!addMenuOpen) return
+    function handlePointerDown(e: PointerEvent) {
+      if (!addMenuRef.current?.contains(e.target as Node)) setAddMenuOpen(false)
+    }
+    document.addEventListener("pointerdown", handlePointerDown)
+    return () => document.removeEventListener("pointerdown", handlePointerDown)
+  }, [addMenuOpen])
 
   useEffect(() => {
     const params = new URLSearchParams({ page: String(page) })
@@ -183,32 +198,59 @@ export default function ShopClient() {
           </svg>
         </button>
 
-        {/* A photo a customer marked and sent privately. The shelf is worked
-            out from the picture, because a screenshot in an inbox rarely says
-            which rack it was. */}
-        <button
-          type="button"
-          onClick={() => setDmOpen(true)}
-          aria-label="Record a marked photo sent by DM"
-          title="Marked photo from a DM"
-          className="shrink-0 rounded-xl border border-cream-border bg-white px-3 py-2 text-gray-500"
-        >
-          <svg
-            width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+        {/* Every way a shelf or order gets in: uploading a shelf photo, a
+            marked photo from a DM, or posting a single product straight to
+            the catalogue. One trigger rather than three buttons — the row
+            was already full, and only the first two see daily use. */}
+        <div ref={addMenuRef} className="relative shrink-0">
+          <button
+            type="button"
+            onClick={() => setAddMenuOpen((v) => !v)}
+            aria-label="Tambah"
+            className="rounded-xl bg-brand px-4 py-2 text-sm font-bold text-white"
           >
-            <path d="M21.44 11.05 12.25 20.24a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-          </svg>
-        </button>
-
-        {/* The other way a shelf gets in. Here rather than on the archive page:
-            uploading happens in the shop, which is where this screen is used. */}
-        <Link
-          href="/dashboard/shop/upload"
-          className="shrink-0 rounded-xl bg-brand px-4 py-2 text-sm font-bold text-white"
-        >
-          Upload
-        </Link>
+            +
+          </button>
+          {addMenuOpen && (
+            <div className="absolute right-0 mt-2 w-56 rounded-xl border border-cream-border bg-white shadow-lg z-20 flex flex-col overflow-hidden">
+              {/* The other way a shelf gets in. Here rather than on the archive
+                  page: uploading happens in the shop, which is where this
+                  screen is used. */}
+              <Link
+                href="/dashboard/shop/upload"
+                onClick={() => setAddMenuOpen(false)}
+                className="flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-cream"
+              >
+                🖼 Upload shelf
+              </Link>
+              {/* Posts a single product straight to the catalogue, skipping
+                  the shelf-photo flow entirely. */}
+              <Link
+                href="/dashboard/catalogue-posts?compose=1"
+                onClick={() => setAddMenuOpen(false)}
+                className="flex items-center gap-2 px-3 py-2.5 text-sm font-semibold text-brand hover:bg-cream"
+              >
+                📦 Product post
+                <span className="ml-auto text-[10px] font-bold uppercase bg-brand text-white rounded-full px-1.5 py-0.5">
+                  baru
+                </span>
+              </Link>
+              {/* A photo a customer marked and sent privately. The shelf is
+                  worked out from the picture, because a screenshot in an
+                  inbox rarely says which rack it was. */}
+              <button
+                type="button"
+                onClick={() => {
+                  setAddMenuOpen(false)
+                  setDmOpen(true)
+                }}
+                className="flex items-center gap-2 px-3 py-2.5 text-sm text-left hover:bg-cream"
+              >
+                📎 Paste DM order
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {dmOpen ? <DmPhotoSheet onClose={() => setDmOpen(false)} /> : null}
