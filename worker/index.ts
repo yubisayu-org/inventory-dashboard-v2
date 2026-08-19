@@ -11,7 +11,7 @@ import {
 import { ReactionQueue } from "./reactions"
 import { applyOwnerReaction, outcomeFor } from "./outcomes"
 import { trySizeOffer, trySizeAnswer } from "./size-offer"
-import { sendNextShelf, OUTBOX_INTERVAL_MS } from "./outbox"
+import { sendNextShelf, sendNextSend, OUTBOX_INTERVAL_MS } from "./outbox"
 import { findPostByMessage, listClaims } from "@/lib/db/claims"
 import { renderShoppingList } from "@/lib/whatsapp/render"
 import sql from "@/lib/db-pool"
@@ -402,6 +402,9 @@ async function main() {
         while (await sendNextShelf(sock)) {
           // Keep going while the queue has work: an upload of forty racks
           // should not take three and a half minutes to appear.
+          await new Promise((resolve) => setTimeout(resolve, 1200))
+        }
+        while (await sendNextSend(sock)) {
           await new Promise((resolve) => setTimeout(resolve, 1200))
         }
       } catch (err) {
