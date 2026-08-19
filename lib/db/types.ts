@@ -565,3 +565,54 @@ export interface OperationalExpenseRow {
   updatedAt: string
 }
 
+export interface CatalogueHighlight {
+  id: number
+  name: string
+  defaultEvent: string | null
+  sortOrder: number
+  visible: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CataloguePost {
+  id: number
+  mediaUrl: string
+  mediaType: "photo" | "video"
+  caption: string
+  visible: boolean
+  createdAt: string
+  updatedAt: string
+  highlightId: number | null
+  /** Products tagged in this post. */
+  productIds: number[]
+}
+
+export interface CatalogueRequest {
+  id: number
+  customerHandle: string
+  productId: number | null
+  productName: string | null
+  description: string
+  referenceImageUrl: string | null
+  qty: number
+  note: string
+  status: "pending" | "offer_pending" | "approved" | "converted" | "rejected"
+  staffNote: string
+  convertedOrderId: number | null
+  createdAt: string
+  countryId: number | null
+  countryName: string | null
+  valas: number | null
+  gram: number | null
+  estimatedPrice: number | null
+  postId: number | null
+  /** Resolved from post -> highlight -> default_event, unconditionally —
+   *  the caller (ConvertModal) is responsible for checking it's still in
+   *  the active events list before using it as a picker default. Owner-read
+   *  path only, see getCatalogueRequests — the public status-lookup path
+   *  never populates this (stays null), since a customer has no use for
+   *  staff's purchasing-event bookkeeping. */
+  defaultEvent: string | null
+}
+
