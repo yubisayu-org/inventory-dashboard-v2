@@ -614,5 +614,21 @@ export interface CatalogueRequest {
    *  never populates this (stays null), since a customer has no use for
    *  staff's purchasing-event bookkeeping. */
   defaultEvent: string | null
+  /** WhatsApp claim inbox fields (migration 075). 'catalogue' for every row
+   *  written by the public/staff paths above; 'whatsapp' plus the rest of
+   *  these fields populated only for rows written by
+   *  createDirectClaim/createAskingRequest/createRejectedClaim in
+   *  lib/db/catalogue-requests.ts. Rows fetched through
+   *  getCatalogueRequestsByHandle/getCatalogueRequests (which SELECT an
+   *  explicit column list that doesn't include these) fall back to
+   *  source: 'catalogue' and the rest empty/null, same as an actual
+   *  'catalogue'-sourced row would read. */
+  source: "catalogue" | "whatsapp"
+  sendId: number | null
+  sendCodeId: number | null
+  sender: string
+  messageId: string
+  botMessageId: string
+  candidateSendCodeIds: number[] | null
 }
 

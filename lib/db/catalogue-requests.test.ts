@@ -115,6 +115,8 @@ test("findRequestByBotMessage resolves an open asking row by the bot's own messa
   })
   const found = await findRequestByBotMessage("bot-6")
   assert.equal(found?.id, id)
+  assert.equal(found?.sendId, sendId)
+  assert.deepEqual(found?.candidateSendCodeIds, [sendCodeId])
 })
 
 test("findRequestByBotMessage returns null once the row has resolved", async () => {

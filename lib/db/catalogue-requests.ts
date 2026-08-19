@@ -32,6 +32,16 @@ function toRequest(r: Record<string, unknown>): CatalogueRequest {
     estimatedPrice: (r.estimated_price as number | null) ?? null,
     postId: (r.post_id as number | null) ?? null,
     defaultEvent: (r.default_event as string | null) ?? null,
+    // The two explicit-column callers below (getCatalogueRequestsByHandle,
+    // getCatalogueRequests) don't SELECT these — undefined there falls back
+    // to the same values an actual 'catalogue'-sourced row would carry.
+    source: (r.source as CatalogueRequest["source"] | undefined) ?? "catalogue",
+    sendId: (r.send_id as number | null | undefined) ?? null,
+    sendCodeId: (r.send_code_id as number | null | undefined) ?? null,
+    sender: (r.sender as string | undefined) ?? "",
+    messageId: (r.message_id as string | undefined) ?? "",
+    botMessageId: (r.bot_message_id as string | undefined) ?? "",
+    candidateSendCodeIds: (r.candidate_send_code_ids as number[] | null | undefined) ?? null,
   }
 }
 
