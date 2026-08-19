@@ -111,6 +111,9 @@ function mapCustomerRow(r: Record<string, unknown>, ongkir: OngkirByWarehouse): 
     invoiceCount: Number(r.invoice_count ?? 0),
     totalInvoiced: Number(r.total_invoiced ?? 0),
     totalOutstanding: Number(r.total_outstanding ?? 0),
+    // Presence only. The Google account's address is deliberately never
+    // stored, so this can say whether they can sign in but not who as.
+    catalogueSignedIn: r.google_sub != null,
     createdAt: r.created_at ? new Date(r.created_at as string).toISOString() : null,
     updatedAt: r.updated_at ? new Date(r.updated_at as string).toISOString() : null,
   }
@@ -126,7 +129,7 @@ export async function getCustomers(): Promise<CustomerRow[]> {
     sql`
       SELECT id, instagram_id, name, whatsapp, data_diri, ekspedisi,
              bank_name, bank_account_number, bank_account_holder,
-             created_at, updated_at
+             google_sub, created_at, updated_at
       FROM customers
       ORDER BY instagram_id ASC
     `,
@@ -272,7 +275,7 @@ export async function getCustomersPaginated(opts: {
   const dataRows = await sql.unsafe(
     `SELECT c.id, c.instagram_id, c.name, c.whatsapp, c.data_diri, c.ekspedisi,
             c.bank_name, c.bank_account_number, c.bank_account_holder,
-            c.created_at, c.updated_at,
+            c.google_sub, c.created_at, c.updated_at,
             COALESCE(cis.invoice_count, 0) AS invoice_count,
             COALESCE(cis.total_invoiced, 0) AS total_invoiced,
             COALESCE(cis.total_outstanding, 0) AS total_outstanding

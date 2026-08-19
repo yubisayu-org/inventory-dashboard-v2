@@ -204,6 +204,15 @@ export default function CustomersClient() {
         return (
           <span className="inline-flex items-center gap-1.5">
             <span className="font-medium tabular-nums">{displayIg(row.original.instagramId)}</span>
+            {/* Presence only — the Google address is never collected, so this
+                says they can sign in, not who as. */}
+            {row.original.catalogueSignedIn && (
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-green-600 shrink-0" aria-label="Signed in to the catalogue with Google">
+                <title>Signed in to the catalogue with Google</title>
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                <polyline points="22 4 12 14.01 9 11.01" />
+              </svg>
+            )}
             {!hasAddress && (
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-500 shrink-0" aria-label="No address filled">
                 <title>No address filled</title>
