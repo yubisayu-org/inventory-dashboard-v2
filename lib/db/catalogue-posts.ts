@@ -8,7 +8,7 @@ function toPost(r: Record<string, unknown>): CataloguePost {
     id: r.id as number,
     mediaUrl: r.media_url as string,
     mediaType: r.media_type as "photo" | "video",
-    caption: r.caption as string,
+    title: r.title as string,
     visible: r.visible as boolean,
     createdAt: (r.created_at as Date).toISOString(),
     updatedAt: r.updated_at ? (r.updated_at as Date).toISOString() : "",
@@ -18,7 +18,7 @@ function toPost(r: Record<string, unknown>): CataloguePost {
 }
 
 const POST_SELECT = `
-  SELECT p.id, p.media_url, p.media_type, p.caption, p.visible, p.highlight_id,
+  SELECT p.id, p.media_url, p.media_type, p.title, p.visible, p.highlight_id,
          p.created_at, p.updated_at,
          COALESCE(ARRAY_AGG(pp.product_id) FILTER (WHERE pp.product_id IS NOT NULL), '{}') AS product_ids
   FROM catalogue_posts p
@@ -63,12 +63,12 @@ export async function getAllCataloguePosts(db: DBExecutor = sql): Promise<Catalo
 }
 
 export async function createCataloguePost(
-  data: { mediaUrl: string; mediaType: "photo" | "video"; caption: string; productIds: number[]; highlightId?: number | null },
+  data: { mediaUrl: string; mediaType: "photo" | "video"; title: string; productIds: number[]; highlightId?: number | null },
   db: DBExecutor = sql,
 ): Promise<{ id: number }> {
   const [row] = await db`
-    INSERT INTO catalogue_posts (media_url, media_type, caption, highlight_id)
-    VALUES (${data.mediaUrl}, ${data.mediaType}, ${data.caption}, ${data.highlightId ?? null})
+    INSERT INTO catalogue_posts (media_url, media_type, title, highlight_id)
+    VALUES (${data.mediaUrl}, ${data.mediaType}, ${data.title}, ${data.highlightId ?? null})
     RETURNING id
   `
   const id = row.id as number

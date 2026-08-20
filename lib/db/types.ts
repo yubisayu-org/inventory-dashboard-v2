@@ -588,7 +588,7 @@ export interface CataloguePost {
   id: number
   mediaUrl: string
   mediaType: "photo" | "video"
-  caption: string
+  title: string
   visible: boolean
   createdAt: string
   updatedAt: string

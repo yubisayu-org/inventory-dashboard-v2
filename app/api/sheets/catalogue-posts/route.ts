@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
   try {
     const form = await req.formData()
     const file = form.get("file")
-    const caption = String(form.get("caption") ?? "")
+    const title = String(form.get("title") ?? "")
     const productIdsRaw = String(form.get("productIds") ?? "[]")
 
     if (!(file instanceof File)) {
@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
     let result: { id: number }
     try {
       result = await withActor(session.user.email ?? null, (tx) =>
-        createCataloguePost({ mediaUrl: url, mediaType, caption, productIds, highlightId }, tx),
+        createCataloguePost({ mediaUrl: url, mediaType, title, productIds, highlightId }, tx),
       )
     } catch (err) {
       // Don't leave an orphaned file in storage if the DB insert fails
