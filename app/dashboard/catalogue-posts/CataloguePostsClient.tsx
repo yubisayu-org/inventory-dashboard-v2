@@ -131,7 +131,7 @@ export default function CataloguePostsClient() {
                   <img src={post.mediaUrl} alt="" className="w-16 h-16 object-cover rounded-lg" />
                 )}
                 <div>
-                  <div className="text-sm text-foreground">{post.caption || "(no caption)"}</div>
+                  <div className="text-sm text-foreground">{post.title || "(no title)"}</div>
                   <div className="text-xs text-gray-400">{post.productIds.length} product{post.productIds.length === 1 ? "" : "s"} tagged</div>
                 </div>
               </div>
@@ -221,7 +221,7 @@ function ComposerFlow({ activeEvents, onClose }: { activeEvents: string[]; onClo
 
 function UploadForm({ options, highlights, onCreated }: { options: ReturnType<typeof useSheetOptions>; highlights: CatalogueHighlight[]; onCreated: () => void }) {
   const [file, setFile] = useState<File | null>(null)
-  const [caption, setCaption] = useState("")
+  const [title, setTitle] = useState("")
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [highlightId, setHighlightId] = useState<string>("")
   const [submitting, setSubmitting] = useState(false)
@@ -243,13 +243,13 @@ function UploadForm({ options, highlights, onCreated }: { options: ReturnType<ty
     try {
       const form = new FormData()
       form.set("file", file)
-      form.set("caption", caption)
+      form.set("title", title)
       form.set("productIds", JSON.stringify([...selectedIds]))
       if (highlightId) form.set("highlightId", highlightId)
       const res = await fetch("/api/sheets/catalogue-posts", { method: "POST", body: form })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "Failed")
-      setFile(null); setCaption(""); setSelectedIds(new Set()); setHighlightId("")
+      setFile(null); setTitle(""); setSelectedIds(new Set()); setHighlightId("")
       onCreated()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed")
@@ -263,8 +263,8 @@ function UploadForm({ options, highlights, onCreated }: { options: ReturnType<ty
       <h2 className="text-sm font-semibold text-foreground">New post</h2>
       <input type="file" accept="image/*,video/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="text-sm" />
       <input
-        value={caption}
-        onChange={(e) => setCaption(e.target.value)}
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
         placeholder="Caption (optional)"
         className="border border-cream-border rounded-lg px-2 py-1.5 text-sm"
       />
