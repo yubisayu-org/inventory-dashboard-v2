@@ -75,5 +75,12 @@ export async function GET(req: NextRequest) {
   const sessionToken = await issueSession(result.customerId)
   const oneTime = await putOneTimeCode(sessionToken)
   const site = (process.env.CATALOGUE_SITE_URL ?? "").replace(/\/$/, "")
-  return NextResponse.redirect(`${site}/api/auth-exchange?code=${oneTime}`)
+  // The nonce goes back so the catalogue can check it against the cookie it
+  // set before this round trip. A code arriving without the matching nonce is
+  // refused there, which is what stops one browser's code being redeemed in
+  // another's.
+  const back = new URL(`${site}/api/auth-exchange`)
+  back.searchParams.set("code", oneTime)
+  if (verified.siteNonce) back.searchParams.set("nonce", verified.siteNonce)
+  return NextResponse.redirect(back.toString())
 }

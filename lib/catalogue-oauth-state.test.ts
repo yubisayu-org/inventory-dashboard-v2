@@ -8,11 +8,29 @@ process.env.AUTH_SECRET ??= "test-secret-for-state-signing"
 import { signState, verifyState } from "./catalogue-oauth-state"
 
 test("a signed state round-trips its invite", () => {
-  assert.deepEqual(verifyState(signState("invite-abc")), { invite: "invite-abc" })
+  assert.deepEqual(verifyState(signState("invite-abc")), {
+    invite: "invite-abc",
+    siteNonce: "",
+  })
 })
 
 test("an empty invite round-trips — that is a returning customer", () => {
-  assert.deepEqual(verifyState(signState("")), { invite: "" })
+  assert.deepEqual(verifyState(signState("")), { invite: "", siteNonce: "" })
+})
+
+test("the catalogue's login nonce round-trips", () => {
+  assert.deepEqual(verifyState(signState("inv", "browser-nonce")), {
+    invite: "inv",
+    siteNonce: "browser-nonce",
+  })
+})
+
+test("swapping the nonce invalidates the state", () => {
+  // Without signing it, a browser could substitute its own nonce mid-flow and
+  // redeem a code minted elsewhere.
+  const state = signState("inv", "victim-nonce")
+  const [rand, invite, , mac] = state.split(".")
+  assert.equal(verifyState(`${rand}.${invite}.attacker-nonce.${mac}`), null)
 })
 
 test("swapping the invite for another invalidates the state", () => {
