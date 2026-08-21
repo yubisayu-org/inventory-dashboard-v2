@@ -500,10 +500,6 @@ export default function ArrivalListClient() {
   // Resolve selected keys back to live items (off `items`, not `filteredItems`,
   // so a search-hidden selection still appears in the document). Drops anything
   // no longer pending after a refresh.
-  const selectedItems = useMemo(
-    () => items.filter((i) => selected.has(selKey(i))),
-    [items, selected],
-  )
 
   function toggleSelect(item: ArrivalListItem) {
     setSelected((prev) => {
@@ -609,6 +605,20 @@ export default function ArrivalListClient() {
       return out
     }, [])
   }, [items, search, route])
+
+  /**
+   * Resolved against the rows on screen, not the raw list.
+   *
+   * Under a route those rows are projected onto one parcel and their selection
+   * key carries it, so matching against `items` — which has no parcel — found
+   * nothing and the bulk dialogs opened over zero items with no quantities to
+   * adjust. Selecting acts on what you can see, which is also what makes
+   * receiving apply to that box alone.
+   */
+  const selectedItems = useMemo(
+    () => filteredItems.filter((i) => selected.has(selKey(i))),
+    [filteredItems, selected],
+  )
 
   const grouped = useMemo(
     () => groupItems(filteredItems, route === "all" ? undefined : (i) => i.parcel ?? "—"),
