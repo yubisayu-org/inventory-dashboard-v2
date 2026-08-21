@@ -71,7 +71,7 @@ export async function GET(req: Request) {
 
   try {
     const rows = await sql`
-      SELECT p.id, p.event, p.store, p.created_at, e.is_active,
+      SELECT p.id, p.event, p.store, p.created_at, p.message_id, e.is_active,
              COUNT(DISTINCT s.id)::int AS sku,
              COALESCE(SUM(c.quantity), 0)::int AS claimed,
              COALESCE(SUM(c.obtained), 0)::int AS bought
@@ -115,6 +115,8 @@ export async function GET(req: Request) {
           // Whether its trip is still running, so a closed one can say so
           // rather than sitting among today's shelves looking identical.
           active: Boolean(r.is_active),
+          // Empty until the bot actually posts it — see wa_posts.message_id.
+          messageId: (r.message_id as string) ?? "",
           sku: r.sku as number,
           claimed: r.claimed as number,
           bought: r.bought as number,

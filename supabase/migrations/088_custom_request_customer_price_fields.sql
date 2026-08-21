@@ -1,0 +1,12 @@
+-- The customer-facing custom-request form (separate repo) already computes
+-- a live estimate from country/valas/weight before submitting — this lets
+-- the submission actually carry those four values through instead of
+-- dropping them at the browser. catalogue_requests already has all four
+-- columns (migration 076's country_id/valas/gram, migration 079's
+-- estimated_price, added for the staff propose-price flow) — they were
+-- simply never grantable to the public insert path.
+--
+-- estimated_price here is the customer's OWN quoted figure, frozen at
+-- submit time — not something recomputed later. If the kurs moves before
+-- staff replies, the propose-price flow can show both side by side.
+GRANT INSERT (country_id, valas, gram, estimated_price) ON catalogue_requests TO catalogue_public;

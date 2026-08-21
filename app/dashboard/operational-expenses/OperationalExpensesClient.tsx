@@ -496,31 +496,40 @@ export default function OperationalExpensesClient() {
           </button>
           {filterOpen && (
             <div className="absolute right-0 top-full mt-1 z-30 w-52 rounded-lg border border-cream-border bg-white shadow-lg p-3 flex flex-col gap-3">
-              <label className="flex flex-col gap-1">
+              <div className="flex flex-col gap-1">
                 <span className="text-xs font-medium text-gray-500">Status</span>
-                <select
-                  value={settledFilterValue}
-                  onChange={(e) => upsertColumnFilter("isSettled", e.target.value)}
-                  className="w-full border border-cream-border rounded-lg px-2 py-2 text-sm text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
-                >
-                  <option value="">All status</option>
-                  <option value="true">Settled</option>
-                  <option value="false">Unsettled</option>
-                </select>
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-gray-500">Method</span>
-                <select
-                  value={methodFilterValue}
-                  onChange={(e) => upsertColumnFilter("method", e.target.value)}
-                  className="w-full border border-cream-border rounded-lg px-2 py-2 text-sm text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
-                >
-                  <option value="">All methods</option>
-                  {methods.map((m) => (
-                    <option key={m} value={m}>{m}</option>
+                <div className="flex flex-col gap-0.5">
+                  {[{ value: "", label: "All status" }, { value: "true", label: "Settled" }, { value: "false", label: "Unsettled" }].map((o) => (
+                    <button
+                      key={o.value}
+                      type="button"
+                      onClick={() => upsertColumnFilter("isSettled", o.value)}
+                      className={`text-left px-2 py-1.5 rounded-lg text-xs transition-colors ${
+                        settledFilterValue === o.value ? "bg-brand/10 text-brand font-medium" : "text-gray-600 hover:bg-gray-50"
+                      }`}
+                    >
+                      {o.label}
+                    </button>
                   ))}
-                </select>
-              </label>
+                </div>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-gray-500">Method</span>
+                <div className="flex flex-col gap-0.5">
+                  {[{ value: "", label: "All methods" }, ...methods.map((m) => ({ value: m, label: m }))].map((o) => (
+                    <button
+                      key={o.value}
+                      type="button"
+                      onClick={() => upsertColumnFilter("method", o.value)}
+                      className={`text-left px-2 py-1.5 rounded-lg text-xs transition-colors ${
+                        methodFilterValue === o.value ? "bg-brand/10 text-brand font-medium" : "text-gray-600 hover:bg-gray-50"
+                      }`}
+                    >
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
         </div>

@@ -93,6 +93,27 @@ export interface ProductDefaults {
    *  disables the feature — every event always meets a 0% threshold.
    *  Moved here from BusinessProfile in migration 057. */
   dpPercent: number
+  /**
+   * The Profit Margin formula order-requests' "Propose a price revision"
+   * and "Create product from approved offer" start from (migration 090) —
+   * meant to mirror the customer-facing custom-request form's own live
+   * estimate (a separate repo), so a fresh proposal's Price starts matching
+   * what she was already quoted. Previously hardcoded in
+   * lib/db/catalogue-requests.ts; moved here so keeping the two in step
+   * never needs a code change on this side, only a Settings edit.
+   */
+  customRequestProfitPct: number
+  customRequestOperationalFee: number
+  customRequestPackingFee: number
+  /**
+   * Domains (migration 092) that usually get quoted in Tier Kurs — a URL
+   * found in a custom request's description/note matching one of these
+   * pre-selects the Tier Kurs tab in "Propose a price revision" instead of
+   * always opening on Profit Margin. Bare domains, no protocol/"www." (a
+   * match strips both before comparing). One per line in Settings' own
+   * textarea; parsed into this array when read.
+   */
+  tierKursSites: string[]
 }
 
 export const DEFAULT_PRODUCT_DEFAULTS: ProductDefaults = {
@@ -121,4 +142,9 @@ export const DEFAULT_PRODUCT_DEFAULTS: ProductDefaults = {
   defaultPricingMethod: "overseas",
   whatsappPricingMethod: "overseas",
   dpPercent: 0,
+  // Matches the fixed 15%/5000/0 formula this replaced.
+  customRequestProfitPct: 15,
+  customRequestOperationalFee: 5000,
+  customRequestPackingFee: 0,
+  tierKursSites: ["24028-net.jp", "zara.com"],
 }

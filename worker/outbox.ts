@@ -1,5 +1,5 @@
 import type { WASocket } from "baileys"
-import { nextPending, markSent, markFailed } from "@/lib/db/outbox"
+import { nextPending, markSent, markFailed, nextPendingSend, markSendSent, markSendFailed } from "@/lib/db/outbox"
 import { localPostImage } from "@/lib/whatsapp/post-image"
 
 /** How often the worker looks for a shelf to post. */
@@ -41,6 +41,35 @@ export async function sendNextShelf(sock: WASocket): Promise<boolean> {
     // improves by being attempted every five seconds.
     await markFailed(item.id, (err as Error).message)
     console.error(`failed to post shelf ${item.postId}:`, err)
+    return true
+  }
+}
+
+/** Post one waiting composed send, if there is one. Same pacing contract as
+ *  sendNextShelf — the caller loops while this returns true. */
+export async function sendNextSend(sock: WASocket): Promise<boolean> {
+  const item = await nextPendingSend()
+  if (item === null) return false
+
+  try {
+    const sent = await sock.sendMessage(
+      item.groupJid,
+      item.mediaType === "video"
+        ? { video: { url: item.mediaUrl }, caption: item.caption }
+        : { image: { url: item.mediaUrl }, caption: item.caption },
+    )
+    const messageId = sent?.key?.id ?? ""
+    if (!messageId) throw new Error("sent, but WhatsApp returned no message id")
+    await markSendSent(item.id, item.sendId, messageId, item.groupJid)
+    return true
+  } catch (err) {
+    // Marked failed rather than retried forever — same reasoning as
+    // sendNextShelf above. Leaving the row 'pending' here meant the sweep
+    // picked the exact same row again every 1.2s, unboundedly: a failure
+    // after a successful sock.sendMessage (the post-send bookkeeping) would
+    // re-post the same photo to the group on every pass.
+    await markSendFailed(item.id, (err as Error).message)
+    console.error(`failed to post send ${item.sendId}:`, err)
     return true
   }
 }

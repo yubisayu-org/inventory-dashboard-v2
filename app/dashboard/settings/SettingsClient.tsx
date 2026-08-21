@@ -311,11 +311,11 @@ function BusinessProfileSection() {
 }
 
 /**
- * Fetches the one product_defaults row and hands it to three independently-saved
- * cards (General/Profit Margin/Markup Flat — Kurs Tiers rounding is a fourth,
- * elsewhere). Each card PATCHes only the fields it owns (see the route), so
- * saving one can no longer clobber another's unsaved edits or a value changed
- * from a different card since this page loaded.
+ * Fetches the one product_defaults row and hands it to four independently-saved
+ * cards (General/Profit Margin/Custom Request Estimate/Markup Flat — Kurs Tiers
+ * rounding is a fifth, elsewhere). Each card PATCHes only the fields it owns
+ * (see the route), so saving one can no longer clobber another's unsaved edits
+ * or a value changed from a different card since this page loaded.
  */
 function ProductDefaultsSection() {
   const [defaults, setDefaults] = useState<ProductDefaults | null>(null)
@@ -346,6 +346,7 @@ function ProductDefaultsSection() {
     <>
       <GeneralCard defaults={defaults} setDefaults={setDefaults} loadError={loadError} countries={countries} />
       <ProfitMarginCard defaults={defaults} setDefaults={setDefaults} loadError={loadError} />
+      <CustomRequestEstimateCard defaults={defaults} setDefaults={setDefaults} loadError={loadError} />
       <MarkupFlatCard defaults={defaults} setDefaults={setDefaults} loadError={loadError} />
     </>
   )
@@ -695,6 +696,104 @@ function ProfitMarginCard({ defaults, setDefaults, loadError }: ProductDefaultsC
             )}
           </div>
         </div>
+      )}
+    </div>
+  )
+}
+
+const CUSTOM_REQUEST_KEYS = [
+  "customRequestProfitPct", "customRequestOperationalFee", "customRequestPackingFee", "tierKursSites",
+] as const satisfies readonly (keyof ProductDefaults)[]
+
+// Own card, own Save, even though the shape mirrors Profit Margin above: this is the
+// starting formula order-requests' "Propose a price revision" and "Create product from
+// approved offer" modals compute from (migration 090), meant to mirror the customer-facing
+// site's own live-estimate formula rather than the Add Product form's Profit Margin figures.
+function CustomRequestEstimateCard({ defaults, setDefaults, loadError }: ProductDefaultsCardProps) {
+  const { saving, error, saved, handleSave, handleReset } = useCardSave(defaults, setDefaults, CUSTOM_REQUEST_KEYS)
+
+  function field(key: keyof ProductDefaults, value: string) {
+    setDefaults((d) => (d ? { ...d, [key]: Number(value) || 0 } : d))
+  }
+
+  return (
+    <div className="bg-white border border-cream-border rounded-xl p-4 flex flex-col gap-3">
+      <CardHeader title="Custom Request Estimate" saved={saved} saving={saving} onSave={handleSave} onReset={handleReset} canSave={!!defaults} />
+
+      <p className="text-xs text-gray-500">
+        Starting formula for order-requests&apos; price-revision and create-product flows —
+        keep this matching the customer-facing site&apos;s own estimate.
+      </p>
+
+      {loadError && <p className="text-xs text-red-600">{loadError}</p>}
+      {error && <p className="text-xs text-red-600">{error}</p>}
+      {!defaults && !loadError && <p className="text-xs text-gray-500">Loading…</p>}
+
+      {defaults && (
+        <div className="grid md:grid-cols-3 gap-3">
+          <label className="flex flex-col gap-1">
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-gray-500">Profit %</span>
+              <InfoTooltip text="What a fresh price revision or create-product proposal starts from. 0-99 only." />
+            </div>
+            <input
+              type="number"
+              min={0}
+              max={99}
+              value={defaults.customRequestProfitPct}
+              onChange={(e) => field("customRequestProfitPct", e.target.value)}
+              className={fieldInputCls}
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-gray-500">Op Fee</span>
+              <InfoTooltip text="Starting operational fee for the same two flows. Whole number, 0 or more." />
+            </div>
+            <input
+              type="number"
+              min={0}
+              step={1}
+              value={defaults.customRequestOperationalFee}
+              onChange={(e) => field("customRequestOperationalFee", e.target.value)}
+              className={fieldInputCls}
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-gray-500">Pack Fee</span>
+              <InfoTooltip text="Starting packing fee for the same two flows. Whole number, 0 or more." />
+            </div>
+            <input
+              type="number"
+              min={0}
+              step={1}
+              value={defaults.customRequestPackingFee}
+              onChange={(e) => field("customRequestPackingFee", e.target.value)}
+              className={fieldInputCls}
+            />
+          </label>
+        </div>
+      )}
+
+      {defaults && (
+        <label className="flex flex-col gap-1">
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-gray-500">Tier Kurs sites</span>
+            <InfoTooltip text="One bare domain per line (no https://, no www). A URL in a request's note/description matching one of these pre-selects the Tier Kurs tab instead of Profit Margin." />
+          </div>
+          <textarea
+            rows={3}
+            value={defaults.tierKursSites.join("\n")}
+            onChange={(e) =>
+              setDefaults((d) =>
+                d ? { ...d, tierKursSites: e.target.value.split("\n") } : d,
+              )
+            }
+            className={`${fieldInputCls} font-mono`}
+            placeholder="24028-net.jp&#10;zara.com"
+          />
+        </label>
       )}
     </div>
   )

@@ -57,6 +57,15 @@ export interface WaClaim {
   messageId: string
   slotId: number | null
   createdAt: string
+  /** Bucket key for the compressed copy of the customer's marked-up reply
+   *  photo, in the private wa-posts bucket. Null for text claims, and for
+   *  anything captured before this column existed. */
+  replyImagePath: string | null
+  /** The matched customer's WhatsApp number, for display next to their
+   *  handle when `sender` is empty (a DM-recorded claim has no WhatsApp JID
+   *  to pull digits from — see app/api/whatsapp/claims/marked/route.ts).
+   *  Null when there's no matched customer, or none on file. */
+  customerWhatsapp: string | null
 }
 
 export interface WaSlot {
@@ -243,14 +252,15 @@ export async function addClaim(input: {
   confidence: number
   state: ClaimState
   messageId: string
+  replyImagePath?: string | null
 }, db: DBExecutor = sql): Promise<{ id: number }> {
   const [row] = await db`
     INSERT INTO wa_claims (post_id, sender, customer, source, point_x, point_y,
-      variant_id, quantity, note, confidence, state, message_id)
+      variant_id, quantity, note, confidence, state, message_id, reply_image_path)
     VALUES (${input.postId}, ${input.sender}, ${input.customer}, ${input.source},
       ${input.point?.x ?? null}, ${input.point?.y ?? null}, ${input.variantId},
       ${input.quantity}, ${input.note}, ${input.confidence}, ${input.state},
-      ${input.messageId})
+      ${input.messageId}, ${input.replyImagePath ?? null})
     RETURNING id
   `
   return { id: row.id }
@@ -276,12 +286,25 @@ function mapClaim(r: Record<string, unknown>): WaClaim {
     messageId: (r.message_id as string) ?? "",
     slotId: (r.slot_id as number | null) ?? null,
     createdAt: tsToString(r.created_at as Date | null),
+    replyImagePath: (r.reply_image_path as string | null) ?? null,
+    customerWhatsapp: (r.customer_whatsapp as string | null) || null,
   }
 }
 
 export async function listClaims(postId: number): Promise<WaClaim[]> {
-  const rows = await sql`SELECT * FROM wa_claims WHERE post_id = ${postId} ORDER BY id ASC`
+  const rows = await sql`
+    SELECT c.*, cust.whatsapp AS customer_whatsapp
+    FROM wa_claims c
+    LEFT JOIN customers cust ON cust.instagram_id = c.customer
+    WHERE c.post_id = ${postId}
+    ORDER BY c.id ASC
+  `
   return rows.map(mapClaim)
+}
+
+export async function getClaimReplyImagePath(claimId: number): Promise<string | null> {
+  const [row] = await sql`SELECT reply_image_path FROM wa_claims WHERE id = ${claimId}`
+  return (row?.reply_image_path as string | null) ?? null
 }
 
 /**

@@ -33,6 +33,11 @@ export async function ingestImageReply(input: {
   messageId: string
   replyPath: string
   caption: string
+  /** Bucket key of the compressed, permanently-kept copy of this reply, or
+   *  null/omitted when there isn't one (no upload, or the caller isn't a raw
+   *  WhatsApp reply). Attached to every claim this reply produces — one
+   *  photo, however many marks. */
+  replyImagePath?: string | null
 }): Promise<{ claimIds: number[]; repeats: number }> {
   const post = await getPost(input.postId)
   if (post === null) throw new Error(`no such post: ${input.postId}`)
@@ -82,6 +87,7 @@ export async function ingestImageReply(input: {
       confidence,
       state,
       messageId: input.messageId,
+      replyImagePath: input.replyImagePath,
     })
     claimIds.push(id)
   }

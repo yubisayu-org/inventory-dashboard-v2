@@ -1,6 +1,6 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { parseQuantity } from "./quantity"
+import { parseQuantity, hasOrderingIntent } from "./quantity"
 
 test("silence means one", () => {
   assert.equal(parseQuantity(""), 1)
@@ -51,4 +51,21 @@ test("two claims in one caption take the larger", () => {
   // Both say "more than one", and arriving one over is cheaper than arriving
   // short.
   assert.equal(parseQuantity("mau 2, masing-masing 3"), 3)
+})
+
+test("hasOrderingIntent: a bare ordering verb is intent, even with no number beside it", () => {
+  assert.equal(hasOrderingIntent("mau dong A11"), true)
+  assert.equal(hasOrderingIntent("minta yang itu"), true)
+})
+
+test("hasOrderingIntent: a unit or shorthand is intent", () => {
+  assert.equal(hasOrderingIntent("2 pcs"), true)
+  assert.equal(hasOrderingIntent("A11 x3"), true)
+  assert.equal(hasOrderingIntent("masing-masing 2"), true)
+})
+
+test("hasOrderingIntent: naming a code or a size alone is not intent", () => {
+  assert.equal(hasOrderingIntent("A11"), false)
+  assert.equal(hasOrderingIntent("ada ukuran apa aja?"), false)
+  assert.equal(hasOrderingIntent("size 90"), false)
 })

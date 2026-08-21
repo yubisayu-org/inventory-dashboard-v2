@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
+import EventSelect from "@/components/EventSelect"
 
 type Status = "queued" | "uploading" | "done" | "failed"
 
@@ -33,7 +34,7 @@ export default function UploadClient() {
         setEvents(data.events)
         setEvent((current) => current || data.events[0] || "")
       })
-      .catch(() => setError("Could not load the trips"))
+      .catch(() => setError("Could not load the events"))
   }, [])
 
   function add(files: FileList | null) {
@@ -119,18 +120,8 @@ export default function UploadClient() {
 
       <div className="grid gap-3 sm:grid-cols-3">
         <label className="flex flex-col gap-1">
-          <span className="text-xs text-gray-500">Trip</span>
-          <select
-            value={event}
-            onChange={(e) => setEvent(e.target.value)}
-            className="border border-cream-border rounded-lg px-2 py-2 text-sm bg-white"
-          >
-            {events.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
+          <span className="text-xs text-gray-500">Event</span>
+          <EventSelect value={event} onChange={setEvent} events={events} />
         </label>
 
         <label className="flex flex-col gap-1">
@@ -139,7 +130,7 @@ export default function UploadClient() {
             value={store}
             onChange={(e) => setStore(e.target.value)}
             placeholder="Nishimatsuya"
-            className="border border-cream-border rounded-lg px-2 py-2 text-sm"
+            className="h-10 border border-cream-border rounded-lg px-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
           />
         </label>
 
@@ -149,7 +140,7 @@ export default function UploadClient() {
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder="rak 2, lantai 3"
-            className="border border-cream-border rounded-lg px-2 py-2 text-sm"
+            className="h-10 border border-cream-border rounded-lg px-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
           />
         </label>
       </div>

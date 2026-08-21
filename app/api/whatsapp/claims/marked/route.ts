@@ -8,6 +8,7 @@ import { normalizeCustomer } from "@/lib/db/helpers"
 import { listPosts } from "@/lib/db/claims"
 import { ingestImageReply, matchAmongPosts } from "@/lib/whatsapp/ingest"
 import { decodable } from "@/lib/whatsapp/heic"
+import { catalogueImageUrl } from "@/lib/storage"
 
 /** How many recent shelves a forwarded photo is compared against. */
 const CANDIDATES = 100
@@ -79,6 +80,8 @@ export async function POST(req: NextRequest) {
             store: match.post.store,
             event: match.post.event,
             marks: match.marks.length,
+            photoUrl: match.post.viewPath ? catalogueImageUrl(match.post.viewPath) : null,
+            createdAt: match.post.createdAt,
           },
         })
       }

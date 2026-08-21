@@ -99,6 +99,26 @@ export async function getProducts(): Promise<ProductRow[]> {
   }))
 }
 
+/** One product's full pricing row — the order-requests page's "Duplicate as
+ *  variant" action reads this to copy every pricing input onto a new
+ *  product, not just name/price, so the duplicate reproduces the same
+ *  price under whichever pricing method the source uses. */
+export async function getProduct(id: number): Promise<ProductRow | null> {
+  const [row] = await sql`
+    SELECT p.id, p.name, p.store, p.price, p.gram,
+           p.country_id, COALESCE(c.name, '') AS country_name,
+           COALESCE(c.currency, '') AS country_currency,
+           p.valas, p.kurs, p.tiered_kurs, p.cargo_per_kg, p.profit_pct,
+           p.pricing_method, p.flat_fee_mode,
+           p.operational_fee, p.packing_fee, p.cost, p.profit_fixed,
+           p.is_active, p.created_at, p.updated_at
+    FROM products p
+    LEFT JOIN countries c ON c.id = p.country_id
+    WHERE p.id = ${id}
+  `
+  return row ? mapProductRow(row) : null
+}
+
 // Shared row → ProductRow mapper for the paginated query below.
 function mapProductRow(r: Record<string, unknown>): ProductRow {
   return {
@@ -686,6 +706,21 @@ export async function replaceTierFeeBrackets(
 }
 
 // ─── Countries ─────────────────────────────────────────────────────────────
+
+/** One country's kurs/cargoPerKg for a server-side price computation —
+ *  the single-row counterpart to getCountries()'s full list. Used by the
+ *  custom-request edit/preview-price paths, both of which need only one
+ *  country's rate, not the whole dropdown list. */
+export async function getCountryRate(
+  countryId: number,
+  db: DBExecutor = sql,
+): Promise<{ kurs: number; cargoPerKg: number } | null> {
+  const [row] = await db`SELECT kurs, cargo_per_kg FROM countries WHERE id = ${countryId}`
+  if (!row) return null
+  // kurs is NUMERIC(12,4) — postgres-js returns it as a string, so coerce,
+  // same as getCountries() above.
+  return { kurs: Number(row.kurs) || 0, cargoPerKg: (row.cargo_per_kg as number) ?? 0 }
+}
 
 export async function getCountries(): Promise<CountryRow[]> {
   const rows = await sql`

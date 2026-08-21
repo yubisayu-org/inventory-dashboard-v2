@@ -3,6 +3,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { downloadMediaMessage } from "baileys"
 import type { WAMessage, WASocket } from "baileys"
+import sharp from "sharp"
 import sql from "@/lib/db-pool"
 import { normalizeSize } from "@/lib/claims"
 import { addClaim, findPostByMessage, listClaims, type WaPost } from "@/lib/db/claims"
@@ -11,8 +12,35 @@ import { resolveImageReply } from "@/lib/claims"
 import { getPost } from "@/lib/db/claims"
 import { resolveSenders } from "@/lib/whatsapp/identity"
 import { decodable } from "@/lib/whatsapp/heic"
+import { uploadPostImage } from "@/lib/storage"
 import { quietLogger } from "./logger"
 import { CAPTURE_REACTIONS } from "./reactions"
+
+/** Longest side for a kept reply photo — same ceiling as the catalogue
+ *  AVIF copies (see lib/whatsapp/post-image.ts), so one convention covers
+ *  every compressed copy this app keeps of a WhatsApp photo. */
+const REPLY_IMAGE_MAX_SIDE = 2250
+const REPLY_IMAGE_QUALITY = 70
+
+/**
+ * Compress a customer's reply photo and keep it, for later proof of what she
+ * actually marked. Best-effort: a failed upload loses the picture, not the
+ * claim — the claim is recorded either way.
+ */
+async function keepReplyImage(messageId: string, buffer: Buffer): Promise<string | null> {
+  try {
+    const compressed = await sharp(buffer)
+      .resize(REPLY_IMAGE_MAX_SIDE, REPLY_IMAGE_MAX_SIDE, { fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality: REPLY_IMAGE_QUALITY })
+      .toBuffer()
+    const path = `claims/${messageId}.jpg`
+    await uploadPostImage(path, compressed, "image/jpeg")
+    return path
+  } catch (err) {
+    console.error("[wa] failed to keep reply image:", err)
+    return null
+  }
+}
 
 /**
  * Record what a customer's reply is claiming, and say which reaction it earned.
@@ -85,11 +113,12 @@ async function captureImageClaim(input: {
   try {
     await writeFile(scratch, buffer)
 
-    // Replies are normally discarded the moment their claim is recorded — the
-    // group chat is the audit trail. Under WA_DEBUG one is kept, alongside what
-    // the resolver made of it, because "it found one mark where I drew two" is
-    // not answerable without the picture that produced it.
+    // Under WA_DEBUG, also kept alongside what the resolver made of it,
+    // because "it found one mark where I drew two" is not answerable
+    // without the picture that produced it.
     if (process.env.WA_DEBUG) await keepForInspection(input, scratch)
+
+    const replyImagePath = await keepReplyImage(input.messageId, buffer)
 
     const { claimIds, repeats } = await ingestImageReply({
       postId: input.post.id,
@@ -97,9 +126,8 @@ async function captureImageClaim(input: {
       messageId: input.messageId,
       replyPath: scratch,
       caption: input.text,
+      replyImagePath,
     })
-    // The reply image itself is deliberately not kept — the spec discards them
-    // once the claim is recorded, and the group chat is the audit trail.
     const claims = await listClaims(input.post.id)
     const mine = claims.filter((c) => claimIds.includes(c.id))
 
