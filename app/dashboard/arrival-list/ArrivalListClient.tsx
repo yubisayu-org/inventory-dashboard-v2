@@ -368,41 +368,35 @@ function ParcelEditor({
   }
 
   return (
-    <span className="flex flex-col gap-1" onClick={(e) => e.stopPropagation()}>
-      <span className="flex items-center gap-1">
-        {/* Sized to the column, not to the longest tracking number anyone might
-            paste — it scrolls inside itself instead of pushing the next column
-            off screen. */}
-        <input
-          autoFocus
-          value={value}
-          disabled={busy}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") save()
-            if (e.key === "Escape") { setEditing(false); setValue(receipt); setError("") }
-          }}
-          placeholder="Tracking no."
-          className="w-24 min-w-0 border border-cream-border rounded-lg px-1.5 py-1 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
-        />
+    // Stacked, not squeezed: the column is 40 units wide and a field plus two
+    // buttons on one line does not fit inside it — they ended up under the
+    // Store heading. The field takes the width it has, the actions sit beneath.
+    <span className="flex flex-col gap-1 max-w-full" onClick={(e) => e.stopPropagation()}>
+      <input
+        autoFocus
+        value={value}
+        disabled={busy}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") save()
+          if (e.key === "Escape") { setEditing(false); setValue(receipt); setError("") }
+        }}
+        placeholder="Tracking no."
+        className="w-full min-w-0 border border-cream-border rounded-lg px-2 py-1 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
+      />
+      <span className="flex items-center gap-2">
         <button
           type="button" onClick={save} disabled={busy}
-          title="Save" aria-label="Save"
-          className="shrink-0 text-brand disabled:opacity-50"
+          className="text-xs font-semibold text-brand disabled:opacity-50"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M20 6 9 17l-5-5" />
-          </svg>
+          {busy ? "Saving…" : "Save"}
         </button>
         <button
           type="button"
           onClick={() => { setEditing(false); setValue(receipt); setError("") }}
-          title="Cancel" aria-label="Cancel"
-          className="shrink-0 text-faint hover:text-muted"
+          className="text-xs text-faint hover:text-muted"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round">
-            <line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" />
-          </svg>
+          Cancel
         </button>
       </span>
       {movesRoute && (
