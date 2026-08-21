@@ -12,6 +12,7 @@ import ArriveBulkModal from "./ArriveBulkModal"
 import EventSelect from "@/components/EventSelect"
 import SearchableSelect from "@/components/SearchableSelect"
 import SearchInput from "@/components/SearchInput"
+import { DISPATCH_MODES, dispatchModeOf, type DispatchMode } from "@/lib/dispatch-modes"
 import SelectionActionBar from "@/components/SelectionActionBar"
 import OverbuyTransitList from "@/components/OverbuyTransitList"
 
@@ -247,6 +248,12 @@ export default function ArrivalListClient() {
   const [error, setError] = useState("")
   const [selectedEvent, setSelectedEvent] = useState("")
   const [search, setSearch] = useState("")
+  /**
+   * Which route to show, read off each line's dispatch receipt — HC by
+   * suitcase, CJI by air, MNC by sea. A parcel arrives as one box, and this
+   * is how the bench sees what should have been in it.
+   */
+  const [route, setRoute] = useState<"all" | DispatchMode>("all")
   const [arrivingItem, setArrivingItem] = useState<ArrivalListItem | null>(null)
   const [bulkOpen, setBulkOpen] = useState(false)
   const [collapsedEvents, setCollapsedEvents] = useState<Set<string>>(new Set())
@@ -347,17 +354,32 @@ export default function ArrivalListClient() {
     })
   }
 
+  /** How many lines are waiting on each route, for the counts on the tabs. */
+  const routeCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: 0, hc: 0, cji: 0, mnc: 0, other: 0 }
+    for (const item of items) {
+      counts.all += 1
+      const modes = new Set(item.orders.map((o) => dispatchModeOf(o.dispatchReceipt)))
+      // An item can span two parcels — half flown, half shipped — so it counts
+      // once against each route it is actually travelling on.
+      for (const m of modes) counts[m] += 1
+    }
+    return counts
+  }, [items])
+
   const filteredItems = useMemo(() => {
-    if (!search.trim()) return items
-    const q = search.toLowerCase()
-    return items.filter(
-      (i) =>
-        i.productName.toLowerCase().includes(q) ||
-        i.event.toLowerCase().includes(q) ||
-        (i.store ?? "").toLowerCase().includes(q) ||
-        i.orders.some((o) => o.dispatchReceipt.toLowerCase().includes(q)),
-    )
-  }, [items, search])
+    const q = search.trim().toLowerCase()
+    return items.filter((i) => {
+      const onRoute = route === "all"
+        || i.orders.some((o) => dispatchModeOf(o.dispatchReceipt) === route)
+      if (!onRoute) return false
+      if (!q) return true
+      return i.productName.toLowerCase().includes(q)
+        || i.event.toLowerCase().includes(q)
+        || (i.store ?? "").toLowerCase().includes(q)
+        || i.orders.some((o) => o.dispatchReceipt.toLowerCase().includes(q))
+    })
+  }, [items, search, route])
 
   const grouped = useMemo(() => groupItems(filteredItems), [filteredItems])
   // Desktop-only state (see above) — mobile's own render loop reads collapsedEvents/
@@ -389,6 +411,34 @@ export default function ArrivalListClient() {
 
   return (
     <>
+      {/* Which parcel to check in. The route is read off each line's dispatch
+          receipt, so picking one shows exactly what should have travelled
+          together — the hand-carried suitcase, the air cargo, the sea box. */}
+      <div className="flex items-center gap-1 mb-3 overflow-x-auto">
+        {([["all", "All"], ["hc", DISPATCH_MODES.hc.label], ["cji", DISPATCH_MODES.cji.label], ["mnc", DISPATCH_MODES.mnc.label], ["other", "Other"]] as const).map(([key, label]) => {
+          const count = routeCounts[key] ?? 0
+          // "Other" catches an unrecognised prefix — a typo, usually. It hides
+          // itself when empty rather than offering a tab that shows nothing.
+          if (key === "other" && count === 0) return null
+          const active = route === key
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => { setRoute(key as "all" | DispatchMode); clearSelection() }}
+              className={`shrink-0 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                active
+                  ? "bg-brand text-white border-brand"
+                  : "bg-white border-cream-border text-muted hover:border-brand hover:text-brand"
+              }`}
+            >
+              {label}
+              <span className={`ml-1.5 tabular-nums ${active ? "text-white/70" : "text-faint"}`}>{count}</span>
+            </button>
+          )
+        })}
+      </div>
+
       <div className="flex items-center gap-2 flex-wrap mb-3">
         <SearchInput
           value={search}

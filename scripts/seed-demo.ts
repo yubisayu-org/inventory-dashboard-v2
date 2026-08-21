@@ -191,6 +191,29 @@ async function main() {
               ${"BCA"}, ${"1234567890"}, ${"Tiara Melati"}, ${"Lebih transfer, tunggu konfirmasi rekening"})`
   }
 
+  // ── parcels in transit, waiting at the warehouse door ────────────────────
+  // The receiving list only shows a line once it has been dispatched and has
+  // not fully arrived (unit_dispatch > 0 AND unit_arrive < unit_dispatch), so
+  // the landed trip is staged as three parcels still to check in — one per
+  // route, which is what the route tabs there are for.
+  const inTransit = await sql`
+    SELECT id FROM orders WHERE event = ${ARRIVING} AND unit_buy > 0 ORDER BY id`
+  const transitParcels = [
+    ["HC-3101", 0, 7], ["CJI-3104", 7, 15], ["MNC-3109", 15, 21],
+  ] as const
+  for (const [receipt, from, to] of transitParcels) {
+    const ids = inTransit.slice(from, to).map((r) => r.id as number)
+    if (!ids.length) continue
+    await sql`
+      UPDATE orders
+      SET unit_dispatch = unit_buy, dispatch_receipt = ${receipt},
+          -- part of each parcel already checked in, so the screen shows
+          -- progress rather than an all-or-nothing wall
+          unit_arrive = CASE WHEN id % 3 = 0 THEN unit_buy ELSE 0 END,
+          updated_at = ${nowMinus(2)}
+      WHERE id = ANY(${ids})`
+  }
+
   // ── dispatched lines, on all three routes ────────────────────────────────
   // The receipt prefix is how the dispatch screen tells routes apart: HC in a
   // suitcase, CJI by air, MNC by sea. One receipt covers several lines, which

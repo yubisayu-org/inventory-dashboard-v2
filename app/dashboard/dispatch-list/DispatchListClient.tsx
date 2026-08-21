@@ -3,8 +3,7 @@
 import { displayIg } from "@/lib/format"
 import TableSkeleton from "@/components/TableSkeleton"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import type { PaidStatus, DispatchListItem, DispatchListOrder, ExcessTransitItem, DispatchedLine } from "@/lib/db"
-import { DISPATCH_MODES, type DispatchMode } from "@/lib/dispatch-modes"
+import type { PaidStatus, DispatchListItem, DispatchListOrder, ExcessTransitItem } from "@/lib/db"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import { allocateFifo } from "@/lib/fifo-fill"
 import { fetchJson } from "@/lib/api-fetch"
@@ -250,42 +249,11 @@ function CustomerBadge({ orders }: { orders: CustomerBadgeOrder[] }) {
 export default function DispatchListClient() {
   const options = useSheetOptions()
   const [items, setItems] = useState<DispatchListItem[]>([])
-  const [sent, setSent] = useState<DispatchedLine[]>([])
-  /**
-   * Which half of the screen is showing: what still has to go out, or what
-   * already went, split by how it travelled. The receipt carries the mode —
-   * HC by suitcase, CJI by air, MNC by sea — so "sent" is only ever a reading
-   * of data dispatching already writes.
-   */
-  const [view, setView] = useState<"pending" | DispatchMode>("pending")
   const [excessPending, setExcessPending] = useState<ExcessTransitItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [selectedEvent, setSelectedEvent] = useState("")
   const [search, setSearch] = useState("")
-
-  /**
-   * The sent lines for the selected route, filtered by the same search box the
-   * pending list uses — receipt, customer, product or trip — and grouped so a
-   * parcel's lines sit together under the receipt that carries them.
-   */
-  const sentRows = useMemo(() => {
-    if (view === "pending") return []
-    const q = search.trim().toLowerCase()
-    return sent
-      .filter((l) => l.mode === view)
-      .filter((l) => !q
-        || l.receipt.toLowerCase().includes(q)
-        || l.customer.toLowerCase().includes(q)
-        || l.productName.toLowerCase().includes(q)
-        || l.event.toLowerCase().includes(q))
-      .sort((a, b) => a.receipt === b.receipt
-        ? a.customer.localeCompare(b.customer)
-        : b.dispatchedAt.localeCompare(a.dispatchedAt) || a.receipt.localeCompare(b.receipt))
-  }, [sent, view, search])
-
-  const sentReceipts = useMemo(() => new Set(sentRows.map((l) => l.receipt)).size, [sentRows])
-  const sentUnits = useMemo(() => sentRows.reduce((n, l) => n + l.units, 0), [sentRows])
   const [dispatchingItem, setDispatchingItem] = useState<DispatchListItem | null>(null)
   const [dispatchModalOpen, setDispatchModalOpen] = useState(false)
   const [collapsedEvents, setCollapsedEvents] = useState<Set<string>>(new Set())
@@ -306,12 +274,11 @@ export default function DispatchListClient() {
     const url = event
       ? `/api/sheets/dispatch?event=${encodeURIComponent(event)}`
       : "/api/sheets/dispatch"
-    fetchJson<{ items: DispatchListItem[]; excessPending?: ExcessTransitItem[]; sent?: DispatchedLine[] }>(url)
+    fetchJson<{ items: DispatchListItem[]; excessPending?: ExcessTransitItem[] }>(url)
       .then((data) => {
         const items = data.items ?? []
         setItems(items)
         setExcessPending(data.excessPending ?? [])
-        setSent(data.sent ?? [])
         // Stores start collapsed (event headers + store headers visible, items
         // hidden). Only on an explicit load — a silent post-mutation refresh
         // leaves whatever the user has expanded alone.
@@ -427,36 +394,6 @@ export default function DispatchListClient() {
 
   return (
     <>
-      {/* Which half of the screen: still to go, or already gone — and if gone,
-          by which route. Modes are read off the receipt rather than stored, so
-          this needs nothing new at dispatch time. */}
-      <div className="flex items-center gap-1 mb-3 overflow-x-auto">
-        {([["pending", "To dispatch"], ["hc", DISPATCH_MODES.hc.label], ["cji", DISPATCH_MODES.cji.label], ["mnc", DISPATCH_MODES.mnc.label], ["other", "Other"]] as const).map(([key, label]) => {
-          const count = key === "pending"
-            ? items.length
-            : sent.filter((l) => l.mode === key).length
-          // "Other" is a typo bucket. Empty is the normal state, so it hides
-          // itself rather than sitting there inviting a click that shows nothing.
-          if (key === "other" && count === 0) return null
-          const active = view === key
-          return (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setView(key as "pending" | DispatchMode)}
-              className={`shrink-0 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                active
-                  ? "bg-brand text-white border-brand"
-                  : "bg-white border-cream-border text-muted hover:border-brand hover:text-brand"
-              }`}
-            >
-              {label}
-              <span className={`ml-1.5 tabular-nums ${active ? "text-white/70" : "text-faint"}`}>{count}</span>
-            </button>
-          )
-        })}
-      </div>
-
       {/* Toolbar */}
       <div className="flex items-center gap-2 flex-wrap mb-3">
         <SearchInput
@@ -509,67 +446,6 @@ export default function DispatchListClient() {
         +
       </button>
 
-
-      {/* What already went out on this route. Read-only on purpose: dispatching
-          is done from the pending view, and this is the record of it. */}
-      {view !== "pending" && (
-        <div className="rounded-xl border border-cream-border bg-white overflow-hidden">
-          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-cream-border bg-surface-muted/80">
-            <span className="text-xs font-bold uppercase tracking-wide text-muted">
-              {view === "other" ? "Other receipts" : DISPATCH_MODES[view].label}
-            </span>
-            <span className="text-xs text-faint tabular-nums ml-auto">
-              {sentRows.length} line{sentRows.length === 1 ? "" : "s"} · {sentReceipts} receipt{sentReceipts === 1 ? "" : "s"} · {sentUnits} unit{sentUnits === 1 ? "" : "s"}
-            </span>
-          </div>
-          {sentRows.length === 0 ? (
-            <div className="p-8 text-center text-sm text-faint">
-              {view === "other"
-                ? "Every dispatched receipt starts with a known code."
-                : `Nothing has gone out by ${DISPATCH_MODES[view].label.toLowerCase()} yet.`}
-            </div>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs text-muted border-b border-cream-border bg-surface-muted/80">
-                  <th className="px-4 py-2.5 font-medium w-36">Receipt</th>
-                  <th className="px-4 py-2.5 font-medium w-40">Customer</th>
-                  <th className="px-4 py-2.5 font-medium">Product</th>
-                  <th className="px-4 py-2.5 font-medium w-32">Trip</th>
-                  <th className="px-4 py-2.5 font-medium text-right w-20">Units</th>
-                  <th className="px-4 py-2.5 font-medium text-right w-28">Sent</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sentRows.map((line, i) => {
-                  // One receipt covers several lines; repeating it down the
-                  // column turns the table into noise, so only the first line
-                  // of each parcel carries it.
-                  const firstOfReceipt = i === 0 || sentRows[i - 1].receipt !== line.receipt
-                  return (
-                    <tr key={line.orderId} className={`border-b border-cream-border last:border-0 ${firstOfReceipt ? "" : "text-muted"}`}>
-                      <td className="px-4 py-2.5 font-mono text-xs">
-                        {firstOfReceipt ? line.receipt : <span className="text-faint">↳</span>}
-                      </td>
-                      <td className="px-4 py-2.5 uppercase text-xs">{line.customer}</td>
-                      <td className="px-4 py-2.5">
-                        <div className="truncate">{line.productName}</div>
-                        {line.store ? <div className="text-xs text-faint">{line.store}</div> : null}
-                      </td>
-                      <td className="px-4 py-2.5 text-xs text-muted">{line.event}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums">{line.units}</td>
-                      <td className="px-4 py-2.5 text-right text-xs text-faint whitespace-nowrap">{line.dispatchedAt.slice(0, 10)}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
-
-      {view === "pending" && (
-      <>
       {/* Grouped table (desktop) */}
       <div className="hidden md:block rounded-xl border border-cream-border bg-white overflow-hidden">
         {/* Same title-bar style as OverbuyTransitList's "INVENTORY IN TRANSIT" below, so
@@ -776,9 +652,6 @@ export default function DispatchListClient() {
         stage="dispatch"
         onMarked={() => fetchItems(selectedEvent || undefined, true)}
       />
-
-      </>
-      )}
 
       {dispatchingItem && (
         <DispatchItemModal
