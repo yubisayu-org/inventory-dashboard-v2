@@ -8,6 +8,10 @@ import { signState } from "@/lib/catalogue-oauth-state"
 
 export async function GET(req: NextRequest) {
   const invite = req.nextUrl.searchParams.get("invite") ?? ""
+  // Set by the catalogue before it sent the customer here, and handed
+  // back on the callback so it can prove the sign-in started in this
+  // same browser.
+  const siteNonce = req.nextUrl.searchParams.get("nonce") ?? ""
 
   const clientId = process.env.GOOGLE_CLIENT_ID
   if (!clientId) {
@@ -24,7 +28,7 @@ export async function GET(req: NextRequest) {
   // openid alone: this flow needs a stable subject id and nothing else. No
   // profile, no email, no contacts.
   url.searchParams.set("scope", "openid")
-  url.searchParams.set("state", signState(invite))
+  url.searchParams.set("state", signState(invite, siteNonce))
 
   return NextResponse.redirect(url)
 }
