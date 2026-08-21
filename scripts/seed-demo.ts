@@ -142,7 +142,7 @@ async function main() {
   for (let i = 0; i < 26; i++) {
     await place(SHOPPING, handles[i % handles.length], pick(i), (i % 3) + 1, "shopping", 3 + (i % 5))
   }
-  for (let i = 0; i < 22; i++) {
+  for (let i = 0; i < 38; i++) {
     await place(ARRIVING, handles[(i + 3) % handles.length], pick(i + 7), (i % 2) + 1, "arriving", 12 + (i % 6))
   }
   for (let i = 0; i < 18; i++) {
@@ -198,10 +198,21 @@ async function main() {
   // route, which is what the route tabs there are for.
   const inTransit = await sql`
     SELECT id FROM orders WHERE event = ${ARRIVING} AND unit_buy > 0 ORDER BY id`
+  // Several boxes per route, at different ages, so each tab shows a list of
+  // parcels rather than a single one — and so every colour appears somewhere.
+  // Ages are days, read against the windows in lib/dispatch-modes:
+  // hand carry 7/14, air 28/56, sea 56/84.
   const transitParcels = [
-    ["HC-3101", 0, 7], ["CJI-3104", 7, 15], ["MNC-3109", 15, 21],
+    ["HC-3101", 0, 5, 3],     // green — left this week
+    ["HC-3115", 5, 8, 11],    // amber — a suitcase should have landed by now
+    ["CJI-3104", 8, 14, 35],  // amber — past four weeks
+    ["CJI-3120", 14, 19, 9],  // green — recent flight
+    ["CJI-3098", 19, 24, 63], // red   — past eight weeks
+    ["MNC-3109", 24, 29, 90], // red   — past twelve weeks
+    ["MNC-3130", 29, 34, 24], // green — a month at sea is normal
+    ["MNC-3061", 34, 38, 61], // amber — past eight weeks, not yet twelve
   ] as const
-  for (const [receipt, from, to] of transitParcels) {
+  for (const [receipt, from, to, ageDays] of transitParcels) {
     const ids = inTransit.slice(from, to).map((r) => r.id as number)
     if (!ids.length) continue
     await sql`
@@ -210,11 +221,7 @@ async function main() {
           -- part of each parcel already checked in, so the screen shows
           -- progress rather than an all-or-nothing wall
           unit_arrive = CASE WHEN id % 3 = 0 THEN unit_buy ELSE 0 END,
-          -- One parcel per colour, against the windows in lib/dispatch-modes:
-          -- the hand-carry box left 3 days ago (green), the air box 35 days ago
-          -- (amber — past 4 weeks, inside 8), the sea box 90 days ago (red —
-          -- past 12 weeks). Without this the two warning colours never appear.
-          dispatched_at = ${nowMinus(receipt.startsWith("CJI") ? 35 : receipt.startsWith("HC") ? 3 : 90)},
+          dispatched_at = ${nowMinus(ageDays)},
           updated_at = ${nowMinus(2)}
       WHERE id = ANY(${ids})`
   }
