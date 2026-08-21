@@ -501,6 +501,10 @@ export interface ArrivalListOrder {
   /** Tracking ref this order's units were dispatched under (see the Dispatch List's
    *  "Inventory receipt" field). Empty when dispatched without one. */
   dispatchReceipt: string
+  /** When it left, ISO date. Empty for lines dispatched before this was
+   *  recorded. The receiving list reads it to show how long a parcel has been
+   *  travelling, and to mark one that is overdue for its route. */
+  dispatchedAt: string
 }
 
 export interface ArrivalListItem {
@@ -551,7 +555,8 @@ export async function getArrivalList(event?: string): Promise<ArrivalListItem[]>
             'unitBuy', o.unit_dispatch,
             'unitArrive', COALESCE(o.unit_arrive, 0),
             'pending', o.unit_dispatch - COALESCE(o.unit_arrive, 0),
-            'dispatchReceipt', COALESCE(o.dispatch_receipt, '')
+            'dispatchReceipt', COALESCE(o.dispatch_receipt, ''),
+            'dispatchedAt', COALESCE(to_char(o.dispatched_at, 'YYYY-MM-DD'), '')
           ) ORDER BY o.customer, o.id) AS orders
         FROM orders o
         JOIN products p ON p.id = o.product_id
@@ -583,7 +588,8 @@ export async function getArrivalList(event?: string): Promise<ArrivalListItem[]>
             'unitBuy', o.unit_dispatch,
             'unitArrive', COALESCE(o.unit_arrive, 0),
             'pending', o.unit_dispatch - COALESCE(o.unit_arrive, 0),
-            'dispatchReceipt', COALESCE(o.dispatch_receipt, '')
+            'dispatchReceipt', COALESCE(o.dispatch_receipt, ''),
+            'dispatchedAt', COALESCE(to_char(o.dispatched_at, 'YYYY-MM-DD'), '')
           ) ORDER BY o.customer, o.id) AS orders
         FROM orders o
         JOIN products p ON p.id = o.product_id

@@ -12,7 +12,7 @@ import ArriveBulkModal from "./ArriveBulkModal"
 import EventSelect from "@/components/EventSelect"
 import SearchableSelect from "@/components/SearchableSelect"
 import SearchInput from "@/components/SearchInput"
-import { DISPATCH_MODES, dispatchModeOf, type DispatchMode } from "@/lib/dispatch-modes"
+import { DISPATCH_MODES, dispatchModeOf, daysInTransit, transitStatus, type DispatchMode, type TransitStatus } from "@/lib/dispatch-modes"
 import SelectionActionBar from "@/components/SelectionActionBar"
 import OverbuyTransitList from "@/components/OverbuyTransitList"
 
@@ -239,6 +239,50 @@ function CustomerBadge({ orders }: { orders: { customer: string; qty: number; pa
 }
 
 // ─── Main component ─────────────────────────────────────────────────────────
+
+
+/**
+ * A parcel's departure date, in a clock coloured by how the journey is going:
+ * green while it is within the usual window for its route, amber once it is
+ * worth chasing, red when it is a problem.
+ *
+ * The date sits inside the chip rather than beside it, so a row carrying two
+ * parcels reads as two objects rather than a run of numbers.
+ */
+const TRANSIT_TONE: Record<TransitStatus, string> = {
+  ontime: "border-green-200 bg-green-50 text-green-800",
+  warn: "border-amber-200 bg-amber-50 text-amber-800",
+  late: "border-red-200 bg-red-50 text-red-700",
+}
+
+function ScheduleChip({ receipt, sentOn }: { receipt: string; sentOn: string }) {
+  const mode = dispatchModeOf(receipt)
+  const days = daysInTransit(sentOn)
+  const status = transitStatus(mode, sentOn)
+  const window = mode === "other" ? null : DISPATCH_MODES[mode]
+  const title = days === null
+    ? `${receipt} — dispatched before departure dates were recorded`
+    : `${receipt} · sent ${sentOn}, ${days} day${days === 1 ? "" : "s"} ago` +
+      (window ? ` · ${DISPATCH_MODES[mode as "hc"].label} usually lands within ${window.warnDays} days, chase after ${window.lateDays}` : "")
+
+  return (
+    <span className="flex items-center gap-1.5 whitespace-nowrap">
+      <span className="text-muted-strong">{receipt}</span>
+      <span
+        title={title}
+        className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[11px] tabular-nums ${
+          days === null ? "border-cream-border bg-surface-muted text-faint" : TRANSIT_TONE[status]
+        }`}
+      >
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 7v5l3 2" />
+        </svg>
+        {days === null ? "—" : `${sentOn.slice(5)} · ${days}d`}
+      </span>
+    </span>
+  )
+}
 
 export default function ArrivalListClient() {
   const options = useSheetOptions()
@@ -600,14 +644,22 @@ export default function ArrivalListClient() {
                   </td>
                   <td className="px-4 py-2.5 text-muted">
                     {(() => {
-                      const receipts = Array.from(
-                        new Set(row.item.orders.map((o) => o.dispatchReceipt).filter(Boolean)),
-                      )
-                      const text = receipts.length ? receipts.join(", ") : "—"
+                      // One row can span parcels, so each receipt carries its
+                      // own date and its own verdict — a box that flew is
+                      // overdue long before one on a boat is.
+                      const parcels = new Map<string, string>()
+                      for (const o of row.item.orders) {
+                        if (o.dispatchReceipt && !parcels.has(o.dispatchReceipt)) {
+                          parcels.set(o.dispatchReceipt, o.dispatchedAt ?? "")
+                        }
+                      }
+                      if (parcels.size === 0) return <span className="block truncate">—</span>
                       return (
-                        <span className="block truncate" title={text}>
-                          {text}
-                        </span>
+                        <div className="flex flex-col gap-1">
+                          {[...parcels].map(([receipt, sentOn]) => (
+                            <ScheduleChip key={receipt} receipt={receipt} sentOn={sentOn} />
+                          ))}
+                        </div>
                       )
                     })()}
                   </td>

@@ -634,6 +634,10 @@ export async function bulkUpdateDispatch(updates: DispatchUpdate[], db: DBExecut
     UPDATE orders SET
       unit_dispatch = data.unit_dispatch,
       dispatch_receipt = data.dispatch_receipt,
+      -- Stamped on the first dispatch and never again: correcting a receipt,
+      -- or dispatching the rest of a part-filled line later, must not restart
+      -- the clock the receiving list measures a parcel's age with.
+      dispatched_at = COALESCE(orders.dispatched_at, NOW()),
       updated_at = NOW()
     FROM unnest(${ids}::int[], ${dispatches}::int[], ${receipts}::text[])
       AS data(id, unit_dispatch, dispatch_receipt)
@@ -650,6 +654,7 @@ export async function bulkUpdateExcessDispatch(updates: ExcessDispatchUpdate[], 
     UPDATE excess_purchase SET
       unit_dispatch = data.unit_dispatch,
       dispatch_receipt = data.dispatch_receipt,
+      dispatched_at = COALESCE(excess_purchase.dispatched_at, NOW()),
       updated_at = NOW()
     FROM unnest(${ids}::int[], ${dispatches}::int[], ${receipts}::text[])
       AS data(id, unit_dispatch, dispatch_receipt)

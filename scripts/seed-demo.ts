@@ -210,9 +210,41 @@ async function main() {
           -- part of each parcel already checked in, so the screen shows
           -- progress rather than an all-or-nothing wall
           unit_arrive = CASE WHEN id % 3 = 0 THEN unit_buy ELSE 0 END,
+          -- One parcel per colour, against the windows in lib/dispatch-modes:
+          -- the hand-carry box left 3 days ago (green), the air box 35 days ago
+          -- (amber — past 4 weeks, inside 8), the sea box 90 days ago (red —
+          -- past 12 weeks). Without this the two warning colours never appear.
+          dispatched_at = ${nowMinus(receipt.startsWith("CJI") ? 35 : receipt.startsWith("HC") ? 3 : 90)},
           updated_at = ${nowMinus(2)}
       WHERE id = ANY(${ids})`
   }
+
+  // One product deliberately split across two parcels: three of them flew, the
+  // other two came by sea. It happens when a parcel fills up, and it is the
+  // case the route tabs have to get right — the item belongs on both, not on
+  // whichever route its first line happened to take.
+  //
+  // Built rather than found: every other product in this trip has a single
+  // order, so nothing would otherwise span two parcels and the behaviour would
+  // go untested by the fixture.
+  const splitProduct = productIds[8]
+  const [splitPriced] = await sql`SELECT price FROM products WHERE id = ${splitProduct}`
+  const splitRows: number[] = []
+  for (const [n, handle] of ["mamaqila", "bundazaki", "linaaa.co", "ayudiaaa", "hanihani"].entries()) {
+    const [o] = await sql`
+      INSERT INTO orders (event, customer, product_id, unit, unit_price, unit_buy,
+                          unit_dispatch, unit_arrive, receipt, created_at)
+      VALUES (${ARRIVING}, ${handle}, ${splitProduct}, 1, ${splitPriced.price}, 1,
+              1, 0, ${`RCP-31${n}`}, ${nowMinus(9)})
+      RETURNING id`
+    splitRows.push(o.id as number)
+  }
+  // Same dates as the parcels they join: a receipt is one box that left once,
+  // so two dates under one code would be a bug the screen would faithfully show.
+  await sql`UPDATE orders SET dispatch_receipt = ${"CJI-3104"}, dispatched_at = ${nowMinus(35)}
+            WHERE id = ANY(${splitRows.slice(0, 3)})`
+  await sql`UPDATE orders SET dispatch_receipt = ${"MNC-3109"}, dispatched_at = ${nowMinus(90)}
+            WHERE id = ANY(${splitRows.slice(3)})`
 
   // ── dispatched lines, on all three routes ────────────────────────────────
   // The receipt prefix is how the dispatch screen tells routes apart: HC in a
