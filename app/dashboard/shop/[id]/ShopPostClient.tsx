@@ -6,6 +6,7 @@ import { fmt, senderDigits, claimedAt } from "@/lib/format"
 import { PRICING_METHODS, PRICING_METHOD_LABEL, type PricingMethod } from "@/lib/pricing"
 import { alternativeSizes } from "@/lib/claims/size"
 import { neighbours, type Neighbours, type ShopPost } from "../stores"
+import PageHeader from "@/components/PageHeader"
 import SlotZoom from "@/components/SlotZoom"
 import SlotNameForm from "@/components/SlotNameForm"
 
@@ -251,20 +252,22 @@ export default function ShopPostClient({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-3">
-        <Link href="/dashboard/shop" className="text-sm text-muted hover:text-foreground">
-          ←
-        </Link>
-        <div className="min-w-0 flex-1">
-          <h1 className="text-xl font-bold uppercase text-foreground truncate">
-            {data.post.store || "Untitled shelf"}
-          </h1>
-          <p className="text-xs text-muted tabular-nums">
+      <PageHeader
+        compact
+        title={data.post.store || "Untitled shelf"}
+        subtitle={
+          <span className="tabular-nums">
             {data.post.event} · {data.slots.length} SKU · {bought} of {claimed} units
-          </p>
-        </div>
-
-        {/* Default follows Settings → WhatsApp, so changing that setting moves
+          </span>
+        }
+        before={
+          <Link href="/dashboard/shop" className="text-sm text-muted hover:text-foreground">
+            ←
+          </Link>
+        }
+        actions={
+          <div className="flex items-center gap-2">
+            {/* Default follows Settings → WhatsApp, so changing that setting moves
             every shelf not yet named. Picking one here opts this shelf out, and
             naming pins whatever was in force — from then on it is a price
             customers have been quoted. */}
@@ -304,9 +307,11 @@ export default function ShopPostClient({
               <path d="m22 2-7 20-4-9-9-4Z" />
               <path d="M22 2 11 13" />
             </svg>
-          </button>
-        ) : null}
-      </div>
+            </button>
+            ) : null}
+          </div>
+        }
+      />
 
       <div className="relative">
       {/* eslint-disable-next-line @next/next/no-img-element -- a rendered JPEG
