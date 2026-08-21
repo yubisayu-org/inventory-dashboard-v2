@@ -142,7 +142,7 @@ async function main() {
   for (let i = 0; i < 26; i++) {
     await place(SHOPPING, handles[i % handles.length], pick(i), (i % 3) + 1, "shopping", 3 + (i % 5))
   }
-  for (let i = 0; i < 38; i++) {
+  for (let i = 0; i < 47; i++) {
     await place(ARRIVING, handles[(i + 3) % handles.length], pick(i + 7), (i % 2) + 1, "arriving", 12 + (i % 6))
   }
   for (let i = 0; i < 18; i++) {
@@ -211,6 +211,13 @@ async function main() {
     ["MNC-3109", 24, 29, 90], // red   — past twelve weeks
     ["MNC-3130", 29, 34, 24], // green — a month at sea is normal
     ["MNC-3061", 34, 38, 61], // amber — past eight weeks, not yet twelve
+    // Parcels written the way packing actually writes them before the courier
+    // number arrives. No prefix, so they file under Other with a grey clock —
+    // nothing knows which route they took, and 30 days means one thing by sea
+    // and another in a suitcase. These are the ones to practise renaming on.
+    ["Box 2", 38, 41, 30],
+    ["Bag 1", 41, 44, 6],
+    ["Box 3", 44, 47, 70],
   ] as const
   for (const [receipt, from, to, ageDays] of transitParcels) {
     const ids = inTransit.slice(from, to).map((r) => r.id as number)
