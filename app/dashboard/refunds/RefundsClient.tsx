@@ -71,21 +71,6 @@ function displayAmount(row: RefundRow): number {
   return isFullyAppliedAsCredit(row) ? row.appliedCreditAmount : row.refundAmount
 }
 
-// A non-null liveOverpayment means the server found this refund's stored amount
-// no longer matches the real overpayment and couldn't auto-fix it (credit was
-// already applied). Returns the human message, or null when nothing to review.
-function reviewMessage(row: RefundRow): string | null {
-  const live = row.liveOverpayment
-  if (live == null) return null
-  if (live <= 0) {
-    const owed = -live
-    return owed > 0
-      ? `No overpayment left — the customer now owes ${formatRp(owed)} on this event (items were added after credit was applied). Consider cancelling this refund.`
-      : `No overpayment left — this event is now fully settled. Consider cancelling this refund.`
-  }
-  return `Overpayment is now ${formatRp(live)}, but this refund still shows ${formatRp(row.refundAmount)} (the invoice changed after credit was applied). Review before refunding.`
-}
-
 // ─── Main component ──────────────────────────────────────────────────────────
 
 export default function RefundsClient() {
@@ -148,18 +133,9 @@ export default function RefundsClient() {
       filterFn: "textContains",
       cell: ({ row }) => {
         const r = row.original
-        const msg = reviewMessage(r)
         return (
           <div className="flex items-center gap-1.5 font-medium text-foreground">
             {displayIg(r.customer)}
-            {msg && (
-              <span title={msg} className="text-amber-500 shrink-0">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                  <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
-                </svg>
-              </span>
-            )}
           </div>
         )
       },
@@ -212,21 +188,12 @@ export default function RefundsClient() {
   ], [])
 
   const renderMobileCard = useCallback((r: RefundRow) => {
-    const msg = reviewMessage(r)
     return (
       <div className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] flex items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-sm font-semibold text-foreground">{r.event}</span>
             <span className="text-xs text-gray-400 uppercase truncate">{displayIg(r.customer)}</span>
-            {msg && (
-              <span title={msg} className="text-amber-500 shrink-0">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                  <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
-                </svg>
-              </span>
-            )}
           </div>
         </div>
         <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">{formatRp(displayAmount(r))}</span>
@@ -897,25 +864,6 @@ function RefundDetailModal({
         {!isReadOnly && <StepIndicator status={row.status} />}
 
         <div className="flex-1 min-h-0 flex flex-col gap-3 md:gap-4 px-6 py-3 md:py-4 overflow-y-auto">
-          {/* Stale-amount review banner — the invoice changed after credit was
-              applied, so the stored amount no longer matches the real overpayment
-              and the auto-reconcile left it for a human. */}
-          {(() => {
-            const msg = reviewMessage(row)
-            if (!msg) return null
-            return (
-              <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-50 border border-amber-200">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-600 shrink-0 mt-0.5">
-                  <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                  <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
-                </svg>
-                <div className="text-xs text-amber-800">
-                  <span className="font-semibold">Needs review.</span> {msg}
-                </div>
-              </div>
-            )
-          })()}
-
           {/* ── Current step ── */}
 
           {row.status === "pending" && whatsAppCard}

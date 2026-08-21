@@ -265,6 +265,12 @@ export interface RefundRow {
   event: string
   customer: string
   reason: RefundReason
+  /** "Open = live, closed = frozen": for an OPEN overpayment refund this is the
+   *  live balance (total_paid − invoice_total from the live_balances view),
+   *  recomputed on every read — it can never go stale. On a terminal transition
+   *  (refunded / applied_to_next_order / cancelled) the final number is frozen
+   *  into the refund_amount column as the historical record. Manual-reason
+   *  refunds always use the stored, human-entered amount. */
   refundAmount: number
   status: RefundStatus
   bankName: string
@@ -282,12 +288,6 @@ export interface RefundRow {
    *  fully-applied refund `refundAmount` is 0 (no overpayment remaining), so the
    *  UI shows this instead. */
   appliedCreditAmount: number
-  /** Current live overpayment (totalPaid − invoiceTotal) for this refund's
-   *  (customer, event), when it differs from the stored `refundAmount` and the
-   *  auto-reconcile can't fix it (credit already applied). null when in sync or
-   *  not applicable — a non-null value means "review": the invoice changed after
-   *  credit was applied, so the stored amount is stale. */
-  liveOverpayment: number | null
   createdAt: string | null
   updatedAt: string | null
 }
