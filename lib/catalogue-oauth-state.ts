@@ -29,7 +29,14 @@ function mac(payload: string): string {
   return createHmac("sha256", secret()).update(payload).digest("base64url")
 }
 
+/** Dots separate the parts, so a value containing one would break parsing. */
+function assertNoDots(value: string, what: string): void {
+  if (value.includes(".")) throw new Error(`${what} must not contain a dot`)
+}
+
 export function signState(invite: string, siteNonce = ""): string {
+  assertNoDots(invite, "invite")
+  assertNoDots(siteNonce, "nonce")
   // The random part makes two sign-ins with the same invite produce different
   // state values, so one cannot be replayed as the other.
   const payload = `${randomBytes(16).toString("base64url")}.${invite}.${siteNonce}`

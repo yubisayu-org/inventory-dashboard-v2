@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto"
+import { randomBytes, createHash } from "node:crypto"
 import sql from "./db-pool"
 
 // Sixty seconds is a redirect, not a user journey: the browser is handed this
@@ -6,39 +6,47 @@ import sql from "./db-pool"
 // which a code sitting in a log is still worth something.
 const TTL_SECONDS = 60
 
+function hash(value: string): string {
+  return createHash("sha256").update(value).digest("hex")
+}
+
 /**
- * Hand the catalogue site a session without putting the session token in a URL.
+ * Hand the catalogue site a way to obtain a session, without the session
+ * itself ever appearing in a URL.
  *
- * The token would otherwise land in the browser's history, the Referer header
- * of the next request, and every access log between here and there — all for a
- * credential that lasts ninety days. This code lasts one minute and one use.
+ * A session token would otherwise land in browser history, the next request's
+ * Referer header, and every access log in between — a ninety-day credential
+ * scattered across places nobody audits.
+ *
+ * This table deliberately holds NO credential: a hashed code and a customer
+ * id. The session is minted when the code is spent, so a dump of it yields
+ * nothing usable. The code is hashed for the same reason invites and sessions
+ * are.
  */
-export async function putOneTimeCode(sessionToken: string): Promise<string> {
+export async function putOneTimeCode(customerId: number): Promise<string> {
   const code = randomBytes(24).toString("base64url")
   await sql`
-    INSERT INTO customer_one_time_codes (code, session_token, expires_at)
-    VALUES (${code}, ${sessionToken}, NOW() + ${`${TTL_SECONDS} seconds`}::interval)
+    INSERT INTO customer_one_time_codes (code, customer_id, expires_at)
+    VALUES (${hash(code)}, ${customerId}, NOW() + ${`${TTL_SECONDS} seconds`}::interval)
   `
   return code
 }
 
 /**
- * Spend a code.
+ * Spend a code, returning the customer it was minted for.
  *
  * DELETE ... RETURNING rather than SELECT-then-DELETE: two concurrent requests
- * with the same code must not both receive the session, and only a single
- * statement guarantees that.
+ * with the same code must not both succeed, and only a single statement
+ * guarantees that.
+ *
+ * Expired rows are swept here rather than by a job nothing calls.
  */
-export async function takeOneTimeCode(code: string): Promise<string | null> {
-  const [row] = await sql<{ session_token: string }[]>`
+export async function takeOneTimeCode(code: string): Promise<number | null> {
+  const [row] = await sql<{ customer_id: number }[]>`
     DELETE FROM customer_one_time_codes
-     WHERE code = ${code} AND expires_at > NOW()
-    RETURNING session_token
+     WHERE code = ${hash(code)} AND expires_at > NOW()
+    RETURNING customer_id
   `
-  return row?.session_token ?? null
-}
-
-/** Housekeeping for codes nobody ever spent. Safe to call at any time. */
-export async function purgeExpiredOneTimeCodes(): Promise<void> {
   await sql`DELETE FROM customer_one_time_codes WHERE expires_at <= NOW()`
+  return row?.customer_id ?? null
 }
