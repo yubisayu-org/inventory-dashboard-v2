@@ -1128,7 +1128,7 @@ function DispatchItemModal({
                 <div className="font-medium text-muted mb-1">Will dispatch ({preview.filled.reduce((s, f) => s + f.allocated, 0)} units):</div>
                 <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto pr-0.5">
                   {preview.filled.map((f) => (
-                    <div key={f.order.id} className="flex items-center justify-between px-2 py-1 rounded-md bg-green-50">
+                    <div key={f.order.id} className="flex items-center justify-between px-2 py-1 rounded-lg bg-green-50">
                       <span className="text-green-800 truncate">{displayIg(f.order.customer)}</span>
                       <span className="text-green-700 font-medium ml-2 shrink-0 tabular-nums">
                         {f.allocated}×
@@ -1147,7 +1147,7 @@ function DispatchItemModal({
                 <div className="font-medium text-muted mb-1">Stays in list ({preview.unfilled.reduce((s, o) => s + o.pending, 0)} units):</div>
                 <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto pr-0.5">
                   {preview.unfilled.map((o) => (
-                    <div key={o.id} className="flex items-center justify-between px-2 py-1 rounded-md bg-surface-muted">
+                    <div key={o.id} className="flex items-center justify-between px-2 py-1 rounded-lg bg-surface-muted">
                       <span className="text-muted truncate">{displayIg(o.customer)}</span>
                       <span className="text-faint font-medium ml-2 shrink-0 tabular-nums">{o.pending}×</span>
                     </div>

@@ -484,7 +484,7 @@ function DmPhotoSheet({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40" onClick={onClose}>
       <div
-        className="w-full max-w-md rounded-t-2xl bg-white p-4 flex flex-col gap-3"
+        className="w-full max-w-md rounded-t-xl bg-white p-4 flex flex-col gap-3"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mx-auto h-1 w-9 rounded-full bg-divider" />

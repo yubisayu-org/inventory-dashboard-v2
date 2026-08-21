@@ -30,7 +30,7 @@ const inputCls =
 const btnCls =
   "px-3 py-1.5 rounded-lg border border-cream-border text-sm text-muted-strong hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
 const iconBtnCls =
-  "w-7 h-7 shrink-0 inline-flex items-center justify-center rounded-md border border-cream-border text-faint hover:border-brand hover:text-brand disabled:opacity-30 transition-colors"
+  "w-7 h-7 shrink-0 inline-flex items-center justify-center rounded-lg border border-cream-border text-faint hover:border-brand hover:text-brand disabled:opacity-30 transition-colors"
 
 const fmt = (n: number) => n.toLocaleString("id-ID")
 

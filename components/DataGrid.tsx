@@ -644,7 +644,7 @@ function TextFilterInput<T>({ column, onClose }: { column: Column<T, unknown>; o
         onChange={(e) => column.setFilterValue(e.target.value || undefined)}
         onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Escape") onClose() }}
         placeholder="Type to filter…"
-        className="border border-cream-border rounded-md px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
+        className="border border-cream-border rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
       />
       {currentValue && (
         <button
@@ -671,7 +671,7 @@ function DateRangeFilterInput<T>({ column, onClose }: { column: Column<T, unknow
     else column.setFilterValue({ from: f, to: t })
   }, [column])
 
-  const inputCls = "border border-cream-border rounded-md px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
+  const inputCls = "border border-cream-border rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
 
   return (
     <div className="flex flex-col gap-2">
@@ -731,7 +731,7 @@ function NumericFilterInput<T>({ column, onClose }: { column: Column<T, unknown>
       <select
         value={op}
         onChange={(e) => { setOp(e.target.value); setTimeout(apply) }}
-        className="border border-cream-border rounded-md px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-brand/30"
+        className="border border-cream-border rounded-lg px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-brand/30"
       >
         <option value="eq">equals</option>
         <option value="gt">greater than</option>
@@ -750,7 +750,7 @@ function NumericFilterInput<T>({ column, onClose }: { column: Column<T, unknown>
           if (e.key === "Escape") onClose()
         }}
         placeholder="Value"
-        className="border border-cream-border rounded-md px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
+        className="border border-cream-border rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
       />
       {(current.value !== "" && current.value != null) && (
         <button
@@ -776,7 +776,7 @@ function BooleanFilterInput<T>({ column, onClose }: { column: Column<T, unknown>
       <select
         value={current}
         onChange={(e) => { column.setFilterValue(e.target.value || undefined); onClose() }}
-        className="border border-cream-border rounded-md px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-brand/30"
+        className="border border-cream-border rounded-lg px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-brand/30"
       >
         <option value="">All</option>
         <option value="true">{labels?.true ?? "True"}</option>
@@ -899,7 +899,7 @@ export function ColumnVisibilityMenu<T>({
           {hideableColumns.map((col) => {
             const isVisible = columnVisibility[col.id] !== false
             return (
-              <label key={col.id} className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-cream cursor-pointer text-sm text-muted-strong">
+              <label key={col.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-cream cursor-pointer text-sm text-muted-strong">
                 <input
                   type="checkbox"
                   checked={isVisible}
@@ -956,7 +956,7 @@ function PgBtn({ children, onClick, disabled = false, active = false }: {
 }) {
   return (
     <button onClick={onClick} disabled={disabled}
-      className={`min-w-[2rem] h-8 px-2 text-xs rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${active ? "bg-brand text-white font-medium" : "border border-cream-border hover:bg-cream text-muted-strong"}`}>
+      className={`min-w-[2rem] h-8 px-2 text-xs rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${active ? "bg-brand text-white font-medium" : "border border-cream-border hover:bg-cream text-muted-strong"}`}>
       {children}
     </button>
   )
@@ -980,7 +980,7 @@ function JumpInput({ currentPage, totalPages, onJump }: { currentPage: number; t
       onBlur={commit}
       onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commit(); (e.target as HTMLInputElement).blur() } }}
       aria-label="Jump to page"
-      className="w-12 text-center border border-cream-border rounded-md px-1 py-1 text-xs text-foreground bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+      className="w-12 text-center border border-cream-border rounded-lg px-1 py-1 text-xs text-foreground bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
     />
   )
 }

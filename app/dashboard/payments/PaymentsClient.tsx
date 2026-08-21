@@ -25,7 +25,7 @@ const PAGE_SIZE = 25
 // py-2 so plain inputs match the SearchableSelect's height across the payment
 // forms (Amount/Account/Date/Remarks line up with Event/Customer).
 const INPUT_CLASS_TALL =
-  "w-full border border-cream-border rounded-md px-2 py-2 text-sm text-foreground bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+  "w-full border border-cream-border rounded-lg px-2 py-2 text-sm text-foreground bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
 // Native <input type="date"> renders taller than a text input on iOS Safari;
 // pin the height and drop the native chrome so it matches the Remarks box.
 const DATE_INPUT_CLASS = `${INPUT_CLASS_TALL} h-[38px] appearance-none`
@@ -749,7 +749,7 @@ function EditPaymentModal({
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-t-2xl shadow-xl border-x border-t border-cream-border md:border w-full max-h-[90vh] overflow-y-auto md:max-w-md md:rounded-xl"
+        className="bg-white rounded-t-xl shadow-xl border-x border-t border-cream-border md:border w-full max-h-[90vh] overflow-y-auto md:max-w-md md:rounded-xl"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -997,7 +997,7 @@ function PaymentCard({
           onClick={(e) => { e.stopPropagation(); onToggleCheck() }}
           disabled={isAdmin}
           aria-label={row.isChecked ? "Tandai belum dicek" : "Tandai sudah dicek"}
-          className={`shrink-0 p-1 rounded-md transition-colors ${
+          className={`shrink-0 p-1 rounded-lg transition-colors ${
             row.isChecked
               ? "bg-green-100 text-green-700 active:bg-green-200"
               : "text-faint active:bg-cream"
@@ -1081,7 +1081,7 @@ function MobileAddPaymentSheet({
       <form
         onSubmit={handleSubmit}
         onClick={(e) => e.stopPropagation()}
-        className="w-full bg-white rounded-t-2xl p-5 pb-8 flex flex-col gap-3 max-h-[88vh] overflow-y-auto"
+        className="w-full bg-white rounded-t-xl p-5 pb-8 flex flex-col gap-3 max-h-[88vh] overflow-y-auto"
       >
         <div className="flex items-center justify-between -mx-5 px-5 border-b border-cream-border pb-3">
           <span className="text-base font-semibold text-foreground">Add Payment</span>

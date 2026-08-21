@@ -411,7 +411,7 @@ export default function SidebarClient({ user }: Props) {
                         href={link.href}
                         title={collapsed ? link.label : undefined}
                         className={`
-                          flex items-center gap-3 px-2 py-2 rounded-md text-sm transition-colors
+                          flex items-center gap-3 px-2 py-2 rounded-lg text-sm transition-colors
                           ${isActive
                             ? "bg-brand-light text-brand font-medium"
                             : "text-muted-strong hover:bg-brand-light hover:text-brand"
@@ -453,7 +453,7 @@ export default function SidebarClient({ user }: Props) {
           <form action={signOutAction} className="mt-2">
             <button
               type="submit"
-              className="flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs text-muted hover:bg-brand-light hover:text-brand transition-colors"
+              className="flex items-center gap-2 w-full px-2 py-1.5 rounded-lg text-xs text-muted hover:bg-brand-light hover:text-brand transition-colors"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />

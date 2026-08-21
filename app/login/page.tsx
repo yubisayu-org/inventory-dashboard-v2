@@ -9,7 +9,7 @@ export default async function LoginPage() {
 
   return (
     <main className="min-h-screen flex items-center justify-center bg-cream">
-      <div className="bg-white p-8 rounded-2xl shadow-sm border border-cream-border w-full max-w-sm text-center">
+      <div className="bg-white p-8 rounded-xl shadow-sm border border-cream-border w-full max-w-sm text-center">
         {/* Logo */}
         <div className="flex items-center justify-center gap-3 mb-6">
           <div className="w-10 h-10 rounded-lg bg-brand flex items-center justify-center">

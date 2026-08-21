@@ -636,7 +636,7 @@ function ApplyExcessModal({
                   value={inputs[o.rowNumber] ?? ""}
                   onChange={(e) => setInputs((prev) => ({ ...prev, [o.rowNumber]: e.target.value }))}
                   placeholder="0"
-                  className="w-20 border border-cream-border rounded-md px-2 py-1 text-sm text-right bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+                  className="w-20 border border-cream-border rounded-lg px-2 py-1 text-sm text-right bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
                 />
               </div>
             ))}
@@ -824,7 +824,7 @@ function AddInventoryCard({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-t-2xl md:rounded-xl md:border md:border-cream-border bg-white p-5 pb-8 md:pb-5 flex flex-col gap-4">
+    <form onSubmit={handleSubmit} className="rounded-t-xl md:rounded-xl md:border md:border-cream-border bg-white p-5 pb-8 md:pb-5 flex flex-col gap-4">
       <div className="flex items-center justify-between -mx-5 px-5 border-b border-cream-border pb-3 md:mx-0 md:px-0 md:border-b-0 md:pb-0">
         <span className="text-base md:text-sm font-semibold text-foreground">Add Inventory</span>
       </div>
@@ -904,7 +904,7 @@ function EditInventoryModal({
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 md:items-center" onClick={onClose}>
       <div
-        className="bg-white rounded-t-2xl md:border md:border-cream-border md:shadow-xl w-full max-h-[90vh] overflow-y-auto flex flex-col gap-4 p-6 pb-8 md:pb-6 md:max-w-sm md:rounded-xl"
+        className="bg-white rounded-t-xl md:border md:border-cream-border md:shadow-xl w-full max-h-[90vh] overflow-y-auto flex flex-col gap-4 p-6 pb-8 md:pb-6 md:max-w-sm md:rounded-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between gap-3 -mx-6 px-6 border-b border-cream-border pb-3 md:mx-0 md:px-0 md:border-b-0 md:pb-0">
@@ -1019,7 +1019,7 @@ function ApplyResultBanner({
         </span>
         <div className="flex items-center gap-3">
           {remainder > 0 && (
-            <span className="text-xs text-yellow-700 bg-yellow-100 border border-yellow-200 rounded-md px-2 py-0.5">
+            <span className="text-xs text-yellow-700 bg-yellow-100 border border-yellow-200 rounded-lg px-2 py-0.5">
               {remainder} remaining in excess
             </span>
           )}

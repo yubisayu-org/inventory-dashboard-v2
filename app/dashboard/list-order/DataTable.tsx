@@ -555,7 +555,7 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
                       setPagination((p) => ({ ...p, pageIndex: 0 }))
                       setNoteFilterOpen(false)
                     }}
-                    className={`text-left px-2.5 py-1.5 rounded-md text-sm transition-colors ${noteFilter === key ? "bg-brand-light text-brand font-medium" : "text-muted-strong hover:bg-cream"}`}
+                    className={`text-left px-2.5 py-1.5 rounded-lg text-sm transition-colors ${noteFilter === key ? "bg-brand-light text-brand font-medium" : "text-muted-strong hover:bg-cream"}`}
                   >
                     {label}
                   </button>
@@ -1069,7 +1069,7 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
   return (
     <>
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 md:items-center" onClick={onClose}>
-      <div className="bg-white rounded-t-2xl md:rounded-xl border-x border-t border-cream-border md:border shadow-xl w-full max-w-md p-6 pb-8 md:pb-6 max-h-[90vh] overflow-y-auto md:max-h-none md:overflow-visible" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white rounded-t-xl md:rounded-xl border-x border-t border-cream-border md:border shadow-xl w-full max-w-md p-6 pb-8 md:pb-6 max-h-[90vh] overflow-y-auto md:max-h-none md:overflow-visible" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4 -mx-6 px-6 border-b border-cream-border pb-3 md:mx-0 md:px-0 md:border-b-0 md:pb-0">
           <h3 className="text-base font-semibold text-foreground">Edit Order</h3>
         </div>
@@ -1389,7 +1389,7 @@ function AddOrderForm({ options, onOrderAdded, onCancel }: {
   const LABEL = "text-xs text-muted mb-1 block"
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-t-2xl md:rounded-xl border-x border-t border-cream-border md:border bg-white p-5 pb-8 md:pb-5 flex flex-col gap-4">
+    <form onSubmit={handleSubmit} className="rounded-t-xl md:rounded-xl border-x border-t border-cream-border md:border bg-white p-5 pb-8 md:pb-5 flex flex-col gap-4">
       <div className="flex items-center justify-between -mx-5 px-5 border-b border-cream-border pb-3 md:mx-0 md:px-0 md:border-b-0 md:pb-0">
         <span className="text-base md:text-sm font-semibold text-foreground">Add Order</span>
       </div>

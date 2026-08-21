@@ -409,7 +409,7 @@ export default function CountriesClient() {
       {/* Mobile add sheet */}
       {mobileAddOpen && (
         <div className="md:hidden fixed inset-0 z-40 flex items-end bg-black/40" onClick={() => setMobileAddOpen(false)}>
-          <form onSubmit={handleAdd} onClick={(e) => e.stopPropagation()} className="w-full bg-white rounded-t-2xl p-5 pb-8 flex flex-col gap-4">
+          <form onSubmit={handleAdd} onClick={(e) => e.stopPropagation()} className="w-full bg-white rounded-t-xl p-5 pb-8 flex flex-col gap-4">
             <div className="flex items-center justify-between -mx-5 px-5 border-b border-cream-border pb-3">
               <span className="text-base font-semibold text-foreground">Add Country</span>
             </div>
@@ -518,7 +518,7 @@ function EditCountryModal({
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 md:items-center md:px-4" onClick={onCancel}>
       <div
-        className="bg-white rounded-t-2xl md:rounded-xl border-x border-t border-cream-border md:border shadow-xl p-6 pb-8 md:pb-6 w-full max-h-[90vh] overflow-y-auto flex flex-col gap-4 md:max-w-md"
+        className="bg-white rounded-t-xl md:rounded-xl border-x border-t border-cream-border md:border shadow-xl p-6 pb-8 md:pb-6 w-full max-h-[90vh] overflow-y-auto flex flex-col gap-4 md:max-w-md"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between -mx-6 px-6 border-b border-cream-border pb-3 md:mx-0 md:px-0 md:border-b-0 md:pb-0">

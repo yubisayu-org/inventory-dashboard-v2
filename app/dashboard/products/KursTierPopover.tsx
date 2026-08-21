@@ -121,7 +121,7 @@ export default function KursTierPopover({
             return (
               <div
                 key={t.id}
-                className={`flex items-center justify-between gap-2 px-2 py-1 rounded-md text-xs tabular-nums ${
+                className={`flex items-center justify-between gap-2 px-2 py-1 rounded-lg text-xs tabular-nums ${
                   isActive ? "bg-brand/10 text-foreground font-medium" : "text-muted"
                 }`}
               >

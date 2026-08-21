@@ -1228,7 +1228,7 @@ function BuyModal({
                 <div className="font-medium text-muted mb-1">Will buy ({preview.filled.reduce((s, f) => s + f.allocated, 0)} units):</div>
                 <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto pr-0.5">
                   {preview.filled.map((f) => (
-                    <div key={f.order.id} className="flex items-center justify-between px-2 py-1 rounded-md bg-green-50">
+                    <div key={f.order.id} className="flex items-center justify-between px-2 py-1 rounded-lg bg-green-50">
                       <span className="text-green-800 truncate">{displayIg(f.order.customer)}</span>
                       <span className="text-green-700 font-medium ml-2 shrink-0 tabular-nums">
                         {f.allocated}×
@@ -1247,7 +1247,7 @@ function BuyModal({
                 <div className="font-medium text-muted mb-1">Stays in list ({preview.unfilled.reduce((s, o) => s + o.pending, 0)} units):</div>
                 <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto pr-0.5">
                   {preview.unfilled.map((o) => (
-                    <div key={o.id} className="flex items-center justify-between px-2 py-1 rounded-md bg-surface-muted">
+                    <div key={o.id} className="flex items-center justify-between px-2 py-1 rounded-lg bg-surface-muted">
                       <span className="text-muted truncate">{displayIg(o.customer)}</span>
                       <span className="text-faint font-medium ml-2 shrink-0 tabular-nums">{o.pending}×</span>
                     </div>
@@ -1257,7 +1257,7 @@ function BuyModal({
             )}
 
             {preview.excessUnits > 0 && (
-              <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-amber-50 border border-amber-200">
+              <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-amber-50 border border-amber-200">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-600 shrink-0">
                   <path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
                 </svg>
@@ -1275,7 +1275,7 @@ function BuyModal({
                 <div className="font-medium text-muted mb-1">Will cancel ({preview.filled.reduce((s, f) => s + f.allocated, 0)} units):</div>
                 <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto pr-0.5">
                   {preview.filled.map((f) => (
-                    <div key={f.order.id} className="flex items-center justify-between gap-2 px-2 py-1 rounded-md bg-red-50">
+                    <div key={f.order.id} className="flex items-center justify-between gap-2 px-2 py-1 rounded-lg bg-red-50">
                       <span className="flex items-center gap-1.5 min-w-0">
                         <span
                           className={`inline-block w-2 h-2 rounded-full shrink-0 ${PAID_DOT[f.order.paidStatus]}`}
@@ -1303,7 +1303,7 @@ function BuyModal({
                 <div className="font-medium text-muted mb-1">Stays in list ({preview.unfilled.reduce((s, o) => s + o.pending, 0)} units):</div>
                 <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto pr-0.5">
                   {preview.unfilled.map((o) => (
-                    <div key={o.id} className="flex items-center justify-between px-2 py-1 rounded-md bg-surface-muted">
+                    <div key={o.id} className="flex items-center justify-between px-2 py-1 rounded-lg bg-surface-muted">
                       <span className="text-muted truncate">{displayIg(o.customer)}</span>
                       <span className="text-faint font-medium ml-2 shrink-0 tabular-nums">{o.pending}×</span>
                     </div>
@@ -1464,7 +1464,7 @@ function ApplyShoppingExcessModal({
                 <div className="font-medium text-muted mb-1">Will apply ({preview.filled.reduce((s, f) => s + f.allocated, 0)} units):</div>
                 <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto pr-0.5">
                   {preview.filled.map((f) => (
-                    <div key={f.order.id} className="flex items-center justify-between px-2 py-1 rounded-md bg-green-50">
+                    <div key={f.order.id} className="flex items-center justify-between px-2 py-1 rounded-lg bg-green-50">
                       <span className="text-green-800 truncate">{displayIg(f.order.customer)}</span>
                       <span className="text-green-700 font-medium ml-2 shrink-0 tabular-nums">
                         {f.allocated}×
@@ -1483,7 +1483,7 @@ function ApplyShoppingExcessModal({
                 <div className="font-medium text-muted mb-1">Stays in list ({preview.unfilled.reduce((s, o) => s + o.pending, 0)} units):</div>
                 <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto pr-0.5">
                   {preview.unfilled.map((o) => (
-                    <div key={o.id} className="flex items-center justify-between px-2 py-1 rounded-md bg-surface-muted">
+                    <div key={o.id} className="flex items-center justify-between px-2 py-1 rounded-lg bg-surface-muted">
                       <span className="text-muted truncate">{displayIg(o.customer)}</span>
                       <span className="text-faint font-medium ml-2 shrink-0 tabular-nums">{o.pending}×</span>
                     </div>

@@ -739,7 +739,7 @@ function SettleToggle({ row, onToggled, iconButton }: {
         onClick={(e) => { e.stopPropagation(); toggle() }}
         disabled={saving}
         aria-label={row.isSettled ? "Tandai belum settled" : "Tandai settled"}
-        className={`shrink-0 p-1 rounded-md transition-colors ${
+        className={`shrink-0 p-1 rounded-lg transition-colors ${
           row.isSettled
             ? "bg-green-100 text-green-700 active:bg-green-200"
             : "text-faint active:bg-cream"
@@ -800,7 +800,7 @@ function InlineRemarks({ row, onSaved }: { row: OperationalExpenseRow; onSaved: 
           if (e.key === "Enter") save()
           else if (e.key === "Escape") { setValue(row.remarks); setEditing(false) }
         }}
-        className="w-full border border-cream-border rounded-md px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
+        className="w-full border border-cream-border rounded-lg px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
       />
     )
   }
@@ -929,7 +929,7 @@ function AddExpenseForm({
   }
 
   return (
-    <form onSubmit={handleAdd} className="rounded-t-2xl md:rounded-xl border-x border-t border-cream-border md:border bg-white p-5 pb-8 md:pb-5 flex flex-col gap-4">
+    <form onSubmit={handleAdd} className="rounded-t-xl md:rounded-xl border-x border-t border-cream-border md:border bg-white p-5 pb-8 md:pb-5 flex flex-col gap-4">
       <div className="flex items-center justify-between -mx-5 px-5 border-b border-cream-border pb-3 md:mx-0 md:px-0 md:border-b-0 md:pb-0">
         <span className="text-base md:text-sm font-semibold text-foreground">Add Expense</span>
       </div>
@@ -1181,7 +1181,7 @@ function EditExpenseModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 md:items-center md:px-4" onClick={onCancel}>
-      <div className="bg-white rounded-t-2xl md:rounded-xl border-x border-t border-cream-border md:border shadow-xl p-6 pb-8 md:pb-6 w-full max-h-[90vh] overflow-y-auto flex flex-col gap-4 md:max-w-lg" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white rounded-t-xl md:rounded-xl border-x border-t border-cream-border md:border shadow-xl p-6 pb-8 md:pb-6 w-full max-h-[90vh] overflow-y-auto flex flex-col gap-4 md:max-w-lg" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between -mx-6 px-6 border-b border-cream-border pb-3 md:mx-0 md:px-0 md:border-b-0 md:pb-0">
           <span className="text-base md:text-sm font-semibold text-foreground">Edit Expense</span>
           <span className="text-xs text-faint">ID: {row.rowNumber}</span>

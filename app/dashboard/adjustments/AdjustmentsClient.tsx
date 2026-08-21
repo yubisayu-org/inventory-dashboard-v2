@@ -19,7 +19,7 @@ import { descriptionOptions, AmountSignHint } from "./shared"
 const PAGE_SIZE = 25
 
 const INPUT_CLASS =
-  "w-full border border-cream-border rounded-md px-2 py-1 text-sm text-foreground bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+  "w-full border border-cream-border rounded-lg px-2 py-1 text-sm text-foreground bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
 const LABEL = "text-xs text-muted mb-1 block"
 
 type EditForm = {
@@ -422,7 +422,7 @@ function EditAdjustmentModal({
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40 md:flex-row md:items-center md:justify-center md:px-4" onClick={onClose}>
       <div className="w-full max-h-[90vh] overflow-y-auto md:max-w-md" onClick={e => e.stopPropagation()}>
-      <div className="bg-white rounded-t-2xl md:rounded-xl border-x border-t border-cream-border md:border shadow-xl p-6 pb-8 md:pb-6" role="dialog" aria-modal="true">
+      <div className="bg-white rounded-t-xl md:rounded-xl border-x border-t border-cream-border md:border shadow-xl p-6 pb-8 md:pb-6" role="dialog" aria-modal="true">
         <div className="flex items-center justify-between mb-4 -mx-6 px-6 border-b border-cream-border pb-3 md:mx-0 md:px-0 md:border-b-0 md:pb-0">
           <h3 className="text-base md:text-sm font-semibold text-foreground">Edit Adjustment</h3>
         </div>
@@ -560,7 +560,7 @@ function AddAdjustmentForm({
   }
 
   return (
-    <div className="rounded-t-2xl md:rounded-xl border-x border-t border-cream-border md:border bg-white p-4 pb-8 md:pb-4">
+    <div className="rounded-t-xl md:rounded-xl border-x border-t border-cream-border md:border bg-white p-4 pb-8 md:pb-4">
       <div className="flex items-center justify-between mb-3 -mx-4 px-4 border-b border-cream-border pb-3 md:mx-0 md:px-0 md:border-b-0 md:pb-0">
         <h3 className="text-base md:text-sm font-semibold text-foreground">Add Adjustment</h3>
       </div>
@@ -595,7 +595,7 @@ function AddAdjustmentForm({
             </div>
             <div className="min-w-0">
               <label className={LABEL}>Amount <span className="text-brand">*</span></label>
-              <input type="number" value={amount} onChange={(e) => { setAmount(e.target.value); setFeedback(null) }} placeholder="0" className="w-full border border-cream-border rounded-md px-2 py-2 text-sm text-foreground bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors" />
+              <input type="number" value={amount} onChange={(e) => { setAmount(e.target.value); setFeedback(null) }} placeholder="0" className="w-full border border-cream-border rounded-lg px-2 py-2 text-sm text-foreground bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors" />
             </div>
           </div>
         </div>

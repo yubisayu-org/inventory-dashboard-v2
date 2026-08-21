@@ -351,7 +351,7 @@ function ScopeBrackets({
                     setDraft((d) => d.filter((_, j) => j !== i))
                     setDirty(true)
                   }}
-                  className="shrink-0 inline-flex items-center justify-center w-8 h-[34px] text-faint hover:text-faint transition-colors md:w-7 md:h-7 md:text-faint md:border md:border-cream-border md:rounded-md md:hover:border-brand md:hover:text-brand disabled:opacity-30"
+                  className="shrink-0 inline-flex items-center justify-center w-8 h-[34px] text-faint hover:text-faint transition-colors md:w-7 md:h-7 md:text-faint md:border md:border-cream-border md:rounded-lg md:hover:border-brand md:hover:text-brand disabled:opacity-30"
                   aria-label="Remove bracket"
                 >
                   <svg className="md:hidden" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">

@@ -1174,7 +1174,7 @@ function ArriveModal({
               <label className="text-xs font-medium text-yellow-700">Affected orders</label>
               <div className="flex flex-col gap-0.5 max-h-40 overflow-y-auto pr-0.5">
                 {item.orders.map((o) => (
-                  <label key={o.id} className="flex items-center justify-between gap-2 px-2 py-1 rounded-md bg-surface-muted cursor-pointer">
+                  <label key={o.id} className="flex items-center justify-between gap-2 px-2 py-1 rounded-lg bg-surface-muted cursor-pointer">
                     <span className="flex items-center gap-1.5 min-w-0">
                       <input
                         type="checkbox"
@@ -1231,7 +1231,7 @@ function ArriveModal({
                 <div className="font-medium text-muted mb-1">Will mark as arrived ({preview.filled.reduce((s, f) => s + f.allocated, 0)} units):</div>
                 <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto pr-0.5">
                   {preview.filled.map((f) => (
-                    <div key={f.order.id} className="flex items-center justify-between px-2 py-1 rounded-md bg-blue-50">
+                    <div key={f.order.id} className="flex items-center justify-between px-2 py-1 rounded-lg bg-blue-50">
                       <span className="text-blue-800 truncate">{displayIg(f.order.customer)}</span>
                       <span className="text-blue-700 font-medium ml-2 shrink-0 tabular-nums">
                         {f.allocated}×
@@ -1250,7 +1250,7 @@ function ArriveModal({
                 <div className="font-medium text-muted mb-1">Stays in list ({preview.unfilled.reduce((s, o) => s + o.pending, 0)} units):</div>
                 <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto pr-0.5">
                   {preview.unfilled.map((o) => (
-                    <div key={o.id} className="flex items-center justify-between px-2 py-1 rounded-md bg-surface-muted">
+                    <div key={o.id} className="flex items-center justify-between px-2 py-1 rounded-lg bg-surface-muted">
                       <span className="text-muted truncate">{displayIg(o.customer)}</span>
                       <span className="text-faint font-medium ml-2 shrink-0 tabular-nums">{o.pending}×</span>
                     </div>
@@ -1260,7 +1260,7 @@ function ArriveModal({
             )}
 
             {preview.unassignedUnits > 0 && (
-              <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-amber-50 border border-amber-200">
+              <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-amber-50 border border-amber-200">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-600 shrink-0">
                   <path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
                 </svg>

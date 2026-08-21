@@ -11,7 +11,7 @@ export type ActionSheetItem = {
 }
 
 // Mobile-only bottom sheet for a row's actions (Edit/Delete/etc). Reuses the
-// rounded-t-2xl bottom-sheet pattern already used by the mobile "add" sheets
+// rounded-t-xl bottom-sheet pattern already used by the mobile "add" sheets
 // across the app, so it feels consistent rather than introducing a new shape.
 export default function MobileActionSheet({
   open,
@@ -30,7 +30,7 @@ export default function MobileActionSheet({
 
   return (
     <div className="md:hidden fixed inset-0 z-40 bg-black/40 flex flex-col justify-end" onClick={onClose}>
-      <div className="w-full bg-white rounded-t-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full bg-white rounded-t-xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
         {(title || subtitle) && (
           <div className="px-4 py-3 border-b border-cream-border">
             {title && <div className="text-sm font-semibold text-foreground truncate">{title}</div>}

@@ -7,7 +7,7 @@ export function PaginationButton({ children, onClick, disabled = false, active =
 }) {
   return (
     <button onClick={onClick} disabled={disabled}
-      className={`min-w-[2rem] h-8 px-2 text-xs rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${active ? "bg-brand text-white font-medium" : "border border-cream-border hover:bg-cream text-muted-strong"}`}>
+      className={`min-w-[2rem] h-8 px-2 text-xs rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${active ? "bg-brand text-white font-medium" : "border border-cream-border hover:bg-cream text-muted-strong"}`}>
       {children}
     </button>
   )
@@ -45,7 +45,7 @@ export function PageJumpInput({ currentPage, totalPages, onJump }: {
         if (e.key === "Enter") { e.preventDefault(); commit(); (e.target as HTMLInputElement).blur() }
       }}
       aria-label="Jump to page"
-      className="w-12 text-center border border-cream-border rounded-md px-1 py-1 text-xs text-foreground bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+      className="w-12 text-center border border-cream-border rounded-lg px-1 py-1 text-xs text-foreground bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
     />
   )
 }

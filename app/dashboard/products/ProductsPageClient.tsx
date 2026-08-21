@@ -48,7 +48,7 @@ const isFeeMethod = (m: PricingMethod) => m === "tier_fee" || m === "flat_fee"
 const formInputCls =
   "border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
 const rowInputCls =
-  "w-full border border-cream-border rounded-md px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors disabled:opacity-50"
+  "w-full border border-cream-border rounded-lg px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors disabled:opacity-50"
 
 const fmt = (n: number) => n.toLocaleString("id-ID")
 // For rates rather than amounts: a markup rate like 114,81 loses its meaning rounded
@@ -777,7 +777,7 @@ export default function ProductsPageClient() {
       {/* Mobile filter sheet */}
       {filterOpen && (
         <div className="md:hidden fixed inset-0 z-40 bg-black/40 flex flex-col justify-end" onClick={() => setFilterOpen(false)}>
-          <div className="bg-white rounded-t-2xl border-t border-cream-border p-5 pb-8 flex flex-col gap-4" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-t-xl border-t border-cream-border p-5 pb-8 flex flex-col gap-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <div className="text-base font-semibold text-foreground">Filter products</div>
               <button type="button" onClick={() => { setMStore(""); setMValas(""); setMGram("") }} className="text-xs text-faint hover:text-brand">Clear all</button>
@@ -844,7 +844,7 @@ export default function ProductsPageClient() {
               because the form inside is shorter than 80vh on the smaller tabs, and without
               it the overlay showed through below the form. */}
           <div
-            className="h-[80vh] overflow-y-auto bg-white rounded-t-2xl border-t border-cream-border"
+            className="h-[80vh] overflow-y-auto bg-white rounded-t-xl border-t border-cream-border"
             onClick={(e) => e.stopPropagation()}
           >
             <AddProductForm
@@ -1641,7 +1641,7 @@ function AddProductForm({
   )
 
   return (
-    <form ref={formRef} onSubmit={handleAdd} className="rounded-t-2xl md:rounded-xl border-x border-t border-cream-border md:border bg-white p-5 pb-8 md:pb-5 flex flex-col gap-4 scroll-mt-14">
+    <form ref={formRef} onSubmit={handleAdd} className="rounded-t-xl md:rounded-xl border-x border-t border-cream-border md:border bg-white p-5 pb-8 md:pb-5 flex flex-col gap-4 scroll-mt-14">
       <div className="flex items-center gap-4 -mx-5 px-5 border-b border-cream-border pb-3 md:mx-0 md:px-0 md:border-b-0 md:pb-0">
         <span className="text-base md:text-sm font-semibold text-foreground">Add Product</span>
         {/* Driven off METHOD_TABS rather than PRICING_METHODS: Flat Fee is reached
@@ -2679,7 +2679,7 @@ function EditProductModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 md:items-center md:px-4" onClick={onCancel}>
-      <div className="bg-white rounded-t-2xl md:rounded-xl border-x border-t border-cream-border md:border shadow-xl p-6 pb-8 md:pb-6 w-full max-h-[90vh] overflow-y-auto flex flex-col gap-4 md:max-w-lg" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white rounded-t-xl md:rounded-xl border-x border-t border-cream-border md:border shadow-xl p-6 pb-8 md:pb-6 w-full max-h-[90vh] overflow-y-auto flex flex-col gap-4 md:max-w-lg" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between -mx-6 px-6 border-b border-cream-border pb-3 md:mx-0 md:px-0 md:border-b-0 md:pb-0">
           <span className="text-base md:text-sm font-semibold text-foreground">Edit Product</span>
           <span className="text-xs text-faint">ID: {row.id}</span>

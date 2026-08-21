@@ -912,7 +912,7 @@ export default function ShipmentsClient() {
                 key={value}
                 type="button"
                 onClick={() => { setWindowDays(value); setWindowFilterOpen(false) }}
-                className={`text-left px-2.5 py-1.5 rounded-md text-sm transition-colors ${windowDays === value ? "bg-brand-light text-brand font-medium" : "text-muted-strong hover:bg-cream"}`}
+                className={`text-left px-2.5 py-1.5 rounded-lg text-sm transition-colors ${windowDays === value ? "bg-brand-light text-brand font-medium" : "text-muted-strong hover:bg-cream"}`}
               >
                 {label}
               </button>

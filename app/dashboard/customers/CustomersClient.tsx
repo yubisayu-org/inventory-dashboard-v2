@@ -516,7 +516,7 @@ export default function CustomersClient() {
                 key={key || "all"}
                 type="button"
                 onClick={() => { handleBalanceFilterChange(key); setBalanceFilterOpen(false) }}
-                className={`text-left px-2.5 py-1.5 rounded-md text-sm transition-colors ${
+                className={`text-left px-2.5 py-1.5 rounded-lg text-sm transition-colors ${
                   balanceFilter === key ? "bg-brand-light text-brand font-medium" : "text-muted-strong hover:bg-cream"
                 }`}
               >
