@@ -37,14 +37,34 @@ import { clientIp, createRateLimiter } from "@/lib/catalogue-rate-limit"
 const ALLOWED_ORIGIN = "https://yubisayu-catalogue.netlify.app"
 
 const MAX_BODY_BYTES = 1024
-const PROFIT_PCT = 15
-// Matches product_defaults.operational_fee today, but deliberately a constant
-// rather than a read of that table: this estimate is a customer-facing quote,
-// and changing a pricing default should not silently move what customers are
-// quoted. Note the estimate still sits below the real price — product_defaults
-// currently carries a 30% margin and a 5000 packing fee that this does not
-// apply.
-const OPERATIONAL_FEE = 5000
+// Pricing comes from Settings (product_defaults.custom_request_*), not from
+// constants here. The staff propose-price flow reads the same three values, so
+// the quote a customer sees and the price staff later propose move together
+// instead of drifting every time one side is hand-edited.
+//
+// Used only if that row is unreadable — never as a silent default that would
+// quote a customer at a rate nobody chose.
+const FALLBACK = { profitPct: 15, operationalFee: 5000, packingFee: 0 }
+
+async function customRequestPricing(db: typeof catalogueSql) {
+  const [row] = await db<
+    {
+      custom_request_profit_pct: string
+      custom_request_operational_fee: number
+      custom_request_packing_fee: number
+    }[]
+  >`
+    SELECT custom_request_profit_pct, custom_request_operational_fee,
+           custom_request_packing_fee
+      FROM product_defaults LIMIT 1
+  `
+  if (!row) return FALLBACK
+  return {
+    profitPct: Number(row.custom_request_profit_pct),
+    operationalFee: Number(row.custom_request_operational_fee),
+    packingFee: Number(row.custom_request_packing_fee),
+  }
+}
 const ROUND_TO = 1000
 
 const VALAS_MIN = 1
@@ -155,14 +175,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Country not found" }, { status: 404, headers: corsHeaders() })
     }
 
+    const pricing = await customRequestPricing(catalogueSql)
+
     const { price: rawPrice } = calcAbroadPrice({
       valas: quantizedValas,
       kurs: Number(country.kurs),
       gram: quantizedGram,
       cargoPerKg: Number(country.cargo_per_kg),
-      profitPct: PROFIT_PCT,
-      operationalFee: OPERATIONAL_FEE,
-      packingFee: 0,
+      profitPct: pricing.profitPct,
+      operationalFee: pricing.operationalFee,
+      packingFee: pricing.packingFee,
       roundTo: 1,
     })
 
