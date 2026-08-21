@@ -79,7 +79,16 @@ async function main() {
   await sql`DELETE FROM adjustments WHERE customer = ANY(${handles})`
   await sql`DELETE FROM shipments WHERE customer = ANY(${handles})`
   await sql`DELETE FROM orders WHERE customer = ANY(${handles})`
-  await sql`DELETE FROM catalogue_requests WHERE customer_handle = ANY(${handles})`
+  await sql`DELETE FROM catalogue_requests WHERE customer_handle = ANY(${handles})
+              OR customer_handle LIKE '62811999%'`
+  // Codes point at products, and products are cleared below — so these go
+  // first, and by product rather than by send, which also catches codes left
+  // behind by a run that failed halfway.
+  await sql`DELETE FROM wa_send_codes WHERE product_id IN (
+              SELECT id FROM products WHERE name = ANY(${PRODUCTS.map((x) => x[0])}))`
+  await sql`DELETE FROM wa_sends WHERE message_id = 'post-msg-demo'`
+  await sql`DELETE FROM catalogue_post_products WHERE post_id IN (SELECT id FROM catalogue_posts WHERE title = 'MUJI restock')`
+  await sql`DELETE FROM catalogue_posts WHERE title = 'MUJI restock'`
   await sql`DELETE FROM excess_purchase WHERE event = ANY(${events})`
   await sql`DELETE FROM operational_expenses WHERE event = ANY(${events})`
   await sql`DELETE FROM customer_warehouse_ongkir WHERE customer_id IN (SELECT id FROM customers WHERE instagram_id = ANY(${handles}))`
@@ -310,17 +319,115 @@ async function main() {
            (${ARRIVING}, ${nowMinus(11)}, ${"Bea masuk"}, ${"customs"}, 0, 0, 1250000, true, ${"transfer"}),
            (${SHIPPING}, ${nowMinus(20)}, ${"Kardus & bubble wrap"}, ${"packing"}, 0, 0, 185000, true, ${"cash"})`
 
-  // ── one catalogue post with two requests against it ──────────────────────
+  // ── order requests, one for every section of that screen ────────────────
+  // The screen sorts requests into five groups, and a fixture that lands
+  // everything in one of them proves nothing. Each block below is written to
+  // fall into a particular group, so every panel, badge and action on that
+  // page has a row to work on.
   const [post] = await sql`
     INSERT INTO catalogue_posts (media_url, media_type, title, visible)
     VALUES (${"https://placehold.co/900x1200/EEE6DA/7B1A1A?text=MUJI+restock"}, ${"photo"},
             ${"MUJI restock"}, true)
     RETURNING id`
-  await sql`INSERT INTO catalogue_post_products (post_id, product_id) VALUES (${post.id}, ${productIds[0]}), (${post.id}, ${productIds[1]})`
   await sql`
-    INSERT INTO catalogue_requests (customer_handle, product_id, qty, note, status, post_id, source)
-    VALUES (${"nanaaa.id"}, ${productIds[0]}, 1, ${"Yang greige ya kak"}, ${"pending"}, ${post.id}, ${"catalogue"}),
-           (${"citra_mw"}, ${productIds[1]}, 2, ${"Hitam dua"}, ${"pending"}, ${post.id}, ${"catalogue"})`
+    INSERT INTO catalogue_post_products (post_id, product_id)
+    VALUES (${post.id}, ${productIds[0]}), (${post.id}, ${productIds[1]}), (${post.id}, ${productIds[2]})`
+
+  // A WhatsApp send, so the "asking" rows have real codes to choose between —
+  // the bot offers candidates and the owner picks one.
+  const [send] = await sql`
+    INSERT INTO wa_sends (post_id, event, title, message_id, group_jid)
+    VALUES (${post.id}, ${SHOPPING}, ${"MUJI restock"}, ${"post-msg-demo"}, ${"demo@g.us"})
+    RETURNING id`
+  const codeIds: number[] = []
+  for (const [n, pid] of [productIds[0], productIds[1], productIds[2]].entries()) {
+    const [c] = await sql`
+      INSERT INTO wa_send_codes (send_id, product_id, code, event, price, position)
+      VALUES (${send.id}, ${pid}, ${`K0${n + 1}`}, ${SHOPPING},
+              ${(await sql`SELECT price FROM products WHERE id = ${pid}`)[0].price}, ${n})
+      RETURNING id`
+    codeIds.push(c.id as number)
+  }
+
+  // 1. NEEDS A PICK — she described it, the bot found more than one match and
+  //    asked in the group. Two candidates each, waiting on a choice.
+  for (const [n, [handle, said]] of ([
+    ["summerfey", "bostonnya mau 1 dong"],
+    ["rinaaa", "yang muji itu mau 2"],
+  ] as const).entries()) {
+    await sql`
+      INSERT INTO catalogue_requests (customer_handle, product_id, qty, note, status, source,
+                                      send_id, message_id, bot_message_id, candidate_send_code_ids, created_at)
+      VALUES (${handle}, NULL, ${n + 1}, ${said}, ${"asking"}, ${"whatsapp"},
+              ${send.id}, ${`her-demo-${n}`}, ${`bot-demo-${n}`},
+              ${[codeIds[0], codeIds[1]]}, ${nowMinus(1)})`
+  }
+
+  // 2. UNKNOWN NUMBER — a claim whose sender never matched a customer, so the
+  //    handle is still a phone number. Ready in every other respect, which is
+  //    exactly why the screen pulls it out before Convert throws on it.
+  for (const [n, number] of ["628119990001", "628119990002"].entries()) {
+    await sql`
+      INSERT INTO catalogue_requests (customer_handle, product_id, qty, note, status, source,
+                                      send_id, send_code_id, sender, message_id, created_at)
+      VALUES (${number}, ${productIds[n]}, 1, ${"K01 mau 1"}, ${"pending"}, ${"whatsapp"},
+              ${send.id}, ${codeIds[n]}, ${number}, ${`her-unknown-${n}`}, ${nowMinus(2)})`
+  }
+
+  // 3. CUSTOM, NEEDS A PRICE — no product yet, just a description and what she
+  //    typed into the estimator. This is the row the propose-price flow acts on.
+  const customs = [
+    ["dewi.p", "Tas Coach Tabby 26 warna hitam, yang ada logo C nya", 1, 2, 32000, 900, 5500000],
+    ["hanihani", "Sepatu New Balance 530 putih size 38", 1, 4, 89000, 800, 1450000],
+    ["ayudiaaa", "Parfum Jo Malone Wood Sage 100ml", 2, 3, 380, 400, 1900000],
+  ] as const
+  for (const [handle, description, qty, countryId, valas, gram, estimate] of customs) {
+    await sql`
+      INSERT INTO catalogue_requests (customer_handle, product_id, qty, description, note, status,
+                                      source, country_id, valas, gram, estimated_price, created_at)
+      VALUES (${handle}, NULL, ${qty}, ${description}, ${"Boleh minta fotonya kak?"},
+              ${"pending"}, ${"catalogue"}, ${countryId}, ${valas}, ${gram}, ${estimate},
+              ${nowMinus(3)})`
+  }
+
+  // 4. READY TO CONVERT — matched to a product and cleared. Some straight from
+  //    the catalogue, one that came through WhatsApp with its identity known,
+  //    one already approved at an agreed price.
+  await sql`
+    INSERT INTO catalogue_requests (customer_handle, product_id, qty, note, status, post_id, source, created_at)
+    VALUES (${"nanaaa.id"}, ${productIds[0]}, 1, ${"Yang greige ya kak"}, ${"pending"}, ${post.id}, ${"catalogue"}, ${nowMinus(1)}),
+           (${"citra_mw"}, ${productIds[1]}, 2, ${"Hitam dua"}, ${"pending"}, ${post.id}, ${"catalogue"}, ${nowMinus(2)}),
+           (${"mamaqila"}, ${productIds[4]}, 1, ${"Buat kado"}, ${"pending"}, ${post.id}, ${"catalogue"}, ${nowMinus(4)})`
+  await sql`
+    INSERT INTO catalogue_requests (customer_handle, product_id, qty, note, status, source,
+                                    send_id, send_code_id, sender, message_id, created_at)
+    VALUES (${"summerfey"}, ${productIds[1]}, 1, ${"K02 mau 1"}, ${"pending"}, ${"whatsapp"},
+            ${send.id}, ${codeIds[1]}, ${"628111000001"}, ${"her-ready-1"}, ${nowMinus(1)})`
+  await sql`
+    INSERT INTO catalogue_requests (customer_handle, product_id, qty, description, note, status, source,
+                                    country_id, valas, gram, estimated_price, created_at)
+    VALUES (${"linaaa.co"}, NULL, 1, ${"Kacamata Ray-Ban Wayfarer hitam"}, ${"Sudah oke harganya"},
+            ${"approved"}, ${"catalogue"}, 2, 24000, 250, ${3400000}, ${nowMinus(6)})`
+
+  // 5. EVERYTHING ELSE — a quote she has not answered yet, one she turned
+  //    down, and one already turned into an order.
+  await sql`
+    INSERT INTO catalogue_requests (customer_handle, product_id, qty, description, note, status, source,
+                                    country_id, valas, gram, estimated_price, created_at)
+    VALUES (${"bundazaki"}, NULL, 1, ${"Tumbler Starbucks Korea edisi sakura"}, ${"Menunggu jawaban"},
+            ${"offer_pending"}, ${"catalogue"}, 4, 48000, 500, ${790000}, ${nowMinus(5)})`
+  await sql`
+    INSERT INTO catalogue_requests (customer_handle, product_id, qty, description, note, status, staff_note, source, created_at)
+    VALUES (${"tiara.store"}, NULL, 1, ${"iPhone 15 Pro 256GB"}, ${"Kemahalan katanya"},
+            ${"rejected"}, ${"Di luar jangkauan jastip"}, ${"catalogue"}, ${nowMinus(9)})`
+  const [firstOrder] = await sql`SELECT id FROM orders WHERE event = ${SHOPPING} ORDER BY id LIMIT 1`
+  if (firstOrder) {
+    await sql`
+      INSERT INTO catalogue_requests (customer_handle, product_id, qty, note, status, source,
+                                      converted_order_id, post_id, created_at)
+      VALUES (${"putri.olshop"}, ${productIds[2]}, 1, ${"Sudah masuk pesanan"}, ${"converted"},
+              ${"catalogue"}, ${firstOrder.id}, ${post.id}, ${nowMinus(7)})`
+  }
 
   const [count] = await sql`
     SELECT (SELECT count(*)::int FROM customers) AS customers,
