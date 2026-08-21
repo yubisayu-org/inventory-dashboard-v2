@@ -1,6 +1,8 @@
 import sql from "../db-pool"
 import { PAID_PRIORITY_RANK, fetchPaidStatusMap, type PaidStatus } from "./shopping-list"
 import type { ExcessTransitItem, ExcessReason } from "./types"
+import { tsToString } from "./helpers"
+import { dispatchModeOf, type DispatchMode } from "../dispatch-modes"
 
 // ─── Dispatch List ──────────────────────────────────────────────────────────
 //
@@ -289,5 +291,64 @@ export async function getDispatchDocument(
     valas: Number(r.valas) || 0,
     currency: (r.currency as string) ?? "",
     receipt: (r.receipt as string) ?? "",
+  }))
+}
+
+/**
+ * How a dispatched parcel travelled, read off the front of its receipt.
+ *
+ * The code is typed by hand at dispatch time, so this is a convention rather
+ * than a constraint: HC went in a suitcase, CJI flew as cargo, MNC came by
+ * sea. Anything else — or nothing at all — is "other", which is deliberately
+ * visible rather than hidden, because an unrecognised prefix is usually a typo
+ * worth seeing.
+ */
+export interface DispatchedLine {
+  orderId: number
+  event: string
+  customer: string
+  productName: string
+  store: string
+  units: number
+  receipt: string
+  mode: DispatchMode
+  dispatchedAt: string
+}
+
+/**
+ * What has already left, newest first.
+ *
+ * The dispatch list proper shows what is still waiting; this is its other
+ * half. Filtering happens in SQL for the event and in code for the mode, since
+ * the mode lives in the shape of a text column rather than a column of its own
+ * — prefix matching in Postgres would need three LIKEs and would still miss a
+ * lower-cased one.
+ */
+export async function getDispatchedLines(event?: string): Promise<DispatchedLine[]> {
+  const rows = event
+    ? await sql`
+        SELECT o.id, o.event, o.customer, o.dispatch_receipt, o.unit_dispatch,
+               o.updated_at, p.name AS product_name, COALESCE(p.store, '') AS store
+        FROM orders o JOIN products p ON p.id = o.product_id
+        WHERE COALESCE(o.dispatch_receipt, '') <> '' AND COALESCE(o.unit_dispatch, 0) > 0
+          AND o.event = ${event}
+        ORDER BY o.updated_at DESC NULLS LAST, o.id DESC`
+    : await sql`
+        SELECT o.id, o.event, o.customer, o.dispatch_receipt, o.unit_dispatch,
+               o.updated_at, p.name AS product_name, COALESCE(p.store, '') AS store
+        FROM orders o JOIN products p ON p.id = o.product_id
+        WHERE COALESCE(o.dispatch_receipt, '') <> '' AND COALESCE(o.unit_dispatch, 0) > 0
+        ORDER BY o.updated_at DESC NULLS LAST, o.id DESC`
+
+  return rows.map((r) => ({
+    orderId: r.id as number,
+    event: r.event as string,
+    customer: r.customer as string,
+    productName: r.product_name as string,
+    store: r.store as string,
+    units: (r.unit_dispatch as number) ?? 0,
+    receipt: (r.dispatch_receipt as string) ?? "",
+    mode: dispatchModeOf((r.dispatch_receipt as string) ?? ""),
+    dispatchedAt: tsToString(r.updated_at as Date | null),
   }))
 }

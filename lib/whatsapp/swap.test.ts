@@ -108,13 +108,23 @@ test("two claimants at one peg split by size, one of them swapped", async () => 
 test("a named slot refuses the swap, because its product carries the size", async () => {
   const { postId, claimId } = await shelfWithClaim("size 95")
   const [slot] = await listSlots(postId)
-  await sql`UPDATE wa_slots SET product_id = 1 WHERE id = ${slot.id}`
+  // A product of its own, rather than assuming id 1 exists: this test only
+  // needs the slot to be named, and borrowing whatever happens to be in the
+  // products table makes it fail the moment that table is emptied.
+  const [product] = await sql`
+    INSERT INTO products (name, store, price)
+    VALUES (${`Swap fixture ${process.hrtime.bigint()}`}, ${"TEST"}, 100000)
+    RETURNING id`
+  await sql`UPDATE wa_slots SET product_id = ${product.id} WHERE id = ${slot.id}`
 
   await assert.rejects(() => swapClaimSize(claimId, "100"), /already been named/)
 
   const [claim] = await listClaims(postId)
   assert.equal(claim.size, null, "a refused swap must leave the claim untouched")
   assert.equal(claim.note, "size 95")
+
+  await sql`UPDATE wa_slots SET product_id = NULL WHERE id = ${slot.id}`
+  await sql`DELETE FROM products WHERE id = ${product.id}`
 })
 
 test("nonsense is not a size", async () => {

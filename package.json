@@ -6,7 +6,7 @@
     "node": "22.x"
   },
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 3001",
     "build": "next build",
     "start": "next start",
     "worker": "tsx --env-file-if-exists=.env.local --env-file-if-exists=.env.development.local worker/index.ts",
