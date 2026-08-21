@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { takeOneTimeCode } from "@/lib/catalogue-one-time-code"
+import { issueSession } from "@/lib/db/catalogue-auth"
 import { corsHeaders, privateHeaders } from "@/lib/catalogue-cors"
 
 // Trades the one-time code from /customer/callback for the session token.
@@ -29,15 +30,18 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const token = await takeOneTimeCode(code)
+    const customerId = await takeOneTimeCode(code)
     // Spent, expired and never-existed are one answer on purpose: telling them
     // apart would let a caller probe which codes were once real.
-    if (!token) {
+    if (!customerId) {
       return NextResponse.json(
         { error: "Invalid or expired code" },
         { status: 400, headers: privateHeaders() },
       )
     }
+    // Minted only now that the code has been spent, so an unspent code is
+    // never a usable credential.
+    const token = await issueSession(customerId)
     return NextResponse.json({ token }, { headers: privateHeaders() })
   } catch (err) {
     console.error("Failed to exchange catalogue session code:", err)

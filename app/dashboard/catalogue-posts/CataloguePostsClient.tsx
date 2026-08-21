@@ -201,7 +201,7 @@ function UploadForm({ options, highlights, onCreated }: { options: ReturnType<ty
       <input
         value={title}
         onChange={(e) => setTitle(e.target.value)}
-        placeholder="Caption (optional)"
+        placeholder="Title (optional)"
         className="border border-cream-border rounded-lg px-2 py-1.5 text-sm"
       />
       <select

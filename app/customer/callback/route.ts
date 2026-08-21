@@ -1,13 +1,28 @@
 import { NextRequest, NextResponse } from "next/server"
 import { verifyState } from "@/lib/catalogue-oauth-state"
-import { redeemInvite, signInByGoogleSub, issueSession } from "@/lib/db/catalogue-auth"
+import { redeemInvite, signInByGoogleSub } from "@/lib/db/catalogue-auth"
 import { putOneTimeCode } from "@/lib/catalogue-one-time-code"
 
 // Google hands the browser back here. Bind or sign in, then send the customer
 // to the catalogue site with a one-time code it can trade for a cookie.
 
-function backToSite(reason: string): NextResponse {
+function siteOrigin(): string | null {
   const site = (process.env.CATALOGUE_SITE_URL ?? "").replace(/\/$/, "")
+  // Relative values make NextResponse.redirect throw, which turned a
+  // configuration gap into a 500 on BOTH the success and failure paths —
+  // including the one that exists to report failures.
+  return /^https?:\/\//.test(site) ? site : null
+}
+
+function backToSite(reason: string): NextResponse {
+  const site = siteOrigin()
+  if (!site) {
+    console.error("CATALOGUE_SITE_URL is not configured")
+    return NextResponse.json(
+      { error: "Sign-in is not configured. Please contact the shop." },
+      { status: 500 },
+    )
+  }
   return NextResponse.redirect(`${site}/?auth=${reason}`)
 }
 
@@ -72,9 +87,12 @@ export async function GET(req: NextRequest) {
   if (!result) return backToSite("unknown")
   if ("error" in result) return backToSite(result.error)
 
-  const sessionToken = await issueSession(result.customerId)
-  const oneTime = await putOneTimeCode(sessionToken)
-  const site = (process.env.CATALOGUE_SITE_URL ?? "").replace(/\/$/, "")
+  // No session yet: the code stands for the customer, and the session is
+  // minted when it is spent. An abandoned sign-in therefore leaves no live
+  // credential behind at all.
+  const oneTime = await putOneTimeCode(result.customerId)
+  const site = siteOrigin()
+  if (!site) return backToSite("failed")
   // The nonce goes back so the catalogue can check it against the cookie it
   // set before this round trip. A code arriving without the matching nonce is
   // refused there, which is what stops one browser's code being redeemed in

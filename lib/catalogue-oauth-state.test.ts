@@ -35,15 +35,23 @@ test("swapping the nonce invalidates the state", () => {
 
 test("swapping the invite for another invalidates the state", () => {
   // The attack this exists to stop: edit the URL mid-flow to bind your own
-  // Google account to somebody else's invite.
-  const state = signState("invite-mine")
-  const [nonce, , mac] = state.split(".")
-  assert.equal(verifyState(`${nonce}.invite-theirs.${mac}`), null)
+  // Google account to somebody else's invite. Built with the right number of
+  // parts, so this fails on the signature rather than on a length check —
+  // the earlier version passed even with the HMAC comparison removed.
+  const [rand, , siteNonce, mac] = signState("invite-mine", "n").split(".")
+  assert.equal(verifyState(`${rand}.invite-theirs.${siteNonce}.${mac}`), null)
 })
 
 test("a tampered mac is rejected", () => {
-  const [nonce, invite] = signState("invite-abc").split(".")
-  assert.equal(verifyState(`${nonce}.${invite}.notavalidmac`), null)
+  const [rand, invite, siteNonce] = signState("invite-abc", "n").split(".")
+  assert.equal(verifyState(`${rand}.${invite}.${siteNonce}.notavalidmac`), null)
+})
+
+test("a dot in the invite or nonce is refused rather than silently breaking", () => {
+  // Dots separate the parts, so such a value would produce a state that never
+  // verifies — a sign-in that fails with no explanation.
+  assert.throws(() => signState("bad.invite"), /dot/)
+  assert.throws(() => signState("ok", "bad.nonce"), /dot/)
 })
 
 test("malformed state is rejected rather than throwing", () => {
