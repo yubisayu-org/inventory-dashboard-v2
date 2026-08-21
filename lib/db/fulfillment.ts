@@ -901,3 +901,44 @@ export async function recordNotReceived(
   return { cancelledUnits, excessUnits }
 }
 
+
+/**
+ * Give a parcel its real tracking number.
+ *
+ * Packing runs ahead of paperwork: a box goes out as "MNC - box 1" and the
+ * courier's number arrives hours or days later. Renaming has to move every
+ * line of that parcel at once — the receipt IS the parcel, so leaving half the
+ * lines under the old code would split one box into two on screen.
+ *
+ * Already-received lines are renamed too. They were in the same box, and the
+ * receipt is how anyone would look that up afterwards.
+ *
+ * dispatched_at is untouched: this is a correction to a label, not a second
+ * departure, and the clock on the receiving list must keep counting from when
+ * the box actually left.
+ *
+ * Returns how many lines moved, so the caller can tell "renamed" from "that
+ * parcel no longer exists" — two people editing the same box, most likely.
+ */
+export async function renameDispatchReceipt(
+  from: string, to: string, db: DBExecutor = sql,
+): Promise<{ moved: number }> {
+  const oldReceipt = from.trim()
+  const newReceipt = to.trim()
+  if (!oldReceipt) throw new Error("The parcel to rename is required")
+  if (!newReceipt) throw new Error("A tracking number is required")
+  if (oldReceipt === newReceipt) return { moved: 0 }
+
+  const rows = await db`
+    UPDATE orders SET dispatch_receipt = ${newReceipt}, updated_at = NOW()
+    WHERE dispatch_receipt = ${oldReceipt}
+    RETURNING id
+  `
+  // Ready-stock lines travel in the same boxes and carry the same codes.
+  const excess = await db`
+    UPDATE excess_purchase SET dispatch_receipt = ${newReceipt}, updated_at = NOW()
+    WHERE dispatch_receipt = ${oldReceipt}
+    RETURNING id
+  `
+  return { moved: rows.length + excess.length }
+}

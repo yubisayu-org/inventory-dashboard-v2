@@ -318,6 +318,100 @@ function ScheduleChip({ receipt, sentOn }: { receipt: string; sentOn: string }) 
   )
 }
 
+
+/**
+ * The parcel's code, editable in place.
+ *
+ * Packing runs ahead of paperwork — a box goes out as "MNC - box 1" and the
+ * courier's number arrives later — so the header is where that correction
+ * belongs, next to the thing being corrected.
+ *
+ * It warns before a rename that would change the route, because the route is
+ * read from the prefix: replacing "MNC - box 1" with a bare courier number
+ * moves the parcel off the Sea tab and into Other. Warned rather than
+ * forbidden — it is the owner's box and the owner's naming.
+ */
+function ParcelEditor({
+  receipt, sentOn, onRename,
+}: {
+  receipt: string
+  sentOn: string
+  onRename: (from: string, to: string) => Promise<void>
+}) {
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState(receipt)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState("")
+
+  const nextMode = dispatchModeOf(value)
+  const movesRoute = value.trim() !== "" && nextMode !== dispatchModeOf(receipt)
+
+  async function save() {
+    const to = value.trim()
+    if (!to || to === receipt) { setEditing(false); setValue(receipt); return }
+    setBusy(true); setError("")
+    try {
+      await onRename(receipt, to)
+      setEditing(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not rename")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!editing) {
+    return (
+      <span className="flex items-center gap-1.5">
+        <ScheduleChip receipt={receipt} sentOn={sentOn} />
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setValue(receipt); setEditing(true) }}
+          title="Rename this parcel — for when the tracking number arrives later"
+          aria-label={`Rename parcel ${receipt}`}
+          className="text-faint hover:text-brand transition-colors shrink-0"
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+          </svg>
+        </button>
+      </span>
+    )
+  }
+
+  return (
+    <span className="flex flex-col gap-1" onClick={(e) => e.stopPropagation()}>
+      <span className="flex items-center gap-1.5">
+        <input
+          autoFocus
+          value={value}
+          disabled={busy}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") save()
+            if (e.key === "Escape") { setEditing(false); setValue(receipt); setError("") }
+          }}
+          placeholder="Tracking number"
+          className="w-36 border border-cream-border rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
+        />
+        <button type="button" onClick={save} disabled={busy}
+          className="text-xs font-semibold text-brand disabled:opacity-50">
+          {busy ? "…" : "Save"}
+        </button>
+        <button type="button" onClick={() => { setEditing(false); setValue(receipt); setError("") }}
+          className="text-xs text-faint hover:text-muted">Cancel</button>
+      </span>
+      {movesRoute && (
+        <span className="text-[11px] text-amber-700">
+          Moves this parcel to {nextMode === "other" ? "Other" : DISPATCH_MODES[nextMode].label}
+        </span>
+      )}
+      {error && <span className="text-[11px] text-red-600">{error}</span>}
+    </span>
+  )
+}
+
 export default function ArrivalListClient() {
   const options = useSheetOptions()
   const [items, setItems] = useState<ArrivalListItem[]>([])
@@ -511,7 +605,24 @@ export default function ArrivalListClient() {
   const groupLabel = (key: string) =>
     route === "all"
       ? <span className="font-medium text-foreground">{key}</span>
-      : <ScheduleChip receipt={key} sentOn={parcelDates.get(key) ?? ""} />
+      : <ParcelEditor receipt={key} sentOn={parcelDates.get(key) ?? ""} onRename={renameParcel} />
+
+  /**
+   * Rename a whole parcel. Refetches rather than patching state: the rename
+   * moves every line of the box at once, and may move the box to another tab
+   * if the new code reads as a different route.
+   */
+  const renameParcel = useCallback(async (from: string, to: string) => {
+    const res = await fetch("/api/sheets/arrival-list", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "rename_receipt", from, to }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.error ?? "Could not rename")
+    clearSelection()
+    fetchItems(selectedEvent || undefined, true)
+  }, [fetchItems, selectedEvent])
 
   // Desktop-only state (see above) — mobile's own render loop reads collapsedEvents/
   // collapsedStores directly, not through `rows`.
