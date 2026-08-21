@@ -6,6 +6,13 @@ import { createPost, addClaim, listClaims } from "@/lib/db/claims"
 import { recluster } from "@/lib/whatsapp/ingest"
 import { classifyAnswer, trySizeOffer, trySizeAnswer } from "./size-offer"
 
+// Message ids are literals like mid("her-1"), and four test files use the same ones
+// against one database while running in parallel — so a row this file inserts
+// can be read back as another file's. TAG makes them unique per file per run;
+// mid() is how every message id in this file is written.
+const TAG = `${process.hrtime.bigint()}-`
+const mid = (s: string) => TAG + s
+
 const EVENT = `TESTOFFER${process.hrtime.bigint()}`
 const GROUP = `${process.hrtime.bigint()}@g.us`
 const OWNER = "628119990001"
@@ -58,11 +65,11 @@ test("a thumb is a yes whatever skin tone the keyboard added", () => {
 })
 
 test("a size she offered herself is applied on the spot, no waiting", async () => {
-  const { postId } = await claimed("size 95, kalau nggak ada 100 juga boleh", "her-1")
+  const { postId } = await claimed("size 95, kalau nggak ada 100 juga boleh", mid("her-1"))
 
   const emoji = await trySizeOffer({
     groupJid: GROUP, messageId: "owner-1", sender: OWNER,
-    text: "95 kosong kak, aku ambil 100 ya", quoted: "her-1",
+    text: "95 kosong kak, aku ambil 100 ya", quoted: mid("her-1"),
   })
   assert.equal(emoji, "✅")
 
@@ -72,11 +79,11 @@ test("a size she offered herself is applied on the spot, no waiting", async () =
 })
 
 test("a size she never mentioned waits for her, changing nothing yet", async () => {
-  const { postId } = await claimed("size 95 ya kak", "her-2")
+  const { postId } = await claimed("size 95 ya kak", mid("her-2"))
 
   const emoji = await trySizeOffer({
     groupJid: GROUP, messageId: "owner-2", sender: OWNER,
-    text: "95 kosong, adanya 100. Mau?", quoted: "her-2",
+    text: "95 kosong, adanya 100. Mau?", quoted: mid("her-2"),
   })
   assert.equal(emoji, "❔")
 
@@ -93,9 +100,9 @@ test("a size she never mentioned waits for her, changing nothing yet", async () 
 })
 
 test("her thumbs down leaves her at the size she asked for", async () => {
-  const { postId } = await claimed("size 95 ya kak", "her-3")
+  const { postId } = await claimed("size 95 ya kak", mid("her-3"))
   await trySizeOffer({
-    groupJid: GROUP, messageId: "owner-3", sender: OWNER, text: "adanya 100", quoted: "her-3",
+    groupJid: GROUP, messageId: "owner-3", sender: OWNER, text: "adanya 100", quoted: mid("her-3"),
   })
 
   const answer = await trySizeAnswer({
@@ -109,9 +116,9 @@ test("her thumbs down leaves her at the size she asked for", async () => {
 })
 
 test("somebody else's thumb on the offer does nothing", async () => {
-  const { postId } = await claimed("size 95 ya kak", "her-4")
+  const { postId } = await claimed("size 95 ya kak", mid("her-4"))
   await trySizeOffer({
-    groupJid: GROUP, messageId: "owner-4", sender: OWNER, text: "adanya 100", quoted: "her-4",
+    groupJid: GROUP, messageId: "owner-4", sender: OWNER, text: "adanya 100", quoted: mid("her-4"),
   })
 
   const answer = await trySizeAnswer({
@@ -124,10 +131,10 @@ test("somebody else's thumb on the offer does nothing", async () => {
 })
 
 test("a customer cannot offer herself a size", async () => {
-  const { postId } = await claimed("size 95 ya kak", "her-5")
+  const { postId } = await claimed("size 95 ya kak", mid("her-5"))
 
   const emoji = await trySizeOffer({
-    groupJid: GROUP, messageId: "hers-again", sender: HER, text: "100 aja deh", quoted: "her-5",
+    groupJid: GROUP, messageId: "hers-again", sender: HER, text: "100 aja deh", quoted: mid("her-5"),
   })
   assert.equal(emoji, null, "only an admin decides what the shelf has")
 
@@ -136,18 +143,18 @@ test("a customer cannot offer herself a size", async () => {
 })
 
 test("a reply naming no size is not an offer", async () => {
-  await claimed("size 95 ya kak", "her-6")
+  await claimed("size 95 ya kak", mid("her-6"))
   const emoji = await trySizeOffer({
-    groupJid: GROUP, messageId: "owner-6", sender: OWNER, text: "oke kak siap", quoted: "her-6",
+    groupJid: GROUP, messageId: "owner-6", sender: OWNER, text: "oke kak siap", quoted: mid("her-6"),
   })
   assert.equal(emoji, null)
 })
 
 test("a message carrying three claims is refused rather than guessed at", async () => {
-  const { postId } = await claimed("size 95", "her-7", ["size 95", "size 95"])
+  const { postId } = await claimed("size 95", mid("her-7"), ["size 95", "size 95"])
 
   const emoji = await trySizeOffer({
-    groupJid: GROUP, messageId: "owner-7", sender: OWNER, text: "adanya 100", quoted: "her-7",
+    groupJid: GROUP, messageId: "owner-7", sender: OWNER, text: "adanya 100", quoted: mid("her-7"),
   })
   assert.equal(emoji, "😢", "which of the three she would take is not knowable from '100'")
 
@@ -159,10 +166,10 @@ test("the size she cannot have is not read as the offer", async () => {
   // "95 kosong, ambil 100" names her own size first, because that is how anyone
   // would write it. Taking the first — or the last — is word order pretending to
   // be meaning.
-  const { postId } = await claimed("size 95 ya kak", "her-8")
+  const { postId } = await claimed("size 95 ya kak", mid("her-8"))
   await trySizeOffer({
     groupJid: GROUP, messageId: "owner-8", sender: OWNER,
-    text: "95 kosong kak, adanya 100", quoted: "her-8",
+    text: "95 kosong kak, adanya 100", quoted: mid("her-8"),
   })
   await trySizeAnswer({
     groupJid: GROUP, messageId: "owner-8", reactorJid: `${HER}@s.whatsapp.net`, emoji: "👍",
@@ -173,10 +180,10 @@ test("the size she cannot have is not read as the offer", async () => {
 })
 
 test("two sizes offered at once is a question, not an instruction", async () => {
-  const { postId } = await claimed("size 95 ya kak", "her-9")
+  const { postId } = await claimed("size 95 ya kak", mid("her-9"))
   const emoji = await trySizeOffer({
     groupJid: GROUP, messageId: "owner-9", sender: OWNER,
-    text: "95 kosong, ada 100 atau 110", quoted: "her-9",
+    text: "95 kosong, ada 100 atau 110", quoted: mid("her-9"),
   })
   assert.equal(emoji, "😢")
 
@@ -185,9 +192,9 @@ test("two sizes offered at once is a question, not an instruction", async () => 
 })
 
 test("repeating her own size back is not an offer at all", async () => {
-  await claimed("size 95 ya kak", "her-10")
+  await claimed("size 95 ya kak", mid("her-10"))
   const emoji = await trySizeOffer({
-    groupJid: GROUP, messageId: "owner-10", sender: OWNER, text: "95 ya kak siap", quoted: "her-10",
+    groupJid: GROUP, messageId: "owner-10", sender: OWNER, text: "95 ya kak siap", quoted: mid("her-10"),
   })
   assert.equal(emoji, null)
 })

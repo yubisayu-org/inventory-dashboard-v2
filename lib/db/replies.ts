@@ -49,11 +49,24 @@ export async function queueText(
  * inside the subquery with FOR UPDATE SKIP LOCKED and flipping its state in
  * the same statement makes the claim atomic.
  */
-export async function nextPendingReply(db: DBExecutor = sql): Promise<ReplyItem | null> {
+export async function nextPendingReply(
+  db: DBExecutor = sql,
+  /**
+   * Only consider replies bound for this group.
+   *
+   * The worker never passes it: one drain loop serves every group, and taking
+   * the oldest row anywhere is the point. Tests do, because they share one
+   * database and run in parallel — without it, a test that queues its own row
+   * and asks for "the next pending reply" can be handed another file's.
+   */
+  groupJid?: string,
+): Promise<ReplyItem | null> {
+  const onlyGroup = groupJid ? db`AND group_jid = ${groupJid}` : db``
   const [row] = await db`
     UPDATE wa_replies SET state = 'sending'
     WHERE id = (
-      SELECT id FROM wa_replies WHERE state = 'pending' ORDER BY id ASC LIMIT 1 FOR UPDATE SKIP LOCKED
+      SELECT id FROM wa_replies WHERE state = 'pending' ${onlyGroup}
+      ORDER BY id ASC LIMIT 1 FOR UPDATE SKIP LOCKED
     )
     RETURNING *
   `

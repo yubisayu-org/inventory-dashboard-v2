@@ -9,6 +9,12 @@ import { resolveProductPostClaim } from "./product-post"
 // uniqueness instead: per file, per run. Without it, one crashed run leaves a
 // row behind and every later run fails in before() with a duplicate key.
 const STORE = `ZHG-${process.hrtime.bigint()}`
+// Message ids are literals like "her-1", and four test files use the same ones
+// against one database while running in parallel — so a row this file inserts
+// can be read back as another file's. TAG makes them unique per file per run;
+// mid() is how every message id in this file is written.
+const TAG = `${process.hrtime.bigint()}-`
+const mid = (s: string) => TAG + s
 
 const EVENT = `TESTPPCLAIM${process.hrtime.bigint()}`
 const GROUP = `${process.hrtime.bigint()}@g.us`
@@ -38,7 +44,7 @@ before(async () => {
   sendId = send.id
   codeA = (await attachProductToSend(sendId, productAId)).code
   codeB = (await attachProductToSend(sendId, productBId)).code
-  await setSendMessageId(sendId, "post-msg-1", GROUP)
+  await setSendMessageId(sendId, mid("post-msg-1"), GROUP)
 })
 
 after(async () => {
@@ -55,11 +61,11 @@ after(async () => {
 
 test("a code reply, unquoted, resolves against the group's bound event", async () => {
   const result = await resolveProductPostClaim({
-    groupJid: GROUP, messageId: "her-1", sender: HER, text: `${codeA} mau 1`, quoted: "",
+    groupJid: GROUP, messageId: mid("her-1"), sender: HER, text: `${codeA} mau 1`, quoted: "",
   })
   assert.equal(result.kind, "reacted")
   if (result.kind === "reacted") assert.equal(result.emoji, "📝")
-  const [row] = await sql`SELECT status, product_id, qty FROM catalogue_requests WHERE message_id = 'her-1'`
+  const [row] = await sql`SELECT status, product_id, qty FROM catalogue_requests WHERE message_id = ${mid("her-1")}`
   assert.equal(row.status, "pending")
   assert.equal(row.product_id, productAId)
   assert.equal(row.qty, 1)
@@ -67,61 +73,61 @@ test("a code reply, unquoted, resolves against the group's bound event", async (
 
 test("a code reply, quoted to the post, resolves the same way", async () => {
   const result = await resolveProductPostClaim({
-    groupJid: GROUP, messageId: "her-2", sender: HER, text: `${codeB} mau 2`, quoted: "post-msg-1",
+    groupJid: GROUP, messageId: mid("her-2"), sender: HER, text: `${codeB} mau 2`, quoted: mid("post-msg-1"),
   })
   assert.equal(result.kind, "reacted")
-  const [row] = await sql`SELECT product_id, qty FROM catalogue_requests WHERE message_id = 'her-2'`
+  const [row] = await sql`SELECT product_id, qty FROM catalogue_requests WHERE message_id = ${mid("her-2")}`
   assert.equal(row.product_id, productBId)
   assert.equal(row.qty, 2)
 })
 
 test("an exact unique store-code token, with no minted code, is a direct claim", async () => {
   const result = await resolveProductPostClaim({
-    groupJid: GROUP, messageId: "her-3", sender: HER, text: "fix 2099A1 kak, 1 aja", quoted: "",
+    groupJid: GROUP, messageId: mid("her-3"), sender: HER, text: "fix 2099A1 kak, 1 aja", quoted: "",
   })
   assert.equal(result.kind, "reacted")
   if (result.kind === "reacted") assert.equal(result.emoji, "📝")
-  const [row] = await sql`SELECT product_id, status FROM catalogue_requests WHERE message_id = 'her-3'`
+  const [row] = await sql`SELECT product_id, status FROM catalogue_requests WHERE message_id = ${mid("her-3")}`
   assert.equal(row.product_id, productAId)
   assert.equal(row.status, "pending")
 })
 
 test("an unrecognised code reacts sad and writes no row", async () => {
   const result = await resolveProductPostClaim({
-    groupJid: GROUP, messageId: "her-4", sender: HER, text: "Z99 mau 1", quoted: "",
+    groupJid: GROUP, messageId: mid("her-4"), sender: HER, text: "Z99 mau 1", quoted: "",
   })
   assert.equal(result.kind, "reacted")
   if (result.kind === "reacted") assert.equal(result.emoji, "😢")
-  const [row] = await sql`SELECT 1 FROM catalogue_requests WHERE message_id = 'her-4'`
+  const [row] = await sql`SELECT 1 FROM catalogue_requests WHERE message_id = ${mid("her-4")}`
   assert.equal(row, undefined)
 })
 
 test("a question naming a code, unquoted, is not read as a claim", async () => {
   const result = await resolveProductPostClaim({
-    groupJid: GROUP, messageId: "her-q1", sender: HER, text: `Tapi yang ${codeA} ada ukuran apa aja?`, quoted: "",
+    groupJid: GROUP, messageId: mid("her-q1"), sender: HER, text: `Tapi yang ${codeA} ada ukuran apa aja?`, quoted: "",
   })
   assert.equal(result.kind, "question")
-  const [row] = await sql`SELECT 1 FROM catalogue_requests WHERE message_id = 'her-q1'`
+  const [row] = await sql`SELECT 1 FROM catalogue_requests WHERE message_id = ${mid("her-q1")}`
   assert.equal(row, undefined)
 })
 
 test("a question that also states ordering intent still claims normally", async () => {
   const result = await resolveProductPostClaim({
-    groupJid: GROUP, messageId: "her-q2", sender: HER, text: `${codeA} ada ukuran apa aja, mau 1`, quoted: "",
+    groupJid: GROUP, messageId: mid("her-q2"), sender: HER, text: `${codeA} ada ukuran apa aja, mau 1`, quoted: "",
   })
   assert.equal(result.kind, "reacted")
   if (result.kind === "reacted") assert.equal(result.emoji, "📝")
-  const [row] = await sql`SELECT product_id FROM catalogue_requests WHERE message_id = 'her-q2'`
+  const [row] = await sql`SELECT product_id FROM catalogue_requests WHERE message_id = ${mid("her-q2")}`
   assert.equal(row.product_id, productAId)
 })
 
 test("a question-shaped reply, quoted to the post, still claims — quoting is its own engagement signal", async () => {
   const result = await resolveProductPostClaim({
-    groupJid: GROUP, messageId: "her-q3", sender: HER, text: `${codeB} ada size apa ya?`, quoted: "post-msg-1",
+    groupJid: GROUP, messageId: mid("her-q3"), sender: HER, text: `${codeB} ada size apa ya?`, quoted: mid("post-msg-1"),
   })
   assert.equal(result.kind, "reacted")
   if (result.kind === "reacted") assert.equal(result.emoji, "📝")
-  const [row] = await sql`SELECT product_id FROM catalogue_requests WHERE message_id = 'her-q3'`
+  const [row] = await sql`SELECT product_id FROM catalogue_requests WHERE message_id = ${mid("her-q3")}`
   assert.equal(row.product_id, productBId)
 })
 
@@ -133,11 +139,11 @@ test("a message quoting a closed trip's send is refused", async () => {
   // The group is now bound to EVENT, not closedEvent — quoting the old post
   // resolves to closedEvent's send, which is not the group's live one.
   const result = await resolveProductPostClaim({
-    groupJid: GROUP, messageId: "her-5", sender: HER, text: "A21 mau 1", quoted: "old-post-msg",
+    groupJid: GROUP, messageId: mid("her-5"), sender: HER, text: "A21 mau 1", quoted: "old-post-msg",
   })
   assert.equal(result.kind, "reacted")
   if (result.kind === "reacted") assert.equal(result.emoji, "❌")
-  const [row] = await sql`SELECT status FROM catalogue_requests WHERE message_id = 'her-5'`
+  const [row] = await sql`SELECT status FROM catalogue_requests WHERE message_id = ${mid("her-5")}`
   assert.equal(row.status, "rejected")
   await sql`DELETE FROM wa_sends WHERE id = ${closedSend.id}`
   await sql`DELETE FROM events WHERE name = ${closedEvent}`
@@ -151,10 +157,10 @@ test("unquoted chatter with an open send but zero engagement falls through untou
   // quoted "Kodenya yang mana kak?" reply and a permanent 'asking' row for
   // every such message while any send was open.
   const result = await resolveProductPostClaim({
-    groupJid: GROUP, messageId: "her-6", sender: HER, text: "ini ready berapa hari lagi ya kak", quoted: "",
+    groupJid: GROUP, messageId: mid("her-6"), sender: HER, text: "ini ready berapa hari lagi ya kak", quoted: "",
   })
   assert.equal(result.kind, "notApplicable")
-  const [row] = await sql`SELECT 1 FROM catalogue_requests WHERE message_id = 'her-6'`
+  const [row] = await sql`SELECT 1 FROM catalogue_requests WHERE message_id = ${mid("her-6")}`
   assert.equal(row, undefined)
 })
 
@@ -163,13 +169,13 @@ test("quoting the send's own post with no code and no candidate still asks — s
   // this time she quoted the post itself, which is a real engagement
   // signal — the ❔ ask must still happen here.
   const result = await resolveProductPostClaim({
-    groupJid: GROUP, messageId: "her-6b", sender: HER, text: "ini ready berapa hari lagi ya kak", quoted: "post-msg-1",
+    groupJid: GROUP, messageId: mid("her-6b"), sender: HER, text: "ini ready berapa hari lagi ya kak", quoted: mid("post-msg-1"),
   })
   assert.equal(result.kind, "needsDisambiguation")
   if (result.kind === "needsDisambiguation") assert.deepEqual(result.candidates, [])
   // As before, this function only decides there IS an ambiguity — it writes
   // nothing itself.
-  const [row] = await sql`SELECT 1 FROM catalogue_requests WHERE message_id = 'her-6b'`
+  const [row] = await sql`SELECT 1 FROM catalogue_requests WHERE message_id = ${mid("her-6b")}`
   assert.equal(row, undefined)
 })
 
@@ -179,27 +185,27 @@ test("a generic short product-name token does not substring-match an unrelated w
   // the only match) this became a direct pending order claim for two units
   // of a product she never named.
   const result = await resolveProductPostClaim({
-    groupJid: GROUP, messageId: "her-11", sender: HER, text: "kakak mau 2 yang bagus", quoted: "",
+    groupJid: GROUP, messageId: mid("her-11"), sender: HER, text: "kakak mau 2 yang bagus", quoted: "",
   })
   assert.equal(result.kind, "notApplicable", "'bagus' must not word-boundary-match the 'bag' token")
-  const [row] = await sql`SELECT 1 FROM catalogue_requests WHERE message_id = 'her-11'`
+  const [row] = await sql`SELECT 1 FROM catalogue_requests WHERE message_id = ${mid("her-11")}`
   assert.equal(row, undefined)
 })
 
 test("two valid codes in one message ask which one, instead of falling through to name matching", async () => {
   const result = await resolveProductPostClaim({
-    groupJid: GROUP, messageId: "her-12", sender: HER, text: `${codeA} sama ${codeB} masing-masing 1`, quoted: "",
+    groupJid: GROUP, messageId: mid("her-12"), sender: HER, text: `${codeA} sama ${codeB} masing-masing 1`, quoted: "",
   })
   assert.equal(result.kind, "needsDisambiguation")
   if (result.kind !== "needsDisambiguation") return
   assert.deepEqual(result.candidates.map((c) => c.code).sort(), [codeA, codeB].sort())
-  const [row] = await sql`SELECT 1 FROM catalogue_requests WHERE message_id = 'her-12'`
+  const [row] = await sql`SELECT 1 FROM catalogue_requests WHERE message_id = ${mid("her-12")}`
   assert.equal(row, undefined, "resolveProductPostClaim itself writes nothing")
 })
 
 test("two codes where only one actually resolves offers just the one that did", async () => {
   const result = await resolveProductPostClaim({
-    groupJid: GROUP, messageId: "her-13", sender: HER, text: `${codeA} atau Z99, mana ada`, quoted: "",
+    groupJid: GROUP, messageId: mid("her-13"), sender: HER, text: `${codeA} atau Z99, mana ada`, quoted: "",
   })
   assert.equal(result.kind, "needsDisambiguation")
   if (result.kind !== "needsDisambiguation") return
@@ -224,18 +230,18 @@ test("token matching against an OLDER still-open send of the same trip also reso
 
   try {
     const result = await resolveProductPostClaim({
-      groupJid: GROUP, messageId: "her-14", sender: HER, text: "tumbler nya mau 1", quoted: "",
+      groupJid: GROUP, messageId: mid("her-14"), sender: HER, text: "tumbler nya mau 1", quoted: "",
     })
     assert.equal(result.kind, "reacted")
     if (result.kind === "reacted") assert.equal(result.emoji, "📝")
-    const [row] = await sql`SELECT product_id, send_id FROM catalogue_requests WHERE message_id = 'her-14'`
+    const [row] = await sql`SELECT product_id, send_id FROM catalogue_requests WHERE message_id = ${mid("her-14")}`
     assert.equal(row.product_id, productCId)
     // The row's send_id must come from the send the matched product code
     // actually belongs to (the older send), not from whichever send
     // getOpenSendForGroup picked for the closed-trip check (the newer one).
     assert.equal(row.send_id, olderSend.id)
   } finally {
-    await sql`DELETE FROM catalogue_requests WHERE message_id = 'her-14'`
+    await sql`DELETE FROM catalogue_requests WHERE message_id = ${mid("her-14")}`
     await sql`DELETE FROM wa_send_codes WHERE send_id = ${olderSend.id}`
     await sql`DELETE FROM wa_sends WHERE id = ${olderSend.id}`
     await sql`DELETE FROM catalogue_post_products WHERE post_id = ${postId} AND product_id = ${productCId}`
@@ -246,16 +252,16 @@ test("token matching against an OLDER still-open send of the same trip also reso
 test("ordinary chat with no group bound to any send is not a product-post claim at all", async () => {
   const emptyGroup = `${process.hrtime.bigint()}-empty@g.us`
   const result = await resolveProductPostClaim({
-    groupJid: emptyGroup, messageId: "her-7", sender: HER, text: "halo semua", quoted: "",
+    groupJid: emptyGroup, messageId: mid("her-7"), sender: HER, text: "halo semua", quoted: "",
   })
   assert.equal(result.kind, "notApplicable")
 })
 
 test("a question matched by product-name token, not a code, also reacts ❓ not a claim", async () => {
   const result = await resolveProductPostClaim({
-    groupJid: GROUP, messageId: "her-q4", sender: HER, text: "yang rorojen itu ada warna lain?", quoted: "",
+    groupJid: GROUP, messageId: mid("her-q4"), sender: HER, text: "yang rorojen itu ada warna lain?", quoted: "",
   })
   assert.equal(result.kind, "question")
-  const [row] = await sql`SELECT 1 FROM catalogue_requests WHERE message_id = 'her-q4'`
+  const [row] = await sql`SELECT 1 FROM catalogue_requests WHERE message_id = ${mid("her-q4")}`
   assert.equal(row, undefined)
 })

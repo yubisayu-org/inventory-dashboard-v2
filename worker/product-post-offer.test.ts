@@ -10,6 +10,12 @@ import { askDisambiguation, trySendOfferAnswer, trySendOfferThumbsUp } from "./p
 // uniqueness instead: per file, per run. Without it, one crashed run leaves a
 // row behind and every later run fails in before() with a duplicate key.
 const STORE = `MUJI-${process.hrtime.bigint()}`
+// Message ids are literals like "her-1", and four test files use the same ones
+// against one database while running in parallel — so a row this file inserts
+// can be read back as another file's. TAG makes them unique per file per run;
+// mid() is how every message id in this file is written.
+const TAG = `${process.hrtime.bigint()}-`
+const mid = (s: string) => TAG + s
 
 const EVENT = `TESTPPOFFER${process.hrtime.bigint()}`
 const GROUP = `${process.hrtime.bigint()}@g.us`
@@ -45,7 +51,7 @@ before(async () => {
   await attachProductToSend(sendId, productAId)
   await attachProductToSend(sendId, productBId)
   await attachProductToSend(sendId, productCId)
-  await setSendMessageId(sendId, "post-msg-1", GROUP)
+  await setSendMessageId(sendId, mid("post-msg-1"), GROUP)
 })
 
 after(async () => {
@@ -66,14 +72,14 @@ function fakeSock(sentId: string) {
 
 test("askDisambiguation with two candidates lists only the codes, never a bare number", async () => {
   const resolution = await resolveProductPostClaim({
-    groupJid: GROUP, messageId: "her-1", sender: HER, text: "bostonnya mau 1 dong", quoted: "",
+    groupJid: GROUP, messageId: mid("her-1"), sender: HER, text: "bostonnya mau 1 dong", quoted: "",
   })
   assert.equal(resolution.kind, "needsDisambiguation")
   if (resolution.kind !== "needsDisambiguation") return
 
-  const sock = fakeSock("bot-msg-1")
+  const sock = fakeSock(mid("bot-msg-1"))
   const emoji = await askDisambiguation(sock, {
-    groupJid: GROUP, messageId: "her-1", sender: HER, text: "bostonnya mau 1 dong", quoted: "",
+    groupJid: GROUP, messageId: mid("her-1"), sender: HER, text: "bostonnya mau 1 dong", quoted: "",
   }, resolution)
   assert.equal(emoji, "❔")
 
@@ -81,9 +87,9 @@ test("askDisambiguation with two candidates lists only the codes, never a bare n
   const caption = sent.arguments[1].text as string
   assert.ok(!/balas\s+1\s+atau\s+2/i.test(caption), "must never offer numbered options")
 
-  const [row] = await sql`SELECT status, bot_message_id, candidate_send_code_ids FROM catalogue_requests WHERE message_id = 'her-1'`
+  const [row] = await sql`SELECT status, bot_message_id, candidate_send_code_ids FROM catalogue_requests WHERE message_id = ${mid("her-1")}`
   assert.equal(row.status, "asking")
-  assert.equal(row.bot_message_id, "bot-msg-1")
+  assert.equal(row.bot_message_id, mid("bot-msg-1"))
   assert.equal(row.candidate_send_code_ids.length, 2)
 })
 
@@ -96,15 +102,15 @@ test("askDisambiguation with one candidate asks a yes/no confirmation", async ()
   // case) — verified empirically against the real resolver, not assumed.
   const text = "warna greijnya mau 1"
   const resolution = await resolveProductPostClaim({
-    groupJid: GROUP, messageId: "her-2", sender: HER, text, quoted: "",
+    groupJid: GROUP, messageId: mid("her-2"), sender: HER, text, quoted: "",
   })
   assert.equal(resolution.kind, "needsDisambiguation")
   if (resolution.kind !== "needsDisambiguation") return
   assert.equal(resolution.candidates.length, 1, "fixture text is chosen to fuzzy-match exactly one candidate")
 
-  const sock = fakeSock("bot-msg-2")
+  const sock = fakeSock(mid("bot-msg-2"))
   const emoji = await askDisambiguation(sock, {
-    groupJid: GROUP, messageId: "her-2", sender: HER, text, quoted: "",
+    groupJid: GROUP, messageId: mid("her-2"), sender: HER, text, quoted: "",
   }, resolution)
   assert.equal(emoji, "❔")
 
@@ -112,53 +118,53 @@ test("askDisambiguation with one candidate asks a yes/no confirmation", async ()
   const caption = sent.arguments[1].text as string
   assert.ok(/kalau betul/i.test(caption), "single-candidate offer should ask a yes/no confirmation, not list codes")
 
-  const [row] = await sql`SELECT status, bot_message_id, candidate_send_code_ids FROM catalogue_requests WHERE message_id = 'her-2'`
+  const [row] = await sql`SELECT status, bot_message_id, candidate_send_code_ids FROM catalogue_requests WHERE message_id = ${mid("her-2")}`
   assert.equal(row.status, "asking")
-  assert.equal(row.bot_message_id, "bot-msg-2")
+  assert.equal(row.bot_message_id, mid("bot-msg-2"))
   assert.equal(row.candidate_send_code_ids.length, 1)
 })
 
 test("trySendOfferAnswer settles a code reply against the offered candidates only", async () => {
   const resolution = await resolveProductPostClaim({
-    groupJid: GROUP, messageId: "her-3", sender: HER, text: "bostonnya mau 1", quoted: "",
+    groupJid: GROUP, messageId: mid("her-3"), sender: HER, text: "bostonnya mau 1", quoted: "",
   })
   assert.equal(resolution.kind, "needsDisambiguation")
   if (resolution.kind !== "needsDisambiguation") return
-  const sock = fakeSock("bot-msg-3")
+  const sock = fakeSock(mid("bot-msg-3"))
   await askDisambiguation(sock, {
-    groupJid: GROUP, messageId: "her-3", sender: HER, text: "bostonnya mau 1", quoted: "",
+    groupJid: GROUP, messageId: mid("her-3"), sender: HER, text: "bostonnya mau 1", quoted: "",
   }, resolution)
 
-  const offeredCode = (await sql`SELECT sc.code FROM catalogue_requests r JOIN wa_send_codes sc ON sc.id = r.candidate_send_code_ids[1] WHERE r.message_id = 'her-3'`)[0].code as string
+  const offeredCode = (await sql`SELECT sc.code FROM catalogue_requests r JOIN wa_send_codes sc ON sc.id = r.candidate_send_code_ids[1] WHERE r.message_id = ${mid("her-3")}`)[0].code as string
 
   const emoji = await trySendOfferAnswer({
-    groupJid: GROUP, messageId: "her-3-reply", sender: HER, text: `${offeredCode}`, quoted: "bot-msg-3",
+    groupJid: GROUP, messageId: mid("her-3-reply"), sender: HER, text: `${offeredCode}`, quoted: mid("bot-msg-3"),
   })
   assert.equal(emoji, "📝")
 
-  const [row] = await sql`SELECT status, product_id FROM catalogue_requests WHERE message_id = 'her-3'`
+  const [row] = await sql`SELECT status, product_id FROM catalogue_requests WHERE message_id = ${mid("her-3")}`
   assert.equal(row.status, "pending")
 })
 
 test("a second answer to an already-resolved offer does nothing", async () => {
   const resolution = await resolveProductPostClaim({
-    groupJid: GROUP, messageId: "her-4", sender: HER, text: "bostonnya mau 1", quoted: "",
+    groupJid: GROUP, messageId: mid("her-4"), sender: HER, text: "bostonnya mau 1", quoted: "",
   })
   if (resolution.kind !== "needsDisambiguation") return
-  const sock = fakeSock("bot-msg-4")
+  const sock = fakeSock(mid("bot-msg-4"))
   await askDisambiguation(sock, {
-    groupJid: GROUP, messageId: "her-4", sender: HER, text: "bostonnya mau 1", quoted: "",
+    groupJid: GROUP, messageId: mid("her-4"), sender: HER, text: "bostonnya mau 1", quoted: "",
   }, resolution)
-  const offeredCode = (await sql`SELECT sc.code FROM catalogue_requests r JOIN wa_send_codes sc ON sc.id = r.candidate_send_code_ids[1] WHERE r.message_id = 'her-4'`)[0].code as string
+  const offeredCode = (await sql`SELECT sc.code FROM catalogue_requests r JOIN wa_send_codes sc ON sc.id = r.candidate_send_code_ids[1] WHERE r.message_id = ${mid("her-4")}`)[0].code as string
 
-  await trySendOfferAnswer({ groupJid: GROUP, messageId: "her-4-a", sender: HER, text: offeredCode, quoted: "bot-msg-4" })
-  const emoji = await trySendOfferAnswer({ groupJid: GROUP, messageId: "her-4-b", sender: HER, text: offeredCode, quoted: "bot-msg-4" })
+  await trySendOfferAnswer({ groupJid: GROUP, messageId: mid("her-4-a"), sender: HER, text: offeredCode, quoted: mid("bot-msg-4") })
+  const emoji = await trySendOfferAnswer({ groupJid: GROUP, messageId: mid("her-4-b"), sender: HER, text: offeredCode, quoted: mid("bot-msg-4") })
   assert.equal(emoji, null, "the offer is already answered")
 })
 
 test("trySendOfferAnswer returns null for a reply quoting no open offer", async () => {
   const emoji = await trySendOfferAnswer({
-    groupJid: GROUP, messageId: "her-5", sender: HER, text: "K01", quoted: "not-an-offer",
+    groupJid: GROUP, messageId: mid("her-5"), sender: HER, text: "K01", quoted: "not-an-offer",
   })
   assert.equal(emoji, null)
 })
@@ -171,51 +177,51 @@ test("trySendOfferThumbsUp settles a one-candidate offer", async () => {
   // claim. Verified empirically against the real resolver, not assumed.
   const text = "kuni nya mau 1"
   const resolution = await resolveProductPostClaim({
-    groupJid: GROUP, messageId: "her-6", sender: HER, text, quoted: "",
+    groupJid: GROUP, messageId: mid("her-6"), sender: HER, text, quoted: "",
   })
   assert.equal(resolution.kind, "needsDisambiguation")
   if (resolution.kind !== "needsDisambiguation") return
   assert.equal(resolution.candidates.length, 1, "fixture text is chosen to fuzzy-match exactly one candidate")
 
-  const sock = fakeSock("bot-msg-6")
+  const sock = fakeSock(mid("bot-msg-6"))
   await askDisambiguation(sock, {
-    groupJid: GROUP, messageId: "her-6", sender: HER, text, quoted: "",
+    groupJid: GROUP, messageId: mid("her-6"), sender: HER, text, quoted: "",
   }, resolution)
 
-  const emoji = await trySendOfferThumbsUp(GROUP, "bot-msg-6", "👍", HER)
+  const emoji = await trySendOfferThumbsUp(GROUP, mid("bot-msg-6"), "👍", HER)
   assert.equal(emoji, "✅")
-  const [row] = await sql`SELECT status FROM catalogue_requests WHERE message_id = 'her-6'`
+  const [row] = await sql`SELECT status FROM catalogue_requests WHERE message_id = ${mid("her-6")}`
   assert.equal(row.status, "pending")
 })
 
 test("trySendOfferThumbsUp does nothing for a multi-candidate offer", async () => {
   const resolution = await resolveProductPostClaim({
-    groupJid: GROUP, messageId: "her-7", sender: HER, text: "bostonnya mau 1", quoted: "",
+    groupJid: GROUP, messageId: mid("her-7"), sender: HER, text: "bostonnya mau 1", quoted: "",
   })
   if (resolution.kind !== "needsDisambiguation") return
-  const sock = fakeSock("bot-msg-7")
+  const sock = fakeSock(mid("bot-msg-7"))
   await askDisambiguation(sock, {
-    groupJid: GROUP, messageId: "her-7", sender: HER, text: "bostonnya mau 1", quoted: "",
+    groupJid: GROUP, messageId: mid("her-7"), sender: HER, text: "bostonnya mau 1", quoted: "",
   }, resolution)
-  const emoji = await trySendOfferThumbsUp(GROUP, "bot-msg-7", "👍", HER)
+  const emoji = await trySendOfferThumbsUp(GROUP, mid("bot-msg-7"), "👍", HER)
   assert.equal(emoji, null)
 })
 
 test("trySendOfferThumbsUp ignores a reaction that isn't a positive answer (a 👎, or a removed reaction reported as empty text)", async () => {
   const text = "kuni nya mau 1"
   const resolution = await resolveProductPostClaim({
-    groupJid: GROUP, messageId: "her-8", sender: HER, text, quoted: "",
+    groupJid: GROUP, messageId: mid("her-8"), sender: HER, text, quoted: "",
   })
   if (resolution.kind !== "needsDisambiguation") return
-  const sock = fakeSock("bot-msg-8")
+  const sock = fakeSock(mid("bot-msg-8"))
   await askDisambiguation(sock, {
-    groupJid: GROUP, messageId: "her-8", sender: HER, text, quoted: "",
+    groupJid: GROUP, messageId: mid("her-8"), sender: HER, text, quoted: "",
   }, resolution)
 
-  assert.equal(await trySendOfferThumbsUp(GROUP, "bot-msg-8", "👎", HER), null, "a negative reaction must not settle it")
-  assert.equal(await trySendOfferThumbsUp(GROUP, "bot-msg-8", "", HER), null, "a removed reaction (empty text) must not settle it")
+  assert.equal(await trySendOfferThumbsUp(GROUP, mid("bot-msg-8"), "👎", HER), null, "a negative reaction must not settle it")
+  assert.equal(await trySendOfferThumbsUp(GROUP, mid("bot-msg-8"), "", HER), null, "a removed reaction (empty text) must not settle it")
 
-  const [row] = await sql`SELECT status FROM catalogue_requests WHERE message_id = 'her-8'`
+  const [row] = await sql`SELECT status FROM catalogue_requests WHERE message_id = ${mid("her-8")}`
   assert.equal(row.status, "asking", "the offer must still be open — neither reaction was hers agreeing")
 })
 
@@ -223,17 +229,17 @@ test("trySendOfferThumbsUp does nothing for somebody else's thumb on her offer",
   const OTHER = "628199999999"
   const text = "kuni nya mau 1"
   const resolution = await resolveProductPostClaim({
-    groupJid: GROUP, messageId: "her-9", sender: HER, text, quoted: "",
+    groupJid: GROUP, messageId: mid("her-9"), sender: HER, text, quoted: "",
   })
   if (resolution.kind !== "needsDisambiguation") return
-  const sock = fakeSock("bot-msg-9")
+  const sock = fakeSock(mid("bot-msg-9"))
   await askDisambiguation(sock, {
-    groupJid: GROUP, messageId: "her-9", sender: HER, text, quoted: "",
+    groupJid: GROUP, messageId: mid("her-9"), sender: HER, text, quoted: "",
   }, resolution)
 
-  const emoji = await trySendOfferThumbsUp(GROUP, "bot-msg-9", "👍", OTHER)
+  const emoji = await trySendOfferThumbsUp(GROUP, mid("bot-msg-9"), "👍", OTHER)
   assert.equal(emoji, null, "a stranger's thumb must not settle another customer's claim")
-  const [row] = await sql`SELECT status FROM catalogue_requests WHERE message_id = 'her-9'`
+  const [row] = await sql`SELECT status FROM catalogue_requests WHERE message_id = ${mid("her-9")}`
   assert.equal(row.status, "asking")
 })
 
