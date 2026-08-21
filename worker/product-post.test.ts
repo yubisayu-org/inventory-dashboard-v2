@@ -4,6 +4,12 @@ import sql from "@/lib/db-pool"
 import { createSend, attachProductToSend, setSendMessageId } from "@/lib/db/wa-sends"
 import { resolveProductPostClaim } from "./product-post"
 
+// products has a UNIQUE (name, store). Fixture names are fixed and meaningful
+// — the resolver matches tokens inside them — so the store carries the
+// uniqueness instead: per file, per run. Without it, one crashed run leaves a
+// row behind and every later run fails in before() with a duplicate key.
+const STORE = `ZHG-${process.hrtime.bigint()}`
+
 const EVENT = `TESTPPCLAIM${process.hrtime.bigint()}`
 const GROUP = `${process.hrtime.bigint()}@g.us`
 const HER = "628111111111"
@@ -23,8 +29,8 @@ before(async () => {
   await sql`INSERT INTO wa_groups (jid, event, active) VALUES (${GROUP}, ${EVENT}, true) ON CONFLICT (jid) DO UPDATE SET event = EXCLUDED.event`
   const [post] = await sql`INSERT INTO catalogue_posts (media_url, media_type) VALUES ('https://example.com/t.jpg', 'photo') RETURNING id`
   postId = post.id as number
-  const [a] = await sql`INSERT INTO products (name, store, price) VALUES ('2099A1 - Buckle Shoulder Bag Brown', 'ZHG', 840000) RETURNING id`
-  const [b] = await sql`INSERT INTO products (name, store, price) VALUES ('30213 - Rorojen Bag Brown', 'ZHG', 920000) RETURNING id`
+  const [a] = await sql`INSERT INTO products (name, store, price) VALUES ('2099A1 - Buckle Shoulder Bag Brown', ${STORE}, 840000) RETURNING id`
+  const [b] = await sql`INSERT INTO products (name, store, price) VALUES ('30213 - Rorojen Bag Brown', ${STORE}, 920000) RETURNING id`
   productAId = a.id as number
   productBId = b.id as number
 
@@ -210,7 +216,7 @@ test("token matching against an OLDER still-open send of the same trip also reso
   // than one live post at once.
   const olderSend = await createSend({ postId, event: EVENT, title: "earlier restock" })
   const [productC] = await sql`
-    INSERT INTO products (name, store, price) VALUES ('Uniquely Distinctive Tumbler', 'ZHG', 50000) RETURNING id
+    INSERT INTO products (name, store, price) VALUES ('Uniquely Distinctive Tumbler', ${STORE}, 50000) RETURNING id
   `
   const productCId = productC.id as number
   await attachProductToSend(olderSend.id, productCId)

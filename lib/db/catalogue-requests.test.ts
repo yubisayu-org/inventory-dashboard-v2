@@ -9,6 +9,12 @@ import {
   getCatalogueRequests,
 } from "./catalogue-requests"
 
+// products has a UNIQUE (name, store). Fixture names are fixed and meaningful
+// — the resolver matches tokens inside them — so the store carries the
+// uniqueness instead: per file, per run. Without it, one crashed run leaves a
+// row behind and every later run fails in before() with a duplicate key.
+const STORE = `ZHG-${process.hrtime.bigint()}`
+
 const EVENT = `TESTWACR${process.hrtime.bigint()}`
 let postId: number
 let productId: number
@@ -28,9 +34,9 @@ before(async () => {
   `
   const [post] = await sql`INSERT INTO catalogue_posts (media_url, media_type) VALUES ('https://example.com/t.jpg', 'photo') RETURNING id`
   postId = post.id as number
-  const [product] = await sql`INSERT INTO products (name, store, price) VALUES ('Test Product', 'ZHG', 100000) RETURNING id`
+  const [product] = await sql`INSERT INTO products (name, store, price) VALUES ('Test Product', ${STORE}, 100000) RETURNING id`
   productId = product.id as number
-  const [productB] = await sql`INSERT INTO products (name, store, price) VALUES ('Test Product B', 'ZHG', 150000) RETURNING id`
+  const [productB] = await sql`INSERT INTO products (name, store, price) VALUES ('Test Product B', ${STORE}, 150000) RETURNING id`
   productBId = productB.id as number
   const send = await createSend({ postId, event: EVENT, title: "t" })
   sendId = send.id

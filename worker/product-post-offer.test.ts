@@ -5,6 +5,12 @@ import { createSend, attachProductToSend, setSendMessageId } from "@/lib/db/wa-s
 import { resolveProductPostClaim } from "./product-post"
 import { askDisambiguation, trySendOfferAnswer, trySendOfferThumbsUp } from "./product-post-offer"
 
+// products has a UNIQUE (name, store). Fixture names are fixed and meaningful
+// — the resolver matches tokens inside them — so the store carries the
+// uniqueness instead: per file, per run. Without it, one crashed run leaves a
+// row behind and every later run fails in before() with a duplicate key.
+const STORE = `MUJI-${process.hrtime.bigint()}`
+
 const EVENT = `TESTPPOFFER${process.hrtime.bigint()}`
 const GROUP = `${process.hrtime.bigint()}@g.us`
 const HER = "628111111111"
@@ -23,14 +29,14 @@ before(async () => {
   await sql`INSERT INTO wa_groups (jid, event, active) VALUES (${GROUP}, ${EVENT}, true) ON CONFLICT (jid) DO UPDATE SET event = EXCLUDED.event`
   const [post] = await sql`INSERT INTO catalogue_posts (media_url, media_type) VALUES ('https://example.com/t.jpg', 'photo') RETURNING id`
   postId = post.id as number
-  const [a] = await sql`INSERT INTO products (name, store, price) VALUES ('Boston Bag 38L Greige', 'MUJI', 385000) RETURNING id`
-  const [b] = await sql`INSERT INTO products (name, store, price) VALUES ('Boston Bag 38L Black', 'MUJI', 385000) RETURNING id`
+  const [a] = await sql`INSERT INTO products (name, store, price) VALUES ('Boston Bag 38L Greige', ${STORE}, 385000) RETURNING id`
+  const [b] = await sql`INSERT INTO products (name, store, price) VALUES ('Boston Bag 38L Black', ${STORE}, 385000) RETURNING id`
   // A third product whose tokens ("ransel"/"kuning"/"kecil") share nothing
   // with A/B's ("boston"/"bag"/"38l"/"greige"/"black") — used by the
   // one-candidate tests below so a fuzzy (not exact) match reliably narrows
   // to exactly it, without fighting A/B's overlapping tokens. Verified
   // empirically against the real resolver, not assumed.
-  const [c] = await sql`INSERT INTO products (name, store, price) VALUES ('Ransel Kuning Kecil', 'MUJI', 250000) RETURNING id`
+  const [c] = await sql`INSERT INTO products (name, store, price) VALUES ('Ransel Kuning Kecil', ${STORE}, 250000) RETURNING id`
   productAId = a.id as number
   productBId = b.id as number
   productCId = c.id as number

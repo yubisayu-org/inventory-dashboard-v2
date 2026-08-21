@@ -6,6 +6,12 @@ import {
   getSendCodeByCode, getOpenSendForGroup, getSendByMessage, setSendMessageId,
 } from "./wa-sends"
 
+// products has a UNIQUE (name, store). Fixture names are fixed and meaningful
+// — the resolver matches tokens inside them — so the store carries the
+// uniqueness instead: per file, per run. Without it, one crashed run leaves a
+// row behind and every later run fails in before() with a duplicate key.
+const STORE = `ZHG-${process.hrtime.bigint()}`
+
 const EVENT = `TESTSEND${process.hrtime.bigint()}`
 const GROUP = `${process.hrtime.bigint()}@g.us`
 let postId: number
@@ -23,8 +29,8 @@ before(async () => {
     RETURNING id
   `
   postId = post.id as number
-  const [a] = await sql`INSERT INTO products (name, store, price) VALUES ('Test Bag A', 'ZHG', 100000) RETURNING id`
-  const [b] = await sql`INSERT INTO products (name, store, price) VALUES ('Test Bag B', 'ZHG', 200000) RETURNING id`
+  const [a] = await sql`INSERT INTO products (name, store, price) VALUES ('Test Bag A', ${STORE}, 100000) RETURNING id`
+  const [b] = await sql`INSERT INTO products (name, store, price) VALUES ('Test Bag B', ${STORE}, 200000) RETURNING id`
   productAId = a.id as number
   productBId = b.id as number
 })
