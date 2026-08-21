@@ -342,7 +342,7 @@ export default function SearchableSelect({
         disabled={disabled}
         readOnly={!searchable}
         autoComplete="off"
-        className={`w-full border border-cream-border rounded-lg px-3 bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${showInlineClear ? "pr-14" : "pr-8"} ${!searchable ? "cursor-pointer" : ""} ${dense ? "h-[34px] py-0 text-xs" : "py-2 text-sm"}`}
+        className={`w-full border border-cream-border rounded-lg px-3 bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${showInlineClear ? "pr-14" : "pr-8"} ${!searchable ? "cursor-pointer" : ""} ${dense ? "h-[34px] py-0 text-xs" : "h-10 text-sm"}`}
       />
       {showInlineClear && (
         <button

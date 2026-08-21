@@ -500,30 +500,40 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
             </button>
             {filterOpen && (
               <div className="absolute right-0 top-full mt-1 z-30 w-52 rounded-lg border border-cream-border bg-white shadow-lg p-3 flex flex-col gap-3">
-                <label className="flex flex-col gap-1">
+                <div className="flex flex-col gap-1">
                   <span className="text-xs font-medium text-gray-500">Status</span>
-                  <select
-                    value={checkedFilter}
-                    onChange={(e) => handleCheckedFilterChange(e.target.value as CheckedFilter)}
-                    className="w-full border border-cream-border rounded-lg px-2 py-2 text-sm text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
-                  >
+                  <div className="flex flex-col gap-0.5">
                     {CHECKED_FILTER_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
+                      <button
+                        key={o.value}
+                        type="button"
+                        onClick={() => handleCheckedFilterChange(o.value as CheckedFilter)}
+                        className={`text-left px-2 py-1.5 rounded-lg text-xs transition-colors ${
+                          checkedFilter === o.value ? "bg-brand/10 text-brand font-medium" : "text-gray-600 hover:bg-gray-50"
+                        }`}
+                      >
+                        {o.label}
+                      </button>
                     ))}
-                  </select>
-                </label>
-                <label className="flex flex-col gap-1">
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1">
                   <span className="text-xs font-medium text-gray-500">Type</span>
-                  <select
-                    value={kindFilter}
-                    onChange={(e) => handleKindFilterChange(e.target.value as KindFilter)}
-                    className="w-full border border-cream-border rounded-lg px-2 py-2 text-sm text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
-                  >
+                  <div className="flex flex-col gap-0.5">
                     {KIND_FILTER_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
+                      <button
+                        key={o.value}
+                        type="button"
+                        onClick={() => handleKindFilterChange(o.value as KindFilter)}
+                        className={`text-left px-2 py-1.5 rounded-lg text-xs transition-colors ${
+                          kindFilter === o.value ? "bg-brand/10 text-brand font-medium" : "text-gray-600 hover:bg-gray-50"
+                        }`}
+                      >
+                        {o.label}
+                      </button>
                     ))}
-                  </select>
-                </label>
+                  </div>
+                </div>
               </div>
             )}
           </div>

@@ -579,13 +579,21 @@ export interface CataloguePost {
   id: number
   mediaUrl: string
   mediaType: "photo" | "video"
-  caption: string
+  /** The one title this post is always sent under — see the rename in
+   *  migration 086; this used to be a separate "caption" field. */
+  title: string
   visible: boolean
   createdAt: string
   updatedAt: string
   highlightId: number | null
   /** Products tagged in this post. */
   productIds: number[]
+  /** Whether this post has ever actually gone out to a WhatsApp group —
+   *  gates whether "Kirim ulang" (quick-resend) is offered at all. */
+  everSent: boolean
+  /** How many of `productIds` have a placed pin (from any send that ever
+   *  carried them) — used to tell whether tagging is actually finished. */
+  pinnedCount: number
 }
 
 export interface CatalogueRequest {
@@ -606,6 +614,28 @@ export interface CatalogueRequest {
   valas: number | null
   gram: number | null
   estimatedPrice: number | null
+  /** Which formula the owner's proposal (editCatalogueRequest) used to
+   *  arrive at estimatedPrice — defaults to 'overseas' on a fresh request
+   *  that's never been proposed. */
+  proposedPricingMethod: "overseas" | "tier_kurs"
+  /** The exact profit%/fees the owner proposed under Profit Margin — set
+   *  only once an offer has actually been proposed that way, null
+   *  otherwise (including when proposedPricingMethod is 'tier_kurs', which
+   *  doesn't use these). Lets "Create product from approved offer" start
+   *  from what was actually approved instead of guessing at a fixed
+   *  default. */
+  proposedProfitPct: number | null
+  proposedOperationalFee: number | null
+  /** Applies under either method — Tier Kurs still has a packing fee. */
+  proposedPackingFee: number | null
+  /** The rate actually charged under Tier Kurs, resolved server-side and
+   *  snapshotted the same way products.tiered_kurs is — null unless
+   *  proposedPricingMethod is 'tier_kurs'. */
+  proposedTieredKurs: number | null
+  /** The product name the owner set while quoting a price (migration 093) —
+   *  separate from `description`, which stays what the customer originally
+   *  typed. Null until a quotation has been made. */
+  proposedName: string | null
   postId: number | null
   /** Resolved from post -> highlight -> default_event, unconditionally —
    *  the caller (ConvertModal) is responsible for checking it's still in

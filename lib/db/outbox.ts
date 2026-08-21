@@ -97,6 +97,20 @@ export async function markSent(id: number, postId: number, messageId: string, gr
   })
 }
 
+/**
+ * Reset rows a dead process abandoned mid-claim back to 'pending'.
+ *
+ * `nextPending`/`nextPendingSend` claim a row by flipping it to 'sending'
+ * before the send attempt; an ordinary failure (bad socket, rejected upload)
+ * always reaches `markFailed`/`markSendFailed`. Only a hard crash of the
+ * worker itself — SIGKILL, OOM, a deploy — can leave a row stuck in
+ * 'sending' forever, since nothing else ever moves it on. Call once at
+ * worker boot, before the outbox sweep starts claiming again.
+ */
+export async function resetStrandedSending(): Promise<void> {
+  await sql`UPDATE wa_outbox SET state = 'pending' WHERE state = 'sending'`
+}
+
 /** Record why a shelf did not go out. Kept, not deleted — see migration 072. */
 export async function markFailed(id: number, reason: string): Promise<void> {
   await sql`
@@ -109,6 +123,7 @@ export interface SendOutboxItem {
   sendId: number
   groupJid: string
   mediaUrl: string
+  mediaType: "photo" | "video"
   caption: string
 }
 
@@ -150,7 +165,7 @@ export async function nextPendingSend(): Promise<SendOutboxItem | null> {
   if (!claimed) return null
 
   const [row] = await sql`
-    SELECT o.id, o.send_id, o.group_jid, o.caption, p.media_url
+    SELECT o.id, o.send_id, o.group_jid, o.caption, p.media_url, p.media_type
     FROM wa_outbox o
     JOIN wa_sends s ON s.id = o.send_id
     JOIN catalogue_posts p ON p.id = s.post_id
@@ -162,6 +177,7 @@ export async function nextPendingSend(): Promise<SendOutboxItem | null> {
     sendId: row.send_id as number,
     groupJid: row.group_jid as string,
     mediaUrl: row.media_url as string,
+    mediaType: row.media_type as "photo" | "video",
     caption: row.caption as string,
   }
 }

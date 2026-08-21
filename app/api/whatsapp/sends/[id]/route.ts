@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from "next/server"
-import { requireSession, requireOwner } from "@/lib/api"
+import { requireSession, requireRole } from "@/lib/api"
 import sql from "@/lib/db-pool"
 import { getSend, listSendCodes } from "@/lib/db/wa-sends"
 
 type Params = { params: Promise<{ id: string }> }
 
-/** One send plus its coded lines. Owner-only, matching every other route
+/** One send plus its coded lines. Owner or admin, matching every other route
  *  in this composer. */
 export async function GET(_req: NextRequest, { params }: Params) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
-  const ownerError = requireOwner(session)
-  if (ownerError) return ownerError
+  const roleError = requireRole(session)
+  if (roleError) return roleError
 
   const id = Number((await params).id)
   const send = await getSend(id)
@@ -28,8 +28,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
 export async function DELETE(_req: NextRequest, { params }: Params) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
-  const ownerError = requireOwner(session)
-  if (ownerError) return ownerError
+  const roleError = requireRole(session)
+  if (roleError) return roleError
 
   const id = Number((await params).id)
   const send = await getSend(id)

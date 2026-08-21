@@ -1,5 +1,5 @@
 import { parseCodes } from "@/lib/whatsapp/codes"
-import { parseQuantity } from "@/lib/claims/quantity"
+import { parseQuantity, hasOrderingIntent } from "@/lib/claims/quantity"
 import { findCustomerByNumber } from "@/lib/whatsapp/identity"
 import { senderNumber } from "./handle-command"
 import {
@@ -11,6 +11,7 @@ import { createDirectClaim, createRejectedClaim } from "@/lib/db/catalogue-reque
 export type ProductPostResolution =
   | { kind: "reacted"; emoji: string }
   | { kind: "needsDisambiguation"; send: WaSend; customerHandle: string; qty: number; note: string; candidates: WaSendCode[] }
+  | { kind: "question" }
   | { kind: "notApplicable" }
 
 async function resolveSend(groupJid: string, quoted: string): Promise<WaSend | null> {
@@ -42,6 +43,17 @@ function nameTokens(productName: string): string[] {
  *  product's "bag" token substring-matching "yang bagus", for instance). */
 function wordsIn(text: string): Set<string> {
   return new Set(text.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean))
+}
+
+/** A "?" or a common Indonesian question word — "apa", "berapa", "gimana"/
+ *  "bagaimana", "kapan", "kenapa"/"kok", "ada ... gak/nggak/enggak/ga". Not
+ *  exhaustive by design: this only has to catch enough of "just asking" to
+ *  pair with hasOrderingIntent below, not parse Indonesian in general. */
+const QUESTION_SIGNAL =
+  /\?|\bapa\b|\bberapa\b|\bgimana\b|\bbagaimana\b|\bkapan\b|\bkenapa\b|\bkok\b|\bada\b.*\b(gak|ga|nggak|enggak|engga)\b/i
+
+function looksLikeQuestion(text: string): boolean {
+  return QUESTION_SIGNAL.test(text)
 }
 
 /** A product name token appears as a whole, standalone word in the message —
@@ -106,6 +118,22 @@ export async function resolveProductPostClaim(input: {
 
   const codes = parseCodes(input.text)
 
+  // A question about the post, not a claim on it — "A11 ada ukuran apa
+  // aja?" names a code but isn't ordering it. Only checked once the message
+  // has actually named something (a code here; a name token further down) —
+  // ordinary chatter with no product reference at all was already handled,
+  // untouched, by the zero-engagement fallthrough this function already
+  // has. Only for a standalone message: a QUOTED reply always carries real
+  // engagement (she tapped Reply on this exact message), same distinction
+  // the fuzzy-match fallthrough below draws, so this never suppresses an
+  // actual disambiguation answer. Any explicit intent signal (mau/minta/...,
+  // a unit, "x3") overrides it — "A11 ada ukuran apa aja, mau 1" still
+  // claims normally. Writes no row — there's nothing to act on — but reacts
+  // ❓ (distinct from the bot's own ❔ disambiguation ask) so the owner can
+  // spot, mid-scroll, which messages are a customer waiting on a real
+  // answer from them.
+  const isJustAsking = input.quoted === "" && looksLikeQuestion(input.text) && !hasOrderingIntent(input.text)
+
   // Two or more store codes named in one message ("K41 sama K42 masing-
   // masing 1") — resolve each to its own wa_send_codes row and offer them
   // as candidates, rather than falling through to name matching (which
@@ -125,6 +153,7 @@ export async function resolveProductPostClaim(input: {
   if (codes.length === 1) {
     const sendCode = await getSendCodeByCode(send.event, codes[0])
     if (sendCode === null) return { kind: "reacted", emoji: "😢" }
+    if (isJustAsking) return { kind: "question" }
     // sendCode.sendId, not send.id: a code is looked up globally within the
     // event, so the code she typed can belong to an OLDER send of the same
     // trip than whichever one resolveSend picked (the newest, or the one
@@ -151,6 +180,7 @@ export async function resolveProductPostClaim(input: {
   const exactMatches = sendCodes.filter((c) => exactTokenMatch(c, words))
   if (exactMatches.length === 1) {
     const match = exactMatches[0]
+    if (isJustAsking) return { kind: "question" }
     // match.sendId, not send.id — same reasoning as the code-match path
     // above: the matched product can belong to a different send of this
     // event than whichever one resolveSend initially picked.

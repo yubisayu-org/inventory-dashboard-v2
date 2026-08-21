@@ -5,9 +5,12 @@ import { withActor } from "./actor"
 import { appendOrders } from "./orders"
 import { normalizeId } from "./helpers"
 import type { CatalogueRequest } from "./types"
-import { calcAbroadPrice } from "../pricing"
-import { getCountryRate } from "./catalog"
+import { calcAbroadPrice, calcKursPrice } from "../pricing"
+import { resolveTieredKurs } from "../kurs-tiers"
+import { getCountryRate, getTierKursInputs } from "./catalog"
 import { queueText, queueReaction } from "./replies"
+import { linkSenderToCustomer } from "../whatsapp/identity"
+import { getProductDefaults } from "./settings"
 
 type Candidate = { id: number; code: string; productId: number; productName: string; price: number }
 
@@ -33,6 +36,15 @@ function toRequest(r: Record<string, unknown>, candidateMap?: Map<number, Candid
     valas: r.valas != null ? Number(r.valas) : null,
     gram: r.gram != null ? Number(r.gram) : null,
     estimatedPrice: (r.estimated_price as number | null) ?? null,
+    // Two explicit-column callers below don't SELECT this — undefined falls
+    // back to the column's own DB default ('overseas'), same convention as
+    // every other field only getCatalogueRequests actually populates.
+    proposedPricingMethod: (r.proposed_pricing_method as "overseas" | "tier_kurs" | undefined) ?? "overseas",
+    proposedProfitPct: (r.proposed_profit_pct as number | null) ?? null,
+    proposedOperationalFee: (r.proposed_operational_fee as number | null) ?? null,
+    proposedPackingFee: (r.proposed_packing_fee as number | null) ?? null,
+    proposedTieredKurs: (r.proposed_tiered_kurs as number | null) ?? null,
+    proposedName: (r.proposed_name as string | null) ?? null,
     postId: (r.post_id as number | null) ?? null,
     defaultEvent: (r.default_event as string | null) ?? null,
     // The two explicit-column callers below (getCatalogueRequestsByHandle,
@@ -79,11 +91,22 @@ export async function createCatalogueRequest(
     description?: string
     referenceImageUrl?: string | null
     postId?: number | null
+    /** What the customer's own live estimate showed at submit time — a
+     *  custom request's country/valas/gram/estimatedPrice, carried through
+     *  instead of dropped at the browser (migration 088). Frozen, not
+     *  recomputed: the propose-price flow can show this beside a fresh
+     *  calculation for comparison, since rates may have moved since. */
+    countryId?: number | null
+    valas?: number | null
+    gram?: number | null
+    estimatedPrice?: number | null
   },
   db: postgres.Sql,
 ): Promise<void> {
   await db`
-    INSERT INTO catalogue_requests (customer_handle, product_id, qty, note, description, reference_image_url, post_id)
+    INSERT INTO catalogue_requests
+      (customer_handle, product_id, qty, note, description, reference_image_url, post_id,
+       country_id, valas, gram, estimated_price)
     VALUES (
       ${normalizeId(data.customerHandle)},
       ${data.productId},
@@ -91,7 +114,11 @@ export async function createCatalogueRequest(
       ${data.note},
       ${data.description ?? ""},
       ${data.referenceImageUrl ?? null},
-      ${data.postId ?? null}
+      ${data.postId ?? null},
+      ${data.countryId ?? null},
+      ${data.valas ?? null},
+      ${data.gram ?? null},
+      ${data.estimatedPrice ?? null}
     )
   `
 }
@@ -126,12 +153,22 @@ export async function getCatalogueRequests(
   onlyPending: boolean,
   db: DBExecutor = sql,
 ): Promise<CatalogueRequest[]> {
+  // customer_handle is a snapshot frozen at insert time — a renamed customer
+  // (customers.instagram_id changed) leaves old rows showing the old name.
+  // 'catalogue'-sourced rows carry customer_id and resolve via that. A
+  // WhatsApp-sourced row has no customer_id, but its sender phone number
+  // still matches customers.whatsapp, so it resolves through that instead.
+  // Only a row with neither (an unlinked customer) falls back to the frozen
+  // snapshot.
   const rows = onlyPending
     ? await db`
-        SELECT r.id, r.customer_handle, r.product_id, p.name AS product_name,
+        SELECT r.id, COALESCE(cu.instagram_id, cw.instagram_id, r.customer_handle) AS customer_handle,
+               r.product_id, p.name AS product_name,
                r.description, r.reference_image_url,
                r.qty, r.note, r.status, r.staff_note, r.converted_order_id, r.created_at,
                r.country_id, c.name AS country_name, r.valas, r.gram, r.estimated_price,
+               r.proposed_pricing_method, r.proposed_profit_pct, r.proposed_operational_fee,
+               r.proposed_packing_fee, r.proposed_tiered_kurs, r.proposed_name,
                r.post_id, h.default_event,
                r.source, r.send_id, r.send_code_id, r.sender, r.message_id,
                r.bot_message_id, r.candidate_send_code_ids,
@@ -144,14 +181,19 @@ export async function getCatalogueRequests(
         LEFT JOIN catalogue_highlights h ON h.id = cp.highlight_id
         LEFT JOIN wa_send_codes sc ON sc.id = r.send_code_id
         LEFT JOIN wa_sends ws ON ws.id = r.send_id
+        LEFT JOIN customers cu ON cu.id = r.customer_id
+        LEFT JOIN customers cw ON cw.whatsapp <> '' AND cw.whatsapp = split_part(split_part(r.sender, '@', 1), ':', 1)
         WHERE r.status IN ('pending', 'asking', 'offer_pending', 'approved')
         ORDER BY r.created_at ASC
       `
     : await db`
-        SELECT r.id, r.customer_handle, r.product_id, p.name AS product_name,
+        SELECT r.id, COALESCE(cu.instagram_id, cw.instagram_id, r.customer_handle) AS customer_handle,
+               r.product_id, p.name AS product_name,
                r.description, r.reference_image_url,
                r.qty, r.note, r.status, r.staff_note, r.converted_order_id, r.created_at,
                r.country_id, c.name AS country_name, r.valas, r.gram, r.estimated_price,
+               r.proposed_pricing_method, r.proposed_profit_pct, r.proposed_operational_fee,
+               r.proposed_packing_fee, r.proposed_tiered_kurs, r.proposed_name,
                r.post_id, h.default_event,
                r.source, r.send_id, r.send_code_id, r.sender, r.message_id,
                r.bot_message_id, r.candidate_send_code_ids,
@@ -164,6 +206,8 @@ export async function getCatalogueRequests(
         LEFT JOIN catalogue_highlights h ON h.id = cp.highlight_id
         LEFT JOIN wa_send_codes sc ON sc.id = r.send_code_id
         LEFT JOIN wa_sends ws ON ws.id = r.send_id
+        LEFT JOIN customers cu ON cu.id = r.customer_id
+        LEFT JOIN customers cw ON cw.whatsapp <> '' AND cw.whatsapp = split_part(split_part(r.sender, '@', 1), ':', 1)
         ORDER BY r.created_at DESC
       `
 
@@ -243,7 +287,13 @@ export async function convertCatalogueRequest(
       }
     }
 
-    const resolvedProductId = (request.product_id as number | null) ?? productIdOverride ?? null
+    // An explicit override always wins, not just when the row has no
+    // product yet — "Duplicate as variant" passes one specifically to
+    // REPLACE an already-matched product (the whole point being that the
+    // matched one is the wrong variant), so falling back to request.
+    // product_id first silently ignored it and converted onto the old
+    // product every time.
+    const resolvedProductId = productIdOverride ?? (request.product_id as number | null) ?? null
     if (resolvedProductId === null) {
       throw new Error("A product must be selected to convert a custom request")
     }
@@ -253,9 +303,13 @@ export async function convertCatalogueRequest(
     // the send) — repricing the product afterwards must not silently change
     // what she agreed to. A 'catalogue'-source row has no send_code_id, so
     // send_price is always null there and this falls through to the live
-    // product price exactly as before.
+    // product price exactly as before. That snapshot is for the ORIGINAL
+    // product's code specifically — an override that points this convert at
+    // a DIFFERENT product (Duplicate as variant) makes it meaningless, so it
+    // only applies when the resolved product is still the one the code was
+    // actually for.
     let unitPrice: number
-    if (request.source === "whatsapp" && request.send_price != null) {
+    if (request.source === "whatsapp" && request.send_price != null && resolvedProductId === request.product_id) {
       unitPrice = Number(request.send_price)
     } else {
       const [product] = await tx`SELECT price FROM products WHERE id = ${resolvedProductId}`
@@ -335,42 +389,101 @@ export async function rejectCatalogueRequest(
   }
 }
 
-const EDIT_PROFIT_PCT = 15
 const EDIT_ROUND_TO = 1000
 
 /** Owner-only: propose a country/valas/gram revision on a pending custom
- *  request. Computes estimated_price server-side from the country's real
- *  kurs/cargoPerKg — fixed 15% margin, no fees, flat roundTo = 1000 (NOT
- *  the public estimator's relative-precision rounding; see this plan's
- *  Global Constraints for why that distinction matters here). Guarded:
- *  only from 'pending', moves to 'offer_pending'. Re-editing while already
- *  offer_pending is NOT allowed here — the UI's two-step cancel-edit →
- *  edit path handles that, since allowing it directly here would let a
- *  concurrent revision land on a row the customer just approved under a
- *  different (unseen) price. */
+ *  request, under either pricing method Add Product itself supports for a
+ *  custom negotiation:
+ *
+ *  - 'overseas' (Profit Margin): profit%/operationalFee/packingFee default
+ *    to Settings' customRequestProfitPct/-OperationalFee/-PackingFee
+ *    (migration 090) when the caller doesn't override them — meant to
+ *    mirror the customer-facing form's own live-estimate formula (a
+ *    separate repo) without needing a code change on this side whenever
+ *    that formula changes, which is what makes the "Customer's own
+ *    estimate" comparison box meaningful.
+ *  - 'tier_kurs': the charged rate is resolved server-side from
+ *    country_kurs_tiers (getTierKursInputs/resolveTieredKurs), exactly like
+ *    computeProductPrice does for a real product — never trusted from the
+ *    caller. packingFee still applies; profitPct/operationalFee don't
+ *    (the rate spread IS the margin) and are stored null.
+ *
+ *  roundTo stays flat at 1000 for 'overseas' regardless of Settings'
+ *  profitMarginRoundTo — NOT the public estimator's relative-precision
+ *  rounding; see this plan's Global Constraints for why that distinction
+ *  matters here. 'tier_kurs' uses product_defaults.tier_kurs_round_to
+ *  (via getTierKursInputs) since there's no equivalent reason to diverge
+ *  from how a real Tier Kurs product rounds.
+ *
+ *  Guarded: only from 'pending', moves to 'offer_pending'. Re-editing while
+ *  already offer_pending is NOT allowed here — the UI's two-step
+ *  cancel-edit → edit path handles that, since allowing it directly here
+ *  would let a concurrent revision land on a row the customer just
+ *  approved under a different (unseen) price. */
 export async function editCatalogueRequest(
   id: number,
-  data: { countryId: number; valas: number; gram: number },
+  data: {
+    countryId: number
+    valas: number
+    gram: number
+    name: string
+    pricingMethod?: "overseas" | "tier_kurs"
+    profitPct?: number
+    operationalFee?: number
+    packingFee?: number
+  },
   db: DBExecutor = sql,
 ): Promise<{ estimatedPrice: number }> {
   const rate = await getCountryRate(data.countryId, db)
   if (!rate) throw new Error("Country not found")
 
-  const { price } = calcAbroadPrice({
-    valas: data.valas,
-    kurs: rate.kurs,
-    gram: data.gram,
-    cargoPerKg: rate.cargoPerKg,
-    profitPct: EDIT_PROFIT_PCT,
-    operationalFee: 0,
-    packingFee: 0,
-    roundTo: EDIT_ROUND_TO,
-  })
+  const pricingMethod = data.pricingMethod ?? "overseas"
+  const defaults = await getProductDefaults(db)
+
+  let price: number
+  let profitPct: number | null = null
+  let operationalFee: number | null = null
+  let packingFee: number
+  let tieredKurs: number | null = null
+
+  if (pricingMethod === "tier_kurs") {
+    packingFee = data.packingFee ?? defaults.customRequestPackingFee
+    const { kursTiers, roundTo } = await getTierKursInputs(data.countryId, db)
+    tieredKurs = resolveTieredKurs(kursTiers, data.valas, rate.kurs)
+    ;({ price } = calcKursPrice({
+      valas: data.valas,
+      chargedKurs: tieredKurs,
+      kurs: rate.kurs,
+      gram: data.gram,
+      cargoPerKg: rate.cargoPerKg,
+      packingFee,
+      roundTo,
+    }))
+  } else {
+    profitPct = data.profitPct ?? defaults.customRequestProfitPct
+    operationalFee = data.operationalFee ?? defaults.customRequestOperationalFee
+    packingFee = data.packingFee ?? defaults.customRequestPackingFee
+    ;({ price } = calcAbroadPrice({
+      valas: data.valas,
+      kurs: rate.kurs,
+      gram: data.gram,
+      cargoPerKg: rate.cargoPerKg,
+      profitPct,
+      operationalFee,
+      packingFee,
+      roundTo: EDIT_ROUND_TO,
+    }))
+  }
 
   const rows = await db`
     UPDATE catalogue_requests
     SET country_id = ${data.countryId}, valas = ${data.valas}, gram = ${data.gram},
-        estimated_price = ${price}, status = 'offer_pending', updated_at = NOW()
+        estimated_price = ${price},
+        proposed_name = ${data.name},
+        proposed_pricing_method = ${pricingMethod},
+        proposed_profit_pct = ${profitPct}, proposed_operational_fee = ${operationalFee},
+        proposed_packing_fee = ${packingFee}, proposed_tiered_kurs = ${tieredKurs},
+        status = 'offer_pending', updated_at = NOW()
     WHERE id = ${id} AND status = 'pending'
     RETURNING id
   `
@@ -388,6 +501,9 @@ export async function cancelEditCatalogueRequest(
   const rows = await db`
     UPDATE catalogue_requests
     SET country_id = NULL, valas = NULL, gram = NULL, estimated_price = NULL,
+        proposed_name = NULL,
+        proposed_pricing_method = 'overseas', proposed_tiered_kurs = NULL,
+        proposed_profit_pct = NULL, proposed_operational_fee = NULL, proposed_packing_fee = NULL,
         status = 'pending', updated_at = NOW()
     WHERE id = ${id} AND status = 'offer_pending'
     RETURNING id
@@ -548,6 +664,7 @@ export async function resolveAskingCandidate(
   const [resolved] = await db`
     UPDATE catalogue_requests
     SET product_id = (SELECT product_id FROM wa_send_codes WHERE id = ${sendCodeId}),
+        send_id = (SELECT send_id FROM wa_send_codes WHERE id = ${sendCodeId}),
         send_code_id = ${sendCodeId},
         status = 'pending',
         updated_at = NOW()
@@ -571,6 +688,61 @@ export async function resolveAskingCandidate(
   )
 }
 
+/**
+ * Owner manually assigns a product to a zero-candidate 'asking' row — the
+ * bot found nothing to offer at all, but a personal DM cleared up what she
+ * actually wants. No code/price snapshot to carry (there was never a
+ * candidate code for this row), so this leaves send_code_id untouched
+ * (null) and convertCatalogueRequest's own fallback (send_price null → live
+ * product price) takes over at conversion time, same as a 'catalogue'-
+ * sourced row already does.
+ */
+export async function resolveAskingManually(
+  id: number,
+  productId: number,
+  db: DBExecutor = sql,
+): Promise<void> {
+  const rows = await db`
+    UPDATE catalogue_requests
+    SET product_id = ${productId}, status = 'pending', updated_at = NOW()
+    WHERE id = ${id} AND status = 'asking'
+    RETURNING id
+  `
+  if (rows.length === 0) throw new Error("Request not found or already handled")
+}
+
+/**
+ * Owner manually attaches a WhatsApp claim's phone number to a real
+ * customer's Instagram handle — the fix for a row whose number
+ * findCustomerByNumber couldn't match at claim time (resolveCustomerHandle
+ * falls back to the bare number, see worker/product-post.ts), which
+ * otherwise converts fine right up until convertCatalogueRequest's identity
+ * guard refuses it. Updates THIS row's own customer_handle so it converts
+ * cleanly, and backfills the number onto the customer record
+ * (linkSenderToCustomer) so every future claim from the same number
+ * resolves automatically instead of repeating this by hand each time.
+ */
+export async function resolveRequestIdentity(
+  id: number,
+  handle: string,
+  db: DBExecutor = sql,
+): Promise<void> {
+  const normalized = normalizeId(handle)
+  const [request] = await db`SELECT sender FROM catalogue_requests WHERE id = ${id} AND source = 'whatsapp'`
+  if (!request) throw new Error("Request not found")
+
+  const [customer] = await db`SELECT 1 FROM customers WHERE instagram_id = ${normalized}`
+  if (!customer) throw new Error(`No such customer: ${normalized}`)
+
+  await db`UPDATE catalogue_requests SET customer_handle = ${normalized}, updated_at = NOW() WHERE id = ${id}`
+
+  // Same device-suffix stripping worker/product-post.ts's senderNumber does —
+  // linkSenderToCustomer's own digit-strip doesn't drop a WhatsApp
+  // participant JID's ":12" device suffix on its own.
+  const number = ((request.sender as string).split("@")[0] ?? "").split(":")[0].replace(/\D/g, "")
+  if (number) await linkSenderToCustomer(number, normalized)
+}
+
 /** Find the still-open 'asking' row the bot itself posted (matched by the
  *  bot's own outgoing message id, not the customer's) — how a 👍 reaction
  *  to the bot's question routes back to the row it belongs to. Once
@@ -584,4 +756,28 @@ export async function findRequestByBotMessage(
     SELECT * FROM catalogue_requests WHERE bot_message_id = ${botMessageId} AND status = 'asking'
   `
   return row ? toRequest(row) : null
+}
+
+/** The handful of fields a "proof of her message" export needs — what she
+ *  actually wrote, who, and when. Owner-read path only; 'catalogue'-source
+ *  rows have no real WhatsApp message behind them, so this only ever
+ *  resolves for source = 'whatsapp'. */
+export async function getRequestProofData(
+  id: number,
+  db: DBExecutor = sql,
+): Promise<{ customerHandle: string; note: string; sender: string; createdAt: Date; event: string | null } | null> {
+  const [row] = await db`
+    SELECT r.customer_handle, r.note, r.sender, r.created_at, ws.event
+    FROM catalogue_requests r
+    LEFT JOIN wa_sends ws ON ws.id = r.send_id
+    WHERE r.id = ${id} AND r.source = 'whatsapp'
+  `
+  if (!row) return null
+  return {
+    customerHandle: row.customer_handle as string,
+    note: row.note as string,
+    sender: row.sender as string,
+    createdAt: row.created_at as Date,
+    event: (row.event as string | null) ?? null,
+  }
 }

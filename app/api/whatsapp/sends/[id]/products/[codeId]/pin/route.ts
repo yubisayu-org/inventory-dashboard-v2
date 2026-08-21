@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { requireSession, requireOwner } from "@/lib/api"
+import { requireSession, requireRole } from "@/lib/api"
 import sql from "@/lib/db-pool"
 
 type Params = { params: Promise<{ id: string; codeId: string }> }
@@ -11,8 +11,8 @@ type Params = { params: Promise<{ id: string; codeId: string }> }
 export async function PUT(req: NextRequest, { params }: Params) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
-  const ownerError = requireOwner(session)
-  if (ownerError) return ownerError
+  const roleError = requireRole(session)
+  if (roleError) return roleError
 
   const { id, codeId } = await params
   const sendId = Number(id)

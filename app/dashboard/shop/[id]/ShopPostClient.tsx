@@ -36,6 +36,12 @@ interface Claim {
   size: string | null
   state: string
   createdAt: string
+  /** Set when this claim's WhatsApp reply photo was kept. */
+  replyImagePath: string | null
+  /** The matched customer's WhatsApp number, when known — the fallback for
+   *  a DM-recorded claim, which has no WhatsApp JID of its own to show
+   *  digits from. */
+  customerWhatsapp: string | null
 }
 
 interface PostPayload {
@@ -49,6 +55,8 @@ interface PostPayload {
     effectivePricingMethod: PricingMethod
     /** What the price tag is written in, for the naming fields. */
     currency: string
+    /** Empty until the bot actually posts this shelf to the group. */
+    messageId: string
   }
   slots: Slot[]
   claims: Claim[]
@@ -58,6 +66,12 @@ interface PostPayload {
 
 const tone = (claimed: number, bought: number) =>
   bought >= claimed ? "text-green-700" : bought > 0 ? "text-amber-600" : "text-red-700"
+
+/** Digits to show beside a claimant's handle. Normally the WhatsApp JID's own
+ *  digits — but a DM-recorded claim has no JID (`sender` is empty), so it
+ *  falls back to the matched customer's number on file. */
+const contactDigits = (claim: Claim) =>
+  claim.sender ? senderDigits(claim.sender) : (claim.customerWhatsapp ?? "")
 
 export default function ShopPostClient({
   postId, canName,
@@ -172,6 +186,19 @@ export default function ShopPostClient({
     load()
   }
 
+  const [announcing, setAnnouncing] = useState(false)
+  async function announce() {
+    setAnnouncing(true)
+    setError("")
+    const res = await fetch(`/api/whatsapp/posts/${postId}`, { method: "POST" })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ error: "Failed to post" }))
+      setError(body.error ?? "Failed to post")
+    }
+    setAnnouncing(false)
+    load()
+  }
+
   async function addClaim(input: {
     slotId?: number
     point?: { x: number; y: number }
@@ -235,7 +262,6 @@ export default function ShopPostClient({
             on the shelf costs. */}
         {canName ? (
           <label className="flex items-center gap-2 text-xs text-gray-500 shrink-0">
-            Pricing
             <select
               value={data.post.pricingMethod ?? ""}
               onChange={(e) => setPricingMethod(e.target.value)}
@@ -251,6 +277,26 @@ export default function ShopPostClient({
               ))}
             </select>
           </label>
+        ) : null}
+
+        {/* Empty until the bot actually posts it — uploaded with "Post to the
+            WhatsApp group" unchecked, or the trip had no group bound yet at
+            upload time. Owners only, same reasoning as the pricing picker
+            above: this puts a message in the group. */}
+        {canName && !data.post.messageId ? (
+          <button
+            type="button"
+            onClick={announce}
+            disabled={announcing}
+            title="Post to WhatsApp group"
+            aria-label="Post to WhatsApp group"
+            className="shrink-0 inline-flex items-center justify-center border border-cream-border rounded-lg px-2 py-1.5 bg-white text-gray-500 hover:border-brand hover:text-brand transition-colors disabled:opacity-50"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m22 2-7 20-4-9-9-4Z" />
+              <path d="M22 2 11 13" />
+            </svg>
+          </button>
         ) : null}
       </div>
 
@@ -317,6 +363,13 @@ export default function ShopPostClient({
       ) : null}
       </div>
 
+      {data.slots.length === 0 ? (
+        <p className="text-sm text-gray-500">
+          {data.claims.some((c) => c.state !== "rejected")
+            ? `${data.claims.filter((c) => c.state !== "rejected").length} mark(s) recorded, not tallied into SKUs yet — that happens at the naming session.`
+            : "No items marked on this shelf yet — tap the basket on the photo to record one."}
+        </p>
+      ) : (
       <div className="flex flex-col rounded-xl border border-cream-border bg-white overflow-hidden">
         {data.slots.map((s) => (
           <div
@@ -393,6 +446,7 @@ export default function ShopPostClient({
           </div>
         ))}
       </div>
+      )}
 
       {/* The racks either side, in the order the shop was photographed. Below
           the list rather than above it: you arrive here having counted this
@@ -613,6 +667,8 @@ function SlotSheet({
 }) {
   const [count, setCount] = useState(slot.bought)
   const [label, setLabel] = useState(slot.label)
+  const [viewingClaimId, setViewingClaimId] = useState<number | null>(null)
+  const viewingClaim = claims.find((c) => c.id === viewingClaimId) ?? null
 
   return (
     <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/40" onClick={onClose}>
@@ -710,7 +766,9 @@ function SlotSheet({
 
         <FallbackPanel claims={claims} onSwap={onSwap} />
 
-        {claims.length > 0 ? <ShortPanel claims={claims} count={count} /> : null}
+        {claims.length > 0 ? (
+          <ShortPanel claims={claims} count={count} onOpenProof={setViewingClaimId} />
+        ) : null}
 
         <button
           type="button"
@@ -719,6 +777,55 @@ function SlotSheet({
         >
           Save
         </button>
+      </div>
+
+      {viewingClaim ? (
+        <ClaimPhotoViewer claim={viewingClaim} onClose={() => setViewingClaimId(null)} />
+      ) : null}
+    </div>
+  )
+}
+
+/**
+ * The customer's own marked-up reply photo, full-screen — the same dark
+ * shell as SlotZoom, minus its zoom-step controls. There is nothing to crop
+ * tighter into: the kept copy is already capped at 2250px on its long side.
+ */
+function ClaimPhotoViewer({ claim, onClose }: { claim: Claim; onClose: () => void }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      onClick={onClose}
+    >
+      <div className="relative w-[min(90vw,640px)]" onClick={(e) => e.stopPropagation()}>
+        {/* eslint-disable-next-line @next/next/no-img-element -- our own reply-image route. */}
+        <img
+          src={`/api/whatsapp/claims/${claim.id}/reply-image`}
+          alt="Foto balasan dari pelanggan"
+          className="w-full rounded-xl bg-black"
+        />
+
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="absolute top-2 right-2 w-9 h-9 rounded-full bg-black/60 text-white flex items-center justify-center"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+            <line x1="6" y1="6" x2="18" y2="18" />
+            <line x1="18" y1="6" x2="6" y2="18" />
+          </svg>
+        </button>
+
+        <div className="absolute left-0 right-0 bottom-0 rounded-b-xl bg-gradient-to-t from-black/75 to-transparent px-3.5 py-3 text-white">
+          <p className="text-sm font-bold">
+            {claim.customer ?? contactDigits(claim)}
+            {claim.size || claim.note ? ` · ${claim.size ?? claim.note}` : ""}
+          </p>
+          <p className="text-xs text-white/70 tabular-nums">
+            {contactDigits(claim)} · {claimedAt(claim.createdAt)}
+          </p>
+        </div>
       </div>
     </div>
   )
@@ -776,7 +883,7 @@ function UnknownPanel({
       {unknown.map((claim) => (
         <div key={claim.id} className="flex flex-col gap-1">
           <div className="text-[11px] text-gray-600 tabular-nums">
-            {senderDigits(claim.sender)} · {claimedAt(claim.createdAt)} · {claim.quantity}×
+            {contactDigits(claim)} · {claimedAt(claim.createdAt)} · {claim.quantity}×
             {claim.note ? <span className="text-gray-500"> · “{claim.note}”</span> : null}
           </div>
           <div className="flex gap-1.5">
@@ -831,7 +938,7 @@ function FallbackPanel({
       {offers.map(({ claim, sizes }) => (
         <div key={claim.id} className="flex flex-col gap-1.5">
           <div className="text-xs">
-            <span className="font-semibold">{claim.customer ?? senderDigits(claim.sender)}</span>
+            <span className="font-semibold">{claim.customer ?? contactDigits(claim)}</span>
             <span className="text-gray-600"> also wrote </span>
             <span className="font-semibold tabular-nums">{sizes.join(", ")}</span>
           </div>
@@ -866,7 +973,7 @@ function FallbackPanel({
  * save will apply — earliest claims first, which is the tie-break when nobody
  * has paid yet.
  */
-function ShortPanel({ claims, count }: { claims: Claim[]; count: number }) {
+function ShortPanel({ claims, count, onOpenProof }: { claims: Claim[]; count: number; onOpenProof: (claimId: number) => void }) {
   let remaining = count
   const rows = claims.map((claim) => {
     const gets = Math.min(claim.quantity, Math.max(0, remaining))
@@ -886,11 +993,9 @@ function ShortPanel({ claims, count }: { claims: Claim[]; count: number }) {
             {claim.customer === null ? "❔" : gets >= claim.quantity ? "✅" : "○"}
           </span>
           <span className="flex-1 min-w-0">
-            <span className="font-semibold truncate block">
-              {claim.customer ?? senderDigits(claim.sender)}
-            </span>
-            <span className="text-gray-500 block tabular-nums">
-              {senderDigits(claim.sender)} · {claimedAt(claim.createdAt)}
+            <span className="truncate block tabular-nums">
+              <span className="font-semibold">{claim.customer ?? contactDigits(claim)}</span>
+              <span className="text-gray-500"> · {contactDigits(claim)} · {claimedAt(claim.createdAt)}</span>
             </span>
             {claim.note ? (
               <span className="text-gray-500 block truncate">“{claim.note}”</span>
@@ -899,6 +1004,19 @@ function ShortPanel({ claims, count }: { claims: Claim[]; count: number }) {
           <span className="text-gray-500 tabular-nums shrink-0">
             {gets} of {claim.quantity}
           </span>
+          {claim.replyImagePath !== null ? (
+            <button
+              type="button"
+              onClick={() => onOpenProof(claim.id)}
+              aria-label="Lihat foto balasan"
+              title="Lihat foto balasan"
+              className="w-6 h-6 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center shrink-0"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+              </svg>
+            </button>
+          ) : null}
         </div>
       ))}
     </div>

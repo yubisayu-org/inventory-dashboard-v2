@@ -2,7 +2,7 @@
 
 import TableSkeleton from "@/components/TableSkeleton"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import type { FormRow, SheetOptions } from "@/lib/db"
+import type { FormRow, SheetOptions, ProductRow } from "@/lib/db"
 import { usePaginatedFetch, type PageData } from "@/hooks/usePaginatedFetch"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import CopyInvoiceButton from "@/components/CopyInvoiceButton"
@@ -52,6 +52,17 @@ function NoAddressIcon() {
   )
 }
 
+// Matches order-requests' "Duplicate as variant" icon exactly — same feature,
+// same glyph, so it reads as the same action wherever it shows up.
+function TagIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z" />
+      <circle cx="7.5" cy="7.5" r="1.5" fill="currentColor" />
+    </svg>
+  )
+}
+
 type EditForm = { event: string; customer: string; productId: string; unit: string; note: string }
 
 // ---------------------------------------------------------------------------
@@ -85,6 +96,7 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
 
   // -- UI state --
   const [editingRow, setEditingRow] = useState<FormRow | null>(null)
+  const [duplicatingRow, setDuplicatingRow] = useState<FormRow | null>(null)
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
   const [bulkDeleting, setBulkDeleting] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
@@ -376,6 +388,13 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
         <div className="flex items-center justify-end gap-1">
           <CopyInvoiceButton customer={row.original.customer} event={row.original.event} />
           <button
+            onClick={() => setDuplicatingRow(row.original)}
+            title="Duplicate as variant"
+            className="inline-flex items-center justify-center p-1 text-gray-400 hover:text-brand transition-colors rounded"
+          >
+            <TagIcon />
+          </button>
+          <button
             onClick={() => setEditingRow(row.original)}
             title="Edit"
             className="inline-flex items-center justify-center p-1 text-gray-400 hover:text-brand transition-colors rounded"
@@ -471,7 +490,7 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
             ) : undefined
           }
           toolbarExtra={toolbarExtra}
-          initialVisibility={{ unitPrice: false, unitBuy: false, unitArrive: false, unitShip: false, unitDispatch: false, dispatchReceipt: false, note: false, updatedAt: false }}
+          initialVisibility={{ unitBuy: false, unitArrive: false, unitShip: false, unitDispatch: false, dispatchReceipt: false, note: false, updatedAt: false }}
           enableRowSelection
           rowSelection={rowSelection}
           onRowSelectionChange={setRowSelection}
@@ -565,8 +584,15 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
               </div>
               <div className="flex items-start justify-between gap-3 mt-2">
                 <div className="text-sm text-foreground">{r.items}</div>
-                <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
+                <div className="shrink-0 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                   <CopyInvoiceButton customer={r.customer} event={r.event} />
+                  <button
+                    onClick={() => setDuplicatingRow(r)}
+                    title="Duplicate as variant"
+                    className="inline-flex items-center justify-center p-1 text-gray-400 hover:text-brand transition-colors rounded"
+                  >
+                    <TagIcon />
+                  </button>
                 </div>
               </div>
               {r.note && <div className="text-xs text-gray-400 italic mt-1">Note: {r.note}</div>}
@@ -613,6 +639,140 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
           onDelete={handleDelete}
         />
       )}
+
+      {duplicatingRow && (
+        <DuplicateVariantModal
+          row={duplicatingRow}
+          onClose={() => setDuplicatingRow(null)}
+          onDone={() => { setDuplicatingRow(null); refreshRef.current() }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// DuplicateVariantModal — same feature as order-requests' "Duplicate as
+// variant": a size/colour note on this row's product ("Navy, size L") isn't
+// its own sellable SKU until it has its own product row. Fetches the row's
+// matched product's FULL pricing row and re-POSTs every field unchanged
+// except name, then reassigns this order row onto the new product via the
+// same stage:"1" PUT EditOrderModal's own item-change already uses — so the
+// duplicate reproduces the same price under whichever pricing method the
+// source uses (computeProductPrice recomputes it — see lib/pricing-server.ts),
+// and this order line moves onto it in one step.
+// ---------------------------------------------------------------------------
+
+function DuplicateVariantModal({ row, onClose, onDone }: {
+  row: FormRow
+  onClose: () => void
+  onDone: () => void
+}) {
+  const [product, setProduct] = useState<ProductRow | null>(null)
+  const [loadError, setLoadError] = useState("")
+  const [name, setName] = useState("")
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState("")
+
+  useEffect(() => {
+    fetch(`/api/sheets/products/${row.productId}`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.error) throw new Error(data.error)
+        const p: ProductRow = data.product
+        setProduct(p)
+        setName(row.note.trim() ? `${p.name} — ${row.note.trim()}` : p.name)
+      })
+      .catch((err) => setLoadError(err instanceof Error ? err.message : "Failed to load product"))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [row.productId])
+
+  async function submit() {
+    if (!product) return
+    if (!name.trim()) { setError("Name is required"); return }
+    setSubmitting(true); setError("")
+    try {
+      const productRes = await fetch("/api/sheets/products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name.trim(),
+          store: product.store,
+          pricingMethod: product.pricingMethod,
+          flatFeeMode: product.flatFeeMode,
+          countryId: product.countryId,
+          valas: product.valas,
+          gram: product.gram,
+          kurs: product.kurs,
+          cargoPerKg: product.cargoPerKg,
+          profitPct: product.profitPct,
+          operationalFee: product.operationalFee,
+          packingFee: product.packingFee,
+          cost: product.cost,
+          profitFixed: product.profitFixed,
+          price: product.price,
+        }),
+      })
+      const productData = await productRes.json()
+      if (!productRes.ok) throw new Error(productData.error ?? "Failed to create product")
+
+      const applyRes = await fetch(`/api/sheets/duplicate-form/${row.rowNumber}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          stage: "1",
+          event: row.event,
+          customer: row.customer,
+          productId: productData.id,
+          // The duplicate's price is the source product's price, unchanged —
+          // computeProductPrice recomputes it from the same inputs. The POST
+          // response only carries {success, id}, not the priced row.
+          unitPrice: product.price,
+          unit: row.unit,
+          note: row.note,
+        }),
+      })
+      const applyData = await applyRes.json()
+      if (!applyRes.ok) throw new Error(applyData.error ?? "Failed to apply new product")
+      onDone()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed")
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div className="bg-white rounded-xl p-5 w-full max-w-md flex flex-col gap-3" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-sm font-semibold text-foreground">Duplicate as variant</h3>
+        {loadError && <p className="text-xs text-red-500">{loadError}</p>}
+        {!product && !loadError && <p className="text-xs text-gray-500">Loading…</p>}
+        {product && (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-gray-500">Store</span>
+                <div className={`${INPUT_CLS} bg-gray-50 text-gray-500`}>{product.store || "—"}</div>
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-gray-500">Price</span>
+                <div className={`${INPUT_CLS} bg-gray-50 text-gray-500 tabular-nums`}>Rp {fmt(product.price)}</div>
+              </label>
+            </div>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-gray-500">New product name</span>
+              <input value={name} onChange={(e) => setName(e.target.value)} className={INPUT_CLS} />
+            </label>
+          </>
+        )}
+        {error && <p className="text-xs text-red-500">{error}</p>}
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm">Cancel</button>
+          <button onClick={submit} disabled={submitting || !product} className="px-3 py-1.5 rounded-lg bg-brand text-white text-sm disabled:opacity-50">
+            {submitting ? "Saving…" : "Create & apply"}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

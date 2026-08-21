@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireOwner } from "@/lib/api"
-import { getCountryRate } from "@/lib/db"
-import { calcAbroadPrice } from "@/lib/pricing"
+import { getCountryRate, getProductDefaults, getTierKursInputs } from "@/lib/db"
+import { calcAbroadPrice, calcKursPrice, abroadProfit, kursProfit } from "@/lib/pricing"
+import { resolveTieredKurs } from "@/lib/kurs-tiers"
 
-const PROFIT_PCT = 15
 const ROUND_TO = 1000
 
 // Owner-only, read-only, side-effect-free live preview for the Edit modal —
@@ -31,15 +31,42 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "gram must be a positive number" }, { status: 400 })
   }
 
+  const pricingMethod = params.get("pricingMethod") === "tier_kurs" ? "tier_kurs" : "overseas"
+  // Optional — same fallback as editCatalogueRequest (Settings' customRequest*
+  // fields, migration 090), so the preview always matches what submitting
+  // without touching these fields would produce.
+  const defaults = await getProductDefaults()
+  const packingFee = params.has("packingFee") ? Number(params.get("packingFee")) : defaults.customRequestPackingFee
+
   try {
     const rate = await getCountryRate(countryId)
     if (!rate) return NextResponse.json({ error: "Country not found" }, { status: 400 })
 
-    const { price } = calcAbroadPrice({
+    if (pricingMethod === "tier_kurs") {
+      // Server-resolved, same as computeProductPrice's own tier_kurs branch —
+      // never trusts a caller-supplied rate.
+      const { kursTiers, roundTo } = await getTierKursInputs(countryId)
+      const tieredKurs = resolveTieredKurs(kursTiers, valas, rate.kurs)
+      const { price, cogs } = calcKursPrice({
+        valas, chargedKurs: tieredKurs, kurs: rate.kurs, gram, cargoPerKg: rate.cargoPerKg,
+        packingFee, roundTo,
+      })
+      const profit = kursProfit({ price, cogs, packingFee })
+      return NextResponse.json(
+        { estimatedPrice: price, profit, tieredKurs },
+        { headers: { "Cache-Control": "no-store" } },
+      )
+    }
+
+    const profitPct = params.has("profitPct") ? Number(params.get("profitPct")) : defaults.customRequestProfitPct
+    const operationalFee = params.has("operationalFee") ? Number(params.get("operationalFee")) : defaults.customRequestOperationalFee
+
+    const { price, cogs } = calcAbroadPrice({
       valas, kurs: rate.kurs, gram, cargoPerKg: rate.cargoPerKg,
-      profitPct: PROFIT_PCT, operationalFee: 0, packingFee: 0, roundTo: ROUND_TO,
+      profitPct, operationalFee, packingFee, roundTo: ROUND_TO,
     })
-    return NextResponse.json({ estimatedPrice: price }, { headers: { "Cache-Control": "no-store" } })
+    const profit = abroadProfit({ price, cogs, operationalFee, packingFee })
+    return NextResponse.json({ estimatedPrice: price, profit }, { headers: { "Cache-Control": "no-store" } })
   } catch (err) {
     console.error("Failed to preview price:", err)
     return NextResponse.json({ error: "Failed to preview price" }, { status: 500 })

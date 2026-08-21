@@ -19,6 +19,6 @@ export function renderCaption(
     "",
     ...lines,
     "",
-    `Reply kodenya ya, contoh: ${example} mau 1`,
+    `Reply kodenya ya, sertakan size/warna (jika ada), contoh: ${example} warna putih size 38, mau 1`,
   ].join("\n")
 }

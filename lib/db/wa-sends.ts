@@ -109,10 +109,36 @@ export async function attachProductToSend(
     const [product] = await tx`SELECT name, price FROM products WHERE id = ${productId}`
     if (!product) throw new Error("product not found")
 
+    const [position] = await tx`SELECT count(*)::int AS n FROM wa_send_codes WHERE send_id = ${sendId}`
+
+    // A code already issued to this product BY THIS SAME POST, anywhere in
+    // this event, is moved onto the new send rather than left behind and
+    // duplicated — "Kirim ulang" re-tagging the exact same product would
+    // otherwise mint a brand new code every time, even though nothing
+    // changed (confusing to the owner) or, worse, try to INSERT a second row
+    // with the same (event, code) pair and hit the unique index
+    // (idx_wa_send_codes_code) head-on. Scoped to this post specifically —
+    // not just this product in this event — so two different posts that
+    // happen to tag the same product don't steal each other's code; each
+    // still gets (and keeps) its own.
+    const [reuse] = await tx`
+      SELECT c.id FROM wa_send_codes c
+      JOIN wa_sends s2 ON s2.id = c.send_id
+      WHERE c.event = ${send.event} AND c.product_id = ${productId} AND s2.post_id = ${send.post_id}
+      ORDER BY c.id DESC LIMIT 1
+    `
+    if (reuse) {
+      const [moved] = await tx`
+        UPDATE wa_send_codes
+        SET send_id = ${sendId}, price = ${product.price}, position = ${position.n}
+        WHERE id = ${reuse.id}
+        RETURNING *
+      `
+      return toSendCode({ ...moved, product_name: product.name })
+    }
+
     const existing = await tx`SELECT code FROM wa_send_codes WHERE event = ${send.event}`
     const code = nextCode(existing.map((r) => r.code as string))
-
-    const [position] = await tx`SELECT count(*)::int AS n FROM wa_send_codes WHERE send_id = ${sendId}`
 
     // ON CONFLICT (send_id, product_id) DO NOTHING + the unique index from
     // migration 084 is what actually closes the double-attach race
@@ -135,6 +161,42 @@ export async function attachProductToSend(
       SELECT * FROM wa_send_codes WHERE send_id = ${sendId} AND product_id = ${productId}
     `
     return toSendCode({ ...existingRow, product_name: product.name })
+  })
+}
+
+/**
+ * Untag a product from a draft send — the counterpart attachProductToSend
+ * never got (its own docblock deferred this as YAGNI; editing an existing
+ * post's tags is the case that actually needed it). Only removes the
+ * post-level tag (catalogue_post_products) too when no OTHER send of the
+ * same post still carries that product — a code retired from one draft
+ * shouldn't erase a tag a past, already-sent post still legitimately has.
+ */
+export async function removeProductFromSend(
+  sendId: number,
+  codeId: number,
+): Promise<void> {
+  await sql.begin(async (tx) => {
+    const [code] = await tx`
+      SELECT c.product_id, s.post_id
+      FROM wa_send_codes c JOIN wa_sends s ON s.id = c.send_id
+      WHERE c.id = ${codeId} AND c.send_id = ${sendId}
+    `
+    if (!code) throw new Error("code not found")
+
+    await tx`DELETE FROM wa_send_codes WHERE id = ${codeId}`
+
+    const [stillTagged] = await tx`
+      SELECT 1 FROM wa_send_codes c
+      JOIN wa_sends s ON s.id = c.send_id
+      WHERE s.post_id = ${code.post_id} AND c.product_id = ${code.product_id}
+    `
+    if (!stillTagged) {
+      await tx`
+        DELETE FROM catalogue_post_products
+        WHERE post_id = ${code.post_id} AND product_id = ${code.product_id}
+      `
+    }
   })
 }
 
@@ -163,6 +225,34 @@ export async function getSendCodeByCode(
     WHERE c.event = ${event} AND c.code = ${code} AND s.message_id <> ''
   `
   return row ? toSendCode(row) : null
+}
+
+/**
+ * Each product's most recently placed pin on this post, across every send
+ * that ever carried it — keyed by product id.
+ *
+ * `DISTINCT ON (product_id) ... ORDER BY product_id, id DESC` picks the
+ * newest `wa_send_codes` row per product, so a repost-of-a-repost still
+ * carries forward whatever pin was placed most recently, not just the
+ * original. Rows with no pin placed yet are excluded rather than returned
+ * as null — the composer's prefill only ever needs positions it can use.
+ */
+export async function getLastPinPositions(
+  postId: number,
+  db: DBExecutor = sql,
+): Promise<Record<number, { x: number; y: number }>> {
+  const rows = await db`
+    SELECT DISTINCT ON (c.product_id) c.product_id, c.point_x, c.point_y
+    FROM wa_send_codes c
+    JOIN wa_sends s ON s.id = c.send_id
+    WHERE s.post_id = ${postId} AND c.point_x IS NOT NULL AND c.point_y IS NOT NULL
+    ORDER BY c.product_id, c.id DESC
+  `
+  const result: Record<number, { x: number; y: number }> = {}
+  for (const row of rows) {
+    result[row.product_id as number] = { x: Number(row.point_x), y: Number(row.point_y) }
+  }
+  return result
 }
 
 /**
@@ -208,67 +298,6 @@ export async function getSendByMessage(
     SELECT * FROM wa_sends WHERE group_jid = ${groupJid} AND message_id = ${messageId}
   `
   return row ? toSend(row) : null
-}
-
-export interface RepostCandidate {
-  postId: number
-  mediaUrl: string
-  title: string
-  taggedCount: number
-  lastEvent: string
-  lastSentAt: string
-  orderCount: number
-}
-
-/**
- * Past posts worth sending again — only ones that have gone out at least
- * once (a pure draft, never sent, isn't "past" anything). One row per post,
- * summarizing its most recent send (title, event, when it went out, and how
- * many products that specific send tagged — what the composer would
- * pre-fill if the owner reposts it) alongside, across every send of the
- * post, how many of its requests converted to real orders — the
- * all-time performance signal that makes a post worth repeating.
- *
- * taggedCount deliberately reflects only the LATEST send, not a sum across
- * every repost ever made: summing would double-count a product tagged again
- * on each repost and mislead the composer about how many codes the post
- * currently carries. orderCount deliberately does the opposite (sums across
- * all sends) because conversions are a track record, not a snapshot.
- */
-export async function listRepostLibrary(limit = 30, db: DBExecutor = sql): Promise<RepostCandidate[]> {
-  const rows = await db`
-    SELECT
-      cp.id AS post_id,
-      cp.media_url,
-      latest.title,
-      (SELECT count(*) FROM wa_send_codes sc WHERE sc.send_id = latest.send_id) AS tagged_count,
-      latest.event AS last_event,
-      latest.message_sent_at AS last_sent_at,
-      (
-        SELECT count(*) FROM catalogue_requests r
-        JOIN wa_sends s3 ON s3.id = r.send_id
-        WHERE s3.post_id = cp.id AND r.status = 'converted'
-      ) AS order_count
-    FROM catalogue_posts cp
-    JOIN LATERAL (
-      SELECT s.id AS send_id, s.title, s.event, s.updated_at AS message_sent_at
-      FROM wa_sends s
-      WHERE s.post_id = cp.id AND s.message_id <> ''
-      ORDER BY s.id DESC
-      LIMIT 1
-    ) latest ON true
-    ORDER BY latest.message_sent_at DESC NULLS LAST
-    LIMIT ${limit}
-  `
-  return rows.map((r) => ({
-    postId: r.post_id as number,
-    mediaUrl: r.media_url as string,
-    title: r.title as string,
-    taggedCount: Number(r.tagged_count),
-    lastEvent: r.last_event as string,
-    lastSentAt: (r.last_sent_at as Date).toISOString(),
-    orderCount: Number(r.order_count),
-  }))
 }
 
 export async function setSendMessageId(

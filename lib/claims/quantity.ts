@@ -36,11 +36,8 @@ const EACH = "masing-?masing|masing2|per ?(?:item|barang|model|motif)|each"
  * cheaper mistake is buying one too many rather than one too few, which is an
  * order that arrives short.
  */
-export function parseQuantity(note: string): number {
-  const text = note.toLowerCase()
-  const found: number[] = []
-
-  const patterns = [
+function quantityPatterns(): RegExp[] {
+  return [
     // "3 pcs", "2 set", "4 pasang"
     new RegExp(`(\\d{1,3})\\s*(?:${UNITS})\\b`, "g"),
     // "mau 3", "ambil 2", "minta 4"
@@ -51,6 +48,12 @@ export function parseQuantity(note: string): number {
     /(?:^|\s)[x@](\d{1,3})\b/g,
     /(?:^|\s)(\d{1,3})\s*x(?:\s|$)/g,
   ]
+}
+
+export function parseQuantity(note: string): number {
+  const text = note.toLowerCase()
+  const found: number[] = []
+  const patterns = quantityPatterns()
 
   for (const [index, pattern] of patterns.entries()) {
     for (const match of text.matchAll(pattern)) {
@@ -65,4 +68,25 @@ export function parseQuantity(note: string): number {
   }
 
   return found.length > 0 ? Math.max(...found) : 1
+}
+
+/** A bare ordering verb — "mau", "minta", "ambil", and the rest of VERBS —
+ *  said on its own, with no number required beside it ("mau dong A11" has
+ *  no digit for parseQuantity's own VERBS pattern to anchor to, but the
+ *  word alone is still real intent). */
+const ORDERING_VERB = new RegExp(`\\b(?:${VERBS})\\b`, "i")
+
+/**
+ * Whether a message carries any explicit signal that it's an order, as
+ * opposed to just naming a product — a bare ordering verb, or any of
+ * `parseQuantity`'s own count patterns (a unit, an each-phrase, an "x3"
+ * shorthand). Reuses `parseQuantity`'s exact patterns rather than a second
+ * definition of "explicit," since parseQuantity already always returns 1
+ * (silence means one) and so can't itself answer "did she actually say
+ * anything, or is 1 just the default."
+ */
+export function hasOrderingIntent(note: string): boolean {
+  const text = note.toLowerCase()
+  if (ORDERING_VERB.test(text)) return true
+  return quantityPatterns().some((p) => p.test(text))
 }

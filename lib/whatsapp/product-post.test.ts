@@ -15,13 +15,13 @@ test("renders title, one line per code, and the reply instruction", () => {
     "📦 MUJI restock\n\n" +
     "K41 Boston Bag 38L Greige — Rp 385.000\n" +
     "K42 Boston Bag 38L Black — Rp 385.000\n\n" +
-    "Reply kodenya ya, contoh: K42 mau 1",
+    "Reply kodenya ya, sertakan size/warna (jika ada), contoh: K42 warna putih size 38, mau 1",
   )
 })
 
 test("uses the first code in the example line, not always K42", () => {
   const caption = renderCaption({ title: "t" }, [{ code: "B07", productName: "Test", price: 1000 }])
-  assert.ok(caption.includes("contoh: B07 mau 1"))
+  assert.ok(caption.includes("contoh: B07 warna putih size 38, mau 1"))
 })
 
 test("formats price with thousands separators, no decimals", () => {

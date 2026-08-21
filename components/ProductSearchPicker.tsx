@@ -59,10 +59,10 @@ export default function ProductSearchPicker({
       <input
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder="Cari produk (nama atau toko)…"
+        placeholder="Search products (name or store)…"
         className="border border-cream-border rounded-lg px-3 py-2 text-sm"
       />
-      {loading && <p className="text-xs text-gray-400">Mencari…</p>}
+      {loading && <p className="text-xs text-gray-400">Searching…</p>}
       <div className="flex flex-col gap-1 max-h-64 overflow-y-auto">
         {results.map((p) => {
           const already = alreadyAddedIds.has(p.id)
@@ -80,7 +80,7 @@ export default function ProductSearchPicker({
               <span className="flex-1">{p.name}</span>
               <span className="text-gray-500">{p.store}</span>
               <span className="text-gray-500">Rp {p.price.toLocaleString("id-ID")}</span>
-              {already && <span className="text-[10px] font-bold uppercase">sudah</span>}
+              {already && <span className="text-[10px] font-bold uppercase">added</span>}
               {picking && <span className="text-[10px] font-bold uppercase">…</span>}
             </button>
           )

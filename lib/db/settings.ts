@@ -80,7 +80,9 @@ export async function getProductDefaults(db: DBExecutor = sql): Promise<ProductD
   const [row] = await db`
     SELECT profit_pct, operational_fee, packing_fee, markup_pct, tier_kurs_round_to,
            profit_margin_round_to, flat_fee, flat_fee_pct, flat_fee_min, default_country_id,
-           default_pricing_method, whatsapp_pricing_method, dp_percent
+           default_pricing_method, whatsapp_pricing_method, dp_percent,
+           custom_request_profit_pct, custom_request_operational_fee, custom_request_packing_fee,
+           tier_kurs_sites
     FROM product_defaults WHERE id = 1
   `
   if (!row) return DEFAULT_PRODUCT_DEFAULTS
@@ -108,6 +110,15 @@ export async function getProductDefaults(db: DBExecutor = sql): Promise<ProductD
     whatsappPricingMethod: toPricingMethod(row.whatsapp_pricing_method),
     // 0 is legal (disables the DP-threshold feature), same reasoning as flatFeePct.
     dpPercent: Number(row.dp_percent) || 0,
+    customRequestProfitPct: Number(row.custom_request_profit_pct),
+    // NOT `|| 5000` / no `||` on packing fee: 0 is legal for both (prices at
+    // cost / no packing charge), same reasoning as flatFee above.
+    customRequestOperationalFee: Number(row.custom_request_operational_fee),
+    customRequestPackingFee: Number(row.custom_request_packing_fee),
+    tierKursSites: (row.tier_kurs_sites as string)
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean),
   }
 }
 
@@ -115,11 +126,15 @@ export async function updateProductDefaults(data: ProductDefaults, db: DBExecuto
   await db`
     INSERT INTO product_defaults (id, profit_pct, operational_fee, packing_fee, markup_pct,
       tier_kurs_round_to, profit_margin_round_to, flat_fee, flat_fee_pct, flat_fee_min,
-      default_country_id, default_pricing_method, whatsapp_pricing_method, dp_percent, updated_at)
+      default_country_id, default_pricing_method, whatsapp_pricing_method, dp_percent,
+      custom_request_profit_pct, custom_request_operational_fee, custom_request_packing_fee,
+      tier_kurs_sites, updated_at)
     VALUES (1, ${data.profitPct}, ${data.operationalFee}, ${data.packingFee}, ${data.markupPct},
       ${data.tierKursRoundTo}, ${data.profitMarginRoundTo}, ${data.flatFee}, ${data.flatFeePct},
       ${data.flatFeeMin}, ${data.defaultCountryId}, ${data.defaultPricingMethod},
-      ${data.whatsappPricingMethod}, ${data.dpPercent}, NOW())
+      ${data.whatsappPricingMethod}, ${data.dpPercent},
+      ${data.customRequestProfitPct}, ${data.customRequestOperationalFee}, ${data.customRequestPackingFee},
+      ${data.tierKursSites.join("\n")}, NOW())
     ON CONFLICT (id) DO UPDATE SET
       profit_pct = EXCLUDED.profit_pct,
       operational_fee = EXCLUDED.operational_fee,
@@ -134,6 +149,10 @@ export async function updateProductDefaults(data: ProductDefaults, db: DBExecuto
       default_pricing_method = EXCLUDED.default_pricing_method,
       whatsapp_pricing_method = EXCLUDED.whatsapp_pricing_method,
       dp_percent = EXCLUDED.dp_percent,
+      custom_request_profit_pct = EXCLUDED.custom_request_profit_pct,
+      custom_request_operational_fee = EXCLUDED.custom_request_operational_fee,
+      custom_request_packing_fee = EXCLUDED.custom_request_packing_fee,
+      tier_kurs_sites = EXCLUDED.tier_kurs_sites,
       updated_at = NOW()
   `
 }

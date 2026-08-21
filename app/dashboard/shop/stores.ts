@@ -9,6 +9,8 @@ export interface ShopPost {
   createdAt: string
   /** Whether its trip is still running. */
   active: boolean
+  /** Empty until the bot actually posts this shelf to the group. */
+  messageId: string
 }
 
 export interface StoreGroup {

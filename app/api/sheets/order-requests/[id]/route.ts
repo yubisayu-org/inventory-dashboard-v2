@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireOwner } from "@/lib/api"
-import { convertCatalogueRequest, rejectCatalogueRequest, editCatalogueRequest, cancelEditCatalogueRequest, reopenCatalogueRequest, resolveAskingCandidate } from "@/lib/db"
+import { convertCatalogueRequest, rejectCatalogueRequest, editCatalogueRequest, cancelEditCatalogueRequest, reopenCatalogueRequest, resolveAskingCandidate, resolveAskingManually, resolveRequestIdentity } from "@/lib/db"
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -66,8 +66,16 @@ export async function PUT(req: NextRequest, { params }: Params) {
       if (!Number.isFinite(gram) || gram <= 0) {
         return NextResponse.json({ error: "gram must be a positive number" }, { status: 400 })
       }
+      const name = String(body.name ?? "").trim()
+      if (!name) return NextResponse.json({ error: "name is required" }, { status: 400 })
+      const pricingMethod = body.pricingMethod === "tier_kurs" ? "tier_kurs" : body.pricingMethod === "overseas" ? "overseas" : undefined
+      // Optional — editCatalogueRequest falls back to Settings' customRequest*
+      // defaults when these are omitted, same as before this field set existed.
+      const profitPct = body.profitPct !== undefined ? Number(body.profitPct) : undefined
+      const operationalFee = body.operationalFee !== undefined ? Number(body.operationalFee) : undefined
+      const packingFee = body.packingFee !== undefined ? Number(body.packingFee) : undefined
       try {
-        const result = await editCatalogueRequest(id, { countryId, valas, gram })
+        const result = await editCatalogueRequest(id, { countryId, valas, gram, name, pricingMethod, profitPct, operationalFee, packingFee })
         return NextResponse.json({ success: true, estimatedPrice: result.estimatedPrice })
       } catch (err) {
         if (isGuardViolation(err)) return NextResponse.json({ error: err.message }, { status: 409 })
@@ -112,7 +120,38 @@ export async function PUT(req: NextRequest, { params }: Params) {
       }
     }
 
-    return NextResponse.json({ error: "action must be 'convert', 'reject', 'edit', 'cancel-edit', 'reopen', or 'resolve-candidate'" }, { status: 400 })
+    if (body.action === "resolve-manual") {
+      const productId = Number(body.productId)
+      if (!Number.isInteger(productId) || productId < 1) {
+        return NextResponse.json({ error: "productId must be a positive integer" }, { status: 400 })
+      }
+      try {
+        await resolveAskingManually(id, productId)
+        return NextResponse.json({ success: true })
+      } catch (err) {
+        console.error("resolve-manual failed:", err)
+        return NextResponse.json({ error: "Failed to resolve" }, { status: 500 })
+      }
+    }
+
+    if (body.action === "resolve-identity") {
+      const handle = String(body.handle ?? "").trim()
+      if (!handle) {
+        return NextResponse.json({ error: "handle is required" }, { status: 400 })
+      }
+      try {
+        await resolveRequestIdentity(id, handle)
+        return NextResponse.json({ success: true })
+      } catch (err) {
+        if (err instanceof Error && (err.message === "Request not found" || err.message.startsWith("No such customer"))) {
+          return NextResponse.json({ error: err.message }, { status: 400 })
+        }
+        console.error("resolve-identity failed:", err)
+        return NextResponse.json({ error: "Failed to resolve" }, { status: 500 })
+      }
+    }
+
+    return NextResponse.json({ error: "action must be 'convert', 'reject', 'edit', 'cancel-edit', 'reopen', 'resolve-candidate', 'resolve-manual', or 'resolve-identity'" }, { status: 400 })
   } catch (err) {
     console.error("Failed to update order request:", err)
     return NextResponse.json({ error: err instanceof Error ? err.message : "Failed to update request" }, { status: 500 })

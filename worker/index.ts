@@ -15,6 +15,8 @@ import { resolveProductPostClaim } from "./product-post"
 import { askDisambiguation, trySendOfferAnswer, trySendOfferThumbsUp } from "./product-post-offer"
 import { sendNextShelf, sendNextSend, OUTBOX_INTERVAL_MS } from "./outbox"
 import { sendNextReply, REPLY_INTERVAL_MS } from "./replies"
+import { resetStrandedSending as resetStrandedOutbox } from "@/lib/db/outbox"
+import { resetStrandedSending as resetStrandedReplies } from "@/lib/db/replies"
 import { findPostByMessage, listClaims } from "@/lib/db/claims"
 import { renderShoppingList } from "@/lib/whatsapp/render"
 import sql from "@/lib/db-pool"
@@ -194,6 +196,13 @@ async function onMessage(sock: WASocket, message: WAMessage) {
   if (resolution.kind === "needsDisambiguation") {
     const emoji = await askDisambiguation(sock, { groupJid, messageId, sender, text, quoted }, resolution)
     reactions?.push({ jid: groupJid, key: message.key, emoji })
+    return
+  }
+  if (resolution.kind === "question") {
+    // A customer asking about a code, not claiming it — no row written, but
+    // ❓ flags it in the group so the owner can find and answer it directly,
+    // distinct from the bot's own ❔ disambiguation ask.
+    reactions?.push({ jid: groupJid, key: message.key, emoji: "❓" })
     return
   }
   // resolution.kind === "notApplicable" — fall through to the existing shelf/claim path below.
@@ -415,6 +424,12 @@ async function sweepOutcomes(groupJid: string, postId: number) {
 }
 
 async function main() {
+  // A row stuck in 'sending' means the previous process died mid-claim
+  // (SIGKILL, OOM, a deploy) — nothing else ever moves it on, so it would
+  // otherwise sit forever, unretried and invisible as a failure.
+  await resetStrandedOutbox()
+  await resetStrandedReplies()
+
   await startSession((sock) => {
     reactions = new ReactionQueue(async ({ jid, key, emoji }) => {
       await sock.sendMessage(jid, { react: { text: emoji, key } })

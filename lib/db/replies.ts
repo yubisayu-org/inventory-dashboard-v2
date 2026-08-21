@@ -75,3 +75,12 @@ export async function markReplySent(id: number, db: DBExecutor = sql): Promise<v
 export async function markReplyFailed(id: number, reason: string, db: DBExecutor = sql): Promise<void> {
   await db`UPDATE wa_replies SET state = 'failed', error = ${reason.slice(0, 500)} WHERE id = ${id}`
 }
+
+/**
+ * Reset rows a dead process abandoned mid-claim back to 'pending'.
+ * See lib/db/outbox.ts's resetStrandedSending — same hazard, same fix,
+ * kept separate because the two queues have separate tables.
+ */
+export async function resetStrandedSending(db: DBExecutor = sql): Promise<void> {
+  await db`UPDATE wa_replies SET state = 'pending' WHERE state = 'sending'`
+}

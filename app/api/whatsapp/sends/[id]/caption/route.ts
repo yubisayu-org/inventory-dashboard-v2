@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { requireSession, requireOwner } from "@/lib/api"
+import { requireSession, requireRole } from "@/lib/api"
 import { getSend, listSendCodes } from "@/lib/db/wa-sends"
 import { renderCaption } from "@/lib/whatsapp/product-post"
 
@@ -11,8 +11,8 @@ type Params = { params: Promise<{ id: string }> }
 export async function GET(_req: NextRequest, { params }: Params) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
-  const ownerError = requireOwner(session)
-  if (ownerError) return ownerError
+  const roleError = requireRole(session)
+  if (roleError) return roleError
 
   const id = Number((await params).id)
   const send = await getSend(id)

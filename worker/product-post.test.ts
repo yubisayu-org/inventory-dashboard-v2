@@ -90,6 +90,35 @@ test("an unrecognised code reacts sad and writes no row", async () => {
   assert.equal(row, undefined)
 })
 
+test("a question naming a code, unquoted, is not read as a claim", async () => {
+  const result = await resolveProductPostClaim({
+    groupJid: GROUP, messageId: "her-q1", sender: HER, text: `Tapi yang ${codeA} ada ukuran apa aja?`, quoted: "",
+  })
+  assert.equal(result.kind, "question")
+  const [row] = await sql`SELECT 1 FROM catalogue_requests WHERE message_id = 'her-q1'`
+  assert.equal(row, undefined)
+})
+
+test("a question that also states ordering intent still claims normally", async () => {
+  const result = await resolveProductPostClaim({
+    groupJid: GROUP, messageId: "her-q2", sender: HER, text: `${codeA} ada ukuran apa aja, mau 1`, quoted: "",
+  })
+  assert.equal(result.kind, "reacted")
+  if (result.kind === "reacted") assert.equal(result.emoji, "📝")
+  const [row] = await sql`SELECT product_id FROM catalogue_requests WHERE message_id = 'her-q2'`
+  assert.equal(row.product_id, productAId)
+})
+
+test("a question-shaped reply, quoted to the post, still claims — quoting is its own engagement signal", async () => {
+  const result = await resolveProductPostClaim({
+    groupJid: GROUP, messageId: "her-q3", sender: HER, text: `${codeB} ada size apa ya?`, quoted: "post-msg-1",
+  })
+  assert.equal(result.kind, "reacted")
+  if (result.kind === "reacted") assert.equal(result.emoji, "📝")
+  const [row] = await sql`SELECT product_id FROM catalogue_requests WHERE message_id = 'her-q3'`
+  assert.equal(row.product_id, productBId)
+})
+
 test("a message quoting a closed trip's send is refused", async () => {
   const closedEvent = `${EVENT}-closed`
   await sql`INSERT INTO events (name, warehouse_id) SELECT ${closedEvent}, id FROM warehouses ORDER BY id LIMIT 1`
@@ -214,4 +243,13 @@ test("ordinary chat with no group bound to any send is not a product-post claim 
     groupJid: emptyGroup, messageId: "her-7", sender: HER, text: "halo semua", quoted: "",
   })
   assert.equal(result.kind, "notApplicable")
+})
+
+test("a question matched by product-name token, not a code, also reacts ❓ not a claim", async () => {
+  const result = await resolveProductPostClaim({
+    groupJid: GROUP, messageId: "her-q4", sender: HER, text: "yang rorojen itu ada warna lain?", quoted: "",
+  })
+  assert.equal(result.kind, "question")
+  const [row] = await sql`SELECT 1 FROM catalogue_requests WHERE message_id = 'her-q4'`
+  assert.equal(row, undefined)
 })

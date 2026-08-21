@@ -1,12 +1,36 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireOwner } from "@/lib/api"
 import {
-  updateProduct, deleteProduct, setProductActive, getProductPricingContext, withActor,
+  updateProduct, deleteProduct, setProductActive, getProductPricingContext, getProduct, withActor,
 } from "@/lib/db"
 import { computeProductPrice, PricingInputError } from "@/lib/pricing-server"
 import { toFlatFeeMode, toPricingMethod } from "@/lib/pricing"
 
 type Params = { params: Promise<{ id: string }> }
+
+/** One product's full pricing row — used by order-requests' "Duplicate as
+ *  variant" action to copy a matched product's pricing onto a new one. */
+export async function GET(_req: NextRequest, { params }: Params) {
+  const { session, error: authError } = await requireSession()
+  if (authError) return authError
+  const ownerError = requireOwner(session)
+  if (ownerError) return ownerError
+
+  const { id: idStr } = await params
+  const id = Number(idStr)
+  if (!Number.isInteger(id) || id < 1) {
+    return NextResponse.json({ error: "Invalid id" }, { status: 400 })
+  }
+
+  try {
+    const product = await getProduct(id)
+    if (!product) return NextResponse.json({ error: "Not found" }, { status: 404 })
+    return NextResponse.json({ product }, { headers: { "Cache-Control": "no-store" } })
+  } catch (err) {
+    console.error("Failed to load product:", err)
+    return NextResponse.json({ error: "Failed to load" }, { status: 500 })
+  }
+}
 
 export async function PATCH(req: NextRequest, { params }: Params) {
   const { session, error: authError } = await requireSession()

@@ -4,7 +4,6 @@ import sql from "@/lib/db-pool"
 import {
   createSend, getSend, listSendCodes, attachProductToSend,
   getSendCodeByCode, getOpenSendForGroup, getSendByMessage, setSendMessageId,
-  listRepostLibrary,
 } from "./wa-sends"
 
 const EVENT = `TESTSEND${process.hrtime.bigint()}`
@@ -166,66 +165,3 @@ test("getSendByMessage resolves a quoted post back to its send", async () => {
   assert.equal(found?.id, sendId)
 })
 
-test("listRepostLibrary lists only posts that have been sent at least once, with an order count", async () => {
-  // postId/productId/EVENT already exist from this file's before(); create
-  // a send, attach a product, mark it sent, and convert one claim against it
-  // to give it a real order count.
-  const send = await createSend({ postId, event: EVENT, title: "Repost me" })
-  await attachProductToSend(send.id, productAId)
-  await setSendMessageId(send.id, "lib-msg-1", GROUP)
-
-  const library = await listRepostLibrary()
-  const entry = library.find((e) => e.postId === postId)
-  assert.ok(entry, "a post with at least one sent send must appear")
-  assert.equal(entry!.taggedCount, 1)
-  assert.equal(entry!.lastEvent, EVENT)
-  assert.ok(entry!.lastSentAt)
-})
-
-test("listRepostLibrary excludes a post that has never been sent (draft only)", async () => {
-  const draftPostId = (await sql`INSERT INTO catalogue_posts (media_url, media_type) VALUES ('https://example.com/draft.jpg', 'photo') RETURNING id`)[0].id as number
-  const draftSend = await createSend({ postId: draftPostId, event: EVENT, title: "never sent" })
-  const library = await listRepostLibrary()
-  assert.equal(library.some((e) => e.postId === draftPostId), false)
-  await sql`DELETE FROM wa_sends WHERE id = ${draftSend.id}`
-  await sql`DELETE FROM catalogue_posts WHERE id = ${draftPostId}`
-})
-
-test("listRepostLibrary scopes taggedCount to the latest send only, and orderCount across all sends", async () => {
-  // One post reposted twice: an earlier send with one tagged product, and a
-  // later send with two. taggedCount must read the LATER send specifically
-  // (2, not 1, not the 1+2=3 sum) — proving it isn't a sum across sends.
-  // orderCount must sum converted requests from BOTH sends (2) — proving
-  // it isn't scoped to just the latest one. This is the exact distinction
-  // the two fields' scoping choice depends on.
-  const scopedPostId = (await sql`INSERT INTO catalogue_posts (media_url, media_type) VALUES ('https://example.com/scope.jpg', 'photo') RETURNING id`)[0].id as number
-
-  const earlier = await createSend({ postId: scopedPostId, event: EVENT, title: "earlier send" })
-  const earlierCode = await attachProductToSend(earlier.id, productAId)
-  await setSendMessageId(earlier.id, "scope-msg-1", GROUP)
-
-  const later = await createSend({ postId: scopedPostId, event: EVENT, title: "later send" })
-  const laterCodeA = await attachProductToSend(later.id, productAId)
-  await attachProductToSend(later.id, productBId)
-  await setSendMessageId(later.id, "scope-msg-2", GROUP)
-
-  await sql`
-    INSERT INTO catalogue_requests (customer_handle, product_id, qty, source, send_id, send_code_id, status)
-    VALUES ('scopecustomer1', ${productAId}, 1, 'whatsapp', ${earlier.id}, ${earlierCode.id}, 'converted')
-  `
-  await sql`
-    INSERT INTO catalogue_requests (customer_handle, product_id, qty, source, send_id, send_code_id, status)
-    VALUES ('scopecustomer2', ${productAId}, 1, 'whatsapp', ${later.id}, ${laterCodeA.id}, 'converted')
-  `
-
-  const library = await listRepostLibrary()
-  const entry = library.find((e) => e.postId === scopedPostId)
-  assert.ok(entry, "a post with two sent sends must appear")
-  assert.equal(entry!.taggedCount, 2, "taggedCount must come from the LATER send's two products only")
-  assert.equal(entry!.orderCount, 2, "orderCount must sum converted requests across BOTH sends")
-
-  await sql`DELETE FROM catalogue_requests WHERE customer_handle IN ('scopecustomer1', 'scopecustomer2')`
-  await sql`DELETE FROM wa_sends WHERE id IN (${earlier.id}, ${later.id})`
-  await sql`DELETE FROM catalogue_post_products WHERE post_id = ${scopedPostId}`
-  await sql`DELETE FROM catalogue_posts WHERE id = ${scopedPostId}`
-})

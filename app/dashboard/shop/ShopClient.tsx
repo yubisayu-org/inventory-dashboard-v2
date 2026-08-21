@@ -1,12 +1,12 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import SearchInput from "@/components/SearchInput"
 import { PaginationButton } from "@/components/Pagination"
 import { groupByStore, type ShopPost } from "./stores"
 
-export default function ShopClient() {
+export default function ShopClient({ isOwner }: { isOwner: boolean }) {
   const [posts, setPosts] = useState<ShopPost[] | null>(null)
   const [error, setError] = useState("")
   // Which stores are folded away. Finished ones start folded, and this holds
@@ -26,24 +26,16 @@ export default function ShopClient() {
   const [totalCount, setTotalCount] = useState(0)
   const [pageSize, setPageSize] = useState(100)
   const [dmOpen, setDmOpen] = useState(false)
+  // Which shelf is mid-announce, so its icon can disable itself instead of
+  // being clickable twice while the request is in flight.
+  const [announcingId, setAnnouncingId] = useState<number | null>(null)
+  // Bumped after a successful announce to re-run the list fetch below — the
+  // bot posts async, so messageId may still read empty right after, same as
+  // the shelf detail page's own "Post to WhatsApp group" button.
+  const [refreshKey, setRefreshKey] = useState(0)
   // Shops closed for orders, keyed "event|store". Per trip, because the same
   // shop can be open on one trip and finished on another.
   const [shut, setShut] = useState<Set<string>>(new Set())
-  // The "+" menu (shelf upload, DM order, product post). Closed by default,
-  // and by anything outside it — see the click-outside effect below.
-  const [addMenuOpen, setAddMenuOpen] = useState(false)
-  const addMenuRef = useRef<HTMLDivElement>(null)
-
-  // Close on click outside, same mechanism SearchableSelect uses: a
-  // pointerdown listener on the document, gone the moment the menu is.
-  useEffect(() => {
-    if (!addMenuOpen) return
-    function handlePointerDown(e: PointerEvent) {
-      if (!addMenuRef.current?.contains(e.target as Node)) setAddMenuOpen(false)
-    }
-    document.addEventListener("pointerdown", handlePointerDown)
-    return () => document.removeEventListener("pointerdown", handlePointerDown)
-  }, [addMenuOpen])
 
   useEffect(() => {
     const params = new URLSearchParams({ page: String(page) })
@@ -67,7 +59,18 @@ export default function ShopClient() {
         }
       })
       .catch(() => setError("Failed to load"))
-  }, [showEmpty, showArchived, page, query])
+  }, [showEmpty, showArchived, page, query, refreshKey])
+
+  /** Announce a shelf that was uploaded without the group post checked —
+   *  same owner-only route the shelf detail page's icon calls. */
+  async function announce(postId: number, e: React.MouseEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    setAnnouncingId(postId)
+    await fetch(`/api/whatsapp/posts/${postId}`, { method: "POST" }).catch(() => {})
+    setAnnouncingId(null)
+    setRefreshKey((k) => k + 1)
+  }
 
   // A quarter second after the last keystroke. Long enough that a typed handle
   // is one request, short enough to feel like filtering.
@@ -121,9 +124,6 @@ export default function ShopClient() {
 
   if (error) return <p className="text-sm text-red-600">{error}</p>
   if (!posts) return <p className="text-sm text-gray-500">Loading…</p>
-  if (posts.length === 0) {
-    return <p className="text-sm text-gray-500">No shelves posted for an active event yet.</p>
-  }
 
   return (
     <div className="flex flex-col gap-3">
@@ -132,7 +132,7 @@ export default function ShopClient() {
           value={search}
           onChange={setSearch}
           placeholder="Search shop, SKU, handle or number…"
-          className="max-w-sm flex-1"
+          className="flex-1"
         />
         {/* Racks the group ignored. Hidden by default because none of them is
             anything to buy, and shown when the question is whether a rack was
@@ -151,24 +151,14 @@ export default function ShopClient() {
               : "border-cream-border bg-white text-gray-400"
           }`}
         >
-          {showEmpty ? (
-            <svg
-              width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-              strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-            >
-              <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
-              <circle cx="12" cy="12" r="3" />
-            </svg>
-          ) : (
-            <svg
-              width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-              strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-            >
-              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-6.5 0-10-8-10-8a18.45 18.45 0 0 1 5.06-5.94" />
-              <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c6.5 0 10 8 10 8a18.5 18.5 0 0 1-2.16 3.19" />
-              <path d="m1 1 22 22" />
-            </svg>
-          )}
+          <svg
+            width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+          >
+            <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+            <circle cx="12" cy="12" r="3" />
+            {!showEmpty && <line x1="2" y1="21" x2="22" y2="3" />}
+          </svg>
         </button>
 
         {/* Finished trips. Their shelves cannot be shopped and their catalogue
@@ -198,59 +188,41 @@ export default function ShopClient() {
           </svg>
         </button>
 
-        {/* Every way a shelf or order gets in: uploading a shelf photo, a
-            marked photo from a DM, or posting a single product straight to
-            the catalogue. One trigger rather than three buttons — the row
-            was already full, and only the first two see daily use. */}
-        <div ref={addMenuRef} className="relative shrink-0">
-          <button
-            type="button"
-            onClick={() => setAddMenuOpen((v) => !v)}
-            aria-label="Tambah"
-            className="rounded-xl bg-brand px-4 py-2 text-sm font-bold text-white"
+        {/* Uploading a shelf photo is the single most-used way a shelf gets
+            in, so it gets its own button rather than living behind the "+"
+            menu with everything else. */}
+        <Link
+          href="/dashboard/shop/upload"
+          aria-label="Upload shelf"
+          title="Upload shelf"
+          className="shrink-0 rounded-xl border border-cream-border bg-white px-3 py-2 text-brand"
+        >
+          <svg
+            width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
           >
-            +
-          </button>
-          {addMenuOpen && (
-            <div className="absolute right-0 mt-2 w-56 rounded-xl border border-cream-border bg-white shadow-lg z-20 flex flex-col overflow-hidden">
-              {/* The other way a shelf gets in. Here rather than on the archive
-                  page: uploading happens in the shop, which is where this
-                  screen is used. */}
-              <Link
-                href="/dashboard/shop/upload"
-                onClick={() => setAddMenuOpen(false)}
-                className="flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-cream"
-              >
-                🖼 Upload shelf
-              </Link>
-              {/* Posts a single product straight to the catalogue, skipping
-                  the shelf-photo flow entirely. */}
-              <Link
-                href="/dashboard/catalogue-posts?compose=1"
-                onClick={() => setAddMenuOpen(false)}
-                className="flex items-center gap-2 px-3 py-2.5 text-sm font-semibold text-brand hover:bg-cream"
-              >
-                📦 Product post
-                <span className="ml-auto text-[10px] font-bold uppercase bg-brand text-white rounded-full px-1.5 py-0.5">
-                  baru
-                </span>
-              </Link>
-              {/* A photo a customer marked and sent privately. The shelf is
-                  worked out from the picture, because a screenshot in an
-                  inbox rarely says which rack it was. */}
-              <button
-                type="button"
-                onClick={() => {
-                  setAddMenuOpen(false)
-                  setDmOpen(true)
-                }}
-                className="flex items-center gap-2 px-3 py-2.5 text-sm text-left hover:bg-cream"
-              >
-                📎 Paste DM order
-              </button>
-            </div>
-          )}
-        </div>
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+            <circle cx="12" cy="13" r="4" />
+          </svg>
+        </Link>
+
+        {/* A photo a customer marked and sent privately. The shelf is
+            worked out from the picture, because a screenshot in an inbox
+            rarely says which rack it was. */}
+        <button
+          type="button"
+          onClick={() => setDmOpen(true)}
+          aria-label="Paste DM order"
+          title="Paste DM order"
+          className="shrink-0 rounded-xl border border-cream-border bg-white px-3 py-2 text-brand"
+        >
+          <svg
+            width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+          >
+            <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+          </svg>
+        </button>
       </div>
 
       {dmOpen ? <DmPhotoSheet onClose={() => setDmOpen(false)} /> : null}
@@ -262,8 +234,10 @@ export default function ShopClient() {
         </p>
       ) : null}
 
-      {groups.length === 0 && query ? (
-        <p className="text-sm text-gray-500">No shelf matches “{query}”.</p>
+      {groups.length === 0 ? (
+        <p className="text-sm text-gray-500">
+          {query ? `No shelf matches “${query}”.` : "No shelves posted for an active event yet."}
+        </p>
       ) : null}
 
       {groups.map((group) => {
@@ -367,9 +341,33 @@ export default function ShopClient() {
 
                         </div>
                       </div>
+                      {/* Empty until the bot actually posts it — same
+                          owner-only action as the shelf detail page's icon.
+                          Replaces the claimed/bought status entirely while
+                          pending: nothing could have been claimed on a shelf
+                          nobody in the group has seen yet. Once sent, this
+                          disappears and the normal status below takes over —
+                          no separate "sent" marker needed. */}
+                      {isOwner && !post.messageId && (
+                        <button
+                          type="button"
+                          onClick={(e) => announce(post.id, e)}
+                          disabled={announcingId === post.id}
+                          title="Post to WhatsApp group"
+                          aria-label="Post to WhatsApp group"
+                          className="shrink-0 inline-flex items-center justify-center p-1 text-gray-400 hover:text-brand transition-colors rounded disabled:opacity-50"
+                        >
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="m22 2-7 20-4-9-9-4Z" />
+                            <path d="M22 2 11 13" />
+                          </svg>
+                        </button>
+                      )}
+
                       {/* Bold is what is left to buy, exactly as the shopping
                           list reads it — the faded figure is context, never the
                           number acted on. */}
+                      {(!isOwner || post.messageId) && (
                       <div
                         // Nothing claimed is grey: a rack the group ignored has
                         // not been bought, and a tick would say it had.
@@ -409,6 +407,7 @@ export default function ShopClient() {
                           </svg>
                         )}
                       </div>
+                      )}
                     </Link>
                   )
                 })
@@ -453,7 +452,7 @@ function DmPhotoSheet({ onClose }: { onClose: () => void }) {
   const [caption, setCaption] = useState("")
   const [match, setMatch] = useState<
     | null
-    | { postId: number; store: string; event: string; marks: number }
+    | { postId: number; store: string; event: string; marks: number; photoUrl: string | null; createdAt: string }
   >(null)
   const [saved, setSaved] = useState<{ postId: number; claims: number } | null>(null)
   const [busy, setBusy] = useState(false)
@@ -490,28 +489,28 @@ function DmPhotoSheet({ onClose }: { onClose: () => void }) {
       >
         <div className="mx-auto h-1 w-9 rounded-full bg-gray-300" />
         <div>
-          <h2 className="text-sm font-bold text-foreground">Foto bertanda dari DM</h2>
+          <h2 className="text-sm font-bold text-foreground">Marked photo from a DM</h2>
           <p className="text-[11px] text-gray-500">
-            Raknya dicari otomatis dari fotonya, sama seperti pelanggan yang lupa reply.
+            The shelf is worked out automatically from the photo, same as a customer who forgot to reply.
           </p>
         </div>
 
         {saved ? (
           <>
             <p className="rounded-xl border border-green-200 bg-green-50 p-3 text-xs text-green-900">
-              {saved.claims} klaim dicatat. Buka raknya untuk menghitung atau memberi nama.
+              {saved.claims} claim(s) recorded. Open the shelf to count or name them.
             </p>
             <Link
               href={`/dashboard/shop/${saved.postId}`}
               className="rounded-xl bg-brand py-2.5 text-center text-sm font-bold text-white"
             >
-              Buka rak
+              Open shelf
             </Link>
           </>
         ) : (
           <>
             <label className="block cursor-pointer rounded-xl border border-dashed border-cream-border py-6 text-center text-xs text-gray-500">
-              {file ? file.name : "Pilih atau tempel foto bertanda"}
+              {file ? file.name : "Choose or paste a marked photo"}
               <input
                 type="file"
                 accept="image/*,.heic,.heif"
@@ -532,15 +531,26 @@ function DmPhotoSheet({ onClose }: { onClose: () => void }) {
             <input
               value={caption}
               onChange={(e) => setCaption(e.target.value)}
-              placeholder="catatan — size 95 mau 2"
+              placeholder="note — size 95 want 2"
               className="border border-cream-border rounded-lg px-3 py-2 text-sm"
             />
 
             {match ? (
-              <p className="rounded-xl border border-cream-border bg-cream p-3 text-xs">
-                Cocok dengan <b>{match.store || "rak tanpa nama"}</b> · {match.event} ·{" "}
-                {match.marks} tanda
-              </p>
+              <div className="flex items-center gap-3 rounded-xl border border-cream-border bg-cream p-3 text-xs">
+                {match.photoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- a public catalogue URL, next/image would just proxy it for no benefit.
+                  <img src={match.photoUrl} alt="" className="w-12 h-12 object-cover rounded-lg shrink-0" />
+                ) : null}
+                <div className="min-w-0">
+                  <p className="truncate">
+                    Matched <b>{match.store || "unnamed shelf"}</b> · {match.event}
+                  </p>
+                  <p className="text-gray-500">
+                    {new Date(match.createdAt).toLocaleString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                    {" · "}{match.marks} mark(s)
+                  </p>
+                </div>
+              </div>
             ) : null}
             {error ? <p className="text-xs text-red-600">{error}</p> : null}
 
@@ -550,7 +560,7 @@ function DmPhotoSheet({ onClose }: { onClose: () => void }) {
               onClick={() => send(Boolean(match))}
               className="rounded-xl bg-brand py-2.5 text-sm font-bold text-white disabled:opacity-40"
             >
-              {busy ? "Membaca…" : match ? `Catat ${match.marks || 1} klaim` : "Cari raknya"}
+              {busy ? "Reading…" : match ? `Record ${match.marks || 1} claim(s)` : "Find the shelf"}
             </button>
           </>
         )}

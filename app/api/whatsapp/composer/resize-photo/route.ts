@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import sharp from "sharp"
-import { requireSession, requireOwner } from "@/lib/api"
+import { requireSession, requireRole } from "@/lib/api"
 import { decodable } from "@/lib/whatsapp/heic"
 import { MAX_STORED_EDGE, STORED_QUALITY } from "@/lib/whatsapp/shelf"
 
@@ -26,8 +26,8 @@ import { MAX_STORED_EDGE, STORED_QUALITY } from "@/lib/whatsapp/shelf"
 export async function POST(req: NextRequest) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
-  const ownerError = requireOwner(session)
-  if (ownerError) return ownerError
+  const roleError = requireRole(session)
+  if (roleError) return roleError
 
   try {
     const form = await req.formData()

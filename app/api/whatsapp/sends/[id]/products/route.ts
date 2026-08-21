@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from "next/server"
-import { requireSession, requireOwner } from "@/lib/api"
+import { requireSession, requireRole } from "@/lib/api"
 import { attachProductToSend } from "@/lib/db/wa-sends"
 
 type Params = { params: Promise<{ id: string }> }
 
 /** Tag a product onto the send and issue it the next free code for the
- *  send's event. Owner-only: this decides what will be advertised. */
+ *  send's event. Owner or admin: this decides what will be advertised. */
 export async function POST(req: NextRequest, { params }: Params) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
-  const ownerError = requireOwner(session)
-  if (ownerError) return ownerError
+  const roleError = requireRole(session)
+  if (roleError) return roleError
 
   const sendId = Number((await params).id)
   if (!Number.isInteger(sendId) || sendId <= 0) {

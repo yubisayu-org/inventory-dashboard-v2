@@ -99,6 +99,26 @@ export async function getProducts(): Promise<ProductRow[]> {
   }))
 }
 
+/** One product's full pricing row — the order-requests page's "Duplicate as
+ *  variant" action reads this to copy every pricing input onto a new
+ *  product, not just name/price, so the duplicate reproduces the same
+ *  price under whichever pricing method the source uses. */
+export async function getProduct(id: number): Promise<ProductRow | null> {
+  const [row] = await sql`
+    SELECT p.id, p.name, p.store, p.price, p.gram,
+           p.country_id, COALESCE(c.name, '') AS country_name,
+           COALESCE(c.currency, '') AS country_currency,
+           p.valas, p.kurs, p.tiered_kurs, p.cargo_per_kg, p.profit_pct,
+           p.pricing_method, p.flat_fee_mode,
+           p.operational_fee, p.packing_fee, p.cost, p.profit_fixed,
+           p.is_active, p.created_at, p.updated_at
+    FROM products p
+    LEFT JOIN countries c ON c.id = p.country_id
+    WHERE p.id = ${id}
+  `
+  return row ? mapProductRow(row) : null
+}
+
 // Shared row → ProductRow mapper for the paginated query below.
 function mapProductRow(r: Record<string, unknown>): ProductRow {
   return {

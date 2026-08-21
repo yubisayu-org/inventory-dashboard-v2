@@ -7,6 +7,7 @@ import type { Role } from "./roles"
  */
 export const ADMIN_ROUTES = [
   "/dashboard/list-order",
+  "/dashboard/catalogue-posts",
   "/dashboard/invoice",
   "/dashboard/payments",
   "/dashboard/adjustments",

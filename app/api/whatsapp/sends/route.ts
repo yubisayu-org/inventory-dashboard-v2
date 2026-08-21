@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
-import { requireSession, requireOwner } from "@/lib/api"
+import { requireSession, requireRole } from "@/lib/api"
 import { createSend } from "@/lib/db/wa-sends"
 
-/** Start a new composed send for a catalogue post. Owner-only: this is the
+/** Start a new composed send for a catalogue post. Owner or admin: this is the
  *  first step of building a message that will go out to a WhatsApp group. */
 export async function POST(req: NextRequest) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
-  const ownerError = requireOwner(session)
-  if (ownerError) return ownerError
+  const roleError = requireRole(session)
+  if (roleError) return roleError
 
   const body = await req.json()
   const { postId, event, title } = body

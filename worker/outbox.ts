@@ -52,7 +52,12 @@ export async function sendNextSend(sock: WASocket): Promise<boolean> {
   if (item === null) return false
 
   try {
-    const sent = await sock.sendMessage(item.groupJid, { image: { url: item.mediaUrl }, caption: item.caption })
+    const sent = await sock.sendMessage(
+      item.groupJid,
+      item.mediaType === "video"
+        ? { video: { url: item.mediaUrl }, caption: item.caption }
+        : { image: { url: item.mediaUrl }, caption: item.caption },
+    )
     const messageId = sent?.key?.id ?? ""
     if (!messageId) throw new Error("sent, but WhatsApp returned no message id")
     await markSendSent(item.id, item.sendId, messageId, item.groupJid)

@@ -3,6 +3,7 @@ import { requireSession, requireRole, requireOwner } from "@/lib/api"
 import sql from "@/lib/db-pool"
 import { toPricingMethod } from "@/lib/pricing"
 import { getPost, listSlots, listClaims } from "@/lib/db/claims"
+import { queueShelfPost } from "@/lib/db/outbox"
 import { effectivePricingMethod } from "@/lib/whatsapp/pricing-method"
 import { unorderedClaims } from "@/lib/whatsapp/naming"
 
@@ -68,6 +69,40 @@ export async function GET(_req: Request, { params }: Params) {
   } catch (err) {
     console.error("Failed to load WhatsApp post:", err)
     return NextResponse.json({ error: "Failed to load" }, { status: 500 })
+  }
+}
+
+/**
+ * Announce a shelf that was uploaded without "Post to the WhatsApp group"
+ * checked (or whose trip had no group bound yet at upload time). Same
+ * queueShelfPost the upload route calls, so re-posting an already-sent
+ * shelf is a harmless no-op (ON CONFLICT (post_id) DO NOTHING) — the 400
+ * below just gives a clearer answer than silently doing nothing.
+ *
+ * Owner-only, same reasoning as PATCH: this puts a message in the group.
+ */
+export async function POST(_req: NextRequest, { params }: Params) {
+  const { session, error: authError } = await requireSession()
+  if (authError) return authError
+  const ownerError = requireOwner(session)
+  if (ownerError) return ownerError
+
+  const id = Number((await params).id)
+  try {
+    const post = await getPost(id)
+    if (post === null) return NextResponse.json({ error: "Not found" }, { status: 404 })
+    if (post.messageId) {
+      return NextResponse.json({ error: "Already posted to the group" }, { status: 400 })
+    }
+
+    const queued = await queueShelfPost(id, post.event)
+    if (!queued) {
+      return NextResponse.json({ error: "No WhatsApp group bound to this event" }, { status: 400 })
+    }
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    console.error("Failed to queue shelf post:", err)
+    return NextResponse.json({ error: "Failed to queue" }, { status: 500 })
   }
 }
 

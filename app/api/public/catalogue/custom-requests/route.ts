@@ -57,6 +57,20 @@ export async function POST(req: NextRequest) {
     ? `${process.env.SUPABASE_URL}/storage/v1/object/public/catalogue-reference/`
     : null
 
+  // What the customer's own live estimate showed at submit time — best
+  // effort, not validated the way the rest of this body is: a malformed
+  // number here becomes null rather than rejecting an otherwise-valid
+  // request over a field the customer never directly typed (it's computed
+  // client-side from country/valas/weight). See migration 088.
+  function toPositiveIntOrNull(v: unknown): number | null {
+    const n = Number(v)
+    return Number.isFinite(n) && Number.isInteger(n) && n > 0 ? n : null
+  }
+  function toPositiveNumberOrNull(v: unknown): number | null {
+    const n = Number(v)
+    return Number.isFinite(n) && n > 0 ? n : null
+  }
+
   try {
     const b = body as Record<string, unknown>
     const customerHandle = String(b.customerHandle ?? "").trim()
@@ -64,6 +78,10 @@ export async function POST(req: NextRequest) {
     const qty = Number(b.qty)
     const note = String(b.note ?? "").trim()
     const referenceImageUrl = b.referenceImageUrl ? String(b.referenceImageUrl).trim() : null
+    const countryId = toPositiveIntOrNull(b.countryId)
+    const valas = toPositiveNumberOrNull(b.valas)
+    const gram = toPositiveNumberOrNull(b.gram)
+    const estimatedPrice = toPositiveIntOrNull(b.estimatedPrice)
 
     if (!customerHandle || customerHandle.length > MAX_HANDLE_LEN) {
       return NextResponse.json({ error: "A valid customerHandle is required" }, { status: 400, headers: corsHeaders() })
@@ -111,7 +129,11 @@ export async function POST(req: NextRequest) {
     }
 
     await createCatalogueRequest(
-      { customerHandle, productId: null, description, qty, note, referenceImageUrl: storedReferenceImageUrl },
+      {
+        customerHandle, productId: null, description, qty, note,
+        referenceImageUrl: storedReferenceImageUrl,
+        countryId, valas, gram, estimatedPrice,
+      },
       catalogueSql,
     )
     return NextResponse.json({ success: true }, { headers: corsHeaders() })
