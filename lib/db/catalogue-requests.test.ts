@@ -9,6 +9,13 @@ import {
   getCatalogueRequests,
 } from "./catalogue-requests"
 
+// Message ids are literals like "her-1", and four test files use the same ones
+// against one database while running in parallel — so a row this file inserts
+// can be read back as another file's. TAG makes them unique per file per run;
+// id() is how every id in this file is written.
+const TAG = `${process.hrtime.bigint()}-`
+const id = (s: string) => TAG + s
+
 const EVENT = `TESTWACR${process.hrtime.bigint()}`
 let postId: number
 let productId: number
@@ -50,7 +57,7 @@ after(async () => {
   // up here too so a repeat `npm test` run doesn't leave a pending row
   // behind for another test FILE's un-scoped nextPendingReply() (lib/db/
   // replies.test.ts) to pick up instead of its own freshly-queued one.
-  await sql`DELETE FROM wa_replies WHERE quoted_message_id IN ('her-4', 'her-8', 'her-9', 'her-t5')`
+  await sql`DELETE FROM wa_replies WHERE quoted_message_id IN (${id("her-4")}, ${id("her-8")}, ${id("her-9")}, ${id("her-t5")})`
   await sql`DELETE FROM wa_send_codes WHERE send_id = ${sendId}`
   await sql`DELETE FROM wa_sends WHERE id = ${sendId}`
   await sql`DELETE FROM catalogue_post_products WHERE post_id = ${postId}`
@@ -64,7 +71,7 @@ after(async () => {
 test("createDirectClaim writes a pending, whatsapp-sourced row", async () => {
   const { id } = await createDirectClaim({
     customerHandle: "628111111111", productId, qty: 1, note: "K42 mau 1",
-    sendId, sendCodeId, sender: "628111111111", messageId: "her-1",
+    sendId, sendCodeId, sender: "628111111111", messageId: id("her-1"),
   })
   const [row] = await sql`SELECT * FROM catalogue_requests WHERE id = ${id}`
   assert.equal(row.source, "whatsapp")
@@ -76,7 +83,7 @@ test("createDirectClaim writes a pending, whatsapp-sourced row", async () => {
 test("createAskingRequest writes a null-product asking row with candidates", async () => {
   const { id } = await createAskingRequest({
     customerHandle: "628122222222", qty: 1, note: "yang hitam mau 1",
-    sendId, sender: "628122222222", messageId: "her-2", botMessageId: "bot-1",
+    sendId, sender: "628122222222", messageId: id("her-2"), botMessageId: "bot-1",
     candidateSendCodeIds: [sendCodeId],
   })
   const [row] = await sql`SELECT * FROM catalogue_requests WHERE id = ${id}`
@@ -88,7 +95,7 @@ test("createAskingRequest writes a null-product asking row with candidates", asy
 test("resolveAskingCandidate (customer side) moves the row to pending without queueing a reply", async () => {
   const { id } = await createAskingRequest({
     customerHandle: "628133333333", qty: 1, note: "t",
-    sendId, sender: "628133333333", messageId: "her-3", botMessageId: "bot-2",
+    sendId, sender: "628133333333", messageId: id("her-3"), botMessageId: "bot-2",
     candidateSendCodeIds: [sendCodeId],
   })
   await resolveAskingCandidate(id, sendCodeId, "customer")
@@ -97,21 +104,21 @@ test("resolveAskingCandidate (customer side) moves the row to pending without qu
   assert.equal(row.product_id, productId)
   assert.equal(row.send_code_id, sendCodeId)
 
-  const [{ count }] = await sql`SELECT count(*)::int FROM wa_replies WHERE quoted_message_id = 'her-3'`
+  const [{ count }] = await sql`SELECT count(*)::int FROM wa_replies WHERE quoted_message_id = ${id("her-3")}`
   assert.equal(count, 0, "the customer resolving her own offer needs no queued reply")
 })
 
 test("resolveAskingCandidate (owner side) queues the closing text quoting her message", async () => {
   const { id } = await createAskingRequest({
     customerHandle: "628144444444", qty: 1, note: "t",
-    sendId, sender: "628144444444", messageId: "her-4", botMessageId: "bot-3",
+    sendId, sender: "628144444444", messageId: id("her-4"), botMessageId: "bot-3",
     candidateSendCodeIds: [sendCodeId],
   })
   await resolveAskingCandidate(id, sendCodeId, "owner")
   const [row] = await sql`SELECT status FROM catalogue_requests WHERE id = ${id}`
   assert.equal(row.status, "pending")
 
-  const [reply] = await sql`SELECT text, quoted_message_id, group_jid FROM wa_replies WHERE quoted_message_id = 'her-4'`
+  const [reply] = await sql`SELECT text, quoted_message_id, group_jid FROM wa_replies WHERE quoted_message_id = ${id("her-4")}`
   assert.ok(reply, "owner resolution must queue a reply since the dashboard has no socket")
   assert.ok(reply.text.includes("Sudah dicatat"))
 })
@@ -119,19 +126,19 @@ test("resolveAskingCandidate (owner side) queues the closing text quoting her me
 test("resolveAskingCandidate is idempotent — a second call on an already-resolved row does nothing", async () => {
   const { id } = await createAskingRequest({
     customerHandle: "628155555555", qty: 1, note: "t",
-    sendId, sender: "628155555555", messageId: "her-5", botMessageId: "bot-4",
+    sendId, sender: "628155555555", messageId: id("her-5"), botMessageId: "bot-4",
     candidateSendCodeIds: [sendCodeId],
   })
   await resolveAskingCandidate(id, sendCodeId, "customer")
   await resolveAskingCandidate(id, sendCodeId, "owner")
-  const [{ count }] = await sql`SELECT count(*)::int FROM wa_replies WHERE quoted_message_id = 'her-5'`
+  const [{ count }] = await sql`SELECT count(*)::int FROM wa_replies WHERE quoted_message_id = ${id("her-5")}`
   assert.equal(count, 0, "second resolution must be a no-op, including no duplicate queued reply")
 })
 
 test("findRequestByBotMessage resolves an open asking row by the bot's own message id", async () => {
   const { id } = await createAskingRequest({
     customerHandle: "628166666666", qty: 1, note: "t",
-    sendId, sender: "628166666666", messageId: "her-6", botMessageId: "bot-6",
+    sendId, sender: "628166666666", messageId: id("her-6"), botMessageId: "bot-6",
     candidateSendCodeIds: [sendCodeId],
   })
   const found = await findRequestByBotMessage("bot-6")
@@ -143,7 +150,7 @@ test("findRequestByBotMessage resolves an open asking row by the bot's own messa
 test("findRequestByBotMessage returns null once the row has resolved", async () => {
   const { id } = await createAskingRequest({
     customerHandle: "628177777777", qty: 1, note: "t",
-    sendId, sender: "628177777777", messageId: "her-7", botMessageId: "bot-7",
+    sendId, sender: "628177777777", messageId: id("her-7"), botMessageId: "bot-7",
     candidateSendCodeIds: [sendCodeId],
   })
   await resolveAskingCandidate(id, sendCodeId, "customer")
@@ -154,7 +161,7 @@ test("findRequestByBotMessage returns null once the row has resolved", async () 
 test("createRejectedClaim writes a rejected, whatsapp-sourced row with no product", async () => {
   const { id } = await createRejectedClaim({
     customerHandle: "628188888888", qty: 1, note: "A21 mau 1",
-    sendId, sender: "628188888888", messageId: "her-8",
+    sendId, sender: "628188888888", messageId: id("her-8"),
   })
   const [row] = await sql`SELECT status, product_id, staff_note FROM catalogue_requests WHERE id = ${id}`
   assert.equal(row.status, "rejected")
@@ -172,7 +179,7 @@ test("convertCatalogueRequest on a WhatsApp row uses the send's SNAPSHOT price, 
 
   const { id } = await createDirectClaim({
     customerHandle: HANDLE, productId, qty: 2, note: "t",
-    sendId, sendCodeId, sender: "628188888888", messageId: "her-8",
+    sendId, sendCodeId, sender: "628188888888", messageId: id("her-8"),
   })
 
   // Reprice the live product AFTER the send already snapshotted its price
@@ -188,7 +195,7 @@ test("convertCatalogueRequest on a WhatsApp row uses the send's SNAPSHOT price, 
     assert.equal(order.unit, 2)
     assert.equal(order.event, EVENT)
 
-    const [reply] = await sql`SELECT reaction FROM wa_replies WHERE quoted_message_id = 'her-8'`
+    const [reply] = await sql`SELECT reaction FROM wa_replies WHERE quoted_message_id = ${id("her-8")}`
     assert.equal(reply?.reaction, "✅")
   } finally {
     await sql`UPDATE products SET price = 100000 WHERE id = ${productId}`
@@ -198,7 +205,7 @@ test("convertCatalogueRequest on a WhatsApp row uses the send's SNAPSHOT price, 
 test("convertCatalogueRequest refuses a WhatsApp row whose identity was never resolved to a customer", async () => {
   const { id } = await createDirectClaim({
     customerHandle: `unresolved${process.hrtime.bigint()}`, productId, qty: 1, note: "t",
-    sendId, sendCodeId, sender: "628100000099", messageId: "her-10",
+    sendId, sendCodeId, sender: "628100000099", messageId: id("her-10"),
   })
   await assert.rejects(convertCatalogueRequest(id, EVENT, "test@owner"))
   const [row] = await sql`SELECT status, converted_order_id FROM catalogue_requests WHERE id = ${id}`
@@ -209,10 +216,10 @@ test("convertCatalogueRequest refuses a WhatsApp row whose identity was never re
 test("rejectCatalogueRequest on a WhatsApp row queues a ❌", async () => {
   const { id } = await createDirectClaim({
     customerHandle: "628199999999", productId, qty: 1, note: "t",
-    sendId, sendCodeId, sender: "628199999999", messageId: "her-9",
+    sendId, sendCodeId, sender: "628199999999", messageId: id("her-9"),
   })
   await rejectCatalogueRequest(id, "out of stock")
-  const [reply] = await sql`SELECT reaction FROM wa_replies WHERE quoted_message_id = 'her-9'`
+  const [reply] = await sql`SELECT reaction FROM wa_replies WHERE quoted_message_id = ${id("her-9")}`
   assert.equal(reply?.reaction, "❌")
 })
 
@@ -228,7 +235,7 @@ test("rejectCatalogueRequest on a catalogue-web row still queues nothing (no mes
 test("getCatalogueRequests includes source/resolvedCode for a pending WhatsApp row", async () => {
   const { id } = await createDirectClaim({
     customerHandle: "628177000001", productId, qty: 1, note: "K42 mau 1",
-    sendId, sendCodeId, sender: "628177000001", messageId: "her-t1",
+    sendId, sendCodeId, sender: "628177000001", messageId: id("her-t1"),
   })
   const rows = await getCatalogueRequests(true)
   const row = rows.find((r) => r.id === id)
@@ -243,7 +250,7 @@ test("getCatalogueRequests includes candidates for an asking row", async () => {
   const codeB = await attachProductToSend(sendId, productBId)
   const { id } = await createAskingRequest({
     customerHandle: "628177000002", qty: 1, note: "yang mana ya",
-    sendId, sender: "628177000002", messageId: "her-t2", botMessageId: "bot-t2",
+    sendId, sender: "628177000002", messageId: id("her-t2"), botMessageId: "bot-t2",
     candidateSendCodeIds: [sendCodeId, codeB.id],
   })
   const rows = await getCatalogueRequests(true)
@@ -260,7 +267,7 @@ test("getCatalogueRequests includes candidates for an asking row", async () => {
 test("getCatalogueRequests(false) still includes a rejected closed-trip row, but true does not", async () => {
   const { id } = await createRejectedClaim({
     customerHandle: "628177000003", qty: 1, note: "A21 mau 1",
-    sendId, sender: "628177000003", messageId: "her-t3",
+    sendId, sender: "628177000003", messageId: id("her-t3"),
   })
   const pending = await getCatalogueRequests(true)
   assert.equal(pending.some((r) => r.id === id), false)
@@ -280,7 +287,7 @@ test("getCatalogueRequests(false) still includes a rejected closed-trip row, but
 test("getCatalogueRequests reports null (not an empty array) candidates for a zero-candidate asking row", async () => {
   const { id } = await createAskingRequest({
     customerHandle: "628177000004", qty: 1, note: "ada baju baru?",
-    sendId, sender: "628177000004", messageId: "her-t4", botMessageId: "bot-t4",
+    sendId, sender: "628177000004", messageId: id("her-t4"), botMessageId: "bot-t4",
     candidateSendCodeIds: [],
   })
   const rows = await getCatalogueRequests(true)
@@ -300,7 +307,7 @@ test("getCatalogueRequests reports null (not an empty array) candidates for a ze
 test("rejectCatalogueRequest can Tolak a zero-candidate asking row", async () => {
   const { id } = await createAskingRequest({
     customerHandle: "628177000005", qty: 1, note: "ada baju baru kah",
-    sendId, sender: "628177000005", messageId: "her-t5", botMessageId: "bot-t5",
+    sendId, sender: "628177000005", messageId: id("her-t5"), botMessageId: "bot-t5",
     candidateSendCodeIds: [],
   })
   await rejectCatalogueRequest(id, "")
@@ -317,7 +324,7 @@ test("rejectCatalogueRequest can Tolak a zero-candidate asking row", async () =>
 test("getCatalogueRequests surfaces resolvedEvent from wa_sends for a WhatsApp row", async () => {
   const { id } = await createDirectClaim({
     customerHandle: "628177000006", productId, qty: 1, note: "K42 mau 1",
-    sendId, sendCodeId, sender: "628177000006", messageId: "her-t6",
+    sendId, sendCodeId, sender: "628177000006", messageId: id("her-t6"),
   })
   const rows = await getCatalogueRequests(true)
   const row = rows.find((r) => r.id === id)
