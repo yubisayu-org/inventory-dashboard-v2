@@ -22,6 +22,7 @@ async function queueRequest(instagramId: string): Promise<number> {
 }
 
 after(async () => {
+  await sql`DELETE FROM catalogue_requests WHERE customer_handle LIKE ${`${TAG}%`}`
   await sql`DELETE FROM catalogue_access_requests WHERE instagram_id LIKE ${`${TAG}%`}`
   await sql`DELETE FROM customers WHERE instagram_id LIKE ${`${TAG}%`}`
   await sql.end()
@@ -137,7 +138,7 @@ test("claiming never steals a request already linked to someone else", async () 
 
   const [row] = await sql<{ customer_id: number }[]>`
     SELECT customer_id FROM catalogue_requests
-     WHERE description = 'Already linked elsewhere'`
+     WHERE customer_handle = ${mine} ORDER BY id DESC LIMIT 1`
   assert.equal(row.customer_id, other.id, "an existing link must be left alone")
 })
 
