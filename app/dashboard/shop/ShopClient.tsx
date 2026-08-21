@@ -145,7 +145,7 @@ export default function ShopClient({ isOwner }: { isOwner: boolean }) {
           }}
           aria-label={showEmpty ? "Hide shelves with no claims" : "Show shelves with no claims"}
           title={showEmpty ? "Hiding nothing" : "Shelves with no claims are hidden"}
-          className={`shrink-0 rounded-xl border px-3 py-2 ${
+          className={`shrink-0 rounded-lg border px-4 py-2 ${
             showEmpty
               ? "border-brand bg-brand/5 text-brand"
               : "border-cream-border bg-white text-faint"
@@ -172,7 +172,7 @@ export default function ShopClient({ isOwner }: { isOwner: boolean }) {
           }}
           aria-label={showArchived ? "Back to the trips running" : "Show finished trips only"}
           title={showArchived ? "Showing finished trips" : "Showing the trips still running"}
-          className={`shrink-0 rounded-xl border px-3 py-2 ${
+          className={`shrink-0 rounded-lg border px-4 py-2 ${
             showArchived
               ? "border-brand bg-brand/5 text-brand"
               : "border-cream-border bg-white text-faint"
@@ -502,7 +502,7 @@ function DmPhotoSheet({ onClose }: { onClose: () => void }) {
             </p>
             <Link
               href={`/dashboard/shop/${saved.postId}`}
-              className="rounded-xl bg-brand py-2.5 text-center text-sm font-bold text-white"
+              className="rounded-lg bg-brand py-2 text-center text-sm font-bold text-white"
             >
               Open shelf
             </Link>
@@ -558,7 +558,7 @@ function DmPhotoSheet({ onClose }: { onClose: () => void }) {
               type="button"
               disabled={busy || !file || !customer.trim()}
               onClick={() => send(Boolean(match))}
-              className="rounded-xl bg-brand py-2.5 text-sm font-bold text-white disabled:opacity-40"
+              className="rounded-lg bg-brand py-2 text-sm font-bold text-white disabled:opacity-40"
             >
               {busy ? "Reading…" : match ? `Record ${match.marks || 1} claim(s)` : "Find the shelf"}
             </button>

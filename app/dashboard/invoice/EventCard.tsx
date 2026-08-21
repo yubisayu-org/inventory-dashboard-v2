@@ -33,7 +33,7 @@ export function EventCard({
   return (
     <div className="rounded-xl border border-cream-border bg-white overflow-hidden">
       {/* Header */}
-      <div className="px-5 py-4 bg-brand">
+      <div className="px-4 py-2 bg-brand">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-1.5">
             <span className="text-sm font-semibold text-white">{displayIg(customer).toUpperCase()}</span>

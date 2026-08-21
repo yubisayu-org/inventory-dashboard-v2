@@ -729,7 +729,7 @@ function MarkSheet({
           type="button"
           onClick={share}
           disabled={marked.length === 0 || busy}
-          className="h-11 flex-1 rounded-xl bg-brand px-4 text-sm font-bold text-white disabled:opacity-40"
+          className="h-11 flex-1 rounded-lg bg-brand px-4 text-sm font-bold text-white disabled:opacity-40"
         >
           {busy
             ? "Menyiapkan…"

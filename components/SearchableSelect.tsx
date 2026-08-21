@@ -453,7 +453,7 @@ export default function SearchableSelect({
             ) : showAddRow ? (
               <li
                 onMouseDown={(e) => { e.preventDefault(); selectOption(inputValue.trim()) }}
-                className={`flex items-center gap-1.5 px-3 py-2 text-sm cursor-pointer transition-colors ${
+                className={`flex items-center gap-1.5 px-4 py-2 text-sm cursor-pointer transition-colors ${
                   highlightIdx === 0 ? "bg-brand-light text-brand" : "text-foreground hover:bg-brand-light"
                 }`}
               >
@@ -565,7 +565,7 @@ const OptionItem = memo(function OptionItem({
         e.preventDefault()
         onSelect()
       }}
-      className={`flex items-center justify-between px-3 py-2 text-sm cursor-pointer transition-colors ${
+      className={`flex items-center justify-between px-4 py-2 text-sm cursor-pointer transition-colors ${
         highlighted
           ? "bg-brand-light text-brand"
           : selected

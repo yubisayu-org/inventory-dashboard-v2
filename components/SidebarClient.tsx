@@ -411,7 +411,7 @@ export default function SidebarClient({ user }: Props) {
                         href={link.href}
                         title={collapsed ? link.label : undefined}
                         className={`
-                          flex items-center gap-3 px-2 py-2 rounded-lg text-sm transition-colors
+                          flex items-center gap-3 px-4 py-2 rounded-lg text-sm transition-colors
                           ${isActive
                             ? "bg-brand-light text-brand font-medium"
                             : "text-muted-strong hover:bg-brand-light hover:text-brand"

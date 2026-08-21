@@ -438,7 +438,7 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
       <button
         type="button"
         onClick={() => setAddOpen((o) => !o)}
-        className={`hidden md:inline-flex items-center gap-1.5 h-[38px] px-3 text-sm rounded-lg border transition-colors ${
+        className={`hidden md:inline-flex items-center gap-1.5 h-[38px] px-4 text-sm rounded-lg border transition-colors ${
           addOpen ? "bg-brand-light text-brand border-brand/30" : "bg-brand text-white border-transparent hover:bg-brand-hover"
         }`}
       >
@@ -555,7 +555,7 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
                       setPagination((p) => ({ ...p, pageIndex: 0 }))
                       setNoteFilterOpen(false)
                     }}
-                    className={`text-left px-2.5 py-1.5 rounded-lg text-sm transition-colors ${noteFilter === key ? "bg-brand-light text-brand font-medium" : "text-muted-strong hover:bg-cream"}`}
+                    className={`text-left px-4 py-2 rounded-lg text-sm transition-colors ${noteFilter === key ? "bg-brand-light text-brand font-medium" : "text-muted-strong hover:bg-cream"}`}
                   >
                     {label}
                   </button>
@@ -768,7 +768,7 @@ function DuplicateVariantModal({ row, onClose, onDone }: {
         {error && <p className="text-xs text-red-500">{error}</p>}
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm">Cancel</button>
-          <button onClick={submit} disabled={submitting || !product} className="px-3 py-1.5 rounded-lg bg-brand text-white text-sm disabled:opacity-50">
+          <button onClick={submit} disabled={submitting || !product} className="px-4 py-2 rounded-lg bg-brand text-white text-sm disabled:opacity-50">
             {submitting ? "Saving…" : "Create & apply"}
           </button>
         </div>
@@ -1200,7 +1200,7 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
             <button type="button" onClick={() => setConfirmPriceOpen(false)} disabled={saving} className="px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
               Cancel
             </button>
-            <button type="button" onClick={() => void performSave()} disabled={saving} className="px-4 py-1.5 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-hover disabled:opacity-50 transition-colors">
+            <button type="button" onClick={() => void performSave()} disabled={saving} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-hover disabled:opacity-50 transition-colors">
               {saving ? "Saving…" : "Save & update price"}
             </button>
           </div>

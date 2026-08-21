@@ -78,7 +78,7 @@ export default function TierFeePopover({
             return (
               <div
                 key={b.id}
-                className={`flex items-center justify-between gap-2 px-2 py-1 rounded-lg text-xs tabular-nums ${
+                className={`flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg text-xs tabular-nums ${
                   isActive ? "bg-brand/10 text-foreground font-medium" : "text-muted"
                 }`}
               >

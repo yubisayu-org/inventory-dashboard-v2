@@ -956,7 +956,7 @@ function PgBtn({ children, onClick, disabled = false, active = false }: {
 }) {
   return (
     <button onClick={onClick} disabled={disabled}
-      className={`min-w-[2rem] h-8 px-2 text-xs rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${active ? "bg-brand text-white font-medium" : "border border-cream-border hover:bg-cream text-muted-strong"}`}>
+      className={`min-w-[2rem] h-8 px-3 text-xs rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${active ? "bg-brand text-white font-medium" : "border border-cream-border hover:bg-cream text-muted-strong"}`}>
       {children}
     </button>
   )

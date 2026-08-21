@@ -282,7 +282,7 @@ function LabelModal({
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 transition-colors"
+            className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 transition-colors"
           >
             Tutup
           </button>
@@ -382,7 +382,7 @@ function EditResiModal({
             type="button"
             onClick={handleSave}
             disabled={saving}
-            className="px-4 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
+            className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
           >
             {saving ? "Menyimpan…" : "Simpan"}
           </button>
@@ -503,7 +503,7 @@ function EditTempAddressModal({
             type="button"
             onClick={handleSave}
             disabled={saving}
-            className="px-4 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
+            className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
           >
             {saving ? "Menyimpan…" : "Simpan"}
           </button>
@@ -912,7 +912,7 @@ export default function ShipmentsClient() {
                 key={value}
                 type="button"
                 onClick={() => { setWindowDays(value); setWindowFilterOpen(false) }}
-                className={`text-left px-2.5 py-1.5 rounded-lg text-sm transition-colors ${windowDays === value ? "bg-brand-light text-brand font-medium" : "text-muted-strong hover:bg-cream"}`}
+                className={`text-left px-4 py-2 rounded-lg text-sm transition-colors ${windowDays === value ? "bg-brand-light text-brand font-medium" : "text-muted-strong hover:bg-cream"}`}
               >
                 {label}
               </button>
@@ -928,7 +928,7 @@ export default function ShipmentsClient() {
       type="button"
       onClick={handlePrintPdf}
       disabled={printingPdf || selectedCount === 0}
-      className="shrink-0 inline-flex items-center gap-1.5 h-[38px] text-sm font-medium text-white bg-brand hover:bg-brand/90 disabled:opacity-50 transition-colors px-3 rounded-lg whitespace-nowrap"
+      className="shrink-0 inline-flex items-center gap-1.5 h-[38px] text-sm font-medium text-white bg-brand hover:bg-brand/90 disabled:opacity-50 transition-colors px-4 rounded-lg whitespace-nowrap"
     >
       <svg
         width="13"

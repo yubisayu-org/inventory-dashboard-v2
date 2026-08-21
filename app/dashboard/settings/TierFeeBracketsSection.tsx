@@ -319,7 +319,7 @@ function ScopeBrackets({
                     type="button"
                     onClick={() => setBracket(i, { feeMode: "fixed" })}
                     aria-pressed={bracket.feeMode === "fixed"}
-                    className={`flex-1 py-1.5 transition-colors ${bracket.feeMode === "fixed" ? "bg-brand text-white" : "text-muted hover:bg-cream"}`}
+                    className={`flex-1 py-2 transition-colors ${bracket.feeMode === "fixed" ? "bg-brand text-white" : "text-muted hover:bg-cream"}`}
                   >
                     {unit}
                   </button>
@@ -327,7 +327,7 @@ function ScopeBrackets({
                     type="button"
                     onClick={() => setBracket(i, { feeMode: "percent" })}
                     aria-pressed={bracket.feeMode === "percent"}
-                    className={`flex-1 py-1.5 transition-colors ${bracket.feeMode === "percent" ? "bg-brand text-white" : "text-muted hover:bg-cream"}`}
+                    className={`flex-1 py-2 transition-colors ${bracket.feeMode === "percent" ? "bg-brand text-white" : "text-muted hover:bg-cream"}`}
                   >
                     %
                   </button>
@@ -397,7 +397,7 @@ function ScopeBrackets({
             type="button"
             onClick={handleSave}
             disabled={saving || !dirty || problems.length > 0}
-            className="px-3 py-1.5 rounded-lg bg-brand text-white text-sm disabled:opacity-50"
+            className="px-4 py-2 rounded-lg bg-brand text-white text-sm disabled:opacity-50"
           >
             {saving ? "Saving…" : "Save"}
           </button>

@@ -667,7 +667,7 @@ export default function OrderRequestsClient() {
                       key={o.value}
                       type="button"
                       onClick={() => setGroupFilter(o.value as typeof groupFilter)}
-                      className={`text-left px-2 py-1.5 rounded-lg text-xs transition-colors ${
+                      className={`text-left px-3 py-1.5 rounded-lg text-xs transition-colors ${
                         groupFilter === o.value ? "bg-brand/10 text-brand font-medium" : "text-muted-strong hover:bg-surface-muted"
                       }`}
                     >
@@ -684,7 +684,7 @@ export default function OrderRequestsClient() {
                       key={o.value}
                       type="button"
                       onClick={() => setSourceFilter(o.value as typeof sourceFilter)}
-                      className={`text-left px-2 py-1.5 rounded-lg text-xs transition-colors ${
+                      className={`text-left px-3 py-1.5 rounded-lg text-xs transition-colors ${
                         sourceFilter === o.value ? "bg-brand/10 text-brand font-medium" : "text-muted-strong hover:bg-surface-muted"
                       }`}
                     >
@@ -701,7 +701,7 @@ export default function OrderRequestsClient() {
           onClick={() => setShowAll((s) => !s)}
           aria-label={showAll ? "Back to active requests" : "Show closed/converted requests too"}
           title={showAll ? "Showing all requests" : "Showing only active requests"}
-          className={`shrink-0 rounded-lg border px-3 py-2 ${
+          className={`shrink-0 rounded-lg border px-4 py-2 ${
             showAll ? "border-brand bg-brand/5 text-brand" : "border-cream-border bg-white text-faint"
           }`}
         >
@@ -1054,7 +1054,7 @@ function ConvertModal({ requestId, needsProduct, events, items, defaultEvent, lo
         {error && <p className="text-xs text-red-500">{error}</p>}
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm">Cancel</button>
-          <button onClick={submit} disabled={submitting} className="px-3 py-1.5 rounded-lg bg-brand text-white text-sm disabled:opacity-50">
+          <button onClick={submit} disabled={submitting} className="px-4 py-2 rounded-lg bg-brand text-white text-sm disabled:opacity-50">
             {submitting ? "Saving…" : "Convert"}
           </button>
         </div>
@@ -1218,7 +1218,7 @@ function DuplicateVariantCard({ request, activeEvents, onClose, onDone }: {
 }) {
   const dv = useDuplicateVariant(request, onDone)
   return (
-    <div className="rounded-xl border border-cream-border bg-brand-light/40 p-3 -mt-1">
+    <div className="rounded-lg border border-cream-border bg-brand-light/40 p-3 -mt-1">
       <DuplicateVariantFields dv={dv} activeEvents={activeEvents} onClose={onClose} />
     </div>
   )
@@ -1275,7 +1275,7 @@ function StatusModal({ request, dead, items, selectedCandidate, onSelectCandidat
               <button
                 onClick={() => onResolveManual(Number(manualProductId))}
                 disabled={resolving || !manualProductId}
-                className="px-3 py-1.5 rounded-lg bg-brand text-white text-sm disabled:opacity-50"
+                className="px-4 py-2 rounded-lg bg-brand text-white text-sm disabled:opacity-50"
               >
                 {resolving ? "Menyimpan…" : "Assign"}
               </button>
@@ -1314,7 +1314,7 @@ function StatusModal({ request, dead, items, selectedCandidate, onSelectCandidat
               <button
                 onClick={onResolve}
                 disabled={resolving || (candidates.length !== 1 && selectedCandidate[request.id] === undefined)}
-                className="px-3 py-1.5 rounded-lg bg-brand text-white text-sm disabled:opacity-50"
+                className="px-4 py-2 rounded-lg bg-brand text-white text-sm disabled:opacity-50"
               >
                 {resolving ? "Menyimpan…" : "Pilih"}
               </button>
@@ -1395,7 +1395,7 @@ function LinkIdentityModal({ request, onClose, onDone }: {
         {error && <p className="text-xs text-red-500">{error}</p>}
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm">Cancel</button>
-          <button onClick={submit} disabled={submitting || !handle} className="px-3 py-1.5 rounded-lg bg-brand text-white text-sm disabled:opacity-50">
+          <button onClick={submit} disabled={submitting || !handle} className="px-4 py-2 rounded-lg bg-brand text-white text-sm disabled:opacity-50">
             {submitting ? "Saving…" : "Link"}
           </button>
         </div>
@@ -1684,7 +1684,7 @@ function EditModal({ request, countries, onClose, onDone }: {
         {error && <p className="text-xs text-red-500">{error}</p>}
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm">Cancel</button>
-          <button onClick={submit} disabled={submitting} className="px-3 py-1.5 rounded-lg bg-brand text-white text-sm disabled:opacity-50">
+          <button onClick={submit} disabled={submitting} className="px-4 py-2 rounded-lg bg-brand text-white text-sm disabled:opacity-50">
             {submitting ? "Saving…" : "Send to customer"}
           </button>
         </div>
@@ -1950,7 +1950,7 @@ function CreateProductModal({ request, countries, activeEvents, onClose, onDone 
         {error && <p className="text-xs text-red-500">{error}</p>}
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm">Cancel</button>
-          <button onClick={submit} disabled={submitting} className="px-3 py-1.5 rounded-lg bg-brand text-white text-sm disabled:opacity-50">
+          <button onClick={submit} disabled={submitting} className="px-4 py-2 rounded-lg bg-brand text-white text-sm disabled:opacity-50">
             {submitting ? "Saving…" : "Create & convert"}
           </button>
         </div>

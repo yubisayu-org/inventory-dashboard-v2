@@ -657,7 +657,7 @@ function AddOrderSheet({
           type="button"
           disabled={busy || !customer.trim()}
           onClick={save}
-          className="rounded-xl bg-brand py-2.5 text-sm font-bold text-white disabled:opacity-40"
+          className="rounded-lg bg-brand py-2 text-sm font-bold text-white disabled:opacity-40"
         >
           {busy ? "Menyimpan…" : "Catat pesanan"}
         </button>
@@ -806,7 +806,7 @@ function SlotSheet({
           <button
             type="button"
             onClick={() => onSave(count)}
-            className="rounded-xl bg-brand py-2.5 text-sm font-bold text-white"
+            className="rounded-lg bg-brand py-2 text-sm font-bold text-white"
           >
             Save
           </button>

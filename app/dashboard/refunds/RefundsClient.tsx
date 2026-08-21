@@ -269,7 +269,7 @@ export default function RefundsClient() {
             <button
               key={key}
               onClick={() => setTab(key === "refunded" ? "refunded" : key as RefundStatus)}
-              className={`flex-1 shrink-0 flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+              className={`flex-1 shrink-0 flex items-center justify-center gap-1 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
                 active
                   ? "bg-brand text-white"
                   : "text-muted hover:text-foreground"
@@ -331,7 +331,7 @@ export default function RefundsClient() {
               </div>
               <button
                 onClick={() => setCreating((o) => !o)}
-                className={`hidden md:inline-flex items-center gap-1.5 h-[38px] px-3 text-sm rounded-lg border transition-colors ${
+                className={`hidden md:inline-flex items-center gap-1.5 h-[38px] px-4 text-sm rounded-lg border transition-colors ${
                   creating ? "bg-brand-light text-brand border-brand/30" : "bg-brand text-white border-transparent hover:bg-brand-hover"
                 }`}
               >

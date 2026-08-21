@@ -219,7 +219,7 @@ export default function ShipClient() {
             key={s.id}
             type="button"
             onClick={() => { setSegment(s.id); setSelected(new Set()) }}
-            className={`flex-1 shrink-0 flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+            className={`flex-1 shrink-0 flex items-center justify-center gap-1 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
               segment === s.id
                 ? "bg-brand text-white"
                 : "text-muted hover:text-foreground"
@@ -1028,7 +1028,7 @@ function ShipConfirmModal({
               <button
                 type="button"
                 onClick={onSuccess}
-                className="px-4 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 transition-colors"
+                className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 transition-colors"
               >
                 Tutup
               </button>
@@ -1074,7 +1074,7 @@ function ShipConfirmModal({
                 type="button"
                 onClick={handleConfirm}
                 disabled={shipping}
-                className="px-4 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 transition-colors disabled:opacity-50"
+                className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 transition-colors disabled:opacity-50"
               >
                 {shipping ? "Mengirim…" : "Konfirmasi Kirim"}
               </button>
@@ -1260,7 +1260,7 @@ function MergeShipConfirmModal({
                     return (
                       <label
                         key={g.event}
-                        className={`flex gap-3 rounded-lg border px-3 py-2 cursor-pointer transition-colors ${isOn ? "border-brand bg-brand/5" : "border-cream-border"}`}
+                        className={`flex gap-3 rounded-lg border px-4 py-2 cursor-pointer transition-colors ${isOn ? "border-brand bg-brand/5" : "border-cream-border"}`}
                       >
                         <input
                           type="checkbox"
@@ -1376,7 +1376,7 @@ function MergeShipConfirmModal({
               <button
                 type="button"
                 onClick={onSuccess}
-                className="px-4 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 transition-colors"
+                className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 transition-colors"
               >
                 Tutup
               </button>
@@ -1395,7 +1395,7 @@ function MergeShipConfirmModal({
                 type="button"
                 onClick={handleConfirm}
                 disabled={shipping || !canConfirm}
-                className="px-4 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 transition-colors disabled:opacity-50"
+                className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 transition-colors disabled:opacity-50"
               >
                 {shipping ? "Mengirim…" : "Konfirmasi Gabung & Kirim"}
               </button>

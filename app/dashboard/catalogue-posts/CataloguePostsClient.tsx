@@ -216,7 +216,7 @@ export default function CataloguePostsClient() {
             onClick={() => setViewMode("list")}
             aria-label="Tampilan list"
             title="List"
-            className={`h-full px-2.5 flex items-center ${viewMode === "list" ? "bg-brand text-white" : "bg-white text-faint"}`}
+            className={`h-full px-4 flex items-center ${viewMode === "list" ? "bg-brand text-white" : "bg-white text-faint"}`}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" />
@@ -227,7 +227,7 @@ export default function CataloguePostsClient() {
             onClick={() => setViewMode("gallery")}
             aria-label="Tampilan gallery"
             title="Gallery"
-            className={`h-full px-2.5 flex items-center border-l border-cream-border ${viewMode === "gallery" ? "bg-brand text-white" : "bg-white text-faint"}`}
+            className={`h-full px-4 flex items-center border-l border-cream-border ${viewMode === "gallery" ? "bg-brand text-white" : "bg-white text-faint"}`}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
@@ -238,7 +238,7 @@ export default function CataloguePostsClient() {
         <button
           type="button"
           onClick={() => setAddOpen((o) => !o)}
-          className={`inline-flex items-center gap-1.5 h-10 px-3 text-sm rounded-lg border shrink-0 transition-colors ${
+          className={`inline-flex items-center gap-1.5 h-10 px-4 text-sm rounded-lg border shrink-0 transition-colors ${
             addOpen ? "bg-brand-light text-brand border-brand/30" : "bg-brand text-white border-transparent hover:bg-brand-hover"
           }`}
         >
@@ -747,7 +747,7 @@ function EditProductsModal({ post, defaultEvent, activeEvents, onClose }: {
             <button
               onClick={start}
               disabled={!event || loading}
-              className="self-start px-3 py-1.5 rounded-lg bg-brand text-white text-sm disabled:opacity-50"
+              className="self-start px-4 py-2 rounded-lg bg-brand text-white text-sm disabled:opacity-50"
             >
               {loading ? "Loading…" : "Continue"}
             </button>
@@ -855,7 +855,7 @@ function ResendButton({ post, activeEvents, defaultEvent, onSent }: {
             <button
               onClick={send}
               disabled={!event || sending}
-              className="px-2.5 py-1 rounded-lg text-xs bg-brand text-white disabled:opacity-50"
+              className="px-3 py-1.5 rounded-lg text-xs bg-brand text-white disabled:opacity-50"
             >
               {sending ? "Mengirim…" : "Kirim"}
             </button>
@@ -972,7 +972,7 @@ function UploadForm({ options, onCreated, onCancel }: {
           setDragging(false)
           addFiles(e.dataTransfer.files)
         }}
-        className={`relative rounded-xl border border-dashed py-6 text-center text-sm text-muted transition-colors ${
+        className={`relative rounded-lg border border-dashed py-2 text-center text-sm text-muted transition-colors ${
           dragging ? "border-brand bg-brand/5" : "border-cream-border bg-cream"
         }`}
       >
@@ -1102,7 +1102,7 @@ function HighlightModal({ highlight, activeEvents, onClose, onSaved }: {
         {error && <p className="text-xs text-red-500">{error}</p>}
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm">Cancel</button>
-          <button onClick={submit} disabled={submitting} className="px-3 py-1.5 rounded-lg bg-brand text-white text-sm disabled:opacity-50">
+          <button onClick={submit} disabled={submitting} className="px-4 py-2 rounded-lg bg-brand text-white text-sm disabled:opacity-50">
             {submitting ? "Saving…" : "Save"}
           </button>
         </div>

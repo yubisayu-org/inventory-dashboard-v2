@@ -136,7 +136,7 @@ export function AddAdjustmentFromInvoiceModal({
                   key={t}
                   type="button"
                   onClick={() => switchTab(t)}
-                  className={`flex-1 px-3 py-2 font-medium transition-colors ${tab === t ? "bg-brand text-white" : "text-muted hover:bg-cream"}`}
+                  className={`flex-1 px-4 py-2 font-medium transition-colors ${tab === t ? "bg-brand text-white" : "text-muted hover:bg-cream"}`}
                 >
                   {label}
                 </button>

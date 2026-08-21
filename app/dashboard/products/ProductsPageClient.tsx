@@ -633,7 +633,7 @@ export default function ProductsPageClient() {
             <button
               type="button"
               onClick={() => setAddOpen((o) => !o)}
-              className={`inline-flex items-center gap-1.5 h-[38px] px-3 text-sm rounded-lg border transition-colors ${
+              className={`inline-flex items-center gap-1.5 h-[38px] px-4 text-sm rounded-lg border transition-colors ${
                 addOpen ? "bg-brand-light text-brand border-brand/30" : "bg-brand text-white border-transparent hover:bg-brand-hover"
               }`}
             >
@@ -803,7 +803,7 @@ export default function ProductsPageClient() {
                       key={v}
                       type="button"
                       onClick={() => set(v)}
-                      className={`flex-1 px-2 py-2 font-medium transition-colors ${val === v ? "bg-brand text-white" : "text-muted hover:bg-cream"}`}
+                      className={`flex-1 px-4 py-2 font-medium transition-colors ${val === v ? "bg-brand text-white" : "text-muted hover:bg-cream"}`}
                     >
                       {t}
                     </button>
@@ -812,7 +812,7 @@ export default function ProductsPageClient() {
               </div>
             ))}
 
-            <button type="button" onClick={() => setFilterOpen(false)} className="mt-1 px-4 py-2.5 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 transition-colors">
+            <button type="button" onClick={() => setFilterOpen(false)} className="mt-1 px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 transition-colors">
               Done
             </button>
           </div>
@@ -1406,7 +1406,7 @@ function AddProductForm({
           type="button"
           onClick={() => setType("tier_fee")}
           disabled={adding}
-          className={`flex-1 px-3 py-2.5 transition-colors ${type === "tier_fee" ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"}`}
+          className={`flex-1 px-4 py-2 transition-colors ${type === "tier_fee" ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"}`}
         >
           Tier
         </button>
@@ -1414,7 +1414,7 @@ function AddProductForm({
           type="button"
           onClick={() => { setType("flat_fee"); setCountryId(null) }}
           disabled={adding}
-          className={`flex-1 px-3 py-2.5 transition-colors ${type === "flat_fee" ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"}`}
+          className={`flex-1 px-4 py-2 transition-colors ${type === "flat_fee" ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"}`}
         >
           Flat
         </button>
@@ -1437,7 +1437,7 @@ function AddProductForm({
           type="button"
           onClick={() => setType("tier_kurs")}
           disabled={adding}
-          className={`flex-1 px-3 py-2.5 transition-colors ${type === "tier_kurs" ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"}`}
+          className={`flex-1 px-4 py-2 transition-colors ${type === "tier_kurs" ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"}`}
         >
           Tier
         </button>
@@ -1445,7 +1445,7 @@ function AddProductForm({
           type="button"
           onClick={() => setType("flat_kurs")}
           disabled={adding}
-          className={`flex-1 px-3 py-2.5 transition-colors ${type === "flat_kurs" ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"}`}
+          className={`flex-1 px-4 py-2 transition-colors ${type === "flat_kurs" ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"}`}
         >
           Flat
         </button>
@@ -1659,7 +1659,7 @@ function AddProductForm({
                 key={m}
                 type="button"
                 onClick={() => setType(m)}
-                className={`px-3 py-1 whitespace-nowrap transition-colors ${active ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"}`}
+                className={`px-4 py-2 whitespace-nowrap transition-colors ${active ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"}`}
               >
                 {PRICING_METHOD_LABEL[m]}
               </button>
@@ -2167,7 +2167,7 @@ function AddProductForm({
                     type="button"
                     onClick={() => setFlatFeeMode("fixed")}
                     disabled={adding}
-                    className={`flex-1 px-3 py-2.5 transition-colors ${flatFeeMode === "fixed" ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"}`}
+                    className={`flex-1 px-4 py-2 transition-colors ${flatFeeMode === "fixed" ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"}`}
                   >
                     Off
                   </button>
@@ -2175,7 +2175,7 @@ function AddProductForm({
                     type="button"
                     onClick={() => setFlatFeeMode("percent")}
                     disabled={adding}
-                    className={`flex-1 px-3 py-2.5 transition-colors ${flatFeeMode === "percent" ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"}`}
+                    className={`flex-1 px-4 py-2 transition-colors ${flatFeeMode === "percent" ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"}`}
                   >
                     On
                   </button>
@@ -2741,7 +2741,7 @@ function EditProductModal({
                       // the row's original rather than leaving it null.
                       countryId: methodNeedsCountry(m) ? (d.countryId ?? row.countryId) : null,
                     }))}
-                    className={`px-3 py-1.5 transition-colors ${active ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"}`}
+                    className={`px-4 py-2 transition-colors ${active ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"}`}
                   >
                     {PRICING_METHOD_LABEL[m]}
                   </button>
@@ -2762,7 +2762,7 @@ function EditProductModal({
                   type="button"
                   disabled={saving}
                   onClick={() => setDraft((d) => ({ ...d, method: "tier_fee" }))}
-                  className={`px-3 py-1.5 transition-colors ${draft.method === "tier_fee" ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"}`}
+                  className={`px-4 py-2 transition-colors ${draft.method === "tier_fee" ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"}`}
                 >
                   Tier
                 </button>
@@ -2770,7 +2770,7 @@ function EditProductModal({
                   type="button"
                   disabled={saving}
                   onClick={() => setDraft((d) => ({ ...d, method: "flat_fee", countryId: null }))}
-                  className={`px-3 py-1.5 transition-colors ${draft.method === "flat_fee" ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"}`}
+                  className={`px-4 py-2 transition-colors ${draft.method === "flat_fee" ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"}`}
                 >
                   Flat
                 </button>
@@ -2788,7 +2788,7 @@ function EditProductModal({
                   type="button"
                   disabled={saving}
                   onClick={() => setDraft((d) => ({ ...d, method: "tier_kurs" }))}
-                  className={`px-3 py-1.5 transition-colors ${draft.method === "tier_kurs" ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"}`}
+                  className={`px-4 py-2 transition-colors ${draft.method === "tier_kurs" ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"}`}
                 >
                   Tier
                 </button>
@@ -2796,7 +2796,7 @@ function EditProductModal({
                   type="button"
                   disabled={saving}
                   onClick={() => setDraft((d) => ({ ...d, method: "flat_kurs" }))}
-                  className={`px-3 py-1.5 transition-colors ${draft.method === "flat_kurs" ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"}`}
+                  className={`px-4 py-2 transition-colors ${draft.method === "flat_kurs" ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"}`}
                 >
                   Flat
                 </button>
@@ -3104,7 +3104,7 @@ function EditProductModal({
                       type="button"
                       disabled={saving}
                       onClick={() => setDraft((d) => ({ ...d, flatFeeMode: m }))}
-                      className={`flex-1 px-3 py-2.5 transition-colors ${draft.flatFeeMode === m ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"}`}
+                      className={`flex-1 px-4 py-2 transition-colors ${draft.flatFeeMode === m ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"}`}
                     >
                       {m === "fixed" ? "Off" : "On"}
                     </button>
@@ -3147,7 +3147,7 @@ function EditProductModal({
             <button type="button" onClick={onCancel} disabled={saving} className="ml-auto px-3 py-1.5 rounded-lg border border-cream-border text-muted text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
               Cancel
             </button>
-            <button type="button" onClick={handleSave} disabled={saving} className="px-4 py-1.5 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors">
+            <button type="button" onClick={handleSave} disabled={saving} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors">
               {saving ? "Saving…" : "Save"}
             </button>
           </div>

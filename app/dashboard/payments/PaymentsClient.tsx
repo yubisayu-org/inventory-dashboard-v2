@@ -372,7 +372,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
     <>
       <button
         onClick={() => { setAddOpen((o) => !o); setEditingRow(null) }}
-        className={`inline-flex items-center gap-1.5 h-[38px] px-3 text-sm rounded-lg border transition-colors ${
+        className={`inline-flex items-center gap-1.5 h-[38px] px-4 text-sm rounded-lg border transition-colors ${
           addOpen ? "bg-brand-light text-brand border-brand/30" : "bg-brand text-white border-transparent hover:bg-brand-hover"
         }`}
       >
@@ -420,7 +420,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
             <button
               key={key || "all"}
               onClick={() => handleKindFilterChange(key)}
-              className={`flex-1 shrink-0 flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+              className={`flex-1 shrink-0 flex items-center justify-center gap-1 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
                 active ? "bg-brand text-white" : "text-muted hover:text-foreground"
               }`}
             >
@@ -508,7 +508,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
                         key={o.value}
                         type="button"
                         onClick={() => handleCheckedFilterChange(o.value as CheckedFilter)}
-                        className={`text-left px-2 py-1.5 rounded-lg text-xs transition-colors ${
+                        className={`text-left px-3 py-1.5 rounded-lg text-xs transition-colors ${
                           checkedFilter === o.value ? "bg-brand/10 text-brand font-medium" : "text-muted-strong hover:bg-surface-muted"
                         }`}
                       >
@@ -525,7 +525,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
                         key={o.value}
                         type="button"
                         onClick={() => handleKindFilterChange(o.value as KindFilter)}
-                        className={`text-left px-2 py-1.5 rounded-lg text-xs transition-colors ${
+                        className={`text-left px-3 py-1.5 rounded-lg text-xs transition-colors ${
                           kindFilter === o.value ? "bg-brand/10 text-brand font-medium" : "text-muted-strong hover:bg-surface-muted"
                         }`}
                       >

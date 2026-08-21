@@ -532,7 +532,7 @@ function CountryBrackets({
             type="button"
             onClick={handleSave}
             disabled={saving || !dirty || problems.length > 0}
-            className="px-3 py-1.5 rounded-lg bg-brand text-white text-sm disabled:opacity-50"
+            className="px-4 py-2 rounded-lg bg-brand text-white text-sm disabled:opacity-50"
           >
             {saving ? "Saving…" : "Save"}
           </button>

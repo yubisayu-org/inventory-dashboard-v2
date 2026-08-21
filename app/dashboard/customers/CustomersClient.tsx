@@ -516,7 +516,7 @@ export default function CustomersClient() {
                 key={key || "all"}
                 type="button"
                 onClick={() => { handleBalanceFilterChange(key); setBalanceFilterOpen(false) }}
-                className={`text-left px-2.5 py-1.5 rounded-lg text-sm transition-colors ${
+                className={`text-left px-4 py-2 rounded-lg text-sm transition-colors ${
                   balanceFilter === key ? "bg-brand-light text-brand font-medium" : "text-muted-strong hover:bg-cream"
                 }`}
               >
@@ -529,7 +529,7 @@ export default function CustomersClient() {
       <button
         type="button"
         onClick={() => setCreating(true)}
-        className="hidden md:inline-flex items-center h-[38px] px-3 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 transition-colors"
+        className="hidden md:inline-flex items-center h-[38px] px-4 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 transition-colors"
       >
         + Add Customer
       </button>

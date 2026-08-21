@@ -160,7 +160,7 @@ export default function UploadClient() {
           setDragging(false)
           add(e.dataTransfer.files)
         }}
-        className={`relative rounded-xl border border-dashed py-8 text-center text-sm text-muted transition-colors ${
+        className={`relative rounded-lg border border-dashed py-2 text-center text-sm text-muted transition-colors ${
           dragging ? "border-brand bg-brand/5" : "border-cream-border bg-white"
         }`}
       >
@@ -246,7 +246,7 @@ export default function UploadClient() {
           type="button"
           onClick={upload}
           disabled={busy || pending === 0 || !event}
-          className="rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40"
+          className="rounded-lg bg-brand px-4 py-2 text-sm font-bold text-white disabled:opacity-40"
         >
           {busy ? "Uploading…" : `Upload ${pending} shelf${pending === 1 ? "" : "/shelves"}`}
         </button>

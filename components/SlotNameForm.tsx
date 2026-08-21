@@ -167,7 +167,7 @@ export default function SlotNameForm({
           disabled={busy || named || !ready}
           onClick={() => create(false)}
           className={`flex-1 rounded-lg bg-brand font-bold text-white disabled:opacity-40 ${
-            compact ? "py-2.5 text-sm" : "py-1.5 text-xs"
+            compact ? "py-1.5 text-sm" : "py-1.5 text-xs"
           }`}
         >
           {named ? "Product added" : busy ? "Adding…" : "Add product"}

@@ -504,7 +504,7 @@ export default function OperationalExpensesClient() {
                       key={o.value}
                       type="button"
                       onClick={() => upsertColumnFilter("isSettled", o.value)}
-                      className={`text-left px-2 py-1.5 rounded-lg text-xs transition-colors ${
+                      className={`text-left px-3 py-1.5 rounded-lg text-xs transition-colors ${
                         settledFilterValue === o.value ? "bg-brand/10 text-brand font-medium" : "text-muted-strong hover:bg-surface-muted"
                       }`}
                     >
@@ -521,7 +521,7 @@ export default function OperationalExpensesClient() {
                       key={o.value}
                       type="button"
                       onClick={() => upsertColumnFilter("method", o.value)}
-                      className={`text-left px-2 py-1.5 rounded-lg text-xs transition-colors ${
+                      className={`text-left px-3 py-1.5 rounded-lg text-xs transition-colors ${
                         methodFilterValue === o.value ? "bg-brand/10 text-brand font-medium" : "text-muted-strong hover:bg-surface-muted"
                       }`}
                     >
@@ -589,7 +589,7 @@ export default function OperationalExpensesClient() {
             <button
               type="button"
               onClick={() => setAddOpen((o) => !o)}
-              className={`inline-flex items-center gap-1.5 h-[38px] px-3 text-sm rounded-lg border transition-colors ${
+              className={`inline-flex items-center gap-1.5 h-[38px] px-4 text-sm rounded-lg border transition-colors ${
                 addOpen ? "bg-brand-light text-brand border-brand/30" : "bg-brand text-white border-transparent hover:bg-brand-hover"
               }`}
             >

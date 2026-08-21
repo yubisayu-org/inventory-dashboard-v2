@@ -123,7 +123,7 @@ export default function SettingsClient() {
             key={t.key}
             type="button"
             onClick={() => setTab(t.key)}
-            className={`flex-1 shrink-0 flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+            className={`flex-1 shrink-0 flex items-center justify-center gap-1 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
               tab === t.key
                 ? "bg-brand text-white"
                 : "text-muted hover:text-foreground"
