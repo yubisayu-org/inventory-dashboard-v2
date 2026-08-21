@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { requireSession, requireRole, requireOwner } from "@/lib/api"
+import { requireSession, requireRole } from "@/lib/api"
 import sql from "@/lib/db-pool"
 import { toPricingMethod } from "@/lib/pricing"
 import { getPost, listSlots, listClaims } from "@/lib/db/claims"
@@ -79,13 +79,14 @@ export async function GET(_req: Request, { params }: Params) {
  * exists for the shelf that is the exception — a different store, a one-off
  * arrangement — and null puts that shelf back under the setting.
  *
- * Owner-only: this decides what every SKU on the shelf will cost.
+ * Open to any role, alongside naming: choosing the method and using it are
+ * one act, and splitting them across two people helps nobody.
  */
 export async function PATCH(req: NextRequest, { params }: Params) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
-  const ownerError = requireOwner(session)
-  if (ownerError) return ownerError
+  const roleError = requireRole(session)
+  if (roleError) return roleError
 
   const id = Number((await params).id)
   try {

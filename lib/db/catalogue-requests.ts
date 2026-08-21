@@ -53,11 +53,20 @@ export async function createCatalogueRequest(
     description?: string
     referenceImageUrl?: string | null
     postId?: number | null
+    // What the customer typed to get their estimate. Stored so the staff
+    // propose-price modal can prefill from it rather than asking them to
+    // re-enter numbers the customer already gave.
+    countryId?: number | null
+    valas?: number | null
+    gram?: number | null
+    estimatedPrice?: number | null
   },
   db: postgres.Sql,
 ): Promise<void> {
   await db`
-    INSERT INTO catalogue_requests (customer_handle, customer_id, product_id, qty, note, description, reference_image_url, post_id)
+    INSERT INTO catalogue_requests (customer_handle, customer_id, product_id, qty, note,
+                                    description, reference_image_url, post_id,
+                                    country_id, valas, gram, estimated_price)
     VALUES (
       ${normalizeId(data.customerHandle)},
       ${data.customerId ?? null},
@@ -66,7 +75,11 @@ export async function createCatalogueRequest(
       ${data.note},
       ${data.description ?? ""},
       ${data.referenceImageUrl ?? null},
-      ${data.postId ?? null}
+      ${data.postId ?? null},
+      ${data.countryId ?? null},
+      ${data.valas ?? null},
+      ${data.gram ?? null},
+      ${data.estimatedPrice ?? null}
     )
   `
 }

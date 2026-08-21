@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { requireSession, requireOwner } from "@/lib/api"
+import { requireSession, requireRole } from "@/lib/api"
 import { addMissingOrders } from "@/lib/whatsapp/naming"
 
 type Params = { params: Promise<{ id: string }> }
@@ -7,13 +7,13 @@ type Params = { params: Promise<{ id: string }> }
 /**
  * Give the claims that arrived after naming their orders.
  *
- * Owner-only, like naming itself: this puts lines on an invoice.
+ * Open to any role, like naming itself — the same act, arriving late.
  */
 export async function POST(_req: Request, { params }: Params) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
-  const ownerError = requireOwner(session)
-  if (ownerError) return ownerError
+  const roleError = requireRole(session)
+  if (roleError) return roleError
 
   const id = Number((await params).id)
   try {

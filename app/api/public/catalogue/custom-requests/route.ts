@@ -28,6 +28,18 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: corsHeaders() })
 }
 
+/** A positive integer, or null. Never throws: a malformed estimate input must
+ *  not stop a customer submitting a request they otherwise filled in fine. */
+function optionalPositiveInt(v: unknown): number | null {
+  const n = Number(v)
+  return Number.isInteger(n) && n > 0 ? n : null
+}
+
+function optionalPositiveNumber(v: unknown): number | null {
+  const n = Number(v)
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
 export async function POST(req: NextRequest) {
   const declaredLen = Number(req.headers.get("content-length") ?? 0)
   if (declaredLen > MAX_BODY_BYTES) {
@@ -123,6 +135,13 @@ export async function POST(req: NextRequest) {
         qty,
         note,
         referenceImageUrl: storedReferenceImageUrl,
+        // Kept rather than dropped: the customer already typed these to get a
+        // price estimate, and re-asking staff for numbers the customer gave is
+        // how they end up guessed at.
+        countryId: optionalPositiveInt(b.countryId),
+        valas: optionalPositiveNumber(b.valas),
+        gram: optionalPositiveNumber(b.gram),
+        estimatedPrice: optionalPositiveInt(b.estimatedPrice),
       },
       catalogueSql,
     )

@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
-import { requireSession, requireOwner } from "@/lib/api"
+import { requireSession, requireRole } from "@/lib/api"
 import { getAllCataloguePosts, createCataloguePost, withActor } from "@/lib/db"
 import { uploadCatalogueMedia, deleteCatalogueMedia } from "@/lib/storage"
 
 export async function GET() {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
-  const ownerError = requireOwner(session)
-  if (ownerError) return ownerError
+  const roleError = requireRole(session)
+  if (roleError) return roleError
 
   try {
     const posts = await getAllCataloguePosts()
@@ -21,8 +21,8 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
-  const ownerError = requireOwner(session)
-  if (ownerError) return ownerError
+  const roleError = requireRole(session)
+  if (roleError) return roleError
 
   try {
     const form = await req.formData()

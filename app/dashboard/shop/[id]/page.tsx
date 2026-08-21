@@ -5,12 +5,13 @@ import ShopPostClient from "./ShopPostClient"
 export default async function ShopPostPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const session = await auth()
-  // Naming creates products and orders, so it stays owner-only even though the
-  // counting screen around it is open to admins.
-  const canName = session?.user?.role === "owner"
+  // The tally is the owner's alone: the count is what the shelf is reconciled
+  // against, and it cannot be checked afterwards from the photograph. Everything
+  // else on this screen — naming, pricing, orders — an admin does beside her.
+  const canTally = session?.user?.role === "owner"
   return (
     <PageShell>
-      <ShopPostClient postId={Number(id)} canName={canName} />
+      <ShopPostClient postId={Number(id)} canName canTally={canTally} />
     </PageShell>
   )
 }
