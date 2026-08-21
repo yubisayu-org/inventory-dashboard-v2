@@ -81,7 +81,7 @@ export function EventCard({
       <div className="hidden md:block overflow-x-auto">
         <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
           <thead>
-            <tr className="text-left text-xs font-semibold text-brand border-b border-cream-border bg-cream">
+            <tr className="text-left text-xs font-semibold text-brand border-b border-cream-border bg-surface-muted/80">
               <th className="px-4 py-2 font-medium relative select-none" style={{ width: widths.order }}>
                 Order
                 <div onMouseDown={(e) => startResize("order", e)} className="absolute inset-y-0 right-0 w-1 cursor-col-resize hover:bg-brand/30 active:bg-brand/60" />
@@ -107,7 +107,7 @@ export function EventCard({
           </thead>
           <tbody>
             {[...orders].reverse().map((r, i) => (
-              <tr key={i} className="border-b border-cream-border/60 group">
+              <tr key={i} className="border-b border-cream-border group">
                 <td className="px-4 py-2">{r.productName || r.order}</td>
                 <td className="px-4 py-2 text-right">{r.unit}</td>
                 <td className="px-4 py-2 text-right">{r.price}</td>
@@ -141,7 +141,7 @@ export function EventCard({
                 </td>
               </tr>
             ))}
-            <tr className="font-semibold bg-cream/40">
+            <tr className="font-semibold bg-cream">
               <td className="px-4 py-2">Total</td>
               <td className="px-4 py-2 text-right">{totals.unit}</td>
               <td className="px-4 py-2"></td>
@@ -202,7 +202,7 @@ export function EventCard({
             </div>
           </div>
         ))}
-        <div className="px-4 py-3 flex items-center justify-between gap-3 bg-cream/40 font-semibold">
+        <div className="px-4 py-3 flex items-center justify-between gap-3 bg-cream font-semibold">
           <span className="text-sm text-foreground">Total</span>
           <div className="flex items-center gap-3">
             <span className="text-sm tabular-nums text-foreground">{totals.unit} units · {fmt(totals.subtotal)}</span>

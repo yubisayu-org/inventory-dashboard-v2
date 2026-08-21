@@ -401,7 +401,7 @@ export default function DataGrid<T>({
           <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
             <thead>
               {table.getHeaderGroups().map((hg) => (
-                <tr key={hg.id} className={`text-left text-xs text-muted border-b border-cream-border bg-cream ${boldUppercaseHeader ? "uppercase" : ""}`}>
+                <tr key={hg.id} className={`text-left text-xs text-muted border-b border-cream-border bg-surface-muted/80 ${boldUppercaseHeader ? "uppercase" : ""}`}>
                   {renderExpandedRow && <th className="pl-3 pr-0 py-3 w-8" />}
                   {enableRowSelection && (
                     <th className="pl-4 pr-2 py-3 w-10">
@@ -452,7 +452,7 @@ export default function DataGrid<T>({
                   <Fragment key={row.id}>
                   <tr
                     onClick={onRowClick ? () => onRowClick(row.original) : undefined}
-                    className={`border-b border-cream-border/60 transition-colors ${enableRowSelection && row.getIsSelected() ? "bg-brand-light/20" : "hover:bg-cream/30"} ${onRowClick ? "cursor-pointer" : ""} ${isExpanded ? "bg-cream/30" : ""} ${rowClassName?.(row.original) ?? ""}`}
+                    className={`border-b border-cream-border transition-colors ${enableRowSelection && row.getIsSelected() ? "bg-brand-light/20" : "hover:bg-cream/30"} ${onRowClick ? "cursor-pointer" : ""} ${isExpanded ? "bg-cream/30" : ""} ${rowClassName?.(row.original) ?? ""}`}
                   >
                     {renderExpandedRow && (
                       <td className="pl-3 pr-0 py-3">
@@ -490,7 +490,7 @@ export default function DataGrid<T>({
                     })}
                   </tr>
                   {isExpanded && renderExpandedRow && (
-                    <tr className="border-b border-cream-border/60">
+                    <tr className="border-b border-cream-border">
                       <td colSpan={table.getVisibleLeafColumns().length + 1 + (enableRowSelection ? 1 : 0)} className="p-0">
                         {renderExpandedRow(row.original)}
                       </td>

@@ -985,7 +985,7 @@ function PaymentCard({
   return (
     <div
       onClick={onEdit}
-      className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] flex flex-col gap-2 cursor-pointer active:bg-cream/40 transition-colors"
+      className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] flex flex-col gap-2 cursor-pointer active:bg-cream transition-colors"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">

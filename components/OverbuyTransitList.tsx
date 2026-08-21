@@ -256,7 +256,7 @@ export default function OverbuyTransitList({
           and the click target are both md:hidden since desktop's table isn't gated on
           this — pointer-events-none there stops the button from doing anything but
           doesn't change how it looks. */}
-      <div className="px-4 py-2.5 border-b border-cream-border border-l-[3px] border-brand bg-surface-muted/80 flex items-center gap-3">
+      <div className="px-4 py-2.5 border-b border-cream-border border-l-[3px] border-brand bg-cream flex items-center gap-3">
         <button
           type="button"
           onClick={() => setSectionCollapsed((c) => !c)}

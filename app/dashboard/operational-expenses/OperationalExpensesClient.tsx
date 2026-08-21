@@ -643,7 +643,7 @@ export default function OperationalExpensesClient() {
           <div
             key={x.rowNumber}
             onClick={() => setEditingExpense(x)}
-            className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] cursor-pointer active:bg-cream/40 transition-colors"
+            className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] cursor-pointer active:bg-cream transition-colors"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-2.5 min-w-0">

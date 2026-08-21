@@ -248,7 +248,7 @@ export default function CountriesClient() {
   const renderMobileCard = (row: CountryRow) => (
     <div
       onClick={() => setEditRow(row)}
-      className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] flex items-center justify-between gap-3 cursor-pointer active:bg-cream/40 transition-colors"
+      className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] flex items-center justify-between gap-3 cursor-pointer active:bg-cream transition-colors"
     >
       <CountryFlag name={row.name} currency={row.currency} />
       <div className="min-w-0 flex-1">

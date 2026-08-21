@@ -270,7 +270,7 @@ function EventCard({ event }: { event: DashboardEvent }) {
       </button>
 
       {expanded && (
-        <div className="px-4 pb-4 border-t border-cream-border/60">
+        <div className="px-4 pb-4 border-t border-cream-border">
           <p className="text-xs font-semibold text-muted mt-3 mb-2">Top items by units ordered</p>
           {loading ? (
             <p className="text-xs text-faint">Loading…</p>

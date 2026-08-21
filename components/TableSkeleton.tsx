@@ -20,7 +20,7 @@ export default function TableSkeleton({ rows = 8 }: { rows?: number }) {
 
         {/* Rows */}
         {Array.from({ length: rows }).map((_, i) => (
-          <div key={i} className="border-b border-cream-border/60 px-4 py-3 flex gap-6 items-center">
+          <div key={i} className="border-b border-cream-border px-4 py-3 flex gap-6 items-center">
             {[40, 80, 60, 70, 50, 60].map((w, j) => (
               <div
                 key={j}

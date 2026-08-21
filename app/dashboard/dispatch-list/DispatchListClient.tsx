@@ -450,7 +450,7 @@ export default function DispatchListClient() {
       <div className="hidden md:block rounded-xl border border-cream-border bg-white overflow-hidden">
         {/* Same title-bar style as OverbuyTransitList's "INVENTORY IN TRANSIT" below, so
             the two sections read as one matched pair. */}
-        <div className="px-4 py-2.5 border-b border-cream-border border-l-[3px] border-brand bg-surface-muted/80">
+        <div className="px-4 py-2.5 border-b border-cream-border border-l-[3px] border-brand bg-cream">
           <div className="font-bold text-sm text-foreground">CUSTOMER ORDER</div>
         </div>
         <table className="w-full text-sm border-collapse">

@@ -1034,7 +1034,7 @@ function TemplateSection({ templateKey, initialBody }: { templateKey: TemplateKe
           className={textareaCls}
           spellCheck={false}
         />
-        <div className="border border-cream-border rounded-lg px-3 py-2 bg-cream/40 overflow-auto">
+        <div className="border border-cream-border rounded-lg px-3 py-2 bg-cream overflow-auto">
           <p className="text-[10px] uppercase tracking-wide text-faint mb-1">Preview</p>
           <pre className="text-xs whitespace-pre-wrap font-sans text-foreground">{preview}</pre>
         </div>

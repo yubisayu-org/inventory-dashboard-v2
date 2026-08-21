@@ -412,7 +412,7 @@ function CountryBrackets({
         type="button"
         onClick={onToggle}
         aria-expanded={open}
-        className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-cream/40 transition-colors"
+        className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-cream transition-colors"
       >
         <svg
           width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"

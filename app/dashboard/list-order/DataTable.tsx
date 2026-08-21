@@ -575,7 +575,7 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
             <div
               key={r.rowNumber}
               onClick={() => setEditingRow(r)}
-              className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] cursor-pointer active:bg-cream/40 transition-colors"
+              className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] cursor-pointer active:bg-cream transition-colors"
             >
               <div className="flex items-center gap-1.5 flex-wrap min-w-0">
                 <span className="font-semibold text-sm text-foreground uppercase">{r.event}</span>

@@ -652,7 +652,7 @@ function CustomerCard({
       <div className="hidden md:block overflow-x-auto">
         <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
           <thead>
-            <tr className="text-left text-xs text-muted border-b border-cream-border">
+            <tr className="text-left text-xs text-muted border-b border-cream-border bg-surface-muted/80">
               <th className="px-4 py-2 font-medium relative select-none" style={{ width: widths.items }}>
                 Item
                 <div onMouseDown={(e) => startResize("items", e)} className="absolute inset-y-0 right-0 w-1 cursor-col-resize hover:bg-brand/30 active:bg-brand/60" />
@@ -677,7 +677,7 @@ function CustomerCard({
           </thead>
           <tbody>
             {c.orders.map((o) => (
-              <tr key={o.rowNumber} className="border-b border-cream-border/60">
+              <tr key={o.rowNumber} className="border-b border-cream-border">
                 <td className="px-4 py-2">
                   {o.productName}
                   {o.unitHold > 0 && <HoldIcon />}

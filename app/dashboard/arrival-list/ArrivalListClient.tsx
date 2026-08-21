@@ -444,7 +444,7 @@ export default function ArrivalListClient() {
       <div className="hidden md:block rounded-xl border border-cream-border bg-white overflow-hidden">
         {/* Same title-bar style as OverbuyTransitList's "INVENTORY AWAITING ARRIVAL"
             below, so the two sections read as one matched pair. */}
-        <div className="px-4 py-2.5 border-b border-cream-border border-l-[3px] border-brand bg-surface-muted/80">
+        <div className="px-4 py-2.5 border-b border-cream-border border-l-[3px] border-brand bg-cream">
           <div className="font-bold text-sm text-foreground">CUSTOMER ORDER</div>
         </div>
         {/* table-fixed: locks Event/Store/Receipt/Qty/action to their declared

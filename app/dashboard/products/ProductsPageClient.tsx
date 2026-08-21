@@ -719,7 +719,7 @@ export default function ProductsPageClient() {
             <div
               key={p.id}
               onClick={() => setEditingProduct(p)}
-              className={`rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] cursor-pointer active:bg-cream/40 transition-colors ${p.isActive ? "" : "opacity-60"}`}
+              className={`rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] cursor-pointer active:bg-cream transition-colors ${p.isActive ? "" : "opacity-60"}`}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">

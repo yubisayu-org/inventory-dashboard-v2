@@ -405,23 +405,23 @@ function ExpandedInvoice({
   }, [customer, cache])
 
   if (error) {
-    return <div className="px-6 py-4 bg-cream/40 text-sm text-red-500">{error}</div>
+    return <div className="px-6 py-4 bg-cream text-sm text-red-500">{error}</div>
   }
   if (!result) {
-    return <div className="px-6 py-4 bg-cream/40 text-sm text-faint">Loading invoice…</div>
+    return <div className="px-6 py-4 bg-cream text-sm text-faint">Loading invoice…</div>
   }
 
   const ev = result.events.find((e) => e.eventId === event)
   if (!ev) {
-    return <div className="px-6 py-4 bg-cream/40 text-sm text-faint">No invoice found for {event}.</div>
+    return <div className="px-6 py-4 bg-cream text-sm text-faint">No invoice found for {event}.</div>
   }
 
   return (
-    <div className="bg-cream/40">
+    <div className="bg-cream">
       {/* Order lines */}
       <table className="w-full text-sm">
         <thead>
-          <tr className="text-left text-xs text-muted border-b border-cream-border">
+          <tr className="text-left text-xs text-muted border-b border-cream-border bg-surface-muted/80">
             <th className="pl-12 pr-4 py-2 font-medium">Order</th>
             <th className="px-4 py-2 font-medium text-right w-20">Unit</th>
             <th className="px-4 py-2 font-medium text-right w-28">Price</th>
@@ -431,7 +431,7 @@ function ExpandedInvoice({
         </thead>
         <tbody>
           {[...ev.orders].reverse().map((r, i) => (
-            <tr key={i} className="border-b border-cream-border/60">
+            <tr key={i} className="border-b border-cream-border">
               <td className="pl-12 pr-4 py-2">{r.productName || r.order}</td>
               <td className="px-4 py-2 text-right tabular-nums">{r.unit}</td>
               <td className="px-4 py-2 text-right tabular-nums">{r.price}</td>
