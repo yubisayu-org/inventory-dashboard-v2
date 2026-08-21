@@ -1,46 +1,59 @@
 /**
  * How a dispatched parcel travelled, read off the front of its receipt.
  *
- * The code is typed by hand at dispatch time, so this is a convention rather
- * than a constraint: HC went in a suitcase, CJI flew as cargo, MNC came by
- * sea. Anything else — or nothing at all — is "other", deliberately visible
- * rather than hidden, because an unrecognised prefix is usually a typo worth
- * seeing.
+ * The codes themselves live in Settings (the dispatch_routes table), because
+ * they are the owner's naming: HC went in a suitcase, CJI flew as cargo, MNC
+ * came by sea, and a forwarder change should not need a deploy. Everything
+ * here takes the current routes as an argument rather than assuming them.
  *
- * Its own file, not lib/db/dispatch.ts, because the receiving screen is a
- * client component: importing a value from lib/db would pull the postgres
- * driver into the browser bundle.
+ * Anything a prefix does not match is "other" — deliberately visible rather
+ * than hidden, because an unrecognised code is usually a typo worth seeing.
+ *
+ * Its own file, not lib/db, because the receiving screen is a client
+ * component: importing a value from lib/db would pull the postgres driver into
+ * the browser bundle.
  */
 
-/**
- * `warnDays` is when a box stops being merely slow and becomes worth chasing;
- * `lateDays` is when it is a problem. Both are counted from the day it left.
- *
- * Air and sea are the owner's own numbers — air 4 then 8 weeks, sea 8 then 12.
- * Hand carry has no stated pair: a suitcase either lands with the person or it
- * did not travel, so the window is short by nature. 1 then 2 weeks is a guess,
- * and the only one here.
- */
-export const DISPATCH_MODES = {
-  hc: { label: "Hand carry", prefix: "HC", warnDays: 7, lateDays: 14 },
-  cji: { label: "Air cargo", prefix: "CJI", warnDays: 28, lateDays: 56 },
-  mnc: { label: "Sea cargo", prefix: "MNC", warnDays: 56, lateDays: 84 },
-} as const
+export interface DispatchRoute {
+  /** Stable and internal; the label and prefix are the owner's to change. */
+  key: string
+  label: string
+  prefix: string
+  /** How long this route usually takes — past this, a box is worth chasing. */
+  warnDays: number
+  /** Past this it is a problem rather than merely slow. */
+  lateDays: number
+}
 
-export type DispatchMode = keyof typeof DISPATCH_MODES | "other"
+/** What the app falls back to before Settings has been read. */
+export const FALLBACK_ROUTES: DispatchRoute[] = [
+  { key: "hc", label: "Hand carry", prefix: "HC", warnDays: 7, lateDays: 14 },
+  { key: "cji", label: "Air cargo", prefix: "CJI", warnDays: 28, lateDays: 56 },
+  { key: "mnc", label: "Sea cargo", prefix: "MNC", warnDays: 56, lateDays: 84 },
+]
 
 /** green while it is travelling normally, amber worth chasing, red a problem. */
 export type TransitStatus = "ontime" | "warn" | "late"
 
-/** Which mode a receipt belongs to. Case and surrounding space are ignored. */
-export function dispatchModeOf(receipt: string): DispatchMode {
+/**
+ * Which route a receipt belongs to, or null when nothing matches.
+ *
+ * Longest prefix first, so a route whose code begins with another's still
+ * resolves to the more specific one rather than to whichever was checked
+ * first. Settings refuses that overlap, but the reading should not depend on
+ * the writing having been careful.
+ */
+export function routeOf(receipt: string, routes: DispatchRoute[]): DispatchRoute | null {
   const head = receipt.trim().toUpperCase()
-  // Longest prefix first: no overlap today, but this stays correct if a future
-  // code ever begins with another's letters.
-  for (const key of ["cji", "mnc", "hc"] as const) {
-    if (head.startsWith(DISPATCH_MODES[key].prefix)) return key
-  }
-  return "other"
+  if (!head) return null
+  return [...routes]
+    .sort((a, b) => b.prefix.length - a.prefix.length)
+    .find((r) => head.startsWith(r.prefix.trim().toUpperCase())) ?? null
+}
+
+/** The route's key, or "other". Convenient for grouping and tab keys. */
+export function routeKeyOf(receipt: string, routes: DispatchRoute[]): string {
+  return routeOf(receipt, routes)?.key ?? "other"
 }
 
 /** Whole days between a dispatch date and today. Null when the date is absent. */
@@ -55,17 +68,16 @@ export function daysInTransit(dispatchedAt: string, today = new Date()): number 
 /**
  * How a parcel is doing against the window its route usually needs.
  *
- * A parcel with no date reads as on time rather than late. Lines dispatched
- * before the date was recorded would otherwise sit red forever, and a warning
- * that is always on is one nobody looks at.
+ * A parcel with no date, or on no known route, reads as on time rather than
+ * late: lines dispatched before departure dates existed would otherwise sit red
+ * for ever, and a warning that is always on is one nobody looks at.
  */
 export function transitStatus(
-  mode: DispatchMode, dispatchedAt: string, today = new Date(),
+  route: DispatchRoute | null, dispatchedAt: string, today = new Date(),
 ): TransitStatus {
   const days = daysInTransit(dispatchedAt, today)
-  if (days === null || mode === "other") return "ontime"
-  const { warnDays, lateDays } = DISPATCH_MODES[mode]
-  if (days > lateDays) return "late"
-  if (days > warnDays) return "warn"
+  if (days === null || !route) return "ontime"
+  if (days > route.lateDays) return "late"
+  if (days > route.warnDays) return "warn"
   return "ontime"
 }

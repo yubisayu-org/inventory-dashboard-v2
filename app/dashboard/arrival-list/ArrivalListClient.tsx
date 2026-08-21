@@ -12,7 +12,7 @@ import ArriveBulkModal from "./ArriveBulkModal"
 import EventSelect from "@/components/EventSelect"
 import SearchableSelect from "@/components/SearchableSelect"
 import SearchInput from "@/components/SearchInput"
-import { DISPATCH_MODES, dispatchModeOf, daysInTransit, transitStatus, type DispatchMode, type TransitStatus } from "@/lib/dispatch-modes"
+import { FALLBACK_ROUTES, routeOf, routeKeyOf, daysInTransit, transitStatus, type DispatchRoute, type TransitStatus } from "@/lib/dispatch-modes"
 import SelectionActionBar from "@/components/SelectionActionBar"
 import OverbuyTransitList from "@/components/OverbuyTransitList"
 
@@ -261,26 +261,17 @@ function CustomerBadge({ orders }: { orders: { customer: string; qty: number; pa
  * The date sits inside the chip rather than beside it, so a row carrying two
  * parcels reads as two objects rather than a run of numbers.
  */
-/** The route filter's tabs, in travel order: fastest first. */
-const ROUTE_TABS: { key: "all" | DispatchMode; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "hc", label: DISPATCH_MODES.hc.label },
-  { key: "cji", label: DISPATCH_MODES.cji.label },
-  { key: "mnc", label: DISPATCH_MODES.mnc.label },
-  { key: "other", label: "Other" },
-]
-
 const TRANSIT_TONE: Record<TransitStatus, string> = {
   ontime: "border-green-200 bg-green-50 text-green-800",
   warn: "border-amber-200 bg-amber-50 text-amber-800",
   late: "border-red-200 bg-red-50 text-red-700",
 }
 
-function ScheduleChip({ receipt, sentOn }: { receipt: string; sentOn: string }) {
-  const mode = dispatchModeOf(receipt)
+function ScheduleChip({ receipt, sentOn, routes }: { receipt: string; sentOn: string; routes: DispatchRoute[] }) {
+  const route = routeOf(receipt, routes)
   const days = daysInTransit(sentOn)
-  const status = transitStatus(mode, sentOn)
-  const label = mode === "other" ? "Unknown route" : DISPATCH_MODES[mode].label
+  const status = transitStatus(route, sentOn)
+  const label = route?.label ?? "Unknown route"
 
   // Everything the clock means, in words, on hover. The chip itself stays a
   // colour and a shape: a column of dates is a column of numbers to read, and
@@ -290,13 +281,13 @@ function ScheduleChip({ receipt, sentOn }: { receipt: string; sentOn: string }) 
     : [
         `${receipt} · ${label}`,
         `Sent ${sentOn} — ${days} day${days === 1 ? "" : "s"} ago`,
-        mode === "other"
+        !route
           ? null
           : status === "late"
-            ? `Overdue: past ${DISPATCH_MODES[mode].lateDays} days for this route`
+            ? `Overdue: past ${route.lateDays} days for this route`
             : status === "warn"
-              ? `Running late: past ${DISPATCH_MODES[mode].warnDays} days, chase after ${DISPATCH_MODES[mode].lateDays}`
-              : `Normal so far — this route usually lands within ${DISPATCH_MODES[mode].warnDays} days`,
+              ? `Running late: past ${route.warnDays} days, chase after ${route.lateDays}`
+              : `Normal so far — this route usually lands within ${route.warnDays} days`,
       ].filter(Boolean).join("\n")
 
   return (
@@ -332,10 +323,11 @@ function ScheduleChip({ receipt, sentOn }: { receipt: string; sentOn: string }) 
  * forbidden — it is the owner's box and the owner's naming.
  */
 function ParcelEditor({
-  receipt, sentOn, onRename,
+  receipt, sentOn, routes, onRename,
 }: {
   receipt: string
   sentOn: string
+  routes: DispatchRoute[]
   onRename: (from: string, to: string) => Promise<void>
 }) {
   const [editing, setEditing] = useState(false)
@@ -343,8 +335,8 @@ function ParcelEditor({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
 
-  const nextMode = dispatchModeOf(value)
-  const movesRoute = value.trim() !== "" && nextMode !== dispatchModeOf(receipt)
+  const nextRoute = routeOf(value, routes)
+  const movesRoute = value.trim() !== "" && nextRoute?.key !== routeOf(receipt, routes)?.key
 
   async function save() {
     const to = value.trim()
@@ -363,7 +355,7 @@ function ParcelEditor({
   if (!editing) {
     return (
       <span className="flex items-center gap-1.5">
-        <ScheduleChip receipt={receipt} sentOn={sentOn} />
+        <ScheduleChip receipt={receipt} sentOn={sentOn} routes={routes} />
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); setValue(receipt); setEditing(true) }}
@@ -404,7 +396,7 @@ function ParcelEditor({
       </span>
       {movesRoute && (
         <span className="text-[11px] text-amber-700">
-          Moves this parcel to {nextMode === "other" ? "Other" : DISPATCH_MODES[nextMode].label}
+          Moves this parcel to {nextRoute?.label ?? "Other"}
         </span>
       )}
       {error && <span className="text-[11px] text-red-600">{error}</span>}
@@ -425,7 +417,32 @@ export default function ArrivalListClient() {
    * suitcase, CJI by air, MNC by sea. A parcel arrives as one box, and this
    * is how the bench sees what should have been in it.
    */
-  const [route, setRoute] = useState<"all" | DispatchMode>("all")
+  const [route, setRoute] = useState<string>("all")
+  /**
+   * The routes as Settings has them. Falls back to the built-in three until
+   * the fetch lands, so the tabs never flash empty; a changed prefix simply
+   * appears a moment later.
+   */
+  const [routes, setRoutes] = useState<DispatchRoute[]>(FALLBACK_ROUTES)
+
+  useEffect(() => {
+    fetch("/api/sheets/dispatch-routes", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d: { routes?: DispatchRoute[] }) => { if (d.routes?.length) setRoutes(d.routes) })
+      // A failed load leaves the fallback in place: filing parcels under the
+      // usual codes beats an empty screen.
+      .catch(() => {})
+  }, [])
+
+  /** All / one per configured route / Other, which hides itself while empty. */
+  const routeTabs = useMemo(
+    () => [
+      { key: "all", label: "All" },
+      ...routes.map((r) => ({ key: r.key, label: r.label })),
+      { key: "other", label: "Other" },
+    ],
+    [routes],
+  )
   const [arrivingItem, setArrivingItem] = useState<ArrivalListItem | null>(null)
   const [bulkOpen, setBulkOpen] = useState(false)
   const [collapsedEvents, setCollapsedEvents] = useState<Set<string>>(new Set())
@@ -528,16 +545,17 @@ export default function ArrivalListClient() {
 
   /** How many lines are waiting on each route, for the counts on the tabs. */
   const routeCounts = useMemo(() => {
-    const counts: Record<string, number> = { all: 0, hc: 0, cji: 0, mnc: 0, other: 0 }
+    const counts: Record<string, number> = { all: 0, other: 0 }
+    for (const r of routes) counts[r.key] = 0
     for (const item of items) {
       counts.all += 1
-      const modes = new Set(item.orders.map((o) => dispatchModeOf(o.dispatchReceipt)))
+      const modes = new Set(item.orders.map((o) => routeKeyOf(o.dispatchReceipt, routes)))
       // An item can span two parcels — half flown, half shipped — so it counts
       // once against each route it is actually travelling on.
-      for (const m of modes) counts[m] += 1
+      for (const m of modes) counts[m] = (counts[m] ?? 0) + 1
     }
     return counts
-  }, [items])
+  }, [items, routes])
 
   const filteredItems = useMemo<ArrivalRow[]>(() => {
     const q = search.trim().toLowerCase()
@@ -561,7 +579,7 @@ export default function ArrivalListClient() {
     return items.reduce<ArrivalRow[]>((out, item) => {
       const byParcel = new Map<string, typeof item.orders>()
       for (const o of item.orders) {
-        if (dispatchModeOf(o.dispatchReceipt) !== route) continue
+        if (routeKeyOf(o.dispatchReceipt, routes) !== route) continue
         const key = o.dispatchReceipt || "—"
         byParcel.set(key, [...(byParcel.get(key) ?? []), o])
       }
@@ -605,7 +623,7 @@ export default function ArrivalListClient() {
   const groupLabel = (key: string) =>
     route === "all"
       ? <span className="font-medium text-foreground">{key}</span>
-      : <ParcelEditor receipt={key} sentOn={parcelDates.get(key) ?? ""} onRename={renameParcel} />
+      : <ParcelEditor receipt={key} sentOn={parcelDates.get(key) ?? ""} routes={routes} onRename={renameParcel} />
 
   /**
    * Rename a whole parcel. Refetches rather than patching state: the rename
@@ -659,7 +677,7 @@ export default function ArrivalListClient() {
           Same segmented bar as the Payments type filter, so the two screens
           are operated the same way. */}
       <div className="flex items-center gap-1 w-full rounded-xl border border-cream-border bg-white p-1 mb-3 overflow-x-auto">
-        {ROUTE_TABS.map(({ key, label }) => {
+        {routeTabs.map(({ key, label }) => {
           const count = routeCounts[key] ?? 0
           // "Other" catches an unrecognised prefix — a typo, usually. It stays
           // out of the bar while empty rather than offering a tab that shows
@@ -872,7 +890,7 @@ export default function ArrivalListClient() {
                       return (
                         <div className="flex flex-col gap-1">
                           {[...parcels].map(([receipt, sentOn]) => (
-                            <ScheduleChip key={receipt} receipt={receipt} sentOn={sentOn} />
+                            <ScheduleChip key={receipt} receipt={receipt} sentOn={sentOn} routes={routes} />
                           ))}
                         </div>
                       )
@@ -920,7 +938,7 @@ export default function ArrivalListClient() {
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`text-faint transition-transform ${eventCollapsed ? "-rotate-90" : ""}`}><path d="m6 9 6 6 6-6" /></svg>
                 {route === "all"
                   ? <span className="font-bold text-sm text-foreground">{event}</span>
-                  : <ScheduleChip receipt={event} sentOn={parcelDates.get(event) ?? ""} />}
+                  : <ScheduleChip receipt={event} sentOn={parcelDates.get(event) ?? ""} routes={routes} />}
                 <span className="ml-auto text-xs text-faint">{allItems.length} items</span>
               </button>
               {!eventCollapsed && [...storeMap.entries()].map(([store, storeItems]) => {

@@ -82,8 +82,35 @@ test("an unpriceable address keeps the old ongkir and flags for review", async (
 
 test("a priceable address clears the review flag", async () => {
   const id = await makeCustomer()
-  const [rate] = await sql<{ kab_kota_nama: string; kecamatan_nama: string }[]>`
-    SELECT kab_kota_nama, kecamatan_nama FROM jne_rates LIMIT 1`
+  // The flag is raised when ANY warehouse cannot price the address, so this
+  // test needs every warehouse to have a rate for its chosen destination —
+  // not merely one row from jne_rates. It used to pass only because there was
+  // a single warehouse and the table happened to return a matching row first;
+  // adding a second warehouse in Settings broke it, which is the product
+  // behaving correctly and the test assuming too much.
+  const [origin] = await sql<{ code: string }[]>`SELECT code FROM warehouses ORDER BY id LIMIT 1`
+  const [rate] = await sql<{ provinsi_nama: string; kab_kota_nama: string; kecamatan_nama: string }[]>`
+    SELECT provinsi_nama, kab_kota_nama, kecamatan_nama FROM jne_rates
+    WHERE upper(trim(origin_code)) = upper(trim(${origin.code})) AND final_price > 0
+    LIMIT 1`
+  assert.ok(rate, `no jne_rates row ships from ${origin.code} — this test cannot price anything`)
+
+  // Lend a rate to any other warehouse for the length of this test, so the
+  // assertion is about the flag's logic rather than about which warehouses
+  // happen to exist in this database.
+  const lent = await sql<{ origin_code: string }[]>`
+    SELECT DISTINCT w.code AS origin_code FROM warehouses w
+    WHERE NOT EXISTS (
+      SELECT 1 FROM jne_rates j
+      WHERE upper(trim(j.origin_code)) = upper(trim(w.code))
+        AND upper(trim(j.kab_kota_nama)) = upper(trim(${rate.kab_kota_nama}))
+        AND upper(trim(j.kecamatan_nama)) = upper(trim(${rate.kecamatan_nama}))
+    )`
+  for (const w of lent) {
+    await sql`
+      INSERT INTO jne_rates (provinsi_nama, kab_kota_nama, kecamatan_nama, final_price, origin_code)
+      VALUES (${rate.provinsi_nama}, ${rate.kab_kota_nama}, ${rate.kecamatan_nama}, 25000, ${w.origin_code})`
+  }
   await updateCustomerProfile(id, {
     name: "Shinta",
     whatsapp: "08999",
@@ -96,6 +123,14 @@ test("a priceable address clears the review flag", async () => {
   })
   const [row] = await sql<{ ongkir_needs_review: boolean }[]>`
     SELECT ongkir_needs_review FROM customers WHERE id = ${id}`
+
+  for (const w of lent) {
+    await sql`DELETE FROM jne_rates
+              WHERE origin_code = ${w.origin_code}
+                AND kab_kota_nama = ${rate.kab_kota_nama}
+                AND kecamatan_nama = ${rate.kecamatan_nama}`
+  }
+
   assert.equal(row.ongkir_needs_review, false)
 })
 

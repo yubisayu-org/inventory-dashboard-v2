@@ -20,6 +20,7 @@ import type { CountryRow } from "@/lib/db"
 import KursTiersSection from "./KursTiersSection"
 import TierFeeBracketsSection from "./TierFeeBracketsSection"
 import WhatsAppSection from "./WhatsAppSection"
+import DispatchRoutesSection from "./DispatchRoutesSection"
 import WarehouseOriginSection from "./WarehouseOriginSection"
 import MoneyInput from "@/components/MoneyInput"
 import InfoTooltip from "@/components/InfoTooltip"
@@ -138,6 +139,7 @@ export default function SettingsClient() {
           hidden ones are visually hidden, so switching tabs never refetches. */}
       <div className={`flex flex-col gap-6 ${tab === "business" ? "" : "hidden"}`}>
         <BusinessProfileSection />
+        <DispatchRoutesSection />
         <WarehouseOriginSection />
       </div>
       {/* Every card here is pricing config, so they share one tab. General holds what is
