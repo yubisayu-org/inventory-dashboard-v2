@@ -296,7 +296,11 @@ function ScheduleChip({ receipt, sentOn, routes }: { receipt: string; sentOn: st
 
   return (
     <span className="flex items-center gap-1.5 whitespace-nowrap">
-      <span className="text-muted-strong">{receipt}</span>
+      {/* Upper-cased on screen, not in the data. Codes typed while packing come
+          out as "Box 2" beside an "HC-3101", and a column of parcels reads as
+          one kind of thing when they all look alike. What was typed is what is
+          stored — matching a route already ignores case. */}
+      <span className="text-muted-strong uppercase">{receipt}</span>
       <span
         title={title}
         aria-label={title}
