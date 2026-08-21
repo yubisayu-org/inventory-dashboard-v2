@@ -32,8 +32,13 @@ export const FALLBACK_ROUTES: DispatchRoute[] = [
   { key: "mnc", label: "Sea cargo", prefix: "MNC", warnDays: 56, lateDays: 84 },
 ]
 
-/** green while it is travelling normally, amber worth chasing, red a problem. */
-export type TransitStatus = "ontime" | "warn" | "late"
+/**
+ * green while it is travelling normally, amber worth chasing, red a problem —
+ * and "unknown" when there is nothing to judge by: no departure date, or a
+ * receipt whose code matches no route, which is what an old parcel written
+ * "Box 1" looks like.
+ */
+export type TransitStatus = "unknown" | "ontime" | "warn" | "late"
 
 /**
  * Which route a receipt belongs to, or null when nothing matches.
@@ -68,15 +73,20 @@ export function daysInTransit(dispatchedAt: string, today = new Date()): number 
 /**
  * How a parcel is doing against the window its route usually needs.
  *
- * A parcel with no date, or on no known route, reads as on time rather than
- * late: lines dispatched before departure dates existed would otherwise sit red
- * for ever, and a warning that is always on is one nobody looks at.
+ * "unknown" rather than "ontime" when there is no date or no route. Both were
+ * green once, which read as a promise the data could not make: a parcel called
+ * "Box 1" at 25 days is unremarkable by sea and hopeless in a suitcase, and
+ * nothing here can tell which. Green is a claim; grey is the truth.
+ *
+ * It is deliberately not red either — an old parcel that predates route codes
+ * is not evidence of a problem, and a warning that is always on is one nobody
+ * looks at.
  */
 export function transitStatus(
   route: DispatchRoute | null, dispatchedAt: string, today = new Date(),
 ): TransitStatus {
   const days = daysInTransit(dispatchedAt, today)
-  if (days === null || !route) return "ontime"
+  if (days === null || !route) return "unknown"
   if (days > route.lateDays) return "late"
   if (days > route.warnDays) return "warn"
   return "ontime"

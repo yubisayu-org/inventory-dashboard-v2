@@ -262,6 +262,8 @@ function CustomerBadge({ orders }: { orders: { customer: string; qty: number; pa
  * parcels reads as two objects rather than a run of numbers.
  */
 const TRANSIT_TONE: Record<TransitStatus, string> = {
+  // Grey says "nothing to judge by" — no date, or a code on no known route.
+  unknown: "border-cream-border bg-surface-muted text-faint",
   ontime: "border-green-200 bg-green-50 text-green-800",
   warn: "border-amber-200 bg-amber-50 text-amber-800",
   late: "border-red-200 bg-red-50 text-red-700",
@@ -278,7 +280,9 @@ function ScheduleChip({ receipt, sentOn, routes }: { receipt: string; sentOn: st
   // the point of the clock is that a late box is visible without reading.
   const title = days === null
     ? `${receipt} · ${label} — dispatched before departure dates were recorded`
-    : [
+    : !route
+      ? `${receipt} — sent ${sentOn}, ${days} day${days === 1 ? "" : "s"} ago. No route code, so there is no window to judge it by.`
+      : [
         `${receipt} · ${label}`,
         `Sent ${sentOn} — ${days} day${days === 1 ? "" : "s"} ago`,
         !route
@@ -296,9 +300,7 @@ function ScheduleChip({ receipt, sentOn, routes }: { receipt: string; sentOn: st
       <span
         title={title}
         aria-label={title}
-        className={`inline-flex items-center justify-center rounded-full border w-5 h-5 cursor-help ${
-          days === null ? "border-cream-border bg-surface-muted text-faint" : TRANSIT_TONE[status]
-        }`}
+        className={`inline-flex items-center justify-center rounded-full border w-5 h-5 cursor-help ${TRANSIT_TONE[status]}`}
       >
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="12" cy="12" r="9" />
