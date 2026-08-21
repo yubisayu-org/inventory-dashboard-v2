@@ -27,11 +27,19 @@ function computeFill(orders: ArrivalListOrder[], quantityArrived: number) {
 
 // ─── Grouping helpers ───────────────────────────────────────────────────────
 
-function groupItems(items: ArrivalListItem[]) {
-  const map = new Map<string, Map<string, ArrivalListItem[]>>()
+/**
+ * An item as this screen holds it. `parcel` is set only while a route tab is
+ * selected: the row then describes one box rather than the whole item, and the
+ * top level of the table groups by that box instead of by trip.
+ */
+type ArrivalRow = ArrivalListItem & { parcel?: string; parcelSentOn?: string }
+
+function groupItems(items: ArrivalRow[], keyOf: (i: ArrivalRow) => string = (i) => i.event) {
+  const map = new Map<string, Map<string, ArrivalRow[]>>()
   for (const item of items) {
-    if (!map.has(item.event)) map.set(item.event, new Map())
-    const storeMap = map.get(item.event)!
+    const top = keyOf(item)
+    if (!map.has(top)) map.set(top, new Map())
+    const storeMap = map.get(top)!
     const key = item.store || "—"
     if (!storeMap.has(key)) storeMap.set(key, [])
     storeMap.get(key)!.push(item)
@@ -39,18 +47,22 @@ function groupItems(items: ArrivalListItem[]) {
   return map
 }
 
-/** Stable selection key: event + productId (productId repeats across events). */
-function selKey(item: Pick<ArrivalListItem, "event" | "productId">): string {
-  return `${item.event}|${item.productId}`
+/**
+ * Stable selection key: event + productId, and the parcel too when one is in
+ * play. Without the parcel, a product split between the air box and the sea box
+ * would share a key, so ticking the air row would silently tick the sea one.
+ */
+function selKey(item: Pick<ArrivalRow, "event" | "productId"> & { parcel?: string }): string {
+  return `${item.event}|${item.productId}${item.parcel ? `|${item.parcel}` : ""}`
 }
 
 type RowDescriptor =
   | { type: "event-collapsed"; event: string; totalItems: number }
   | { type: "store-collapsed"; event: string; store: string; totalItems: number; showEvent: boolean; eventRowSpan?: number }
-  | { type: "item"; item: ArrivalListItem; event: string; store: string; showEvent: boolean; showStore: boolean; eventRowSpan?: number; storeRowSpan?: number }
+  | { type: "item"; item: ArrivalRow; event: string; store: string; showEvent: boolean; showStore: boolean; eventRowSpan?: number; storeRowSpan?: number }
 
 function buildRows(
-  grouped: Map<string, Map<string, ArrivalListItem[]>>,
+  grouped: Map<string, Map<string, ArrivalRow[]>>,
   collapsedEvents: Set<string>,
   collapsedStores: Set<string>,
 ): RowDescriptor[] {
@@ -249,6 +261,15 @@ function CustomerBadge({ orders }: { orders: { customer: string; qty: number; pa
  * The date sits inside the chip rather than beside it, so a row carrying two
  * parcels reads as two objects rather than a run of numbers.
  */
+/** The route filter's tabs, in travel order: fastest first. */
+const ROUTE_TABS: { key: "all" | DispatchMode; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "hc", label: DISPATCH_MODES.hc.label },
+  { key: "cji", label: DISPATCH_MODES.cji.label },
+  { key: "mnc", label: DISPATCH_MODES.mnc.label },
+  { key: "other", label: "Other" },
+]
+
 const TRANSIT_TONE: Record<TransitStatus, string> = {
   ontime: "border-green-200 bg-green-50 text-green-800",
   warn: "border-amber-200 bg-amber-50 text-amber-800",
@@ -424,9 +445,9 @@ export default function ArrivalListClient() {
     return counts
   }, [items])
 
-  const filteredItems = useMemo(() => {
+  const filteredItems = useMemo<ArrivalRow[]>(() => {
     const q = search.trim().toLowerCase()
-    const matchesSearch = (i: ArrivalListItem) => !q
+    const matchesSearch = (i: ArrivalRow) => !q
       || i.productName.toLowerCase().includes(q)
       || i.event.toLowerCase().includes(q)
       || (i.store ?? "").toLowerCase().includes(q)
@@ -439,24 +460,59 @@ export default function ArrivalListClient() {
     // boxes would keep reporting its full quantity and every customer, so
     // opening the air cargo would list seven units when only three flew — and
     // the four still at sea would be hunted for on the bench.
-    return items.reduce<ArrivalListItem[]>((out, item) => {
-      const onRoute = item.orders.filter((o) => dispatchModeOf(o.dispatchReceipt) === route)
-      if (onRoute.length === 0) return out
-      const projected: ArrivalListItem = {
-        ...item,
-        orders: onRoute,
-        orderIds: onRoute.map((o) => o.id),
-        customers: Array.from(new Set(onRoute.map((o) => o.customer))),
-        customerCount: new Set(onRoute.map((o) => o.customer)).size,
-        totalPending: onRoute.reduce((n, o) => n + o.pending, 0),
-        totalBought: onRoute.reduce((n, o) => n + o.unitBuy, 0),
+    // One row per box, not per item: a route can hold several parcels, and a
+    // product may sit in two of them. Splitting here is what lets the table
+    // group by receipt below — and what makes each row's quantity, customers
+    // and order ids describe the box in front of you.
+    return items.reduce<ArrivalRow[]>((out, item) => {
+      const byParcel = new Map<string, typeof item.orders>()
+      for (const o of item.orders) {
+        if (dispatchModeOf(o.dispatchReceipt) !== route) continue
+        const key = o.dispatchReceipt || "—"
+        byParcel.set(key, [...(byParcel.get(key) ?? []), o])
       }
-      if (matchesSearch(projected)) out.push(projected)
+      for (const [parcel, orders] of byParcel) {
+        const projected: ArrivalRow = {
+          ...item,
+          parcel,
+          // A receipt is one box that left once, so any of its lines carries
+          // the date; the first is as good as another.
+          parcelSentOn: orders[0]?.dispatchedAt ?? "",
+          orders,
+          orderIds: orders.map((o) => o.id),
+          customers: Array.from(new Set(orders.map((o) => o.customer))),
+          customerCount: new Set(orders.map((o) => o.customer)).size,
+          totalPending: orders.reduce((n, o) => n + o.pending, 0),
+          totalBought: orders.reduce((n, o) => n + o.unitBuy, 0),
+        }
+        if (matchesSearch(projected)) out.push(projected)
+      }
       return out
     }, [])
   }, [items, search, route])
 
-  const grouped = useMemo(() => groupItems(filteredItems), [filteredItems])
+  const grouped = useMemo(
+    () => groupItems(filteredItems, route === "all" ? undefined : (i) => i.parcel ?? "—"),
+    [filteredItems, route],
+  )
+
+  /** The date each parcel left, so a group header can carry its clock. */
+  const parcelDates = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const i of filteredItems) if (i.parcel && !m.has(i.parcel)) m.set(i.parcel, i.parcelSentOn ?? "")
+    return m
+  }, [filteredItems])
+
+  /**
+   * What the first column says. Under "All" that is the trip; under a route it
+   * is the box — receipt and clock — because the question there is "what is in
+   * this parcel", and the trip is a detail of the lines inside it.
+   */
+  const groupLabel = (key: string) =>
+    route === "all"
+      ? <span className="font-medium text-foreground">{key}</span>
+      : <ScheduleChip receipt={key} sentOn={parcelDates.get(key) ?? ""} />
+
   // Desktop-only state (see above) — mobile's own render loop reads collapsedEvents/
   // collapsedStores directly, not through `rows`.
   const rows = useMemo(
@@ -488,27 +544,28 @@ export default function ArrivalListClient() {
     <>
       {/* Which parcel to check in. The route is read off each line's dispatch
           receipt, so picking one shows exactly what should have travelled
-          together — the hand-carried suitcase, the air cargo, the sea box. */}
-      <div className="flex items-center gap-1 mb-3 overflow-x-auto">
-        {([["all", "All"], ["hc", DISPATCH_MODES.hc.label], ["cji", DISPATCH_MODES.cji.label], ["mnc", DISPATCH_MODES.mnc.label], ["other", "Other"]] as const).map(([key, label]) => {
+          together — the hand-carried suitcase, the air cargo, the sea box.
+          Same segmented bar as the Payments type filter, so the two screens
+          are operated the same way. */}
+      <div className="flex items-center gap-1 w-full rounded-xl border border-cream-border bg-white p-1 mb-3 overflow-x-auto">
+        {ROUTE_TABS.map(({ key, label }) => {
           const count = routeCounts[key] ?? 0
-          // "Other" catches an unrecognised prefix — a typo, usually. It hides
-          // itself when empty rather than offering a tab that shows nothing.
+          // "Other" catches an unrecognised prefix — a typo, usually. It stays
+          // out of the bar while empty rather than offering a tab that shows
+          // nothing.
           if (key === "other" && count === 0) return null
           const active = route === key
           return (
             <button
               key={key}
               type="button"
-              onClick={() => { setRoute(key as "all" | DispatchMode); clearSelection() }}
-              className={`shrink-0 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                active
-                  ? "bg-brand text-white border-brand"
-                  : "bg-white border-cream-border text-muted hover:border-brand hover:text-brand"
+              onClick={() => { setRoute(key); clearSelection() }}
+              className={`flex-1 shrink-0 flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+                active ? "bg-brand text-white" : "text-muted hover:text-foreground"
               }`}
             >
               {label}
-              <span className={`ml-1.5 tabular-nums ${active ? "text-white/70" : "text-faint"}`}>{count}</span>
+              <span className={`tabular-nums text-xs ${active ? "text-white/70" : "text-faint"}`}>{count}</span>
             </button>
           )
         })}
@@ -580,10 +637,20 @@ export default function ArrivalListClient() {
         <table className="w-full text-sm border-collapse table-fixed">
           <thead>
             <tr className="border-b border-cream-border bg-surface-muted/80">
-              <th className="text-left px-4 py-2.5 font-medium text-muted w-44">Event</th>
+              {/* The first column is the trip under "All" and the parcel under a
+                  route, so both its heading and its width follow what it holds:
+                  a trip name like POCN202603, or a receipt plus its clock. */}
+              <th className={`text-left px-4 py-2.5 font-medium text-muted ${route === "all" ? "w-44" : "w-40"}`}>
+                {route === "all" ? "Event" : "Parcel"}
+              </th>
               <th className="text-left px-4 py-2.5 font-medium text-muted w-36">Store</th>
               <th className="text-left px-4 py-2.5 font-medium text-muted">Product</th>
-              <th className="text-left px-4 py-2.5 font-medium text-muted w-28">Receipt</th>
+              {/* One width for both views — a receipt with its clock under
+                  "All", a whole trip code under a route. Switching tabs should
+                  not shift the columns under your eye. */}
+              <th className="text-left px-4 py-2.5 font-medium text-muted w-40">
+                {route === "all" ? "Receipt" : "Event"}
+              </th>
               <th className="text-right px-4 py-2.5 font-medium text-muted w-14">Qty</th>
               <th className="px-4 py-2.5 w-10" />
             </tr>
@@ -603,7 +670,7 @@ export default function ArrivalListClient() {
                     <td colSpan={6} className="px-4 py-2.5">
                       <div className="flex items-center gap-2">
                         <CollapseBtn collapsed onClick={() => toggleDesktopEvent(row.event)} />
-                        <span className="font-medium text-foreground">{row.event}</span>
+                        {groupLabel(row.event)}
                         <span className="text-xs text-faint">{row.totalItems} items</span>
                       </div>
                     </td>
@@ -618,7 +685,7 @@ export default function ArrivalListClient() {
                       <td rowSpan={row.eventRowSpan} className="px-4 py-2.5 align-top border-r border-cream-border">
                         <div className="flex items-center gap-2 pt-0.5">
                           <CollapseBtn collapsed={false} onClick={() => toggleDesktopEvent(row.event)} />
-                          <span className="font-medium text-foreground">{row.event}</span>
+                          {groupLabel(row.event)}
                         </div>
                       </td>
                     )}
@@ -642,7 +709,7 @@ export default function ArrivalListClient() {
                     <td rowSpan={row.eventRowSpan} className="px-4 py-2.5 align-top border-r border-cream-border">
                       <div className="flex items-center gap-2 pt-0.5">
                         <CollapseBtn collapsed={false} onClick={() => toggleDesktopEvent(row.event)} />
-                        <span className="font-medium text-foreground">{row.event}</span>
+                        {groupLabel(row.event)}
                       </div>
                     </td>
                   )}
@@ -675,9 +742,15 @@ export default function ArrivalListClient() {
                   </td>
                   <td className="px-4 py-2.5 text-muted">
                     {(() => {
-                      // One row can span parcels, so each receipt carries its
-                      // own date and its own verdict — a box that flew is
-                      // overdue long before one on a boat is.
+                      // Under a route the parcel is the group header, so
+                      // repeating it here would say the same thing twice; the
+                      // trip is the useful detail instead. Under "All" a row
+                      // can span parcels, and each carries its own date and
+                      // verdict — a box that flew is overdue long before one
+                      // on a boat is.
+                      if (route !== "all") {
+                        return <span className="block whitespace-nowrap">{row.item.event}</span>
+                      }
                       const parcels = new Map<string, string>()
                       for (const o of row.item.orders) {
                         if (o.dispatchReceipt && !parcels.has(o.dispatchReceipt)) {
@@ -734,7 +807,9 @@ export default function ArrivalListClient() {
             <div key={event} className="rounded-xl border border-cream-border bg-white overflow-hidden">
               <button type="button" onClick={() => toggleEvent(event)} className="w-full flex items-center gap-2.5 px-4 py-3 border-l-[3px] border-brand text-left">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`text-faint transition-transform ${eventCollapsed ? "-rotate-90" : ""}`}><path d="m6 9 6 6 6-6" /></svg>
-                <span className="font-bold text-sm text-foreground">{event}</span>
+                {route === "all"
+                  ? <span className="font-bold text-sm text-foreground">{event}</span>
+                  : <ScheduleChip receipt={event} sentOn={parcelDates.get(event) ?? ""} />}
                 <span className="ml-auto text-xs text-faint">{allItems.length} items</span>
               </button>
               {!eventCollapsed && [...storeMap.entries()].map(([store, storeItems]) => {
