@@ -351,7 +351,7 @@ export default function SearchableSelect({
           // mousedown (not click) + preventDefault so clearing doesn't focus the
           // input and pop the dropdown open. Matches OptionItem's select pattern.
           onMouseDown={(e) => { e.preventDefault(); selectOption("") }}
-          className="absolute right-8 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center text-gray-400 hover:text-gray-600"
+          className="absolute right-8 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center text-faint hover:text-muted-strong"
         >
           <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
             <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
@@ -359,7 +359,7 @@ export default function SearchableSelect({
         </button>
       )}
       <svg
-        className={`absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none transition-transform ${open ? "rotate-180" : ""}`}
+        className={`absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-faint pointer-events-none transition-transform ${open ? "rotate-180" : ""}`}
         viewBox="0 0 20 20"
         fill="currentColor"
       >
@@ -396,11 +396,11 @@ export default function SearchableSelect({
                 highlighted={highlightIdx === 0}
                 selected={false}
                 onSelect={() => selectOption("")}
-                className="text-gray-400"
+                className="text-faint"
               />
             )}
             {LARGE_LIST && !alwaysShowAll && !debouncedQuery ? (
-              <li className="px-3 py-2 text-sm text-gray-400 whitespace-nowrap">
+              <li className="px-3 py-2 text-sm text-faint whitespace-nowrap">
                 {hasQuery ? "Searching…" : "Type to search…"}
               </li>
             ) : showAddRow ? (
@@ -411,7 +411,7 @@ export default function SearchableSelect({
                 onSelect={() => selectOption(inputValue.trim())}
               />
             ) : filtered.length === 0 ? (
-              <li className="px-3 py-2 text-sm text-gray-400 whitespace-nowrap">No results</li>
+              <li className="px-3 py-2 text-sm text-faint whitespace-nowrap">No results</li>
             ) : (
               filtered.map((opt, i) => {
                 const idx = i + (showClearRow ? 1 : 0)
@@ -443,11 +443,11 @@ export default function SearchableSelect({
                 highlighted={highlightIdx === 0}
                 selected={false}
                 onSelect={() => selectOption("")}
-                className="text-gray-400"
+                className="text-faint"
               />
             )}
             {LARGE_LIST && !alwaysShowAll && !debouncedQuery ? (
-              <li className="px-3 py-3 text-sm text-gray-400 text-center">
+              <li className="px-3 py-3 text-sm text-faint text-center">
                 {hasQuery ? "Searching…" : "Type to search..."}
               </li>
             ) : showAddRow ? (
@@ -463,7 +463,7 @@ export default function SearchableSelect({
                 <span>Add <span className="font-medium">&ldquo;{inputValue.trim()}&rdquo;</span></span>
               </li>
             ) : filtered.length === 0 ? (
-              <li className="px-3 py-3 text-sm text-gray-400 text-center">
+              <li className="px-3 py-3 text-sm text-faint text-center">
                 No results
               </li>
             ) : (
@@ -575,7 +575,7 @@ const OptionItem = memo(function OptionItem({
     >
       <span>{label}</span>
       {meta && (
-        <span className="ml-2 shrink-0 text-xs text-gray-400">{meta}</span>
+        <span className="ml-2 shrink-0 text-xs text-faint">{meta}</span>
       )}
     </li>
   )

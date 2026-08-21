@@ -108,7 +108,7 @@ function CollapseBtn({ collapsed, onClick }: { collapsed: boolean; onClick: () =
   return (
     <button
       onClick={onClick}
-      className="inline-flex items-center justify-center w-4 h-4 rounded border border-gray-300 bg-white text-gray-500 hover:text-brand hover:border-brand transition-colors text-xs font-bold shrink-0"
+      className="inline-flex items-center justify-center w-4 h-4 rounded border border-cream-border bg-white text-muted hover:text-brand hover:border-brand transition-colors text-xs font-bold shrink-0"
     >
       {collapsed ? "+" : "−"}
     </button>
@@ -118,7 +118,7 @@ function CollapseBtn({ collapsed, onClick }: { collapsed: boolean; onClick: () =
 const PAID_DOT: Record<PaidStatus, string> = {
   paid:    "bg-green-500",
   partial: "bg-yellow-400",
-  unpaid:  "bg-gray-300",
+  unpaid:  "bg-divider",
 }
 const PAID_LABEL: Record<PaidStatus, string> = {
   paid:    "Paid",
@@ -193,7 +193,7 @@ function CustomerBadge({ orders }: { orders: { customer: string; qty: number; pa
         type="button"
         onClick={handleToggle}
         title={allPaid ? "All customers paid" : `${paidCount} of ${totalCount} paid`}
-        className="inline-flex items-baseline gap-1 text-gray-400 hover:text-brand transition-colors cursor-pointer"
+        className="inline-flex items-baseline gap-1 text-faint hover:text-brand transition-colors cursor-pointer"
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="self-center">
           <circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
@@ -218,7 +218,7 @@ function CustomerBadge({ orders }: { orders: { customer: string; qty: number; pa
           {entries.map((e) => (
             <div
               key={e.customer}
-              className="flex items-center justify-between gap-3 px-3 py-1 text-xs hover:bg-gray-50 whitespace-nowrap"
+              className="flex items-center justify-between gap-3 px-3 py-1 text-xs hover:bg-surface-muted whitespace-nowrap"
             >
               <span className="flex items-center gap-2 min-w-0">
                 <span
@@ -228,7 +228,7 @@ function CustomerBadge({ orders }: { orders: { customer: string; qty: number; pa
                 />
                 <span className="text-foreground truncate">{displayIg(e.customer)}</span>
               </span>
-              <span className="text-gray-500 tabular-nums shrink-0">{e.qty}×</span>
+              <span className="text-muted tabular-nums shrink-0">{e.qty}×</span>
             </div>
           ))}
         </div>
@@ -411,7 +411,7 @@ export default function ArrivalListClient() {
           onClick={toggleSelectAll}
           aria-label={allSelected ? "Deselect all" : "Select all"}
           title={allSelected ? "Deselect all" : "Select all"}
-          className="inline-flex items-center gap-1.5 shrink-0 rounded-lg border border-cream-border h-[38px] px-3 text-sm text-gray-600 bg-white hover:border-brand transition-colors"
+          className="inline-flex items-center gap-1.5 shrink-0 rounded-lg border border-cream-border h-[38px] px-3 text-sm text-muted-strong bg-white hover:border-brand transition-colors"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M9 11l3 3L22 4" />
@@ -444,7 +444,7 @@ export default function ArrivalListClient() {
       <div className="hidden md:block rounded-xl border border-cream-border bg-white overflow-hidden">
         {/* Same title-bar style as OverbuyTransitList's "INVENTORY AWAITING ARRIVAL"
             below, so the two sections read as one matched pair. */}
-        <div className="px-4 py-2.5 border-b border-cream-border border-l-[3px] border-brand bg-gray-50/80">
+        <div className="px-4 py-2.5 border-b border-cream-border border-l-[3px] border-brand bg-surface-muted/80">
           <div className="font-bold text-sm text-foreground">CUSTOMER ORDER</div>
         </div>
         {/* table-fixed: locks Event/Store/Receipt/Qty/action to their declared
@@ -454,19 +454,19 @@ export default function ArrivalListClient() {
             fixed width (gets whatever's left) and stays nowrap. */}
         <table className="w-full text-sm border-collapse table-fixed">
           <thead>
-            <tr className="border-b border-cream-border bg-gray-50/80">
-              <th className="text-left px-4 py-2.5 font-medium text-gray-500 w-44">Event</th>
-              <th className="text-left px-4 py-2.5 font-medium text-gray-500 w-36">Store</th>
-              <th className="text-left px-4 py-2.5 font-medium text-gray-500">Product</th>
-              <th className="text-left px-4 py-2.5 font-medium text-gray-500 w-28">Receipt</th>
-              <th className="text-right px-4 py-2.5 font-medium text-gray-500 w-14">Qty</th>
+            <tr className="border-b border-cream-border bg-surface-muted/80">
+              <th className="text-left px-4 py-2.5 font-medium text-muted w-44">Event</th>
+              <th className="text-left px-4 py-2.5 font-medium text-muted w-36">Store</th>
+              <th className="text-left px-4 py-2.5 font-medium text-muted">Product</th>
+              <th className="text-left px-4 py-2.5 font-medium text-muted w-28">Receipt</th>
+              <th className="text-right px-4 py-2.5 font-medium text-muted w-14">Qty</th>
               <th className="px-4 py-2.5 w-10" />
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 && (
               <tr>
-                <td colSpan={6} className="text-center text-gray-400 py-12 text-sm">
+                <td colSpan={6} className="text-center text-faint py-12 text-sm">
                   No items pending arrival
                 </td>
               </tr>
@@ -479,7 +479,7 @@ export default function ArrivalListClient() {
                       <div className="flex items-center gap-2">
                         <CollapseBtn collapsed onClick={() => toggleDesktopEvent(row.event)} />
                         <span className="font-medium text-foreground">{row.event}</span>
-                        <span className="text-xs text-gray-400">{row.totalItems} items</span>
+                        <span className="text-xs text-faint">{row.totalItems} items</span>
                       </div>
                     </td>
                   </tr>
@@ -497,11 +497,11 @@ export default function ArrivalListClient() {
                         </div>
                       </td>
                     )}
-                    <td colSpan={5} className="px-4 py-2.5 bg-gray-50/40">
+                    <td colSpan={5} className="px-4 py-2.5 bg-surface-muted/40">
                       <div className="flex items-center gap-2">
                         <CollapseBtn collapsed onClick={() => toggleDesktopStore(row.event, row.store)} />
-                        <span className="text-gray-600">{row.store}</span>
-                        <span className="text-xs text-gray-400">{row.totalItems} items</span>
+                        <span className="text-muted-strong">{row.store}</span>
+                        <span className="text-xs text-faint">{row.totalItems} items</span>
                       </div>
                     </td>
                   </tr>
@@ -511,7 +511,7 @@ export default function ArrivalListClient() {
               return (
                 <tr
                   key={`${row.event}|${row.store}|${row.item.productId}`}
-                  className="border-b border-cream-border hover:bg-gray-50/50 transition-colors"
+                  className="border-b border-cream-border hover:bg-surface-muted/50 transition-colors"
                 >
                   {row.showEvent && (
                     <td rowSpan={row.eventRowSpan} className="px-4 py-2.5 align-top border-r border-cream-border">
@@ -525,7 +525,7 @@ export default function ArrivalListClient() {
                     <td rowSpan={row.storeRowSpan} className="px-4 py-2.5 align-top border-r border-cream-border">
                       <div className="flex items-center gap-2 pt-0.5">
                         <CollapseBtn collapsed={false} onClick={() => toggleDesktopStore(row.event, row.store)} />
-                        <span className="text-gray-600">{row.store}</span>
+                        <span className="text-muted-strong">{row.store}</span>
                       </div>
                     </td>
                   )}
@@ -548,7 +548,7 @@ export default function ArrivalListClient() {
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-2.5 text-gray-500">
+                  <td className="px-4 py-2.5 text-muted">
                     {(() => {
                       const receipts = Array.from(
                         new Set(row.item.orders.map((o) => o.dispatchReceipt).filter(Boolean)),
@@ -564,7 +564,7 @@ export default function ArrivalListClient() {
                   <td className="px-4 py-2.5 text-right whitespace-nowrap">
                     <span className="tabular-nums font-bold text-foreground">{row.item.totalPending}</span>
                     {row.item.totalPending < row.item.totalBought && (
-                      <span className="text-gray-400 font-normal tabular-nums" title="Partially arrived">
+                      <span className="text-faint font-normal tabular-nums" title="Partially arrived">
                         {" "}/ {row.item.totalBought}
                       </span>
                     )}
@@ -573,7 +573,7 @@ export default function ArrivalListClient() {
                     <button
                       onClick={() => setArrivingItem(row.item)}
                       title="Mark as arrived"
-                      className="text-gray-400 hover:text-blue-600 transition-colors"
+                      className="text-faint hover:text-blue-600 transition-colors"
                     >
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
@@ -592,7 +592,7 @@ export default function ArrivalListClient() {
       {/* Grouped cards (mobile) */}
       <div className="md:hidden flex flex-col gap-2.5">
         {grouped.size === 0 && (
-          <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">No items pending arrival</div>
+          <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-faint">No items pending arrival</div>
         )}
         {[...grouped.entries()].map(([event, storeMap]) => {
           const allItems = [...storeMap.values()].flat()
@@ -600,19 +600,19 @@ export default function ArrivalListClient() {
           return (
             <div key={event} className="rounded-xl border border-cream-border bg-white overflow-hidden">
               <button type="button" onClick={() => toggleEvent(event)} className="w-full flex items-center gap-2.5 px-4 py-3 border-l-[3px] border-brand text-left">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`text-gray-400 transition-transform ${eventCollapsed ? "-rotate-90" : ""}`}><path d="m6 9 6 6 6-6" /></svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`text-faint transition-transform ${eventCollapsed ? "-rotate-90" : ""}`}><path d="m6 9 6 6 6-6" /></svg>
                 <span className="font-bold text-sm text-foreground">{event}</span>
-                <span className="ml-auto text-xs text-gray-400">{allItems.length} items</span>
+                <span className="ml-auto text-xs text-faint">{allItems.length} items</span>
               </button>
               {!eventCollapsed && [...storeMap.entries()].map(([store, storeItems]) => {
                 const storeKey = `${event}|${store}`
                 const storeCollapsed = collapsedStores.has(storeKey)
                 return (
                   <div key={storeKey}>
-                    <button type="button" onClick={() => toggleStore(event, store)} className="w-full flex items-center gap-2 px-4 py-2.5 bg-gray-50/60 border-t border-cream-border text-left">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`text-gray-400 transition-transform ${storeCollapsed ? "-rotate-90" : ""}`}><path d="m6 9 6 6 6-6" /></svg>
-                      <span className="text-xs font-bold text-gray-600">{store}</span>
-                      <span className="ml-auto text-[11px] text-gray-400">{storeItems.length}</span>
+                    <button type="button" onClick={() => toggleStore(event, store)} className="w-full flex items-center gap-2 px-4 py-2.5 bg-surface-muted/60 border-t border-cream-border text-left">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`text-faint transition-transform ${storeCollapsed ? "-rotate-90" : ""}`}><path d="m6 9 6 6 6-6" /></svg>
+                      <span className="text-xs font-bold text-muted-strong">{store}</span>
+                      <span className="ml-auto text-[11px] text-faint">{storeItems.length}</span>
                     </button>
                     {!storeCollapsed && storeItems.map((item) => (
                       <div key={item.productId} className="flex items-center gap-3 px-4 py-2.5 border-t border-cream-border">
@@ -636,7 +636,7 @@ export default function ArrivalListClient() {
                         <div className="text-sm font-bold tabular-nums whitespace-nowrap text-foreground">
                           {item.totalPending}
                           {item.totalPending < item.totalBought && (
-                            <span className="text-gray-400 font-normal" title="Partially arrived"> / {item.totalBought}</span>
+                            <span className="text-faint font-normal" title="Partially arrived"> / {item.totalBought}</span>
                           )}
                         </div>
                         <button type="button" onClick={() => setArrivingItem(item)} aria-label="Mark as arrived" className="w-9 h-9 rounded-lg border border-cream-border text-brand flex items-center justify-center shrink-0 active:bg-blue-50 active:text-blue-700 active:border-blue-200">
@@ -852,20 +852,20 @@ function ConfirmReceivePanel({
           <h3 className="text-sm font-semibold text-foreground">
             Mark {totalQty} item{totalQty === 1 ? "" : "s"} received
           </h3>
-          <p className="text-xs text-gray-500 mt-0.5">Adjust quantities if needed. Units are assigned to waiting customers, highest-priority first.</p>
+          <p className="text-xs text-muted mt-0.5">Adjust quantities if needed. Units are assigned to waiting customers, highest-priority first.</p>
         </div>
 
         <div className="px-5 py-4 overflow-y-auto min-h-0 flex flex-col gap-4">
           {[...byEvent.entries()].map(([event, evItems]) => (
             <div key={event} className="flex flex-col gap-2">
-              <div className="text-xs font-semibold text-gray-500">{event}</div>
+              <div className="text-xs font-semibold text-muted">{event}</div>
               {evItems.map((it) => {
                 const k = selKey(it)
                 return (
                   <div key={k} className="flex items-center gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="text-sm text-foreground break-words">{it.productName}</div>
-                      {it.store && <div className="text-[11px] text-gray-400">{it.store}</div>}
+                      {it.store && <div className="text-[11px] text-faint">{it.store}</div>}
                     </div>
                     <input
                       type="number"
@@ -874,7 +874,7 @@ function ConfirmReceivePanel({
                       onChange={(e) => setQtys((p) => ({ ...p, [k]: e.target.value }))}
                       className="w-20 shrink-0 border border-cream-border rounded-lg px-2 py-1.5 text-sm text-right bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
                     />
-                    <span className="text-[11px] text-gray-400 w-16 shrink-0">/ {it.totalPending} pending</span>
+                    <span className="text-[11px] text-faint w-16 shrink-0">/ {it.totalPending} pending</span>
                   </div>
                 )
               })}
@@ -894,7 +894,7 @@ function ConfirmReceivePanel({
               type="button"
               onClick={onClose}
               disabled={submitting}
-              className="px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+              className="px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
             >
               Cancel
             </button>
@@ -1079,11 +1079,11 @@ function ArriveModal({
         <div className="flex items-start justify-between gap-3 shrink-0">
           <div>
             <div className="text-sm font-semibold text-foreground">{item.productName}</div>
-            <div className="text-xs text-gray-400 mt-0.5">
+            <div className="text-xs text-faint mt-0.5">
               {item.event}{item.store ? ` · ${item.store}` : ""}
             </div>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-brand transition-colors shrink-0">
+          <button onClick={onClose} className="text-faint hover:text-brand transition-colors shrink-0">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M18 6 6 18M6 6l12 12" />
             </svg>
@@ -1095,7 +1095,7 @@ function ArriveModal({
             its content length) is active. */}
         <div className="flex-1 overflow-y-auto min-h-0 flex flex-col gap-5 -mr-2 pr-2">
         <div className="flex flex-col gap-1.5">
-          <span className="text-xs font-medium text-gray-500">What happened?</span>
+          <span className="text-xs font-medium text-muted">What happened?</span>
           <div className="flex rounded-lg border border-cream-border overflow-hidden text-xs">
             {([
               ["arrive", "Arrived"],
@@ -1118,7 +1118,7 @@ function ArriveModal({
                     // to the all-selected behavior the delivery-problem modes use.
                     setCancelIds(m === "cancelled" ? new Set() : new Set(item.orders.map((o) => o.id)))
                   }}
-                  className={`flex-1 px-2 py-1.5 whitespace-nowrap transition-colors ${active ? `${activeCls} font-medium` : "bg-white text-gray-600 hover:bg-cream"}`}
+                  className={`flex-1 px-2 py-1.5 whitespace-nowrap transition-colors ${active ? `${activeCls} font-medium` : "bg-white text-muted-strong hover:bg-cream"}`}
                 >
                   {label}
                 </button>
@@ -1131,16 +1131,16 @@ function ArriveModal({
             (pending / unit_buy) instead of a typed count — shown here read-only
             so the row layout matches Wrong/Broken/Arrived OK. */}
         <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-medium text-gray-500">
+          <label className="text-xs font-medium text-muted">
             {mode === "wrong" ? "Units received (wrong product)" : mode === "broken" ? "Units broken" : mode === "missing" ? "Units missing" : mode === "cancelled" ? "Units cancelled" : "Units arrived"}{" "}
-            <span className="text-gray-400">(pending: {item.totalPending})</span>
+            <span className="text-faint">(pending: {item.totalPending})</span>
           </label>
           {mode === "missing" || mode === "cancelled" ? (
-            <div className="border border-cream-border rounded-lg px-3 py-2 text-sm bg-cream/50 text-gray-500 tabular-nums">
+            <div className="border border-cream-border rounded-lg px-3 py-2 text-sm bg-cream/50 text-muted tabular-nums">
               {mode === "missing"
                 ? item.orders.filter((o) => cancelIds.has(o.id)).reduce((s, o) => s + o.pending, 0)
                 : item.orders.filter((o) => cancelIds.has(o.id)).reduce((s, o) => s + o.unitBuy, 0)}{" "}
-              <span className="text-gray-400">(from checked orders below)</span>
+              <span className="text-faint">(from checked orders below)</span>
             </div>
           ) : (
             <input
@@ -1167,14 +1167,14 @@ function ArriveModal({
                 options={itemOptions}
                 placeholder="Search item…"
               />
-              <p className="text-[11px] text-gray-400">Logged to Inventory as ready stock.</p>
+              <p className="text-[11px] text-faint">Logged to Inventory as ready stock.</p>
             </div>
 
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-yellow-700">Affected orders</label>
               <div className="flex flex-col gap-0.5 max-h-40 overflow-y-auto pr-0.5">
                 {item.orders.map((o) => (
-                  <label key={o.id} className="flex items-center justify-between gap-2 px-2 py-1 rounded-md bg-gray-50 cursor-pointer">
+                  <label key={o.id} className="flex items-center justify-between gap-2 px-2 py-1 rounded-md bg-surface-muted cursor-pointer">
                     <span className="flex items-center gap-1.5 min-w-0">
                       <input
                         type="checkbox"
@@ -1187,15 +1187,15 @@ function ArriveModal({
                         })}
                         className="accent-yellow-600"
                       />
-                      <span className="truncate text-gray-600">{displayIg(o.customer)}</span>
+                      <span className="truncate text-muted-strong">{displayIg(o.customer)}</span>
                     </span>
-                    <span className="text-gray-400 tabular-nums shrink-0">
+                    <span className="text-faint tabular-nums shrink-0">
                       {mode === "cancelled" ? o.unitBuy : o.pending}×
                     </span>
                   </label>
                 ))}
               </div>
-              <p className="text-[11px] text-gray-400">
+              <p className="text-[11px] text-faint">
                 {mode === "broken"
                   ? "Broken units are logged to Inventory (flagged “broken”, not sellable). "
                   : mode === "missing"
@@ -1208,7 +1208,7 @@ function ArriveModal({
               {mode === "cancelled" && (
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-medium text-yellow-700">
-                    Inventory receipt <span className="text-gray-400 font-normal">(tags the returned stock)</span>
+                    Inventory receipt <span className="text-faint font-normal">(tags the returned stock)</span>
                   </label>
                   <input
                     type="text"
@@ -1228,7 +1228,7 @@ function ArriveModal({
           <div className="flex flex-col gap-2 text-xs">
             {preview.filled.length > 0 && (
               <div>
-                <div className="font-medium text-gray-500 mb-1">Will mark as arrived ({preview.filled.reduce((s, f) => s + f.allocated, 0)} units):</div>
+                <div className="font-medium text-muted mb-1">Will mark as arrived ({preview.filled.reduce((s, f) => s + f.allocated, 0)} units):</div>
                 <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto pr-0.5">
                   {preview.filled.map((f) => (
                     <div key={f.order.id} className="flex items-center justify-between px-2 py-1 rounded-md bg-blue-50">
@@ -1247,12 +1247,12 @@ function ArriveModal({
 
             {preview.unfilled.length > 0 && (
               <div>
-                <div className="font-medium text-gray-500 mb-1">Stays in list ({preview.unfilled.reduce((s, o) => s + o.pending, 0)} units):</div>
+                <div className="font-medium text-muted mb-1">Stays in list ({preview.unfilled.reduce((s, o) => s + o.pending, 0)} units):</div>
                 <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto pr-0.5">
                   {preview.unfilled.map((o) => (
-                    <div key={o.id} className="flex items-center justify-between px-2 py-1 rounded-md bg-gray-50">
-                      <span className="text-gray-500 truncate">{displayIg(o.customer)}</span>
-                      <span className="text-gray-400 font-medium ml-2 shrink-0 tabular-nums">{o.pending}×</span>
+                    <div key={o.id} className="flex items-center justify-between px-2 py-1 rounded-md bg-surface-muted">
+                      <span className="text-muted truncate">{displayIg(o.customer)}</span>
+                      <span className="text-faint font-medium ml-2 shrink-0 tabular-nums">{o.pending}×</span>
                     </div>
                   ))}
                 </div>
@@ -1277,7 +1277,7 @@ function ArriveModal({
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+            className="px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
           >
             Cancel
           </button>
@@ -1433,7 +1433,7 @@ function NotReceivedPanel({
           <h3 className="text-sm font-semibold text-foreground">
             Not received — {items.length} item{items.length === 1 ? "" : "s"}
           </h3>
-          <p className="text-xs text-gray-500 mt-0.5">
+          <p className="text-xs text-muted mt-0.5">
             Records the chosen quantity as not received, refunding the highest-priority orders first. Leftover units stay pending.
           </p>
         </div>
@@ -1447,7 +1447,7 @@ function NotReceivedPanel({
                   key={m}
                   type="button"
                   onClick={() => setMode(m)}
-                  className={`flex-1 px-2 py-1.5 font-medium transition-colors ${active ? "bg-amber-500 text-white" : "text-gray-500 hover:bg-cream"}`}
+                  className={`flex-1 px-2 py-1.5 font-medium transition-colors ${active ? "bg-amber-500 text-white" : "text-muted hover:bg-cream"}`}
                 >
                   {label}
                 </button>
@@ -1459,7 +1459,7 @@ function NotReceivedPanel({
         <div className="px-5 py-4 overflow-y-auto min-h-0 flex flex-col gap-4">
           {[...byEvent.entries()].map(([event, evItems]) => (
             <div key={event} className="flex flex-col gap-2">
-              <div className="text-xs font-semibold text-gray-500">{event}</div>
+              <div className="text-xs font-semibold text-muted">{event}</div>
               {evItems.map((it) => {
                 const k = selKey(it)
                 const sku = received[k]
@@ -1469,7 +1469,7 @@ function NotReceivedPanel({
                     <div className="flex items-center gap-3">
                       <div className="flex-1 min-w-0">
                         <div className="text-sm text-foreground break-words">{it.productName}</div>
-                        {it.store && <div className="text-[11px] text-gray-400">{it.store}</div>}
+                        {it.store && <div className="text-[11px] text-faint">{it.store}</div>}
                       </div>
                       <input
                         type="number"
@@ -1479,7 +1479,7 @@ function NotReceivedPanel({
                         onChange={(e) => setQtys((p) => ({ ...p, [k]: e.target.value }))}
                         className="w-20 shrink-0 border border-cream-border rounded-lg px-2 py-1.5 text-sm text-right bg-white focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-500 transition-colors"
                       />
-                      <span className="text-[11px] text-gray-400 w-16 shrink-0">/ {it.totalPending} pending</span>
+                      <span className="text-[11px] text-faint w-16 shrink-0">/ {it.totalPending} pending</span>
                     </div>
                     {mode === "wrong" && (
                       <div className="flex flex-col gap-1">
@@ -1511,7 +1511,7 @@ function NotReceivedPanel({
               type="button"
               onClick={onClose}
               disabled={submitting}
-              className="px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+              className="px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
             >
               Cancel
             </button>

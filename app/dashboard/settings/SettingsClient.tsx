@@ -113,7 +113,7 @@ export default function SettingsClient() {
   }, [])
 
   if (loadError) return <p className="text-sm text-red-600">{loadError}</p>
-  if (!templates) return <p className="text-sm text-gray-500">Loading…</p>
+  if (!templates) return <p className="text-sm text-muted">Loading…</p>
 
   return (
     <div className="flex flex-col gap-4">
@@ -126,7 +126,7 @@ export default function SettingsClient() {
             className={`flex-1 shrink-0 flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
               tab === t.key
                 ? "bg-brand text-white"
-                : "text-gray-500 hover:text-foreground"
+                : "text-muted hover:text-foreground"
             }`}
           >
             {t.label}
@@ -228,7 +228,7 @@ function BusinessProfileSection() {
             onClick={handleReset}
             title="Reset to default"
             aria-label="Reset to default"
-            className="inline-flex items-center justify-center h-[30px] w-[30px] rounded-lg border border-cream-border text-gray-500 hover:border-brand hover:text-brand transition-colors"
+            className="inline-flex items-center justify-center h-[30px] w-[30px] rounded-lg border border-cream-border text-muted hover:border-brand hover:text-brand transition-colors"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="1 4 1 10 7 10" />
@@ -248,13 +248,13 @@ function BusinessProfileSection() {
 
       {loadError && <p className="text-xs text-red-600">{loadError}</p>}
       {error && <p className="text-xs text-red-600">{error}</p>}
-      {!profile && !loadError && <p className="text-xs text-gray-500">Loading…</p>}
+      {!profile && !loadError && <p className="text-xs text-muted">Loading…</p>}
 
       {profile && (
         <div className="grid md:grid-cols-2 gap-3">
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-gray-500">Bank account holder</span>
-            <span className="text-[10px] text-gray-400">Used in the invoice message.</span>
+            <span className="text-xs text-muted">Bank account holder</span>
+            <span className="text-[10px] text-faint">Used in the invoice message.</span>
             <input
               value={profile.bankAccountHolder}
               onChange={(e) => field("bankAccountHolder", e.target.value)}
@@ -262,8 +262,8 @@ function BusinessProfileSection() {
             />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-gray-500">Bank accounts</span>
-            <span className="text-[10px] text-gray-400">One "Bank Name 123456789" per line. Used in the invoice message.</span>
+            <span className="text-xs text-muted">Bank accounts</span>
+            <span className="text-[10px] text-faint">One "Bank Name 123456789" per line. Used in the invoice message.</span>
             <textarea
               value={profile.bankAccountLines}
               onChange={(e) => field("bankAccountLines", e.target.value)}
@@ -271,8 +271,8 @@ function BusinessProfileSection() {
             />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-gray-500">Public site URL</span>
-            <span className="text-[10px] text-gray-400">Used in the invoice and shipment messages.</span>
+            <span className="text-xs text-muted">Public site URL</span>
+            <span className="text-[10px] text-faint">Used in the invoice and shipment messages.</span>
             <input
               value={profile.publicSiteUrl}
               onChange={(e) => field("publicSiteUrl", e.target.value)}
@@ -280,8 +280,8 @@ function BusinessProfileSection() {
             />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-gray-500">Owner name</span>
-            <span className="text-[10px] text-gray-400">Not used in any message yet.</span>
+            <span className="text-xs text-muted">Owner name</span>
+            <span className="text-[10px] text-faint">Not used in any message yet.</span>
             <input
               value={profile.ownerName}
               onChange={(e) => field("ownerName", e.target.value)}
@@ -289,8 +289,8 @@ function BusinessProfileSection() {
             />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-gray-500">Store name</span>
-            <span className="text-[10px] text-gray-400">Not used in any message yet.</span>
+            <span className="text-xs text-muted">Store name</span>
+            <span className="text-[10px] text-faint">Not used in any message yet.</span>
             <input
               value={profile.storeName}
               onChange={(e) => field("storeName", e.target.value)}
@@ -298,8 +298,8 @@ function BusinessProfileSection() {
             />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-gray-500">Phone number</span>
-            <span className="text-[10px] text-gray-400">Not used in any message yet.</span>
+            <span className="text-xs text-muted">Phone number</span>
+            <span className="text-[10px] text-faint">Not used in any message yet.</span>
             <input
               value={profile.phoneNumber}
               onChange={(e) => field("phoneNumber", e.target.value)}
@@ -426,7 +426,7 @@ function CardHeader({
           onClick={onReset}
           title="Reset to default"
           aria-label="Reset to default"
-          className="inline-flex items-center justify-center h-[30px] w-[30px] rounded-lg border border-cream-border text-gray-500 hover:border-brand hover:text-brand transition-colors"
+          className="inline-flex items-center justify-center h-[30px] w-[30px] rounded-lg border border-cream-border text-muted hover:border-brand hover:text-brand transition-colors"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="1 4 1 10 7 10" />
@@ -474,13 +474,13 @@ function GeneralCard({ defaults, setDefaults, loadError, countries }: ProductDef
 
       {loadError && <p className="text-xs text-red-600">{loadError}</p>}
       {error && <p className="text-xs text-red-600">{error}</p>}
-      {!defaults && !loadError && <p className="text-xs text-gray-500">Loading…</p>}
+      {!defaults && !loadError && <p className="text-xs text-muted">Loading…</p>}
 
       {defaults && (
         <div className="grid md:grid-cols-3 gap-3">
           <label className="flex flex-col gap-1">
             <div className="flex items-center gap-1">
-              <span className="text-xs text-gray-500">Operational fee</span>
+              <span className="text-xs text-muted">Operational fee</span>
               <InfoTooltip text="Pre-filled into the Add Product form. Editing this doesn't change any existing product." />
             </div>
             <input
@@ -492,7 +492,7 @@ function GeneralCard({ defaults, setDefaults, loadError, countries }: ProductDef
           </label>
           <label className="flex flex-col gap-1">
             <div className="flex items-center gap-1">
-              <span className="text-xs text-gray-500">Packing fee</span>
+              <span className="text-xs text-muted">Packing fee</span>
               <InfoTooltip text="Pre-filled into the Add Product form. Editing this doesn't change any existing product." />
             </div>
             <input
@@ -503,7 +503,7 @@ function GeneralCard({ defaults, setDefaults, loadError, countries }: ProductDef
             />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-gray-500">Markup rate %</span>
+            <span className="text-xs text-muted">Markup rate %</span>
             <input
               type="number"
               value={defaults.markupPct}
@@ -513,7 +513,7 @@ function GeneralCard({ defaults, setDefaults, loadError, countries }: ProductDef
           </label>
           <label className="flex flex-col gap-1">
             <div className="flex items-center gap-1">
-              <span className="text-xs text-gray-500">Down Payment %</span>
+              <span className="text-xs text-muted">Down Payment %</span>
               <InfoTooltip text="Customers below this % of an event's total get the DP reminder message instead of the invoice message. 0 = feature off." />
             </div>
             <input
@@ -527,7 +527,7 @@ function GeneralCard({ defaults, setDefaults, loadError, countries }: ProductDef
           </label>
           <label className="flex flex-col gap-1">
             <div className="flex items-center gap-1">
-              <span className="text-xs text-gray-500">Default pricing</span>
+              <span className="text-xs text-muted">Default pricing</span>
               <InfoTooltip text="Which tab the Add Product form opens on. Profit Margin and both Rate methods need a country, so pair one of those with a Default country below or the form opens with that field empty." />
             </div>
             <select
@@ -542,7 +542,7 @@ function GeneralCard({ defaults, setDefaults, loadError, countries }: ProductDef
           </label>
           <label className="flex flex-col gap-1">
             <div className="flex items-center gap-1">
-              <span className="text-xs text-gray-500">Default country</span>
+              <span className="text-xs text-muted">Default country</span>
               <InfoTooltip text="Which country the Add Product form starts on. For Markup and Flat Fee this also decides whether that form opens with a typed base cost (IDR) or one derived from valas." />
             </div>
             <select
@@ -600,20 +600,20 @@ function ProfitMarginCard({ defaults, setDefaults, loadError }: ProductDefaultsC
     <div className="bg-white border border-cream-border rounded-xl p-4 flex flex-col gap-3">
       <CardHeader title="Profit Margin" saved={saved} saving={saving} onSave={handleSave} onReset={handleReset} canSave={!!defaults} />
 
-      <p className="text-xs text-gray-500">
+      <p className="text-xs text-muted">
         Price is cost ÷ (1 − Profit %), plus the operational and packing fees, rounded up to
         the step below.
       </p>
 
       {loadError && <p className="text-xs text-red-600">{loadError}</p>}
       {error && <p className="text-xs text-red-600">{error}</p>}
-      {!defaults && !loadError && <p className="text-xs text-gray-500">Loading…</p>}
+      {!defaults && !loadError && <p className="text-xs text-muted">Loading…</p>}
 
       {defaults && (
         <div className="grid md:grid-cols-4 gap-3">
           <label className="flex flex-col gap-1">
             <div className="flex items-center gap-1">
-              <span className="text-xs text-gray-500">Profit %</span>
+              <span className="text-xs text-muted">Profit %</span>
               <InfoTooltip text="What the Add Product form starts on. Each product keeps its own copy, so editing this changes nothing that already exists. 100 or more leaves nothing to divide into, and the price computes as 0." />
             </div>
             <input
@@ -625,7 +625,7 @@ function ProfitMarginCard({ defaults, setDefaults, loadError }: ProductDefaultsC
           </label>
           <label className="flex flex-col gap-1">
             <div className="flex items-center gap-1">
-              <span className="text-xs text-gray-500">Rounding</span>
+              <span className="text-xs text-muted">Rounding</span>
               {/* Unlike Profit % beside it, this is not a pre-fill — every Profit Margin
                   product is rounded by whatever this holds when it is saved. */}
               <InfoTooltip text="Prices round UP to this step. Separate from the Rate card's step, and read on a product's next save — so changing it reprices each one then, not now." />
@@ -643,27 +643,27 @@ function ProfitMarginCard({ defaults, setDefaults, loadError }: ProductDefaultsC
               editing them here would mean two Saves owning the same field. Shown so the
               breakdown below is self-contained instead of sending the owner to scroll up. */}
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-gray-500">Operational fee</span>
+            <span className="text-xs text-muted">Operational fee</span>
             <div
               title="Set in the General card above"
-              className={`${fieldInputCls} bg-gray-50 text-gray-400 cursor-not-allowed`}
+              className={`${fieldInputCls} bg-surface-muted text-faint cursor-not-allowed`}
             >
               {defaults.operationalFee}
             </div>
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-gray-500">Packing fee</span>
+            <span className="text-xs text-muted">Packing fee</span>
             <div
               title="Set in the General card above"
-              className={`${fieldInputCls} bg-gray-50 text-gray-400 cursor-not-allowed`}
+              className={`${fieldInputCls} bg-surface-muted text-faint cursor-not-allowed`}
             >
               {defaults.packingFee}
             </div>
           </label>
 
-          <div className="col-span-4 rounded-lg bg-gray-50 border border-cream-border px-3 py-2 flex flex-col gap-1.5">
+          <div className="col-span-4 rounded-lg bg-surface-muted border border-cream-border px-3 py-2 flex flex-col gap-1.5">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs font-medium text-gray-500">Try a base cost</span>
+              <span className="text-xs font-medium text-muted">Try a base cost</span>
               <MoneyInput value={tryBaseProfit} onChange={setTryBaseProfit} name="try-base-profit-margin" wrapClassName="w-32 shrink-0" />
             </div>
             {defaults.profitPct >= 100 ? (
@@ -673,16 +673,16 @@ function ProfitMarginCard({ defaults, setDefaults, loadError }: ProductDefaultsC
               </p>
             ) : (
               <>
-                <p className="text-xs text-gray-400 tabular-nums">
+                <p className="text-xs text-faint tabular-nums">
                   Rp {fmt(previewProfitBase)} ÷ (1 − {fmt(defaults.profitPct)}%) = Rp {fmt(previewDivided)}
                 </p>
-                <p className="text-xs text-gray-500 tabular-nums">
+                <p className="text-xs text-muted tabular-nums">
                   + Rp {fmt(defaults.operationalFee)} operational + Rp {fmt(defaults.packingFee)} packing
                   {` = Rp ${fmt(previewRawTotal)}, rounded up to ${fmt(defaults.profitMarginRoundTo)}`}
                 </p>
               </>
             )}
-            <p className="text-xs text-gray-500 tabular-nums">
+            <p className="text-xs text-muted tabular-nums">
               price <span className="font-semibold text-foreground">Rp {fmt(previewProfitPrice)}</span>
               {" · cost Rp "}{fmt(previewProfitBase)}
               {" · profit "}
@@ -691,7 +691,7 @@ function ProfitMarginCard({ defaults, setDefaults, loadError }: ProductDefaultsC
               </span>
             </p>
             {defaults.profitPct < 100 && previewProfitPrice !== Math.round(previewRawTotal) && (
-              <p className="text-[10px] text-gray-400 tabular-nums">
+              <p className="text-[10px] text-faint tabular-nums">
                 The rounding added Rp {fmt(previewProfitPrice - Math.round(previewRawTotal))} on top of the
                 margin and fees.
               </p>
@@ -722,20 +722,20 @@ function CustomRequestEstimateCard({ defaults, setDefaults, loadError }: Product
     <div className="bg-white border border-cream-border rounded-xl p-4 flex flex-col gap-3">
       <CardHeader title="Custom Request Estimate" saved={saved} saving={saving} onSave={handleSave} onReset={handleReset} canSave={!!defaults} />
 
-      <p className="text-xs text-gray-500">
+      <p className="text-xs text-muted">
         Starting formula for order-requests&apos; price-revision and create-product flows —
         keep this matching the customer-facing site&apos;s own estimate.
       </p>
 
       {loadError && <p className="text-xs text-red-600">{loadError}</p>}
       {error && <p className="text-xs text-red-600">{error}</p>}
-      {!defaults && !loadError && <p className="text-xs text-gray-500">Loading…</p>}
+      {!defaults && !loadError && <p className="text-xs text-muted">Loading…</p>}
 
       {defaults && (
         <div className="grid md:grid-cols-3 gap-3">
           <label className="flex flex-col gap-1">
             <div className="flex items-center gap-1">
-              <span className="text-xs text-gray-500">Profit %</span>
+              <span className="text-xs text-muted">Profit %</span>
               <InfoTooltip text="What a fresh price revision or create-product proposal starts from. 0-99 only." />
             </div>
             <input
@@ -749,7 +749,7 @@ function CustomRequestEstimateCard({ defaults, setDefaults, loadError }: Product
           </label>
           <label className="flex flex-col gap-1">
             <div className="flex items-center gap-1">
-              <span className="text-xs text-gray-500">Op Fee</span>
+              <span className="text-xs text-muted">Op Fee</span>
               <InfoTooltip text="Starting operational fee for the same two flows. Whole number, 0 or more." />
             </div>
             <input
@@ -763,7 +763,7 @@ function CustomRequestEstimateCard({ defaults, setDefaults, loadError }: Product
           </label>
           <label className="flex flex-col gap-1">
             <div className="flex items-center gap-1">
-              <span className="text-xs text-gray-500">Pack Fee</span>
+              <span className="text-xs text-muted">Pack Fee</span>
               <InfoTooltip text="Starting packing fee for the same two flows. Whole number, 0 or more." />
             </div>
             <input
@@ -781,7 +781,7 @@ function CustomRequestEstimateCard({ defaults, setDefaults, loadError }: Product
       {defaults && (
         <label className="flex flex-col gap-1">
           <div className="flex items-center gap-1">
-            <span className="text-xs text-gray-500">Tier Kurs sites</span>
+            <span className="text-xs text-muted">Tier Kurs sites</span>
             <InfoTooltip text="One bare domain per line (no https://, no www). A URL in a request's note/description matching one of these pre-selects the Tier Kurs tab instead of Profit Margin." />
           </div>
           <textarea
@@ -838,21 +838,21 @@ function MarkupFlatCard({ defaults, setDefaults, loadError }: ProductDefaultsCar
     <div className="bg-white border border-cream-border rounded-xl p-4 flex flex-col gap-3">
       <CardHeader title="Markup Flat" saved={saved} saving={saving} onSave={handleSave} onReset={handleReset} canSave={!!defaults} />
 
-      <p className="text-xs text-gray-500">
+      <p className="text-xs text-muted">
         What a Flat Fee product earns — the Flat side of Markup&apos;s Tier | Flat toggle.
         Read when a product is saved, so every Flat Fee product uses the same figures.
       </p>
 
       {loadError && <p className="text-xs text-red-600">{loadError}</p>}
       {error && <p className="text-xs text-red-600">{error}</p>}
-      {!defaults && !loadError && <p className="text-xs text-gray-500">Loading…</p>}
+      {!defaults && !loadError && <p className="text-xs text-muted">Loading…</p>}
 
       {defaults && (
         <div className="grid md:grid-cols-2 gap-3">
           <div className="border border-cream-border rounded-lg p-3 flex flex-col gap-3">
             <label className="flex flex-col gap-1">
               <div className="flex items-center gap-1">
-                <span className="text-xs text-gray-500">Flat Fee</span>
+                <span className="text-xs text-muted">Flat Fee</span>
                 <InfoTooltip text="Every Flat Fee product is priced base cost + this. Applies on a product's next save." />
               </div>
               <input
@@ -864,12 +864,12 @@ function MarkupFlatCard({ defaults, setDefaults, loadError }: ProductDefaultsCar
               />
             </label>
 
-            <div className="rounded-lg bg-gray-50 border border-cream-border px-3 py-2 flex flex-col gap-1.5">
+            <div className="rounded-lg bg-surface-muted border border-cream-border px-3 py-2 flex flex-col gap-1.5">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-medium text-gray-500">Try a base cost</span>
+                <span className="text-xs font-medium text-muted">Try a base cost</span>
                 <MoneyInput value={tryBaseFlat} onChange={setTryBaseFlat} name="try-base-flat-fee" wrapClassName="w-32 shrink-0" />
               </div>
-              <p className="text-xs text-gray-500 tabular-nums">
+              <p className="text-xs text-muted tabular-nums">
                 fee <span className="font-semibold text-foreground">Rp {fmt(previewFlatFee)}</span>
                 {" → price "}
                 <span className="font-semibold text-foreground">Rp {fmt(previewFlatPrice)}</span>
@@ -879,7 +879,7 @@ function MarkupFlatCard({ defaults, setDefaults, loadError }: ProductDefaultsCar
           <div className="border border-cream-border rounded-lg p-3 grid grid-cols-2 gap-3">
             <label className="flex flex-col gap-1">
               <div className="flex items-center gap-1">
-                <span className="text-xs text-gray-500">Flat Percentage</span>
+                <span className="text-xs text-muted">Flat Percentage</span>
                 <InfoTooltip text="Used instead of the amount above by Flat Fee products with Percent switched on. Applies on a product's next save." />
               </div>
               <input
@@ -894,7 +894,7 @@ function MarkupFlatCard({ defaults, setDefaults, loadError }: ProductDefaultsCar
             </label>
             <label className="flex flex-col gap-1">
               <div className="flex items-center gap-1">
-                <span className="text-xs text-gray-500">Minimum fee</span>
+                <span className="text-xs text-muted">Minimum fee</span>
                 <InfoTooltip text="Floor under the percentage above, for when a small base would earn less than the work costs. 0 = no floor. Percent mode only." />
               </div>
               <input
@@ -906,12 +906,12 @@ function MarkupFlatCard({ defaults, setDefaults, loadError }: ProductDefaultsCar
               />
             </label>
 
-            <div className="col-span-2 rounded-lg bg-gray-50 border border-cream-border px-3 py-2 flex flex-col gap-1.5">
+            <div className="col-span-2 rounded-lg bg-surface-muted border border-cream-border px-3 py-2 flex flex-col gap-1.5">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-medium text-gray-500">Try a base cost</span>
+                <span className="text-xs font-medium text-muted">Try a base cost</span>
                 <MoneyInput value={tryBasePct} onChange={setTryBasePct} name="try-base-flat-pct" wrapClassName="w-32 shrink-0" />
               </div>
-              <p className="text-xs text-gray-500 tabular-nums">
+              <p className="text-xs text-muted tabular-nums">
                 {fmt(defaults.flatFeePct)}% = Rp {fmt(previewPctFee)}
                 {previewPctFloored && " (floored)"}
                 {" — fee "}
@@ -981,7 +981,7 @@ function TemplateSection({ templateKey, initialBody }: { templateKey: TemplateKe
             onClick={handleReset}
             title="Reset to default"
             aria-label="Reset to default"
-            className="inline-flex items-center justify-center h-[30px] w-[30px] rounded-lg border border-cream-border text-gray-500 hover:border-brand hover:text-brand transition-colors"
+            className="inline-flex items-center justify-center h-[30px] w-[30px] rounded-lg border border-cream-border text-muted hover:border-brand hover:text-brand transition-colors"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="1 4 1 10 7 10" />
@@ -999,12 +999,12 @@ function TemplateSection({ templateKey, initialBody }: { templateKey: TemplateKe
         </div>
       </div>
 
-      <p className="text-xs text-gray-500">
+      <p className="text-xs text-muted">
         Required tokens:{" "}
         {REQUIRED_TOKENS[templateKey].map((t) => (
           <code
             key={t}
-            className={`mx-0.5 px-1 py-0.5 rounded ${missing.includes(t) ? "bg-red-100 text-red-600" : "bg-cream text-gray-600"}`}
+            className={`mx-0.5 px-1 py-0.5 rounded ${missing.includes(t) ? "bg-red-100 text-red-600" : "bg-cream text-muted-strong"}`}
           >
             {t}
           </code>
@@ -1016,7 +1016,7 @@ function TemplateSection({ templateKey, initialBody }: { templateKey: TemplateKe
               <code
                 key={t}
                 title={body.includes(t) ? undefined : "Not in the template — its content will be left out of the message"}
-                className={`mx-0.5 px-1 py-0.5 rounded ${body.includes(t) ? "bg-cream text-gray-400" : "bg-amber-100 text-amber-700"}`}
+                className={`mx-0.5 px-1 py-0.5 rounded ${body.includes(t) ? "bg-cream text-faint" : "bg-amber-100 text-amber-700"}`}
               >
                 {t}
               </code>
@@ -1035,7 +1035,7 @@ function TemplateSection({ templateKey, initialBody }: { templateKey: TemplateKe
           spellCheck={false}
         />
         <div className="border border-cream-border rounded-lg px-3 py-2 bg-cream/40 overflow-auto">
-          <p className="text-[10px] uppercase tracking-wide text-gray-400 mb-1">Preview</p>
+          <p className="text-[10px] uppercase tracking-wide text-faint mb-1">Preview</p>
           <pre className="text-xs whitespace-pre-wrap font-sans text-foreground">{preview}</pre>
         </div>
       </div>

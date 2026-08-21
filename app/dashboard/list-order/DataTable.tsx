@@ -347,7 +347,7 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
       meta: { align: "right" },
       cell: ({ getValue }) => {
         const v = getValue<number | null>()
-        return <span className="tabular-nums">{v == null ? <span className="text-gray-300">—</span> : fmt(v)}</span>
+        return <span className="tabular-nums">{v == null ? <span className="text-faint">—</span> : fmt(v)}</span>
       },
     },
     {
@@ -367,14 +367,14 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
       header: "Created At",
       size: 110,
       filterFn: "dateRange",
-      cell: ({ getValue }) => <span className="text-gray-400 text-xs whitespace-nowrap">{getValue<string>() || "—"}</span>,
+      cell: ({ getValue }) => <span className="text-faint text-xs whitespace-nowrap">{getValue<string>() || "—"}</span>,
     },
     {
       accessorKey: "updatedAt",
       header: "Updated At",
       size: 110,
       enableColumnFilter: false,
-      cell: ({ getValue }) => <span className="text-gray-400 text-xs whitespace-nowrap">{getValue<string>() || "—"}</span>,
+      cell: ({ getValue }) => <span className="text-faint text-xs whitespace-nowrap">{getValue<string>() || "—"}</span>,
     },
     {
       id: "actions",
@@ -390,14 +390,14 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
           <button
             onClick={() => setDuplicatingRow(row.original)}
             title="Duplicate as variant"
-            className="inline-flex items-center justify-center p-1 text-gray-400 hover:text-brand transition-colors rounded"
+            className="inline-flex items-center justify-center p-1 text-faint hover:text-brand transition-colors rounded"
           >
             <TagIcon />
           </button>
           <button
             onClick={() => setEditingRow(row.original)}
             title="Edit"
-            className="inline-flex items-center justify-center p-1 text-gray-400 hover:text-brand transition-colors rounded"
+            className="inline-flex items-center justify-center p-1 text-faint hover:text-brand transition-colors rounded"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
@@ -407,7 +407,7 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
           <button
             onClick={() => handleDelete(row.original.rowNumber)}
             title="Delete"
-            className="inline-flex items-center justify-center p-1 text-gray-400 hover:text-red-500 transition-colors rounded"
+            className="inline-flex items-center justify-center p-1 text-faint hover:text-red-500 transition-colors rounded"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
@@ -522,7 +522,7 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
             type="button"
             onClick={() => handleSortingChange([{ id: "createdAt", desc: !((sorting.find((s) => s.id === "createdAt")?.desc) ?? true) }])}
             aria-label="Toggle sort order"
-            className="shrink-0 inline-flex items-center gap-1 px-3 rounded-lg border border-cream-border bg-white text-sm font-medium text-gray-600 active:border-brand active:text-brand"
+            className="shrink-0 inline-flex items-center gap-1 px-3 rounded-lg border border-cream-border bg-white text-sm font-medium text-muted-strong active:border-brand active:text-brand"
           >
             {((sorting.find((s) => s.id === "createdAt")?.desc) ?? true) ? "Newest" : "Oldest"}
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -534,7 +534,7 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
               type="button"
               onClick={() => setNoteFilterOpen((o) => !o)}
               aria-label="Filter by note"
-              className={`inline-flex items-center h-[38px] px-3 rounded-lg border bg-white text-sm font-medium active:border-brand active:text-brand ${noteFilter ? "border-brand text-brand" : "border-cream-border text-gray-600"}`}
+              className={`inline-flex items-center h-[38px] px-3 rounded-lg border bg-white text-sm font-medium active:border-brand active:text-brand ${noteFilter ? "border-brand text-brand" : "border-cream-border text-muted-strong"}`}
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
@@ -555,7 +555,7 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
                       setPagination((p) => ({ ...p, pageIndex: 0 }))
                       setNoteFilterOpen(false)
                     }}
-                    className={`text-left px-2.5 py-1.5 rounded-md text-sm transition-colors ${noteFilter === key ? "bg-brand-light text-brand font-medium" : "text-gray-600 hover:bg-cream"}`}
+                    className={`text-left px-2.5 py-1.5 rounded-md text-sm transition-colors ${noteFilter === key ? "bg-brand-light text-brand font-medium" : "text-muted-strong hover:bg-cream"}`}
                   >
                     {label}
                   </button>
@@ -565,7 +565,7 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
           </div>
         </div>
         {rows.length === 0 && (
-          <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">
+          <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-faint">
             {fetchState.loading ? "Loading…" : "No orders"}
           </div>
         )}
@@ -580,7 +580,7 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
               <div className="flex items-center gap-1.5 flex-wrap min-w-0">
                 <span className="font-semibold text-sm text-foreground uppercase">{r.event}</span>
                 {!r.hasAddress && <NoAddressIcon />}
-                <span className="text-xs text-gray-400 uppercase truncate">{displayIg(r.customer)}</span>
+                <span className="text-xs text-faint uppercase truncate">{displayIg(r.customer)}</span>
               </div>
               <div className="flex items-start justify-between gap-3 mt-2">
                 <div className="text-sm text-foreground">{r.items}</div>
@@ -589,15 +589,15 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
                   <button
                     onClick={() => setDuplicatingRow(r)}
                     title="Duplicate as variant"
-                    className="inline-flex items-center justify-center p-1 text-gray-400 hover:text-brand transition-colors rounded"
+                    className="inline-flex items-center justify-center p-1 text-faint hover:text-brand transition-colors rounded"
                   >
                     <TagIcon />
                   </button>
                 </div>
               </div>
-              {r.note && <div className="text-xs text-gray-400 italic mt-1">Note: {r.note}</div>}
+              {r.note && <div className="text-xs text-faint italic mt-1">Note: {r.note}</div>}
               <div className="flex items-center justify-between gap-2 mt-2.5 pt-2.5 border-t border-cream-border">
-                <span className="text-xs text-gray-400 uppercase">
+                <span className="text-xs text-faint uppercase">
                   {bought ? "Purchased" : "Not purchased"}
                 </span>
                 <div className="flex items-center gap-2">
@@ -610,9 +610,9 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
         })}
         {totalCount > PAGE_SIZE && (
           <div className="flex items-center justify-between gap-3 pt-1">
-            <button type="button" disabled={pagination.pageIndex === 0} onClick={() => setPagination((p) => ({ ...p, pageIndex: p.pageIndex - 1 }))} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-gray-600 disabled:opacity-40">Prev</button>
-            <span className="text-xs text-gray-400">Page {pagination.pageIndex + 1} of {Math.max(1, Math.ceil(totalCount / PAGE_SIZE))}</span>
-            <button type="button" disabled={(pagination.pageIndex + 1) * PAGE_SIZE >= totalCount} onClick={() => setPagination((p) => ({ ...p, pageIndex: p.pageIndex + 1 }))} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-gray-600 disabled:opacity-40">Next</button>
+            <button type="button" disabled={pagination.pageIndex === 0} onClick={() => setPagination((p) => ({ ...p, pageIndex: p.pageIndex - 1 }))} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-muted-strong disabled:opacity-40">Prev</button>
+            <span className="text-xs text-faint">Page {pagination.pageIndex + 1} of {Math.max(1, Math.ceil(totalCount / PAGE_SIZE))}</span>
+            <button type="button" disabled={(pagination.pageIndex + 1) * PAGE_SIZE >= totalCount} onClick={() => setPagination((p) => ({ ...p, pageIndex: p.pageIndex + 1 }))} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-muted-strong disabled:opacity-40">Next</button>
           </div>
         )}
       </div>
@@ -746,21 +746,21 @@ function DuplicateVariantModal({ row, onClose, onDone }: {
       <div className="bg-white rounded-xl p-5 w-full max-w-md flex flex-col gap-3" onClick={(e) => e.stopPropagation()}>
         <h3 className="text-sm font-semibold text-foreground">Duplicate as variant</h3>
         {loadError && <p className="text-xs text-red-500">{loadError}</p>}
-        {!product && !loadError && <p className="text-xs text-gray-500">Loading…</p>}
+        {!product && !loadError && <p className="text-xs text-muted">Loading…</p>}
         {product && (
           <>
             <div className="grid grid-cols-2 gap-3">
               <label className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-gray-500">Store</span>
-                <div className={`${INPUT_CLS} bg-gray-50 text-gray-500`}>{product.store || "—"}</div>
+                <span className="text-xs font-medium text-muted">Store</span>
+                <div className={`${INPUT_CLS} bg-surface-muted text-muted`}>{product.store || "—"}</div>
               </label>
               <label className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-gray-500">Price</span>
-                <div className={`${INPUT_CLS} bg-gray-50 text-gray-500 tabular-nums`}>Rp {fmt(product.price)}</div>
+                <span className="text-xs font-medium text-muted">Price</span>
+                <div className={`${INPUT_CLS} bg-surface-muted text-muted tabular-nums`}>Rp {fmt(product.price)}</div>
               </label>
             </div>
             <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-gray-500">New product name</span>
+              <span className="text-xs font-medium text-muted">New product name</span>
               <input value={name} onChange={(e) => setName(e.target.value)} className={INPUT_CLS} />
             </label>
           </>
@@ -791,7 +791,7 @@ function CopyableText({ text }: { text: string }) {
         type="button"
         onClick={(e) => { e.stopPropagation(); copy(text) }}
         title="Copy"
-        className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-gray-400 hover:text-brand"
+        className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-faint hover:text-brand"
       >
         {copied ? (
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-green-600">
@@ -819,7 +819,7 @@ function EditableNumberCell({ value, canEdit, onSave }: {
 }) {
   // Admin (and anyone else without edit rights) just sees the number.
   if (!canEdit) {
-    return <span className="tabular-nums">{value == null ? <span className="text-gray-300">—</span> : fmt(value)}</span>
+    return <span className="tabular-nums">{value == null ? <span className="text-faint">—</span> : fmt(value)}</span>
   }
 
   // Owner gets a click-anywhere-in-cell number input. We hold an internal
@@ -1075,11 +1075,11 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
         </div>
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
-            <label className="text-xs text-gray-500 mb-1 block">Event</label>
+            <label className="text-xs text-muted mb-1 block">Event</label>
             <EventSelect value={form.event} onChange={(v) => setForm((f) => ({ ...f, event: v }))} events={options?.activeEvents ?? []} />
           </div>
           <div>
-            <label className="text-xs text-gray-500 mb-1 block">Customer</label>
+            <label className="text-xs text-muted mb-1 block">Customer</label>
             <SearchableSelect
               value={form.customer}
               onChange={(v) => setForm((f) => ({ ...f, customer: v }))}
@@ -1090,7 +1090,7 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
             />
           </div>
           <div>
-            <label className="text-xs text-gray-500 mb-1 block">Item</label>
+            <label className="text-xs text-muted mb-1 block">Item</label>
             <SearchableSelect
               value={form.productId}
               onChange={(v) => setForm((f) => ({ ...f, productId: v }))}
@@ -1098,13 +1098,13 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
               placeholder="Search item..."
             />
           </div>
-          <div className="rounded-lg border border-cream-border bg-gray-50/60 px-3 py-2 text-xs space-y-1">
+          <div className="rounded-lg border border-cream-border bg-surface-muted/60 px-3 py-2 text-xs space-y-1">
             <div className="flex items-center justify-between">
-              <span className="text-gray-500">Order unit price</span>
+              <span className="text-muted">Order unit price</span>
               <span className="tabular-nums font-medium text-foreground">{fmt(row.unitPrice)}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-gray-500">Current product price</span>
+              <span className="text-muted">Current product price</span>
               <span className={`tabular-nums font-medium ${priceDiffers ? "text-amber-700" : "text-foreground"}`}>{fmt(currentPrice)}</span>
             </div>
             {priceDiffers && (
@@ -1118,37 +1118,37 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
           </div>
           <div className="flex gap-3">
             <div className="flex-1">
-              <label className="text-xs text-gray-500 mb-1 block">Qty</label>
+              <label className="text-xs text-muted mb-1 block">Qty</label>
               <input type="number" min="0" value={form.unit} onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value }))} className={INPUT_CLS} />
             </div>
             <div className="flex-1">
-              <label className="text-xs text-gray-500 mb-1 block">Note</label>
+              <label className="text-xs text-muted mb-1 block">Note</label>
               <input type="text" value={form.note} onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))} placeholder="Optional" className={INPUT_CLS} />
             </div>
           </div>
 
           {isOwner && (
-            <div className="flex flex-col gap-2 p-3 rounded-lg bg-gray-50 border border-cream-border">
+            <div className="flex flex-col gap-2 p-3 rounded-lg bg-surface-muted border border-cream-border">
               <button
                 type="button"
                 onClick={() => setOwnerOpen((o) => !o)}
                 className="w-full flex items-center justify-between text-left md:cursor-default"
               >
-                <span className="text-xs font-medium text-gray-600">Manual correction</span>
-                <svg className={`md:hidden w-4 h-4 text-gray-400 transition-transform ${ownerOpen ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+                <span className="text-xs font-medium text-muted-strong">Manual correction</span>
+                <svg className={`md:hidden w-4 h-4 text-faint transition-transform ${ownerOpen ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
               </button>
               <div className={ownerOpen ? "block" : "hidden md:block"}>
                 <div className="flex gap-3">
                   <div className="flex-1">
-                    <label className="text-xs text-gray-500 mb-1 block">Buy</label>
+                    <label className="text-xs text-muted mb-1 block">Buy</label>
                     <input type="number" min="0" value={unitBuy} onChange={(e) => setUnitBuy(e.target.value)} placeholder="—" className={INPUT_CLS} />
                   </div>
                   <div className="flex-1">
-                    <label className="text-xs text-gray-500 mb-1 block">Arrive</label>
+                    <label className="text-xs text-muted mb-1 block">Arrive</label>
                     <input type="number" min="0" value={unitArrive} onChange={(e) => setUnitArrive(e.target.value)} placeholder="—" className={INPUT_CLS} />
                   </div>
                 </div>
-                <p className="text-[11px] text-gray-400 mt-1.5">Leave blank to clear. Shipped and held units are managed from the Packing List page.</p>
+                <p className="text-[11px] text-faint mt-1.5">Leave blank to clear. Shipped and held units are managed from the Packing List page.</p>
                 {(row.unitBuy ?? 0) > 0 && (
                   <ReturnToExcessControl row={row} onDone={() => { onSaved(); onClose() }} />
                 )}
@@ -1163,13 +1163,13 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
               type="button"
               onClick={() => { onClose(); onDelete(row.rowNumber) }}
               aria-label="Delete"
-              className="inline-flex items-center justify-center h-[38px] border border-cream-border rounded-lg px-3 text-sm text-gray-400 hover:border-brand disabled:opacity-50 transition-colors"
+              className="inline-flex items-center justify-center h-[38px] border border-cream-border rounded-lg px-3 text-sm text-faint hover:border-brand disabled:opacity-50 transition-colors"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M10 11v6" /><path d="M14 11v6" />
               </svg>
             </button>
-            <button type="button" onClick={onClose} className="ml-auto px-4 py-2 text-sm rounded-lg border border-cream-border text-gray-600 hover:border-brand hover:text-brand transition-colors">
+            <button type="button" onClick={onClose} className="ml-auto px-4 py-2 text-sm rounded-lg border border-cream-border text-muted-strong hover:border-brand hover:text-brand transition-colors">
               Cancel
             </button>
             <button type="submit" disabled={saving} className="px-4 py-2 text-sm font-medium rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors disabled:opacity-50">
@@ -1191,13 +1191,13 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
             </svg>
             <h3 className="text-sm font-semibold text-foreground">Update unit price?</h3>
           </div>
-          <p className="text-xs text-gray-600 mb-4">
+          <p className="text-xs text-muted-strong mb-4">
             The current product price (<span className="font-medium text-foreground tabular-nums">{fmt(currentPrice)}</span>) differs from
             this order&rsquo;s saved price (<span className="font-medium text-foreground tabular-nums">{fmt(row.unitPrice)}</span>).
             Saving will update this order&rsquo;s unit price to <span className="font-medium text-amber-700 tabular-nums">{fmt(currentPrice)}</span>.
           </p>
           <div className="flex justify-end gap-2">
-            <button type="button" onClick={() => setConfirmPriceOpen(false)} disabled={saving} className="px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
+            <button type="button" onClick={() => setConfirmPriceOpen(false)} disabled={saving} className="px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
               Cancel
             </button>
             <button type="button" onClick={() => void performSave()} disabled={saving} className="px-4 py-1.5 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-hover disabled:opacity-50 transition-colors">
@@ -1270,11 +1270,11 @@ function ReturnToExcessControl({ row, onDone }: { row: FormRow; onDone: () => vo
         {committed > 0 ? ` · ${committed} already arrived/shipped/held` : ""}
       </div>
       {maxRemovable === 0 ? (
-        <p className="text-xs text-gray-500">All units are already arrived/shipped/held — nothing to return.</p>
+        <p className="text-xs text-muted">All units are already arrived/shipped/held — nothing to return.</p>
       ) : (
         <>
           <div className="flex items-center gap-2">
-            <label className="text-xs text-gray-600">Remove</label>
+            <label className="text-xs text-muted-strong">Remove</label>
             <input
               type="number"
               min={1}
@@ -1283,9 +1283,9 @@ function ReturnToExcessControl({ row, onDone }: { row: FormRow; onDone: () => vo
               onChange={(e) => setQty(e.target.value)}
               className={`${INPUT_CLS} w-20`}
             />
-            <span className="text-xs text-gray-500">unit(s) from this order</span>
+            <span className="text-xs text-muted">unit(s) from this order</span>
           </div>
-          <div className="text-[11px] text-gray-600">
+          <div className="text-[11px] text-muted-strong">
             {valid
               ? willDelete
                 ? `Deletes this order; ${excess} bought unit(s) → excess for "${row.items}".`
@@ -1305,7 +1305,7 @@ function ReturnToExcessControl({ row, onDone }: { row: FormRow; onDone: () => vo
             <button
               type="button"
               onClick={() => { setOpen(false); setErr("") }}
-              className="px-3 py-1.5 text-xs text-gray-500 hover:text-foreground transition-colors"
+              className="px-3 py-1.5 text-xs text-muted hover:text-foreground transition-colors"
             >
               Cancel
             </button>
@@ -1386,7 +1386,7 @@ function AddOrderForm({ options, onOrderAdded, onCancel }: {
     }
   }
 
-  const LABEL = "text-xs text-gray-500 mb-1 block"
+  const LABEL = "text-xs text-muted mb-1 block"
 
   return (
     <form onSubmit={handleSubmit} className="rounded-t-2xl md:rounded-xl border-x border-t border-cream-border md:border bg-white p-5 pb-8 md:pb-5 flex flex-col gap-4">
@@ -1445,7 +1445,7 @@ function AddOrderForm({ options, onOrderAdded, onCancel }: {
                 <button
                   type="button"
                   onClick={() => removeLine(line.id)}
-                  className="absolute top-2 right-2 text-gray-300 hover:text-red-400 transition-colors"
+                  className="absolute top-2 right-2 text-faint hover:text-red-400 transition-colors"
                   aria-label="Remove"
                 >
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -1461,7 +1461,7 @@ function AddOrderForm({ options, onOrderAdded, onCancel }: {
       <div className="flex items-center justify-end gap-2 -mx-5 px-5 pt-4 border-t border-cream-border md:mx-0 md:px-0 md:pt-0 md:border-t-0">
         {feedback && <p className={`mr-auto text-xs ${feedback.type === "success" ? "text-green-600" : "text-red-600"}`}>{feedback.message}</p>}
         {onCancel && (
-          <button type="button" onClick={onCancel} disabled={submitting} className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
+          <button type="button" onClick={onCancel} disabled={submitting} className="px-4 py-2 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
             Cancel
           </button>
         )}

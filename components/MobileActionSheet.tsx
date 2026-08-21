@@ -34,7 +34,7 @@ export default function MobileActionSheet({
         {(title || subtitle) && (
           <div className="px-4 py-3 border-b border-cream-border">
             {title && <div className="text-sm font-semibold text-foreground truncate">{title}</div>}
-            {subtitle && <div className="text-xs text-gray-500 mt-0.5 truncate">{subtitle}</div>}
+            {subtitle && <div className="text-xs text-muted mt-0.5 truncate">{subtitle}</div>}
           </div>
         )}
         <div className="py-1">
@@ -48,7 +48,7 @@ export default function MobileActionSheet({
                 a.destructive ? "text-red-600" : "text-foreground"
               }`}
             >
-              <span className={a.destructive ? "text-red-500" : "text-gray-400"}>{a.icon}</span>
+              <span className={a.destructive ? "text-red-500" : "text-faint"}>{a.icon}</span>
               {a.label}
             </button>
           ))}
@@ -57,7 +57,7 @@ export default function MobileActionSheet({
           <button
             type="button"
             onClick={onClose}
-            className="w-full py-3 rounded-xl bg-cream text-sm font-medium text-gray-600 active:bg-cream/70 transition-colors"
+            className="w-full py-3 rounded-xl bg-cream text-sm font-medium text-muted-strong active:bg-cream/70 transition-colors"
           >
             Cancel
           </button>

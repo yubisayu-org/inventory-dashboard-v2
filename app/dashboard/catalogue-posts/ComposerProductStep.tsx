@@ -262,7 +262,7 @@ export default function ComposerProductStep({
       {error && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
       )}
-      {prefilling && <p className="text-xs text-gray-400">Copying products from the previous post…</p>}
+      {prefilling && <p className="text-xs text-faint">Copying products from the previous post…</p>}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="relative self-start">
@@ -329,7 +329,7 @@ export default function ComposerProductStep({
             <h3 className="text-xs font-semibold text-foreground">Products</h3>
             <ProductSearchPicker alreadyAddedIds={alreadyAddedIds} onPick={onPick} />
             {codes.length === 0 && removedProducts.length === 0 ? (
-              <p className="text-xs text-gray-400">No products tagged yet.</p>
+              <p className="text-xs text-faint">No products tagged yet.</p>
             ) : (
               <div className="flex flex-col gap-1.5 pt-1 border-t border-cream-border">
                 {codes.map((c) => (
@@ -339,7 +339,7 @@ export default function ComposerProductStep({
                   >
                     <span className="font-bold tabular-nums w-10 shrink-0">{c.code}</span>
                     <span className="flex-1 min-w-0 truncate">{c.productName}</span>
-                    <span className="text-gray-500 tabular-nums shrink-0">Rp {c.price.toLocaleString("id-ID")}</span>
+                    <span className="text-muted tabular-nums shrink-0">Rp {c.price.toLocaleString("id-ID")}</span>
                     {mediaType !== "video" && (
                       <button
                         type="button"
@@ -351,7 +351,7 @@ export default function ComposerProductStep({
                             ? "bg-brand text-white border-brand"
                             : c.pointX !== null
                               ? "border-cream-border text-brand"
-                              : "border-cream-border text-gray-500"
+                              : "border-cream-border text-muted"
                         }`}
                       >
                         {placingCodeId === c.id ? (
@@ -383,7 +383,7 @@ export default function ComposerProductStep({
                   </div>
                 ))}
                 {removedProducts.map((p) => (
-                  <div key={`removed-${p.id}`} className="flex items-center gap-2 text-xs py-1.5 text-gray-400">
+                  <div key={`removed-${p.id}`} className="flex items-center gap-2 text-xs py-1.5 text-faint">
                     <span className="line-through truncate">{p.name}</span>
                     <span className="shrink-0">(no longer available)</span>
                   </div>
@@ -421,7 +421,7 @@ export default function ComposerProductStep({
               disabled={deleting}
               aria-label="Save & close"
               title="Save & close"
-              className="p-2.5 rounded-lg border border-cream-border text-gray-500 disabled:opacity-50"
+              className="p-2.5 rounded-lg border border-cream-border text-muted disabled:opacity-50"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z" />

@@ -14,7 +14,7 @@ export function AmountSignHint({ value }: { value: string }) {
   const n = Number(value)
   const filled = value !== "" && Number.isFinite(n) && n !== 0
   const tone = !filled
-    ? "text-gray-500"
+    ? "text-muted"
     : n > 0
       ? "text-red-600"
       : "text-green-600"

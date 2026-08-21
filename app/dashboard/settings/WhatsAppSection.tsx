@@ -118,12 +118,12 @@ export default function WhatsAppSection() {
 
       <section className="rounded-xl border border-cream-border bg-white p-4 flex flex-col gap-3">
         <h2 className="text-sm font-semibold text-foreground">Groups</h2>
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-muted">
           Groups outlive trips. Bind one to the event whose claims it collects, and
           re-bind it next trip rather than starting a new group.
         </p>
         {groups.length === 0 ? (
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-muted">
             No groups yet. Invite the bot to a group and connect it from there.
           </p>
         ) : (
@@ -147,7 +147,7 @@ export default function WhatsAppSection() {
 
       <section className="rounded-xl border border-cream-border bg-white p-4 flex flex-col gap-3">
         <h2 className="text-sm font-semibold text-foreground">Catalogue links</h2>
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-muted">
           One per running trip, for whoever joined the group after its shelves
           were posted. Unguessable, and only while the trip is open — closing it
           takes the link dark. Rotating retires the old URL for everyone holding
@@ -157,7 +157,7 @@ export default function WhatsAppSection() {
           <div key={link.event} className="flex items-center gap-2">
             <div className="min-w-0 flex-1">
               <div className="text-sm font-semibold">{link.event}</div>
-              <div className="text-[11px] text-gray-500 font-mono truncate">{link.url}</div>
+              <div className="text-[11px] text-muted font-mono truncate">{link.url}</div>
             </div>
             <button
               type="button"
@@ -182,7 +182,7 @@ export default function WhatsAppSection() {
 
       <section className="rounded-xl border border-cream-border bg-white p-4 flex flex-col gap-3">
         <h2 className="text-sm font-semibold text-foreground">Who may command the bot</h2>
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-muted">
           The app&apos;s own roles key on email, and a WhatsApp sender has a number
           and no login — so the bot needs its own list. Anyone here can pull the
           shopping list; only a connector may bind a group to an event.
@@ -191,7 +191,7 @@ export default function WhatsAppSection() {
         {admins.map((admin) => (
           <div key={admin.number} className="flex items-center gap-2 text-sm">
             <span className="font-mono text-xs">{admin.number}</span>
-            <span className="text-gray-500 flex-1 min-w-0 truncate">{admin.label}</span>
+            <span className="text-muted flex-1 min-w-0 truncate">{admin.label}</span>
             {admin.canConnect ? (
               <span className="text-[10px] font-bold tracking-wide text-brand">CONNECTOR</span>
             ) : null}
@@ -223,7 +223,7 @@ export default function WhatsAppSection() {
             placeholder="Whose number is it"
             className={inputCls}
           />
-          <label className="flex items-center gap-2 text-xs text-gray-600">
+          <label className="flex items-center gap-2 text-xs text-muted-strong">
             <input
               type="checkbox"
               checked={canConnect}
@@ -243,7 +243,7 @@ export default function WhatsAppSection() {
 
       <section className="rounded-xl border border-cream-border bg-white p-4 flex flex-col gap-3">
         <h2 className="text-sm font-semibold text-foreground">Pricing for group posts</h2>
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-muted">
           Which method a shelf photographed into a group starts on. Separate from the
           Add Product form&apos;s default, because the shops you photograph are
           priced differently from what you type in by hand.

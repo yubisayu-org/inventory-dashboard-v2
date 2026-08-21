@@ -19,7 +19,7 @@ export default async function UnauthorizedPage() {
           </div>
           <div className="text-left">
             <p className="font-bold text-foreground leading-tight">Yubisayu</p>
-            <p className="text-xs text-gray-500">Inventory Dashboard</p>
+            <p className="text-xs text-muted">Inventory Dashboard</p>
           </div>
         </div>
 
@@ -33,17 +33,17 @@ export default async function UnauthorizedPage() {
 
         <h1 className="text-lg font-semibold text-foreground mb-2">Account not authorized</h1>
         {session.user?.email ? (
-          <p className="text-sm text-gray-500 mb-1">
+          <p className="text-sm text-muted mb-1">
             You&apos;re signed in as{" "}
             <span className="font-medium text-foreground break-all">{session.user.email}</span>,
             but this account doesn&apos;t have access to the dashboard.
           </p>
         ) : (
-          <p className="text-sm text-gray-500 mb-1">
+          <p className="text-sm text-muted mb-1">
             This account doesn&apos;t have access to the dashboard.
           </p>
         )}
-        <p className="text-sm text-gray-500 mb-6">
+        <p className="text-sm text-muted mb-6">
           Ask an administrator to grant access, or sign in with a different account.
         </p>
 

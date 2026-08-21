@@ -26,7 +26,7 @@ function IconActionButton({ onClick, disabled, label, hoverColor, icon }: {
       disabled={disabled}
       aria-label={label}
       title={label}
-      className={`inline-flex items-center justify-center p-1.5 text-gray-400 ${hoverColor} transition-colors rounded disabled:opacity-50`}
+      className={`inline-flex items-center justify-center p-1.5 text-faint ${hoverColor} transition-colors rounded disabled:opacity-50`}
     >
       {icon}
     </button>
@@ -398,14 +398,14 @@ export default function OrderRequestsClient() {
 
   function GroupRow({ dot, label, count }: { dot: "needs" | "custom" | "identity" | "ready" | "other"; label: string; count: number }) {
     return (
-      <tr className="border-b border-cream-border bg-gray-50/80">
+      <tr className="border-b border-cream-border bg-surface-muted/80">
         <td colSpan={7} className="px-4 py-2">
           <div className="flex items-center gap-2">
             <span className={`w-1.5 h-1.5 rounded-full ${
-              dot === "needs" ? "bg-amber-500" : dot === "custom" ? "bg-amber-500" : dot === "identity" ? "bg-red-500" : dot === "ready" ? "bg-green-600" : "bg-gray-300"
+              dot === "needs" ? "bg-amber-500" : dot === "custom" ? "bg-amber-500" : dot === "identity" ? "bg-red-500" : dot === "ready" ? "bg-green-600" : "bg-divider"
             }`} />
-            <span className="text-[11px] font-semibold tracking-wide uppercase text-gray-500">{label}</span>
-            <span className="text-[10px] font-semibold text-gray-500 bg-gray-100 rounded-full px-1.5 py-0.5">{count}</span>
+            <span className="text-[11px] font-semibold tracking-wide uppercase text-muted">{label}</span>
+            <span className="text-[10px] font-semibold text-muted bg-surface-sunken rounded-full px-1.5 py-0.5">{count}</span>
           </div>
         </td>
       </tr>
@@ -434,13 +434,13 @@ export default function OrderRequestsClient() {
         </div>
         {(r.note || r.referenceImageUrl) && (
           <div className="flex items-center gap-1">
-            {r.note && <span className="text-xs text-gray-400">{linkify(r.note)}</span>}
+            {r.note && <span className="text-xs text-faint">{linkify(r.note)}</span>}
             {r.referenceImageUrl && (
               <button
                 type="button"
                 onClick={() => setViewingImageUrl(r.referenceImageUrl)}
                 title="Reference photo"
-                className="inline-flex items-center justify-center shrink-0 p-1 text-gray-400 hover:text-brand transition-colors rounded"
+                className="inline-flex items-center justify-center shrink-0 p-1 text-faint hover:text-brand transition-colors rounded"
               >
                 <CameraIcon />
               </button>
@@ -495,7 +495,7 @@ export default function OrderRequestsClient() {
           </>
         )}
         {r.status === "offer_pending" && (
-          <IconActionButton onClick={() => cancelEdit(r.id)} label="Cancel" hoverColor="hover:text-gray-700" icon={<XIcon />} />
+          <IconActionButton onClick={() => cancelEdit(r.id)} label="Cancel" hoverColor="hover:text-muted-strong" icon={<XIcon />} />
         )}
         {r.status === "approved" && (
           <>
@@ -538,11 +538,11 @@ export default function OrderRequestsClient() {
         <td className="px-4 py-2.5">{itemContent(r)}</td>
         <td className="px-4 py-2.5 text-right tabular-nums text-foreground">{r.qty}</td>
         <td className="px-4 py-2.5 text-right tabular-nums text-foreground whitespace-nowrap">
-          {price !== null ? fmt(price) : <span className="text-gray-300">—</span>}
+          {price !== null ? fmt(price) : <span className="text-faint">—</span>}
         </td>
         <td className="px-4 py-2.5">
           <div className="flex items-center gap-1">
-            <span className="text-gray-400 text-xs whitespace-nowrap">{requestedAt(r.createdAt)}</span>
+            <span className="text-faint text-xs whitespace-nowrap">{requestedAt(r.createdAt)}</span>
             {r.source === "whatsapp" && (
               <IconActionButton
                 onClick={() => setProvingId(r.id)}
@@ -588,7 +588,7 @@ export default function OrderRequestsClient() {
           </div>
           {(r.note || r.referenceImageUrl) && (
             <div className="flex items-center gap-1 mt-1">
-              {r.note && <span className="text-xs text-gray-400 italic">{linkify(r.note)}</span>}
+              {r.note && <span className="text-xs text-faint italic">{linkify(r.note)}</span>}
               {r.referenceImageUrl && (
                 <IconActionButton
                   onClick={() => setViewingImageUrl(r.referenceImageUrl)}
@@ -601,7 +601,7 @@ export default function OrderRequestsClient() {
           )}
           <div className="flex items-center justify-between gap-2 mt-2.5 pt-2.5 border-t border-cream-border">
             <div className="flex items-center gap-1">
-              <span className="text-xs text-gray-400 whitespace-nowrap">{requestedAt(r.createdAt)}</span>
+              <span className="text-xs text-faint whitespace-nowrap">{requestedAt(r.createdAt)}</span>
               {r.source === "whatsapp" && (
                 <IconActionButton
                   onClick={() => setProvingId(r.id)}
@@ -633,10 +633,10 @@ export default function OrderRequestsClient() {
     return (
       <div className="flex items-center gap-2 px-0.5 pt-1 first:pt-0">
         <span className={`w-1.5 h-1.5 rounded-full ${
-          dot === "needs" ? "bg-amber-500" : dot === "custom" ? "bg-amber-500" : dot === "identity" ? "bg-red-500" : dot === "ready" ? "bg-green-600" : "bg-gray-300"
+          dot === "needs" ? "bg-amber-500" : dot === "custom" ? "bg-amber-500" : dot === "identity" ? "bg-red-500" : dot === "ready" ? "bg-green-600" : "bg-divider"
         }`} />
-        <span className="text-[11px] font-semibold tracking-wide uppercase text-gray-500">{label}</span>
-        <span className="text-[10px] font-semibold text-gray-500 bg-gray-100 rounded-full px-1.5 py-0.5">{count}</span>
+        <span className="text-[11px] font-semibold tracking-wide uppercase text-muted">{label}</span>
+        <span className="text-[10px] font-semibold text-muted bg-surface-sunken rounded-full px-1.5 py-0.5">{count}</span>
       </div>
     )
   }
@@ -650,7 +650,7 @@ export default function OrderRequestsClient() {
             type="button"
             onClick={() => setFilterOpen((o) => !o)}
             aria-label="Filters"
-            className="h-full border border-cream-border rounded-lg px-3 py-2 text-sm text-gray-600 bg-white flex items-center gap-1.5 hover:border-brand transition-colors"
+            className="h-full border border-cream-border rounded-lg px-3 py-2 text-sm text-muted-strong bg-white flex items-center gap-1.5 hover:border-brand transition-colors"
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
@@ -660,7 +660,7 @@ export default function OrderRequestsClient() {
           {filterOpen && (
             <div className="absolute right-0 top-full mt-1 z-30 w-52 rounded-lg border border-cream-border bg-white shadow-lg p-3 flex flex-col gap-3">
               <div className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-gray-500">Group</span>
+                <span className="text-xs font-medium text-muted">Group</span>
                 <div className="flex flex-col gap-0.5">
                   {GROUP_FILTER_OPTIONS.map((o) => (
                     <button
@@ -668,7 +668,7 @@ export default function OrderRequestsClient() {
                       type="button"
                       onClick={() => setGroupFilter(o.value as typeof groupFilter)}
                       className={`text-left px-2 py-1.5 rounded-lg text-xs transition-colors ${
-                        groupFilter === o.value ? "bg-brand/10 text-brand font-medium" : "text-gray-600 hover:bg-gray-50"
+                        groupFilter === o.value ? "bg-brand/10 text-brand font-medium" : "text-muted-strong hover:bg-surface-muted"
                       }`}
                     >
                       {o.label}
@@ -677,7 +677,7 @@ export default function OrderRequestsClient() {
                 </div>
               </div>
               <div className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-gray-500">Source</span>
+                <span className="text-xs font-medium text-muted">Source</span>
                 <div className="flex flex-col gap-0.5">
                   {SOURCE_FILTER_OPTIONS.map((o) => (
                     <button
@@ -685,7 +685,7 @@ export default function OrderRequestsClient() {
                       type="button"
                       onClick={() => setSourceFilter(o.value as typeof sourceFilter)}
                       className={`text-left px-2 py-1.5 rounded-lg text-xs transition-colors ${
-                        sourceFilter === o.value ? "bg-brand/10 text-brand font-medium" : "text-gray-600 hover:bg-gray-50"
+                        sourceFilter === o.value ? "bg-brand/10 text-brand font-medium" : "text-muted-strong hover:bg-surface-muted"
                       }`}
                     >
                       {o.label}
@@ -702,7 +702,7 @@ export default function OrderRequestsClient() {
           aria-label={showAll ? "Back to active requests" : "Show closed/converted requests too"}
           title={showAll ? "Showing all requests" : "Showing only active requests"}
           className={`shrink-0 rounded-lg border px-3 py-2 ${
-            showAll ? "border-brand bg-brand/5 text-brand" : "border-cream-border bg-white text-gray-400"
+            showAll ? "border-brand bg-brand/5 text-brand" : "border-cream-border bg-white text-faint"
           }`}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -716,9 +716,9 @@ export default function OrderRequestsClient() {
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
       )}
       {loading ? (
-        <p className="text-sm text-gray-400">Loading…</p>
+        <p className="text-sm text-faint">Loading…</p>
       ) : visibleCount === 0 ? (
-        <p className="text-sm text-gray-400">
+        <p className="text-sm text-faint">
           {search || groupFilter !== "all" || sourceFilter !== "all" ? "No requests match your search/filter." : "No pending requests."}
         </p>
       ) : (
@@ -727,13 +727,13 @@ export default function OrderRequestsClient() {
         <div className="hidden md:block rounded-xl border border-cream-border bg-white overflow-hidden overflow-x-auto">
           <table className="w-full text-sm border-collapse">
             <thead>
-              <tr className="border-b border-cream-border bg-gray-50/80">
-                <th className="text-left px-4 py-2.5 font-medium text-gray-500 w-28">Source</th>
-                <th className="text-left px-4 py-2.5 font-medium text-gray-500 w-40">Customer</th>
-                <th className="text-left px-4 py-2.5 font-medium text-gray-500">Item / Note</th>
-                <th className="text-right px-4 py-2.5 font-medium text-gray-500 w-16">Qty</th>
-                <th className="text-right px-4 py-2.5 font-medium text-gray-500 w-28">Price</th>
-                <th className="text-left px-4 py-2.5 font-medium text-gray-500 w-28">Requested At</th>
+              <tr className="border-b border-cream-border bg-surface-muted/80">
+                <th className="text-left px-4 py-2.5 font-medium text-muted w-28">Source</th>
+                <th className="text-left px-4 py-2.5 font-medium text-muted w-40">Customer</th>
+                <th className="text-left px-4 py-2.5 font-medium text-muted">Item / Note</th>
+                <th className="text-right px-4 py-2.5 font-medium text-muted w-16">Qty</th>
+                <th className="text-right px-4 py-2.5 font-medium text-muted w-28">Price</th>
+                <th className="text-left px-4 py-2.5 font-medium text-muted w-28">Requested At</th>
                 <th className="px-4 py-2.5 w-60" />
               </tr>
             </thead>
@@ -923,9 +923,9 @@ function ProofModal({ request, onClose }: { request: CatalogueRequest; onClose: 
       <div className="bg-white rounded-xl p-5 w-full max-w-sm flex flex-col gap-3" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-foreground">Timestamp</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-foreground text-lg leading-none">&times;</button>
+          <button onClick={onClose} className="text-faint hover:text-foreground text-lg leading-none">&times;</button>
         </div>
-        <pre className="whitespace-pre-wrap font-mono text-xs bg-gray-50 border border-cream-border rounded-lg p-3">
+        <pre className="whitespace-pre-wrap font-mono text-xs bg-surface-muted border border-cream-border rounded-lg p-3">
           {textExport}
         </pre>
         <div className="flex items-center justify-end gap-2">
@@ -933,7 +933,7 @@ function ProofModal({ request, onClose }: { request: CatalogueRequest; onClose: 
             onClick={() => copy(textExport)}
             aria-label={copied ? "Tersalin" : "Salin teks"}
             title={copied ? "Tersalin ✓" : "Salin teks"}
-            className={`w-9 h-9 rounded-lg border border-cream-border flex items-center justify-center ${copied ? "text-green-600" : "text-gray-500"}`}
+            className={`w-9 h-9 rounded-lg border border-cream-border flex items-center justify-center ${copied ? "text-green-600" : "text-muted"}`}
           >
             {copied ? (
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -1041,7 +1041,7 @@ function ConvertModal({ requestId, needsProduct, events, items, defaultEvent, lo
         <h3 className="text-sm font-semibold text-foreground">Convert to order</h3>
         <EventSelect value={event} onChange={setEvent} events={eventOptions} placeholder="Select event…" disabled={lockEvent} />
         {lockEvent && (
-          <p className="text-xs text-gray-400">Trip terkunci — sudah diketahui dari klaim WhatsApp-nya.</p>
+          <p className="text-xs text-faint">Trip terkunci — sudah diketahui dari klaim WhatsApp-nya.</p>
         )}
         {needsProduct && (
           <SearchableSelect
@@ -1155,7 +1155,7 @@ function DuplicateVariantFields({ dv, activeEvents, onClose }: {
 }) {
   const { product, loadError, name, setName, lockEvent, event, setEvent, submitting, error, submit } = dv
   if (loadError) return <p className="text-xs text-red-500">{loadError}</p>
-  if (!product) return <p className="text-xs text-gray-400">Loading…</p>
+  if (!product) return <p className="text-xs text-faint">Loading…</p>
   // A locked-but-inactive event must be in the picker's own option list, or
   // SearchableSelect has no label to show for it and the locked box renders
   // blank even though `event` state is correctly set — same fix ConvertModal
@@ -1163,11 +1163,11 @@ function DuplicateVariantFields({ dv, activeEvents, onClose }: {
   const eventOptions = (lockEvent && event && !activeEvents.includes(event)) ? [...activeEvents, event] : activeEvents
   return (
     <div className="flex flex-col gap-2">
-      <label className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+      <label className="text-[10px] font-semibold uppercase tracking-wide text-muted">
         New product name — price · store · weight copied from {product.name}
       </label>
       <div className="flex flex-col md:flex-row md:items-center gap-2">
-        <div className="w-full md:w-28 h-10 shrink-0 px-2 rounded-lg border border-cream-border bg-gray-50 text-gray-500 text-sm flex items-center truncate" title="Store (copied)">
+        <div className="w-full md:w-28 h-10 shrink-0 px-2 rounded-lg border border-cream-border bg-surface-muted text-muted text-sm flex items-center truncate" title="Store (copied)">
           {product.store || "—"}
         </div>
         <input
@@ -1175,7 +1175,7 @@ function DuplicateVariantFields({ dv, activeEvents, onClose }: {
           onChange={(e) => setName(e.target.value)}
           className="flex-1 h-10 border border-cream-border rounded-lg px-2 text-sm bg-white"
         />
-        <div className="w-full md:w-32 h-10 shrink-0 px-2 rounded-lg border border-cream-border bg-gray-50 text-gray-500 text-sm flex items-center" title="Price (copied)">
+        <div className="w-full md:w-32 h-10 shrink-0 px-2 rounded-lg border border-cream-border bg-surface-muted text-muted text-sm flex items-center" title="Price (copied)">
           <span>Rp</span>
           <span className="ml-auto tabular-nums">{fmt(product.price)}</span>
         </div>
@@ -1262,11 +1262,11 @@ function StatusModal({ request, dead, items, selectedCandidate, onSelectCandidat
             Approved ✓ — {request.countryName} · valas {request.valas} · {request.gram}g · Rp {fmt(request.estimatedPrice ?? 0)}
           </p>
         )}
-        {dead && <p className="text-xs text-gray-400">Trip sudah tutup — tidak dicatat</p>}
+        {dead && <p className="text-xs text-faint">Trip sudah tutup — tidak dicatat</p>}
         {request.status === "asking" && candidates.length === 0 && (
           <div className="flex flex-col gap-2">
             <p className="text-xs text-amber-600 font-medium">Ditanya di grup — belum ada kandidat</p>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted">
               If she confirmed what she wants over DM, pick the product directly — no candidate code needed.
             </p>
             <SearchableSelect value={manualProductId} onChange={setManualProductId} options={itemOptions} placeholder="Search product…" />
@@ -1304,7 +1304,7 @@ function StatusModal({ request, dead, items, selectedCandidate, onSelectCandidat
                     />
                     <span className="font-mono font-bold text-brand">{c.code}</span>
                     <span>{c.productName}</span>
-                    <span className="ml-auto text-gray-500">Rp {c.price.toLocaleString("id-ID")}</span>
+                    <span className="ml-auto text-muted">Rp {c.price.toLocaleString("id-ID")}</span>
                   </label>
                 )
               })}
@@ -1382,7 +1382,7 @@ function LinkIdentityModal({ request, onClose, onDone }: {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
       <div className="bg-white rounded-xl p-5 w-full max-w-sm flex flex-col gap-3" onClick={(e) => e.stopPropagation()}>
         <h3 className="text-sm font-semibold text-foreground">Link WhatsApp number to a customer</h3>
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-muted">
           Number <span className="font-mono">{request.customerHandle}</span> couldn't be matched automatically. Pick who this actually is.
         </p>
         <SearchableSelect
@@ -1598,7 +1598,7 @@ function EditModal({ request, countries, onClose, onDone }: {
   }
 
   const inputCls = "border border-cream-border rounded-lg px-2 py-1.5 text-sm w-full"
-  const labelCls = "text-xs font-medium text-gray-500"
+  const labelCls = "text-xs font-medium text-muted"
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
@@ -1609,8 +1609,8 @@ function EditModal({ request, countries, onClose, onDone }: {
           <input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} />
         </label>
         {request.estimatedPrice !== null && (
-          <div className="rounded-lg border border-cream-border bg-gray-50 px-3 py-2 flex items-center justify-between text-xs">
-            <span className="text-gray-500">
+          <div className="rounded-lg border border-cream-border bg-surface-muted px-3 py-2 flex items-center justify-between text-xs">
+            <span className="text-muted">
               Customer's own estimate — {countries.find((c) => c.id === request.countryId)?.name ?? "—"} · valas {request.valas} · {request.gram}g
             </span>
             <span className="font-semibold text-foreground tabular-nums">Rp {fmt(request.estimatedPrice)}</span>
@@ -1623,7 +1623,7 @@ function EditModal({ request, countries, onClose, onDone }: {
               type="button"
               onClick={() => setPricingMethod(m)}
               className={`px-3 py-1.5 rounded-lg border text-xs ${
-                pricingMethod === m ? "border-brand bg-brand/5 text-brand" : "border-cream-border text-gray-500"
+                pricingMethod === m ? "border-brand bg-brand/5 text-brand" : "border-cream-border text-muted"
               }`}
             >
               {m === "overseas" ? "Profit Margin" : "Tier Kurs"}
@@ -1651,7 +1651,7 @@ function EditModal({ request, countries, onClose, onDone }: {
           ) : (
             <div className="flex flex-col gap-1">
               <span className={labelCls}>Charged rate</span>
-              <div className={`${inputCls} bg-gray-50 text-gray-500 flex items-center tabular-nums`}>
+              <div className={`${inputCls} bg-surface-muted text-muted flex items-center tabular-nums`}>
                 {previewLoading ? "…" : tieredKursPreview != null ? fmt(tieredKursPreview) : "—"}
               </div>
             </div>
@@ -1670,13 +1670,13 @@ function EditModal({ request, countries, onClose, onDone }: {
           </label>
           <div className={`flex flex-col gap-1 ${pricingMethod === "tier_kurs" ? "col-span-2" : ""}`}>
             <span className={labelCls}>Price</span>
-            <div className={`${inputCls} bg-gray-50 text-gray-500 flex items-center`}>
+            <div className={`${inputCls} bg-surface-muted text-muted flex items-center`}>
               {previewLoading ? "Calculating…" : preview != null ? `Rp ${fmt(preview)}` : "—"}
             </div>
           </div>
           <div className="flex flex-col gap-1">
             <span className={labelCls}>Profit est.</span>
-            <div className={`${inputCls} bg-gray-50 text-gray-500 flex items-center`}>
+            <div className={`${inputCls} bg-surface-muted text-muted flex items-center`}>
               {previewLoading ? "Calculating…" : profitPreview != null ? `Rp ${fmt(profitPreview)}` : "—"}
             </div>
           </div>
@@ -1853,7 +1853,7 @@ function CreateProductModal({ request, countries, activeEvents, onClose, onDone 
   }
 
   const inputCls = "border border-cream-border rounded-lg px-2 py-1.5 text-sm w-full"
-  const labelCls = "text-xs font-medium text-gray-500"
+  const labelCls = "text-xs font-medium text-muted"
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
@@ -1870,8 +1870,8 @@ function CreateProductModal({ request, countries, activeEvents, onClose, onDone 
           </label>
         </div>
         {request.estimatedPrice !== null && (
-          <div className="rounded-lg border border-cream-border bg-gray-50 px-3 py-2 flex items-center justify-between text-xs">
-            <span className="text-gray-500">Approved offer</span>
+          <div className="rounded-lg border border-cream-border bg-surface-muted px-3 py-2 flex items-center justify-between text-xs">
+            <span className="text-muted">Approved offer</span>
             <span className="font-semibold text-foreground tabular-nums">Rp {fmt(request.estimatedPrice)}</span>
           </div>
         )}
@@ -1880,7 +1880,7 @@ function CreateProductModal({ request, countries, activeEvents, onClose, onDone 
           <EventSelect value={event} onChange={setEvent} events={eventOptions} placeholder="Select event…" disabled={lockEvent} />
         </label>
         {lockEvent && (
-          <p className="text-xs text-gray-400">Trip terkunci — sudah diketahui dari klaim WhatsApp-nya.</p>
+          <p className="text-xs text-faint">Trip terkunci — sudah diketahui dari klaim WhatsApp-nya.</p>
         )}
         <div className="flex gap-2">
           {(["overseas", "tier_kurs"] as const).map((m) => (
@@ -1889,7 +1889,7 @@ function CreateProductModal({ request, countries, activeEvents, onClose, onDone 
               type="button"
               onClick={() => setPricingMethod(m)}
               className={`px-3 py-1.5 rounded-lg border text-xs ${
-                pricingMethod === m ? "border-brand bg-brand/5 text-brand" : "border-cream-border text-gray-500"
+                pricingMethod === m ? "border-brand bg-brand/5 text-brand" : "border-cream-border text-muted"
               }`}
             >
               {m === "overseas" ? "Profit Margin" : "Tier Kurs"}
@@ -1917,7 +1917,7 @@ function CreateProductModal({ request, countries, activeEvents, onClose, onDone 
           ) : (
             <div className="flex flex-col gap-1">
               <span className={labelCls}>Charged rate</span>
-              <div className={`${inputCls} bg-gray-50 text-gray-500 flex items-center tabular-nums`}>
+              <div className={`${inputCls} bg-surface-muted text-muted flex items-center tabular-nums`}>
                 {previewLoading ? "…" : tieredKursPreview != null ? fmt(tieredKursPreview) : "—"}
               </div>
             </div>
@@ -1936,13 +1936,13 @@ function CreateProductModal({ request, countries, activeEvents, onClose, onDone 
           </label>
           <div className={`flex flex-col gap-1 ${pricingMethod === "tier_kurs" ? "col-span-2" : ""}`}>
             <span className={labelCls}>Price</span>
-            <div className={`${inputCls} bg-gray-50 text-gray-500 flex items-center`}>
+            <div className={`${inputCls} bg-surface-muted text-muted flex items-center`}>
               {previewLoading ? "Calculating…" : preview != null ? `Rp ${fmt(preview)}` : "—"}
             </div>
           </div>
           <div className="flex flex-col gap-1">
             <span className={labelCls}>Profit est.</span>
-            <div className={`${inputCls} bg-gray-50 text-gray-500 flex items-center`}>
+            <div className={`${inputCls} bg-surface-muted text-muted flex items-center`}>
               {previewLoading ? "Calculating…" : profitPreview != null ? `Rp ${fmt(profitPreview)}` : "—"}
             </div>
           </div>

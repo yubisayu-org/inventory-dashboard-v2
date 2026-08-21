@@ -178,13 +178,13 @@ export default function WarehouseOriginSection() {
           <button
             type="button"
             onClick={() => { setAdding((v) => !v); setError(""); setAddWarning("") }}
-            className="px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-xs font-medium hover:border-brand hover:text-brand transition-colors"
+            className="px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-xs font-medium hover:border-brand hover:text-brand transition-colors"
           >
             {adding ? "Cancel" : "+ Add warehouse"}
           </button>
         </div>
       </div>
-      <p className="text-xs text-gray-500">
+      <p className="text-xs text-muted">
         Where each warehouse ships from. Rates are priced origin to destination, so a
         warehouse without one falls back to the JNE rate table.
       </p>
@@ -203,7 +203,7 @@ export default function WarehouseOriginSection() {
 
       {adding && (
         <div className="rounded-lg border border-cream-border bg-cream p-3 flex flex-col gap-2">
-          <label className="text-xs text-gray-500">Code — must match jne_rates.origin_code to price from the rate table</label>
+          <label className="text-xs text-muted">Code — must match jne_rates.origin_code to price from the rate table</label>
           <input
             className={inputCls}
             value={newCode}
@@ -211,7 +211,7 @@ export default function WarehouseOriginSection() {
             placeholder="JAKARTA"
             maxLength={20}
           />
-          <label className="text-xs text-gray-500">Name</label>
+          <label className="text-xs text-muted">Name</label>
           <input
             className={inputCls}
             value={newName}
@@ -227,13 +227,13 @@ export default function WarehouseOriginSection() {
           >
             {saving ? "Adding…" : "Add warehouse"}
           </button>
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-muted">
             The default warehouse is not changed by adding one.
           </p>
         </div>
       )}
 
-      <label className="text-xs text-gray-500">Warehouse</label>
+      <label className="text-xs text-muted">Warehouse</label>
       <select
         className={inputCls}
         value={selectedId ?? ""}
@@ -253,7 +253,7 @@ export default function WarehouseOriginSection() {
       </select>
 
       {selected && (
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-muted">
           Current origin:{" "}
           {selected.biteshipAreaName ? (
             <span className="text-foreground font-medium">
@@ -266,7 +266,7 @@ export default function WarehouseOriginSection() {
         </p>
       )}
 
-      <label className="text-xs text-gray-500">Search a new origin</label>
+      <label className="text-xs text-muted">Search a new origin</label>
       <input
         className={inputCls}
         value={query}

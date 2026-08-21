@@ -62,7 +62,7 @@ export default function ProductSearchPicker({
         placeholder="Search products (name or store)…"
         className="border border-cream-border rounded-lg px-3 py-2 text-sm"
       />
-      {loading && <p className="text-xs text-gray-400">Searching…</p>}
+      {loading && <p className="text-xs text-faint">Searching…</p>}
       <div className="flex flex-col gap-1 max-h-64 overflow-y-auto">
         {results.map((p) => {
           const already = alreadyAddedIds.has(p.id)
@@ -74,12 +74,12 @@ export default function ProductSearchPicker({
               disabled={already || pickingId !== null}
               onClick={() => handlePick(p)}
               className={`flex items-center gap-2 text-left px-2 py-1.5 rounded-lg text-xs border ${
-                already || pickingId !== null ? "border-cream-border bg-cream-border/40 text-gray-400 cursor-not-allowed" : "border-cream-border hover:border-brand"
+                already || pickingId !== null ? "border-cream-border bg-cream-border/40 text-faint cursor-not-allowed" : "border-cream-border hover:border-brand"
               }`}
             >
               <span className="flex-1">{p.name}</span>
-              <span className="text-gray-500">{p.store}</span>
-              <span className="text-gray-500">Rp {p.price.toLocaleString("id-ID")}</span>
+              <span className="text-muted">{p.store}</span>
+              <span className="text-muted">Rp {p.price.toLocaleString("id-ID")}</span>
               {already && <span className="text-[10px] font-bold uppercase">added</span>}
               {picking && <span className="text-[10px] font-bold uppercase">…</span>}
             </button>

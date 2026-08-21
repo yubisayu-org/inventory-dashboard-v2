@@ -120,12 +120,12 @@ export default function UploadClient() {
 
       <div className="grid gap-3 sm:grid-cols-3">
         <label className="flex flex-col gap-1">
-          <span className="text-xs text-gray-500">Event</span>
+          <span className="text-xs text-muted">Event</span>
           <EventSelect value={event} onChange={setEvent} events={events} />
         </label>
 
         <label className="flex flex-col gap-1">
-          <span className="text-xs text-gray-500">Store</span>
+          <span className="text-xs text-muted">Store</span>
           <input
             value={store}
             onChange={(e) => setStore(e.target.value)}
@@ -135,7 +135,7 @@ export default function UploadClient() {
         </label>
 
         <label className="flex flex-col gap-1">
-          <span className="text-xs text-gray-500">Note (optional)</span>
+          <span className="text-xs text-muted">Note (optional)</span>
           <input
             value={note}
             onChange={(e) => setNote(e.target.value)}
@@ -160,7 +160,7 @@ export default function UploadClient() {
           setDragging(false)
           add(e.dataTransfer.files)
         }}
-        className={`relative rounded-xl border border-dashed py-8 text-center text-sm text-gray-500 transition-colors ${
+        className={`relative rounded-xl border border-dashed py-8 text-center text-sm text-muted transition-colors ${
           dragging ? "border-brand bg-brand/5" : "border-cream-border bg-white"
         }`}
       >
@@ -191,7 +191,7 @@ export default function UploadClient() {
             >
               <span className="min-w-0 flex-1">
                 <span className="block text-xs text-foreground truncate">{job.file.name}</span>
-                <span className="block text-[11px] text-gray-400 tabular-nums">{job.detail}</span>
+                <span className="block text-[11px] text-faint tabular-nums">{job.detail}</span>
               </span>
               {job.postId ? (
                 <Link
@@ -207,7 +207,7 @@ export default function UploadClient() {
                     ? "text-green-700"
                     : job.status === "failed"
                       ? "text-red-600"
-                      : "text-gray-400"
+                      : "text-faint"
                 }`}
               >
                 {job.status === "done"
@@ -235,7 +235,7 @@ export default function UploadClient() {
         />
         <span>
           Post to the WhatsApp group
-          <span className="block text-[11px] text-gray-500">
+          <span className="block text-[11px] text-muted">
             Sent by the bot at full resolution, a few seconds after upload.
           </span>
         </span>

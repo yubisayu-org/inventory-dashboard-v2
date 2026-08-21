@@ -69,7 +69,7 @@ export default function MobileNavClient({ user }: { user: User }) {
             <Link
               key={t.href}
               href={t.href}
-              className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 text-[11px] font-medium transition-colors ${active ? "text-brand" : "text-gray-400"}`}
+              className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 text-[11px] font-medium transition-colors ${active ? "text-brand" : "text-faint"}`}
             >
               {t.icon}
               {t.label}
@@ -79,7 +79,7 @@ export default function MobileNavClient({ user }: { user: User }) {
         <button
           type="button"
           onClick={() => setMoreOpen(true)}
-          className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 text-[11px] font-medium transition-colors ${moreOpen ? "text-brand" : "text-gray-400"}`}
+          className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 text-[11px] font-medium transition-colors ${moreOpen ? "text-brand" : "text-faint"}`}
         >
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></svg>
           More

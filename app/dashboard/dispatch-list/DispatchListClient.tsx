@@ -110,7 +110,7 @@ function CollapseBtn({ collapsed, onClick }: { collapsed: boolean; onClick: () =
   return (
     <button
       onClick={onClick}
-      className="inline-flex items-center justify-center w-4 h-4 rounded border border-gray-300 bg-white text-gray-500 hover:text-brand hover:border-brand transition-colors text-xs font-bold shrink-0"
+      className="inline-flex items-center justify-center w-4 h-4 rounded border border-cream-border bg-white text-muted hover:text-brand hover:border-brand transition-colors text-xs font-bold shrink-0"
     >
       {collapsed ? "+" : "−"}
     </button>
@@ -122,7 +122,7 @@ type CustomerBadgeOrder = { customer: string; qty: number; paidStatus: PaidStatu
 const PAID_DOT: Record<PaidStatus, string> = {
   paid:    "bg-green-500",
   partial: "bg-yellow-400",
-  unpaid:  "bg-gray-300",
+  unpaid:  "bg-divider",
 }
 const PAID_LABEL: Record<PaidStatus, string> = {
   paid:    "Paid",
@@ -200,7 +200,7 @@ function CustomerBadge({ orders }: { orders: CustomerBadgeOrder[] }) {
         type="button"
         onClick={handleToggle}
         title={allPaid ? "All customers paid" : `${paidCount} of ${totalCount} paid`}
-        className="inline-flex items-baseline gap-1 text-gray-400 hover:text-brand transition-colors cursor-pointer"
+        className="inline-flex items-baseline gap-1 text-faint hover:text-brand transition-colors cursor-pointer"
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="self-center">
           <circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
@@ -225,7 +225,7 @@ function CustomerBadge({ orders }: { orders: CustomerBadgeOrder[] }) {
           {entries.map((e) => (
             <div
               key={e.customer}
-              className="flex items-center justify-between gap-3 px-3 py-1 text-xs hover:bg-gray-50 whitespace-nowrap"
+              className="flex items-center justify-between gap-3 px-3 py-1 text-xs hover:bg-surface-muted whitespace-nowrap"
             >
               <span className="flex items-center gap-2 min-w-0">
                 <span
@@ -235,7 +235,7 @@ function CustomerBadge({ orders }: { orders: CustomerBadgeOrder[] }) {
                 />
                 <span className="text-foreground truncate">{displayIg(e.customer)}</span>
               </span>
-              <span className="text-gray-500 tabular-nums shrink-0">{e.qty}×</span>
+              <span className="text-muted tabular-nums shrink-0">{e.qty}×</span>
             </div>
           ))}
         </div>
@@ -417,7 +417,7 @@ export default function DispatchListClient() {
           onClick={toggleSelectAll}
           aria-label={allSelected ? "Deselect all" : "Select all"}
           title={allSelected ? "Deselect all" : "Select all"}
-          className="inline-flex items-center gap-1.5 shrink-0 rounded-lg border border-cream-border h-[38px] px-3 text-sm text-gray-600 bg-white hover:border-brand transition-colors"
+          className="inline-flex items-center gap-1.5 shrink-0 rounded-lg border border-cream-border h-[38px] px-3 text-sm text-muted-strong bg-white hover:border-brand transition-colors"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M9 11l3 3L22 4" />
@@ -450,23 +450,23 @@ export default function DispatchListClient() {
       <div className="hidden md:block rounded-xl border border-cream-border bg-white overflow-hidden">
         {/* Same title-bar style as OverbuyTransitList's "INVENTORY IN TRANSIT" below, so
             the two sections read as one matched pair. */}
-        <div className="px-4 py-2.5 border-b border-cream-border border-l-[3px] border-brand bg-gray-50/80">
+        <div className="px-4 py-2.5 border-b border-cream-border border-l-[3px] border-brand bg-surface-muted/80">
           <div className="font-bold text-sm text-foreground">CUSTOMER ORDER</div>
         </div>
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="border-b border-cream-border bg-gray-50/80">
-              <th className="text-left px-4 py-2.5 font-medium text-gray-500 w-44">Event</th>
-              <th className="text-left px-4 py-2.5 font-medium text-gray-500 w-36">Store</th>
-              <th className="text-left px-4 py-2.5 font-medium text-gray-500">Product</th>
-              <th className="text-right px-4 py-2.5 font-medium text-gray-500 w-20">Qty</th>
+            <tr className="border-b border-cream-border bg-surface-muted/80">
+              <th className="text-left px-4 py-2.5 font-medium text-muted w-44">Event</th>
+              <th className="text-left px-4 py-2.5 font-medium text-muted w-36">Store</th>
+              <th className="text-left px-4 py-2.5 font-medium text-muted">Product</th>
+              <th className="text-right px-4 py-2.5 font-medium text-muted w-20">Qty</th>
               <th className="px-4 py-2.5 w-10" />
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 && (
               <tr>
-                <td colSpan={5} className="text-center text-gray-400 py-12 text-sm">
+                <td colSpan={5} className="text-center text-faint py-12 text-sm">
                   No items
                 </td>
               </tr>
@@ -479,7 +479,7 @@ export default function DispatchListClient() {
                       <div className="flex items-center gap-2">
                         <CollapseBtn collapsed onClick={() => toggleDesktopEvent(row.event)} />
                         <span className="font-medium text-foreground">{row.event}</span>
-                        <span className="text-xs text-gray-400">{row.totalItems} items</span>
+                        <span className="text-xs text-faint">{row.totalItems} items</span>
                       </div>
                     </td>
                   </tr>
@@ -497,11 +497,11 @@ export default function DispatchListClient() {
                         </div>
                       </td>
                     )}
-                    <td colSpan={4} className="px-4 py-2.5 bg-gray-50/40">
+                    <td colSpan={4} className="px-4 py-2.5 bg-surface-muted/40">
                       <div className="flex items-center gap-2">
                         <CollapseBtn collapsed onClick={() => toggleDesktopStore(row.event, row.store)} />
-                        <span className="text-gray-600">{row.store}</span>
-                        <span className="text-xs text-gray-400">{row.totalItems} items</span>
+                        <span className="text-muted-strong">{row.store}</span>
+                        <span className="text-xs text-faint">{row.totalItems} items</span>
                       </div>
                     </td>
                   </tr>
@@ -511,7 +511,7 @@ export default function DispatchListClient() {
               return (
                 <tr
                   key={`${row.event}|${row.store}|${row.item.productId}`}
-                  className="border-b border-cream-border hover:bg-gray-50/50 transition-colors"
+                  className="border-b border-cream-border hover:bg-surface-muted/50 transition-colors"
                 >
                   {row.showEvent && (
                     <td rowSpan={row.eventRowSpan} className="px-4 py-2.5 align-top border-r border-cream-border">
@@ -525,7 +525,7 @@ export default function DispatchListClient() {
                     <td rowSpan={row.storeRowSpan} className="px-4 py-2.5 align-top border-r border-cream-border">
                       <div className="flex items-center gap-2 pt-0.5">
                         <CollapseBtn collapsed={false} onClick={() => toggleDesktopStore(row.event, row.store)} />
-                        <span className="text-gray-600">{row.store}</span>
+                        <span className="text-muted-strong">{row.store}</span>
                       </div>
                     </td>
                   )}
@@ -555,7 +555,7 @@ export default function DispatchListClient() {
                   <td className="px-4 py-2.5 text-right whitespace-nowrap">
                     <span className="tabular-nums font-bold text-foreground">{row.item.totalUnits}</span>
                     {row.item.totalUnits < row.item.totalOriginal && (
-                      <span className="text-gray-400 font-normal tabular-nums" title="Partially dispatched">
+                      <span className="text-faint font-normal tabular-nums" title="Partially dispatched">
                         {" "}/ {row.item.totalOriginal}
                       </span>
                     )}
@@ -564,7 +564,7 @@ export default function DispatchListClient() {
                     <button
                       onClick={() => setDispatchingItem(row.item)}
                       title="Mark dispatched"
-                      className="text-gray-400 hover:text-green-600 transition-colors"
+                      className="text-faint hover:text-green-600 transition-colors"
                     >
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <line x1="22" y1="2" x2="11" y2="13" />
@@ -582,7 +582,7 @@ export default function DispatchListClient() {
       {/* Grouped cards (mobile) */}
       <div className="md:hidden flex flex-col gap-2.5">
         {grouped.size === 0 && (
-          <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">No items</div>
+          <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-faint">No items</div>
         )}
         {[...grouped.entries()].map(([event, storeMap]) => {
           const allItems = [...storeMap.values()].flat()
@@ -590,19 +590,19 @@ export default function DispatchListClient() {
           return (
             <div key={event} className="rounded-xl border border-cream-border bg-white overflow-hidden">
               <button type="button" onClick={() => toggleEvent(event)} className="w-full flex items-center gap-2.5 px-4 py-3 border-l-[3px] border-brand text-left">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`text-gray-400 transition-transform ${eventCollapsed ? "-rotate-90" : ""}`}><path d="m6 9 6 6 6-6" /></svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`text-faint transition-transform ${eventCollapsed ? "-rotate-90" : ""}`}><path d="m6 9 6 6 6-6" /></svg>
                 <span className="font-bold text-sm text-foreground">{event}</span>
-                <span className="ml-auto text-xs text-gray-400">{allItems.length} items</span>
+                <span className="ml-auto text-xs text-faint">{allItems.length} items</span>
               </button>
               {!eventCollapsed && [...storeMap.entries()].map(([store, storeItems]) => {
                 const storeKey = `${event}|${store}`
                 const storeCollapsed = collapsedStores.has(storeKey)
                 return (
                   <div key={storeKey}>
-                    <button type="button" onClick={() => toggleStore(event, store)} className="w-full flex items-center gap-2 px-4 py-2.5 bg-gray-50/60 border-t border-cream-border text-left">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`text-gray-400 transition-transform ${storeCollapsed ? "-rotate-90" : ""}`}><path d="m6 9 6 6 6-6" /></svg>
-                      <span className="text-xs font-bold text-gray-600">{store}</span>
-                      <span className="ml-auto text-[11px] text-gray-400">{storeItems.length}</span>
+                    <button type="button" onClick={() => toggleStore(event, store)} className="w-full flex items-center gap-2 px-4 py-2.5 bg-surface-muted/60 border-t border-cream-border text-left">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`text-faint transition-transform ${storeCollapsed ? "-rotate-90" : ""}`}><path d="m6 9 6 6 6-6" /></svg>
+                      <span className="text-xs font-bold text-muted-strong">{store}</span>
+                      <span className="ml-auto text-[11px] text-faint">{storeItems.length}</span>
                     </button>
                     {!storeCollapsed && storeItems.map((item) => (
                         <div key={item.productId} className="flex items-center gap-3 px-4 py-2.5 border-t border-cream-border">
@@ -633,7 +633,7 @@ export default function DispatchListClient() {
                           <div className="text-sm font-bold tabular-nums whitespace-nowrap text-foreground">
                             {item.totalUnits}
                             {item.totalUnits < item.totalOriginal && (
-                              <span className="text-gray-400 font-normal" title="Partially dispatched"> / {item.totalOriginal}</span>
+                              <span className="text-faint font-normal" title="Partially dispatched"> / {item.totalOriginal}</span>
                             )}
                           </div>
                           <button type="button" onClick={() => setDispatchingItem(item)} aria-label="Mark dispatched" className="w-9 h-9 rounded-lg border border-cream-border text-brand flex items-center justify-center shrink-0 active:bg-green-50 active:text-green-700 active:border-green-200"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg></button>
@@ -835,20 +835,20 @@ function ConfirmDispatchPanel({
           <h3 className="text-sm font-semibold text-foreground">
             Mark {totalQty} item{totalQty === 1 ? "" : "s"} dispatched
           </h3>
-          <p className="text-xs text-gray-500 mt-0.5">Adjust quantities if needed, then add one dispatch tracking ref for all of them.</p>
+          <p className="text-xs text-muted mt-0.5">Adjust quantities if needed, then add one dispatch tracking ref for all of them.</p>
         </div>
 
         <div className="px-5 py-4 overflow-y-auto min-h-0 flex flex-col gap-4">
           {[...byEvent.entries()].map(([event, evItems]) => (
             <div key={event} className="flex flex-col gap-2">
-              <div className="text-xs font-semibold text-gray-500">{event}</div>
+              <div className="text-xs font-semibold text-muted">{event}</div>
               {evItems.map((it) => {
                 const k = selKey(it)
                 return (
                   <div key={k} className="flex items-center gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="text-sm text-foreground break-words">{it.productName}</div>
-                      {it.store && <div className="text-[11px] text-gray-400">{it.store}</div>}
+                      {it.store && <div className="text-[11px] text-faint">{it.store}</div>}
                     </div>
                     <input
                       type="number"
@@ -857,7 +857,7 @@ function ConfirmDispatchPanel({
                       onChange={(e) => setQtys((p) => ({ ...p, [k]: e.target.value }))}
                       className="w-20 shrink-0 border border-cream-border rounded-lg px-2 py-1.5 text-sm text-right bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
                     />
-                    <span className="text-[11px] text-gray-400 w-14 shrink-0">/ {it.totalUnits} left</span>
+                    <span className="text-[11px] text-faint w-14 shrink-0">/ {it.totalUnits} left</span>
                   </div>
                 )
               })}
@@ -867,7 +867,7 @@ function ConfirmDispatchPanel({
 
         <div className="px-5 py-4 border-t border-cream-border shrink-0 flex flex-col gap-3">
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-500">Dispatch tracking (optional)</span>
+            <span className="text-xs font-medium text-muted">Dispatch tracking (optional)</span>
             <input
               type="text"
               value={tracking}
@@ -887,7 +887,7 @@ function ConfirmDispatchPanel({
               type="button"
               onClick={onClose}
               disabled={submitting}
-              className="px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+              className="px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
             >
               Cancel
             </button>
@@ -977,14 +977,14 @@ function ConfirmCancelPanel({
         <div className="px-5 py-4 overflow-y-auto min-h-0 flex flex-col gap-4">
           {[...byEvent.entries()].map(([event, evItems]) => (
             <div key={event} className="flex flex-col gap-2">
-              <div className="text-xs font-semibold text-gray-500">{event}</div>
+              <div className="text-xs font-semibold text-muted">{event}</div>
               {evItems.map((it) => (
                 <div key={selKey(it)} className="flex items-center gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="text-sm text-foreground break-words">{it.productName}</div>
-                    {it.store && <div className="text-[11px] text-gray-400">{it.store}</div>}
+                    {it.store && <div className="text-[11px] text-faint">{it.store}</div>}
                   </div>
-                  <span className="text-[11px] text-gray-400 shrink-0">
+                  <span className="text-[11px] text-faint shrink-0">
                     {it.customerCount} customer{it.customerCount === 1 ? "" : "s"}
                   </span>
                 </div>
@@ -1000,7 +1000,7 @@ function ConfirmCancelPanel({
               type="button"
               onClick={onClose}
               disabled={submitting}
-              className="px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+              className="px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
             >
               Keep
             </button>
@@ -1077,11 +1077,11 @@ function DispatchItemModal({
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="text-sm font-semibold text-foreground">{item.productName}</div>
-            <div className="text-xs text-gray-400 mt-0.5">
+            <div className="text-xs text-faint mt-0.5">
               {item.event}{item.store ? ` · ${item.store}` : ""}
             </div>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-brand transition-colors shrink-0">
+          <button onClick={onClose} className="text-faint hover:text-brand transition-colors shrink-0">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M18 6 6 18M6 6l12 12" />
             </svg>
@@ -1091,8 +1091,8 @@ function DispatchItemModal({
         {/* Qty + Dispatch tracking inputs */}
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-gray-500">
-              Units to dispatch <span className="text-gray-400">(remaining: {item.totalUnits})</span>
+            <label className="text-xs font-medium text-muted">
+              Units to dispatch <span className="text-faint">(remaining: {item.totalUnits})</span>
             </label>
             <input
               type="number"
@@ -1106,8 +1106,8 @@ function DispatchItemModal({
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-gray-500">
-              Dispatch tracking <span className="text-gray-400 font-normal">(optional)</span>
+            <label className="text-xs font-medium text-muted">
+              Dispatch tracking <span className="text-faint font-normal">(optional)</span>
             </label>
             <input
               type="text"
@@ -1125,7 +1125,7 @@ function DispatchItemModal({
           <div className="flex flex-col gap-2 text-xs">
             {preview.filled.length > 0 && (
               <div>
-                <div className="font-medium text-gray-500 mb-1">Will dispatch ({preview.filled.reduce((s, f) => s + f.allocated, 0)} units):</div>
+                <div className="font-medium text-muted mb-1">Will dispatch ({preview.filled.reduce((s, f) => s + f.allocated, 0)} units):</div>
                 <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto pr-0.5">
                   {preview.filled.map((f) => (
                     <div key={f.order.id} className="flex items-center justify-between px-2 py-1 rounded-md bg-green-50">
@@ -1144,12 +1144,12 @@ function DispatchItemModal({
 
             {preview.unfilled.length > 0 && (
               <div>
-                <div className="font-medium text-gray-500 mb-1">Stays in list ({preview.unfilled.reduce((s, o) => s + o.pending, 0)} units):</div>
+                <div className="font-medium text-muted mb-1">Stays in list ({preview.unfilled.reduce((s, o) => s + o.pending, 0)} units):</div>
                 <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto pr-0.5">
                   {preview.unfilled.map((o) => (
-                    <div key={o.id} className="flex items-center justify-between px-2 py-1 rounded-md bg-gray-50">
-                      <span className="text-gray-500 truncate">{displayIg(o.customer)}</span>
-                      <span className="text-gray-400 font-medium ml-2 shrink-0 tabular-nums">{o.pending}×</span>
+                    <div key={o.id} className="flex items-center justify-between px-2 py-1 rounded-md bg-surface-muted">
+                      <span className="text-muted truncate">{displayIg(o.customer)}</span>
+                      <span className="text-faint font-medium ml-2 shrink-0 tabular-nums">{o.pending}×</span>
                     </div>
                   ))}
                 </div>
@@ -1165,7 +1165,7 @@ function DispatchItemModal({
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+            className="px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
           >
             Cancel
           </button>

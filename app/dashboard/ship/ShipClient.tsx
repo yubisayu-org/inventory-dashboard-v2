@@ -53,7 +53,7 @@ function HoldIcon() {
 
 // Card badge styling per arrival/ship status (mirrors SEGMENTS labels).
 const STATUS_BADGE: Record<ShipStatus, { label: string; cls: string }> = {
-  not_arrived: { label: "Belum Tiba", cls: "bg-gray-100 text-gray-500" },
+  not_arrived: { label: "Belum Tiba", cls: "bg-surface-sunken text-muted" },
   partial: { label: "Tiba Sebagian", cls: "bg-amber-100 text-amber-700" },
   ready: { label: "Siap Kirim", cls: "bg-brand/10 text-brand" },
   ready_unpaid: { label: "Belum Bayar", cls: "bg-orange-100 text-orange-700" },
@@ -68,7 +68,7 @@ const PAYMENT_BADGE: Record<PaymentStatus, { label: string; cls: string }> = {
   overpaid: { label: "Lebih Bayar",    cls: "bg-blue-100 text-blue-700" },
   partial:  { label: "Bayar Sebagian", cls: "bg-amber-100 text-amber-700" },
   unpaid:   { label: "Belum Bayar",    cls: "bg-rose-100 text-rose-700" },
-  void:     { label: "Void",           cls: "bg-gray-100 text-gray-500" },
+  void:     { label: "Void",           cls: "bg-surface-sunken text-muted" },
 }
 
 export default function ShipClient() {
@@ -222,7 +222,7 @@ export default function ShipClient() {
             className={`flex-1 shrink-0 flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
               segment === s.id
                 ? "bg-brand text-white"
-                : "text-gray-500 hover:text-foreground"
+                : "text-muted hover:text-foreground"
             }`}
           >
             {s.label}
@@ -230,7 +230,7 @@ export default function ShipClient() {
               className={`hidden sm:inline text-xs rounded-full px-1.5 py-0.5 tabular-nums ${
                 segment === s.id
                   ? "bg-white/20 text-white"
-                  : "bg-gray-100 text-gray-500"
+                  : "bg-surface-sunken text-muted"
               }`}
             >
               {counts[s.id]}
@@ -265,7 +265,7 @@ export default function ShipClient() {
             disabled={bulkShipping}
             aria-label={allSelected ? "Deselect all" : "Select all"}
             title={allSelected ? "Deselect all" : "Select all"}
-            className="hidden md:inline-flex items-center gap-1.5 shrink-0 rounded-lg border border-cream-border h-[38px] px-3 text-sm text-gray-600 bg-white hover:border-brand transition-colors disabled:opacity-50"
+            className="hidden md:inline-flex items-center gap-1.5 shrink-0 rounded-lg border border-cream-border h-[38px] px-3 text-sm text-muted-strong bg-white hover:border-brand transition-colors disabled:opacity-50"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M9 11l3 3L22 4" />
@@ -284,7 +284,7 @@ export default function ShipClient() {
         </div>
       )}
       {!loading && !error && groups.length === 0 && (
-        <div className="rounded-xl border border-cream-border bg-white p-12 text-center text-gray-400 text-sm">
+        <div className="rounded-xl border border-cream-border bg-white p-12 text-center text-faint text-sm">
           Tidak ada pesanan.
         </div>
       )}
@@ -365,9 +365,9 @@ export default function ShipClient() {
           })}
           {paginated && pageCount > 1 && (
             <div className="flex items-center justify-between gap-3 pt-1">
-              <button type="button" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-gray-600 disabled:opacity-40">Prev</button>
-              <span className="text-xs text-gray-400">Page {page + 1} of {pageCount}</span>
-              <button type="button" disabled={page >= pageCount - 1} onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-gray-600 disabled:opacity-40">Next</button>
+              <button type="button" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-muted-strong disabled:opacity-40">Prev</button>
+              <span className="text-xs text-faint">Page {page + 1} of {pageCount}</span>
+              <button type="button" disabled={page >= pageCount - 1} onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-muted-strong disabled:opacity-40">Next</button>
             </div>
           )}
         </>
@@ -472,7 +472,7 @@ function CopyConfirmMessageButton({ customer: c, className }: { customer: ShipCu
       className={`${className ?? "p-1 rounded"} inline-flex items-center justify-center transition-colors disabled:opacity-50 ${
         status === "copied" ? "text-green-600"
         : status === "error" ? "text-red-500"
-        : "text-gray-400 hover:text-brand"
+        : "text-faint hover:text-brand"
       }`}
     >
       {label ? (
@@ -535,14 +535,14 @@ function CustomerCard({
       {/* items-center: both sides are a single row now that the ship/hold counts
           live inside their buttons, so the identity line and the buttons should
           sit on the same axis. */}
-      <div className="px-5 py-4 bg-gray-50 border-b border-cream-border flex justify-between gap-4 items-center">
+      <div className="px-5 py-4 bg-surface-muted border-b border-cream-border flex justify-between gap-4 items-center">
         <div className="flex items-center gap-3 min-w-0">
           {onToggleSelect && (
             <input
               type="checkbox"
               checked={isSelected ?? false}
               onChange={onToggleSelect}
-              className="rounded border-gray-300 text-brand focus:ring-brand/30 cursor-pointer shrink-0"
+              className="rounded border-cream-border text-brand focus:ring-brand/30 cursor-pointer shrink-0"
             />
           )}
         <div className="flex flex-col gap-1 min-w-0">
@@ -552,7 +552,7 @@ function CustomerCard({
               <button
                 type="button"
                 onClick={onOpenInvoice}
-                className="text-xs text-gray-500 font-medium hover:text-brand hover:underline cursor-pointer text-left truncate min-w-0"
+                className="text-xs text-muted font-medium hover:text-brand hover:underline cursor-pointer text-left truncate min-w-0"
                 title="Lihat invoice"
               >
                 {displayIg(c.customer).toUpperCase()}
@@ -593,12 +593,12 @@ function CustomerCard({
             {c.totalToShip > 0 && (
               <div className="flex flex-col items-end gap-1">
                 <div className="flex items-center gap-1.5">
-                  <CopyConfirmMessageButton customer={c} className="px-3 py-1.5 rounded-lg border border-gray-300 hover:bg-gray-50" />
+                  <CopyConfirmMessageButton customer={c} className="px-3 py-1.5 rounded-lg border border-cream-border hover:bg-surface-muted" />
                   <button
                     type="button"
                     onClick={() => postHoldAction("hold", `Hold this packing list for ${displayIg(c.customer).toUpperCase()} · ${c.event}?`)}
                     disabled={holdBusy}
-                    className="px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                    className="px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-xs font-medium hover:bg-surface-muted disabled:opacity-50 transition-colors"
                   >
                     {holdBusy ? "…" : "Hold"}
                   </button>
@@ -652,7 +652,7 @@ function CustomerCard({
       <div className="hidden md:block overflow-x-auto">
         <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
           <thead>
-            <tr className="text-left text-xs text-gray-500 border-b border-cream-border">
+            <tr className="text-left text-xs text-muted border-b border-cream-border">
               <th className="px-4 py-2 font-medium relative select-none" style={{ width: widths.items }}>
                 Item
                 <div onMouseDown={(e) => startResize("items", e)} className="absolute inset-y-0 right-0 w-1 cursor-col-resize hover:bg-brand/30 active:bg-brand/60" />
@@ -685,7 +685,7 @@ function CustomerCard({
                 <td className="px-4 py-2 text-right">{o.unit}</td>
                 <td className="px-4 py-2 text-right">{o.unitArrive}</td>
                 <td className="px-4 py-2 text-right">{o.unitShip}</td>
-                <td className={`px-4 py-2 text-right font-semibold ${o.toShip > 0 ? "text-brand" : "text-gray-400"}`}>
+                <td className={`px-4 py-2 text-right font-semibold ${o.toShip > 0 ? "text-brand" : "text-faint"}`}>
                   {o.toShip}
                 </td>
               </tr>
@@ -703,11 +703,11 @@ function CustomerCard({
                 {o.productName}
                 {o.unitHold > 0 && <HoldIcon />}
               </div>
-              <div className="text-xs text-gray-400 tabular-nums mt-0.5">
+              <div className="text-xs text-faint tabular-nums mt-0.5">
                 Order {o.unit} · Tiba {o.unitArrive} · Kirim {o.unitShip}
               </div>
             </div>
-            <div className={`shrink-0 text-xs font-semibold tabular-nums ${o.toShip > 0 ? "text-brand" : "text-gray-400"}`}>
+            <div className={`shrink-0 text-xs font-semibold tabular-nums ${o.toShip > 0 ? "text-brand" : "text-faint"}`}>
               {o.toShip}
             </div>
           </div>
@@ -720,7 +720,7 @@ function CustomerCard({
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}
-            className="w-full flex items-center justify-between px-5 py-3 text-xs text-gray-500 hover:text-brand transition-colors"
+            className="w-full flex items-center justify-between px-5 py-3 text-xs text-muted hover:text-brand transition-colors"
           >
             <span className="font-medium">Alamat pengiriman</span>
             <svg
@@ -779,16 +779,16 @@ function BulkShipConfirmModal({
       >
         <div className="px-5 py-4 border-b border-cream-border shrink-0">
           <h3 className="text-base md:text-sm font-semibold text-foreground">Konfirmasi Pengiriman</h3>
-          <p className="text-xs text-gray-500 mt-0.5">Kirim {total} paket sekaligus?</p>
+          <p className="text-xs text-muted mt-0.5">Kirim {total} paket sekaligus?</p>
         </div>
         <div className="px-5 py-4 overflow-y-auto flex flex-col gap-1.5">
           {groups.map((c) => (
             <div key={`${c.customer}|${c.event}`} className="flex items-center justify-between gap-3 text-sm">
               <span className="min-w-0 truncate">
                 <span className="font-medium text-foreground uppercase">{displayIg(c.customer)}</span>
-                <span className="text-gray-400"> · {c.event}</span>
+                <span className="text-faint"> · {c.event}</span>
               </span>
-              <span className="tabular-nums text-gray-500 shrink-0">{c.totalToShip}</span>
+              <span className="tabular-nums text-muted shrink-0">{c.totalToShip}</span>
             </div>
           ))}
         </div>
@@ -797,7 +797,7 @@ function BulkShipConfirmModal({
             type="button"
             onClick={onClose}
             disabled={busy}
-            className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+            className="px-4 py-2 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
           >
             Batal
           </button>
@@ -923,7 +923,7 @@ function ShipConfirmModal({
           <div className="text-sm font-semibold text-foreground">
             {result ? "Label Pengiriman" : "Konfirmasi Pengiriman"}
           </div>
-          <div className="text-xs text-gray-500 mt-0.5">
+          <div className="text-xs text-muted mt-0.5">
             {displayIg(c.customer).toUpperCase()} · {c.event}
             {result && <span className="ml-2 font-mono">#{result.shippingId}</span>}
           </div>
@@ -938,7 +938,7 @@ function ShipConfirmModal({
         ) : (
           <div className="px-5 py-4 flex flex-col gap-4 overflow-y-auto">
             <div>
-              <div className="text-xs font-medium text-gray-500 mb-2">Item yang dikirim</div>
+              <div className="text-xs font-medium text-muted mb-2">Item yang dikirim</div>
               <div className="flex flex-col gap-1">
                 {toShipRows.map((o) => (
                   <div key={o.rowNumber} className="text-sm text-foreground">{o.items}</div>
@@ -948,7 +948,7 @@ function ShipConfirmModal({
 
             <div>
               <div className="flex items-center justify-between mb-1">
-                <div className="text-xs font-medium text-gray-500">
+                <div className="text-xs font-medium text-muted">
                   Alamat pengiriman
                   {useTempAddress && (
                     <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-purple-100 text-purple-700">
@@ -956,12 +956,12 @@ function ShipConfirmModal({
                     </span>
                   )}
                 </div>
-                <label className="inline-flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                <label className="inline-flex items-center gap-1.5 text-xs text-muted-strong cursor-pointer">
                   <input
                     type="checkbox"
                     checked={useTempAddress}
                     onChange={(e) => setUseTempAddress(e.target.checked)}
-                    className="rounded border-gray-300 text-brand focus:ring-brand/30 cursor-pointer"
+                    className="rounded border-cream-border text-brand focus:ring-brand/30 cursor-pointer"
                   />
                   Kirim ke alamat berbeda
                 </label>
@@ -975,7 +975,7 @@ function ShipConfirmModal({
                     placeholder={"Nama Penerima\nAlamat lengkap\nNo. telepon"}
                     className="w-full border border-purple-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-300 focus:border-purple-500 transition-colors resize-none"
                   />
-                  <p className="text-[11px] text-gray-400 mt-1">
+                  <p className="text-[11px] text-faint mt-1">
                     Alamat ini hanya untuk pengiriman ini. Alamat utama customer tidak berubah.
                   </p>
                 </>
@@ -994,15 +994,15 @@ function ShipConfirmModal({
 
             <div className="rounded-lg bg-cream/50 px-4 py-3 flex flex-col gap-1 text-sm">
               <div className="flex justify-between">
-                <span className="text-gray-500">Estimasi berat</span>
+                <span className="text-muted">Estimasi berat</span>
                 <span className="font-medium">{c.weightKg} kg</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-500">Ongkir/kg</span>
+                <span className="text-muted">Ongkir/kg</span>
                 <span className="font-medium">Rp {c.ongkirPerKg.toLocaleString("id-ID")}</span>
               </div>
               <div className="flex justify-between border-t border-cream-border mt-1 pt-1">
-                <span className="text-gray-500">Total ongkir</span>
+                <span className="text-muted">Total ongkir</span>
                 <span className="font-semibold">Rp {(c.weightKg * c.ongkirPerKg).toLocaleString("id-ID")}</span>
               </div>
             </div>
@@ -1021,7 +1021,7 @@ function ShipConfirmModal({
               <a
                 href={result.pdfUrl}
                 download={`label-${result.shippingId}.pdf`}
-                className="px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-xs font-medium hover:border-brand hover:text-brand transition-colors"
+                className="px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-xs font-medium hover:border-brand hover:text-brand transition-colors"
               >
                 Download PDF
               </a>
@@ -1040,7 +1040,7 @@ function ShipConfirmModal({
                 onClick={handleCopyMessage}
                 disabled={!templates || !businessProfile}
                 title="Salin pesan konfirmasi pengiriman"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-xs font-medium hover:border-brand hover:text-brand transition-colors disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-xs font-medium hover:border-brand hover:text-brand transition-colors disabled:opacity-50"
               >
                 {msgCopied ? (
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
@@ -1066,7 +1066,7 @@ function ShipConfirmModal({
                 type="button"
                 onClick={onClose}
                 disabled={shipping}
-                className="px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-xs font-medium hover:border-brand hover:text-brand transition-colors disabled:opacity-50"
+                className="px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-xs font-medium hover:border-brand hover:text-brand transition-colors disabled:opacity-50"
               >
                 Batal
               </button>
@@ -1232,7 +1232,7 @@ function MergeShipConfirmModal({
           <div className="text-sm font-semibold text-foreground">
             {result ? "Label Pengiriman" : "Gabung Pengiriman"}
           </div>
-          <div className="text-xs text-gray-500 mt-0.5">
+          <div className="text-xs text-muted mt-0.5">
             {displayIg(customer).toUpperCase()}
             {result
               ? <> · {checkedGroups.map((g) => g.event).join(", ")}<span className="ml-2 font-mono">#{result.shippingId}</span></>
@@ -1247,9 +1247,9 @@ function MergeShipConfirmModal({
             {loadErr ? (
               <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{loadErr}</div>
             ) : !allGroups ? (
-              <div className="py-8 text-center text-sm text-gray-400">Memuat event…</div>
+              <div className="py-8 text-center text-sm text-faint">Memuat event…</div>
             ) : allGroups.length < 2 ? (
-              <div className="rounded-lg bg-cream/50 px-4 py-3 text-sm text-gray-500">
+              <div className="rounded-lg bg-cream/50 px-4 py-3 text-sm text-muted">
                 Customer ini hanya punya satu event siap kirim — tidak ada yang bisa digabung.
               </div>
             ) : (
@@ -1266,10 +1266,10 @@ function MergeShipConfirmModal({
                           type="checkbox"
                           checked={isOn}
                           onChange={() => toggle(g.event)}
-                          className="mt-0.5 rounded border-gray-300 text-brand focus:ring-brand/30 cursor-pointer shrink-0"
+                          className="mt-0.5 rounded border-cream-border text-brand focus:ring-brand/30 cursor-pointer shrink-0"
                         />
                         <div className="min-w-0 flex-1">
-                          <div className="text-xs font-medium text-gray-500 mb-1">{g.event}</div>
+                          <div className="text-xs font-medium text-muted mb-1">{g.event}</div>
                           <div className="flex flex-col gap-0.5">
                             {g.orders.filter((o) => o.toShip > 0).map((o) => (
                               <div key={o.rowNumber} className="text-sm text-foreground">{o.productName} x {o.toShip}</div>
@@ -1283,7 +1283,7 @@ function MergeShipConfirmModal({
 
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <div className="text-xs font-medium text-gray-500">
+                    <div className="text-xs font-medium text-muted">
                       Alamat pengiriman
                       {useTempAddress && (
                         <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-purple-100 text-purple-700">
@@ -1291,12 +1291,12 @@ function MergeShipConfirmModal({
                         </span>
                       )}
                     </div>
-                    <label className="inline-flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                    <label className="inline-flex items-center gap-1.5 text-xs text-muted-strong cursor-pointer">
                       <input
                         type="checkbox"
                         checked={useTempAddress}
                         onChange={(e) => setUseTempAddress(e.target.checked)}
-                        className="rounded border-gray-300 text-brand focus:ring-brand/30 cursor-pointer"
+                        className="rounded border-cream-border text-brand focus:ring-brand/30 cursor-pointer"
                       />
                       Kirim ke alamat berbeda
                     </label>
@@ -1310,7 +1310,7 @@ function MergeShipConfirmModal({
                         placeholder={"Nama Penerima\nAlamat lengkap\nNo. telepon"}
                         className="w-full border border-purple-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-300 focus:border-purple-500 transition-colors resize-none"
                       />
-                      <p className="text-[11px] text-gray-400 mt-1">
+                      <p className="text-[11px] text-faint mt-1">
                         Seluruh paket gabungan akan dikirim ke alamat ini. Alamat utama customer tidak berubah.
                       </p>
                     </>
@@ -1329,18 +1329,18 @@ function MergeShipConfirmModal({
 
                 <div className="rounded-lg bg-cream/50 px-4 py-3 flex flex-col gap-1 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-gray-500">Estimasi berat (gabungan)</span>
+                    <span className="text-muted">Estimasi berat (gabungan)</span>
                     <span className="font-medium">{combinedKg} kg</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-500">Ongkir/kg</span>
+                    <span className="text-muted">Ongkir/kg</span>
                     <span className="font-medium">Rp {ongkirPerKg.toLocaleString("id-ID")}</span>
                   </div>
                   <div className="flex justify-between border-t border-cream-border mt-1 pt-1">
-                    <span className="text-gray-500">Total ongkir (sekali)</span>
+                    <span className="text-muted">Total ongkir (sekali)</span>
                     <span className="font-semibold">Rp {combinedOngkir.toLocaleString("id-ID")}</span>
                   </div>
-                  <div className="text-xs text-gray-400 mt-1">
+                  <div className="text-xs text-faint mt-1">
                     Ongkir ditagih sekali untuk paket gabungan. Diskon ongkir gabungan otomatis diterapkan ke invoice.
                   </div>
                 </div>
@@ -1369,7 +1369,7 @@ function MergeShipConfirmModal({
               <a
                 href={result.pdfUrl}
                 download={`label-${result.shippingId}.pdf`}
-                className="px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-xs font-medium hover:border-brand hover:text-brand transition-colors"
+                className="px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-xs font-medium hover:border-brand hover:text-brand transition-colors"
               >
                 Download PDF
               </a>
@@ -1387,7 +1387,7 @@ function MergeShipConfirmModal({
                 type="button"
                 onClick={onClose}
                 disabled={shipping}
-                className="px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-xs font-medium hover:border-brand hover:text-brand transition-colors disabled:opacity-50"
+                className="px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-xs font-medium hover:border-brand hover:text-brand transition-colors disabled:opacity-50"
               >
                 Batal
               </button>

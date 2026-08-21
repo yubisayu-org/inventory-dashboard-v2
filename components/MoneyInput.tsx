@@ -51,7 +51,7 @@ export default function MoneyInput({
   return (
     <div className={`relative ${wrapClassName ?? ""}`}>
       <span
-        className={`pointer-events-none absolute top-1/2 -translate-y-1/2 text-xs text-gray-400 ${isSuffix ? "right-2" : "left-2"}`}
+        className={`pointer-events-none absolute top-1/2 -translate-y-1/2 text-xs text-faint ${isSuffix ? "right-2" : "left-2"}`}
       >
         {unit}
       </span>

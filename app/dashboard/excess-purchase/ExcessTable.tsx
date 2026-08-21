@@ -28,7 +28,7 @@ export const REASON_LABEL: Record<ExcessReason, string> = {
 }
 
 export const REASON_CLASS: Record<ExcessReason, string> = {
-  overbuy: "bg-gray-100 text-gray-700 border-gray-200",
+  overbuy: "bg-surface-sunken text-muted-strong border-cream-border",
   overship: "bg-blue-50 text-blue-700 border-blue-200",
   wrong_product: "bg-yellow-50 text-yellow-700 border-yellow-200",
   broken: "bg-red-50 text-red-700 border-red-200",
@@ -222,7 +222,7 @@ export default function ExcessTable() {
         meta: { align: "right" },
         cell: ({ getValue }) => {
           const price = getValue<number | null>()
-          return <span className="text-gray-500 tabular-nums whitespace-nowrap">{price != null ? `Rp ${fmt(price)}` : "—"}</span>
+          return <span className="text-muted tabular-nums whitespace-nowrap">{price != null ? `Rp ${fmt(price)}` : "—"}</span>
         },
       },
       {
@@ -232,7 +232,7 @@ export default function ExcessTable() {
         size: 120,
         cell: ({ getValue }) => {
           const v = getValue<string>()
-          return <span className="text-gray-500 block truncate" title={v || undefined}>{v || "—"}</span>
+          return <span className="text-muted block truncate" title={v || undefined}>{v || "—"}</span>
         },
       },
       {
@@ -241,7 +241,7 @@ export default function ExcessTable() {
         enableColumnFilter: false,
         size: 120,
         cell: ({ getValue }) => (
-          <span className="text-gray-400 text-xs whitespace-nowrap">{getValue<string>()}</span>
+          <span className="text-faint text-xs whitespace-nowrap">{getValue<string>()}</span>
         ),
       },
       {
@@ -250,7 +250,7 @@ export default function ExcessTable() {
         enableColumnFilter: false,
         size: 120,
         cell: ({ getValue }) => (
-          <span className="text-gray-400 text-xs whitespace-nowrap">{getValue<string>() || "—"}</span>
+          <span className="text-faint text-xs whitespace-nowrap">{getValue<string>() || "—"}</span>
         ),
       },
       {
@@ -268,7 +268,7 @@ export default function ExcessTable() {
             <div className="flex items-center justify-end gap-2">
               {/* Broken stock isn't sellable — no apply action. */}
               {r.reason === "broken" || r.reason === "missing" ? (
-                <span className="inline-flex p-1 text-gray-300" title="Not available — broken or missing inventory can't be applied">
+                <span className="inline-flex p-1 text-faint" title="Not available — broken or missing inventory can't be applied">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="12" cy="12" r="10" />
                     <path d="m4.9 4.9 14.2 14.2" />
@@ -281,7 +281,7 @@ export default function ExcessTable() {
                   disabled={busy || busyRow !== null}
                   title={busy ? "Applying…" : isPending ? "Cancel" : "Apply Excess"}
                   className={`transition-colors p-1 disabled:opacity-50 disabled:cursor-not-allowed ${
-                    isPending ? "text-gray-400 hover:text-red-500" : "text-gray-400 hover:text-brand"
+                    isPending ? "text-faint hover:text-red-500" : "text-faint hover:text-brand"
                   }`}
                 >
                   {busy ? (
@@ -302,7 +302,7 @@ export default function ExcessTable() {
                 type="button"
                 onClick={() => setEditRow(r)}
                 title="Edit"
-                className="text-gray-400 hover:text-brand transition-colors p-1"
+                className="text-faint hover:text-brand transition-colors p-1"
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
@@ -313,7 +313,7 @@ export default function ExcessTable() {
                 type="button"
                 onClick={() => { setDeleteRow(r); setDeleteError(null) }}
                 title="Delete"
-                className="text-gray-400 hover:text-red-500 transition-colors p-1"
+                className="text-faint hover:text-red-500 transition-colors p-1"
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
@@ -341,11 +341,11 @@ export default function ExcessTable() {
             {r.expectedItem && r.reason !== "wrong_product" && (
               <div className="text-[11px] text-yellow-700 truncate">expected: {r.expectedItem}</div>
             )}
-            <div className="text-xs text-gray-400 mt-0.5">{r.event}</div>
+            <div className="text-xs text-faint mt-0.5">{r.event}</div>
           </div>
           <div className="flex flex-col items-end gap-1 shrink-0">
             <span className="text-sm font-semibold tabular-nums text-foreground">{fmt(r.unitBuy)}</span>
-            <span className="text-xs text-gray-400 tabular-nums whitespace-nowrap">
+            <span className="text-xs text-faint tabular-nums whitespace-nowrap">
               {r.price != null ? `Rp ${fmt(r.price)}` : "—"}
             </span>
           </div>
@@ -354,7 +354,7 @@ export default function ExcessTable() {
           <span className="mr-auto"><ReasonBadge reason={r.reason} /></span>
           {/* Broken stock isn't sellable — no apply action. */}
           {r.reason === "broken" || r.reason === "missing" ? (
-            <span className="inline-flex px-1 py-1.5 text-gray-300" title="Not available — broken or missing inventory can't be applied">
+            <span className="inline-flex px-1 py-1.5 text-faint" title="Not available — broken or missing inventory can't be applied">
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10" />
                 <path d="m4.9 4.9 14.2 14.2" />
@@ -367,7 +367,7 @@ export default function ExcessTable() {
               disabled={busy || busyRow !== null}
               title={busy ? "Applying…" : isPending ? "Cancel" : "Apply Excess"}
               className={`transition-colors px-1 py-1.5 disabled:opacity-50 disabled:cursor-not-allowed ${
-                isPending ? "text-gray-400 hover:text-red-500" : "text-gray-400 hover:text-brand"
+                isPending ? "text-faint hover:text-red-500" : "text-faint hover:text-brand"
               }`}
             >
               {busy ? (
@@ -390,7 +390,7 @@ export default function ExcessTable() {
             type="button"
             onClick={(e) => { e.stopPropagation(); setEditRow(r) }}
             aria-label="Edit"
-            className="px-1 py-1.5 text-gray-400 hover:text-brand transition-colors"
+            className="px-1 py-1.5 text-faint hover:text-brand transition-colors"
           >
             <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor">
               <circle cx="12" cy="5" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="12" cy="19" r="1.5" />
@@ -418,13 +418,13 @@ export default function ExcessTable() {
       {/* Stat cards */}
       <div className="grid grid-cols-2 gap-2 sm:gap-4">
         <div className="rounded-xl border border-cream-border border-l-4 border-l-brand bg-white px-3 py-3 sm:px-5 sm:py-4">
-          <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Total Value</div>
+          <div className="text-xs font-medium text-faint uppercase tracking-wide">Total Value</div>
           <div className="text-sm sm:text-2xl font-bold text-foreground mt-1 tabular-nums whitespace-nowrap">
             {filteredValue !== null ? `Rp ${fmt(filteredValue)}` : "—"}
           </div>
         </div>
         <div className="rounded-xl border border-cream-border border-l-4 border-l-amber-500 bg-white px-3 py-3 sm:px-5 sm:py-4">
-          <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Total Units</div>
+          <div className="text-xs font-medium text-faint uppercase tracking-wide">Total Units</div>
           <div className="text-sm sm:text-2xl font-bold text-foreground mt-1 tabular-nums whitespace-nowrap">
             {filteredSum !== null ? fmt(filteredSum) : "—"}
           </div>
@@ -612,14 +612,14 @@ function ApplyExcessModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="text-sm font-semibold text-foreground">Apply Excess</div>
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-muted-strong">
           <span className="font-medium">{row.items}</span> — {row.unitBuy} unit{row.unitBuy === 1 ? "" : "s"} available. Choose which order(s) to apply to.
         </p>
 
         {loadError && <p className="text-xs text-red-500">{loadError}</p>}
-        {!orders && !loadError && <p className="text-xs text-gray-400">Loading eligible orders…</p>}
+        {!orders && !loadError && <p className="text-xs text-faint">Loading eligible orders…</p>}
         {orders && orders.length === 0 && (
-          <p className="text-xs text-gray-400">No pending orders found for this item.</p>
+          <p className="text-xs text-faint">No pending orders found for this item.</p>
         )}
         {orders && orders.length > 0 && (
           <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
@@ -627,7 +627,7 @@ function ApplyExcessModal({
               <div key={o.rowNumber} className="flex items-center gap-3 border border-cream-border rounded-lg px-3 py-2">
                 <div className="min-w-0 flex-1">
                   <div className="text-sm text-foreground truncate">{displayIg(o.customer)}</div>
-                  <div className="text-xs text-gray-400">{o.event} · needs {o.needed}</div>
+                  <div className="text-xs text-faint">{o.event} · needs {o.needed}</div>
                 </div>
                 <input
                   type="number"
@@ -644,7 +644,7 @@ function ApplyExcessModal({
         )}
 
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-gray-500">Receipt</span>
+          <span className="text-xs font-medium text-muted">Receipt</span>
           <input
             type="text"
             value={receipt}
@@ -657,7 +657,7 @@ function ApplyExcessModal({
           />
         </label>
 
-        <div className={`text-xs ${overAllocated ? "text-red-500" : "text-gray-400"}`}>
+        <div className={`text-xs ${overAllocated ? "text-red-500" : "text-faint"}`}>
           {totalAllocated} / {row.unitBuy} units allocated{overAllocated ? " — exceeds available" : ""}
         </div>
 
@@ -665,7 +665,7 @@ function ApplyExcessModal({
           <button
             type="button"
             onClick={onCancel}
-            className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand transition-colors"
+            className="px-4 py-2 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand transition-colors"
           >
             Cancel
           </button>
@@ -712,19 +712,19 @@ function InventoryFields({
 }) {
   const eventField = (
     <label className="flex flex-col gap-1 min-w-0">
-      <span className="text-xs font-medium text-gray-500">Event</span>
+      <span className="text-xs font-medium text-muted">Event</span>
       <EventSelect value={event} onChange={setEvent} events={eventOptions} placeholder="Select event…" clearable disabled={saving} />
     </label>
   )
   const itemField = (
     <label className="flex flex-col gap-1 min-w-0">
-      <span className="text-xs font-medium text-gray-500">Item</span>
+      <span className="text-xs font-medium text-muted">Item</span>
       <SearchableSelect value={items} onChange={setItems} options={itemOptions} placeholder="Search item…" disabled={saving} />
     </label>
   )
   const quantityField = (
     <label className="flex flex-col gap-1 min-w-0">
-      <span className="text-xs font-medium text-gray-500">Quantity</span>
+      <span className="text-xs font-medium text-muted">Quantity</span>
       <input
         type="number"
         min={1}
@@ -740,7 +740,7 @@ function InventoryFields({
   // always an actual receipt number, hence the placeholder.
   const receiptField = (
     <label className="flex flex-col gap-1 w-full min-w-0">
-      <span className="text-xs font-medium text-gray-500">Receipt <span className="text-gray-400 font-normal">(optional)</span></span>
+      <span className="text-xs font-medium text-muted">Receipt <span className="text-faint font-normal">(optional)</span></span>
       <input
         type="text"
         value={receipt}
@@ -838,7 +838,7 @@ function AddInventoryCard({
         inline
       />
 
-      <p className="text-[11px] text-gray-400">
+      <p className="text-[11px] text-faint">
         Apply fills this row&apos;s own event first, then spills to matching orders
         in other events — so Event just sets fill priority.
       </p>
@@ -846,7 +846,7 @@ function AddInventoryCard({
       {error && <p className="text-xs text-red-500">{error}</p>}
 
       <div className="flex items-center justify-end gap-2">
-        <button type="button" onClick={onClose} disabled={saving} className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
+        <button type="button" onClick={onClose} disabled={saving} className="px-4 py-2 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
           Cancel
         </button>
         <button type="submit" disabled={saving || !valid} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors">
@@ -909,7 +909,7 @@ function EditInventoryModal({
       >
         <div className="flex items-center justify-between gap-3 -mx-6 px-6 border-b border-cream-border pb-3 md:mx-0 md:px-0 md:border-b-0 md:pb-0">
           <div className="text-base md:text-sm font-semibold text-foreground">Edit Inventory</div>
-          <button type="button" onClick={onClose} className="hidden md:block text-gray-400 hover:text-brand transition-colors shrink-0">
+          <button type="button" onClick={onClose} className="hidden md:block text-faint hover:text-brand transition-colors shrink-0">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
           </button>
         </div>
@@ -922,7 +922,7 @@ function EditInventoryModal({
           eventOptions={eventOptions} itemOptions={itemOptions} saving={saving}
         />
 
-        <p className="text-[11px] text-gray-400">
+        <p className="text-[11px] text-faint">
           Apply fills this row&apos;s own event first, then spills to matching orders
           in other events — so Event just sets fill priority.
         </p>
@@ -935,13 +935,13 @@ function EditInventoryModal({
             onClick={onRequestDelete}
             disabled={saving}
             aria-label="Delete"
-            className="inline-flex items-center justify-center h-[38px] border border-cream-border rounded-lg px-3 text-sm text-gray-400 hover:border-brand disabled:opacity-50 transition-colors"
+            className="inline-flex items-center justify-center h-[38px] border border-cream-border rounded-lg px-3 text-sm text-faint hover:border-brand disabled:opacity-50 transition-colors"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M10 11v6" /><path d="M14 11v6" />
             </svg>
           </button>
-          <button type="button" onClick={onClose} disabled={saving} className="ml-auto px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
+          <button type="button" onClick={onClose} disabled={saving} className="ml-auto px-4 py-2 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
             Cancel
           </button>
           <button type="button" onClick={handleSubmit} disabled={saving || !valid} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors">
@@ -977,12 +977,12 @@ function DeleteConfirmModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="text-sm font-semibold text-foreground">Delete Inventory Row</div>
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-muted-strong">
           Remove <span className="font-medium">{row.items}</span> ({row.unitBuy} unit{row.unitBuy === 1 ? "" : "s"}) from {row.event}? This cannot be undone.
         </p>
         {error && <p className="text-xs text-red-500">{error}</p>}
         <div className="flex justify-end gap-2">
-          <button type="button" onClick={onCancel} disabled={busy} className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
+          <button type="button" onClick={onCancel} disabled={busy} className="px-4 py-2 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
             Keep
           </button>
           <button type="button" onClick={onConfirm} disabled={busy} className="px-4 py-2 rounded-lg bg-red-500 text-white text-sm font-medium hover:bg-red-600 disabled:opacity-50 transition-colors">
@@ -1009,10 +1009,10 @@ function ApplyResultBanner({
   const noOrders = filled.length === 0
 
   return (
-    <div className={`rounded-xl border overflow-hidden ${noOrders ? "border-gray-200 bg-gray-50" : "border-green-200 bg-green-50"}`}>
+    <div className={`rounded-xl border overflow-hidden ${noOrders ? "border-cream-border bg-surface-muted" : "border-green-200 bg-green-50"}`}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-inherit">
-        <span className={`text-xs font-medium ${noOrders ? "text-gray-500" : "text-green-700"}`}>
+        <span className={`text-xs font-medium ${noOrders ? "text-muted" : "text-green-700"}`}>
           {noOrders
             ? "No pending orders found for this item."
             : `${filled.length} order${filled.length === 1 ? "" : "s"} filled`}
@@ -1026,7 +1026,7 @@ function ApplyResultBanner({
           <button
             type="button"
             onClick={onDismiss}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
+            className="text-faint hover:text-muted-strong transition-colors"
             aria-label="Dismiss"
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -1042,21 +1042,21 @@ function ApplyResultBanner({
           <table className="w-full text-xs min-w-[420px]">
             <thead>
               <tr className="border-b border-inherit text-left">
-                <th className="px-4 py-2 font-medium text-gray-500 w-8">#</th>
-                <th className="px-4 py-2 font-medium text-gray-500">Event</th>
-                <th className="px-4 py-2 font-medium text-gray-500">Customer</th>
-                <th className="px-4 py-2 font-medium text-gray-500 text-right">Unit Buy</th>
+                <th className="px-4 py-2 font-medium text-muted w-8">#</th>
+                <th className="px-4 py-2 font-medium text-muted">Event</th>
+                <th className="px-4 py-2 font-medium text-muted">Customer</th>
+                <th className="px-4 py-2 font-medium text-muted text-right">Unit Buy</th>
                 <th className="px-4 py-2 w-20"></th>
               </tr>
             </thead>
             <tbody>
               {filled.map((row, i) => (
                 <tr key={row.rowNumber} className="border-b border-inherit last:border-0">
-                  <td className="px-4 py-2 text-gray-400">{i + 1}</td>
-                  <td className="px-4 py-2 text-gray-500 whitespace-nowrap">{row.event}</td>
+                  <td className="px-4 py-2 text-faint">{i + 1}</td>
+                  <td className="px-4 py-2 text-muted whitespace-nowrap">{row.event}</td>
                   <td className="px-4 py-2 text-foreground">{displayIg(row.customer)}</td>
                   <td className="px-4 py-2 text-foreground text-right font-semibold tabular-nums">{row.unitBuy}</td>
-                  <td className="px-4 py-2 text-right text-gray-400">
+                  <td className="px-4 py-2 text-right text-faint">
                     {row.oldUnitBuy > 0 && `(was ${row.oldUnitBuy})`}
                   </td>
                 </tr>

@@ -232,7 +232,7 @@ export default function CustomersClient() {
       filterFn: "textContains",
       cell: ({ getValue }) => {
         const v = getValue<string>()
-        return <span className={v ? "text-foreground" : "text-gray-400"}>{v || "—"}</span>
+        return <span className={v ? "text-foreground" : "text-faint"}>{v || "—"}</span>
       },
     },
     {
@@ -242,7 +242,7 @@ export default function CustomersClient() {
       filterFn: "textContains",
       cell: ({ getValue }) => {
         const v = getValue<string>()
-        return <span className={v ? "text-gray-600 tabular-nums" : "text-gray-400"}>{v || "—"}</span>
+        return <span className={v ? "text-muted-strong tabular-nums" : "text-faint"}>{v || "—"}</span>
       },
     },
     {
@@ -252,7 +252,7 @@ export default function CustomersClient() {
       filterFn: "textContains",
       cell: ({ getValue }) => {
         const v = getValue<string>()
-        return <span className={v ? "text-gray-600" : "text-gray-400"}>{v || "—"}</span>
+        return <span className={v ? "text-muted-strong" : "text-faint"}>{v || "—"}</span>
       },
     },
     // One ongkir column per warehouse (origin). Header shows the warehouse code.
@@ -271,7 +271,7 @@ export default function CustomersClient() {
         const v = getValue<number>()
         return v > 0
           ? <span className="tabular-nums">Rp {fmt(v)}</span>
-          : <span className="text-gray-400">—</span>
+          : <span className="text-faint">—</span>
       },
     })),
     {
@@ -283,9 +283,9 @@ export default function CustomersClient() {
       filterFn: "textContains",
       cell: ({ getValue }) => {
         const v = getValue<string>()
-        if (!v) return <span className="text-gray-400">—</span>
+        if (!v) return <span className="text-faint">—</span>
         return (
-          <span className="text-gray-500 text-xs whitespace-pre-line line-clamp-2" title={v}>
+          <span className="text-muted text-xs whitespace-pre-line line-clamp-2" title={v}>
             {v}
           </span>
         )
@@ -299,13 +299,13 @@ export default function CustomersClient() {
       cell: ({ row }) => {
         const { bankName, bankAccountNumber, bankAccountHolder } = row.original
         if (!bankName && !bankAccountNumber && !bankAccountHolder) {
-          return <span className="text-gray-400">—</span>
+          return <span className="text-faint">—</span>
         }
         return (
           <div className="text-xs leading-tight">
-            <div className="font-medium text-gray-700">{bankName || "—"}</div>
-            {bankAccountNumber && <div className="text-gray-500 tabular-nums">{bankAccountNumber}</div>}
-            {bankAccountHolder && <div className="text-gray-400">{bankAccountHolder}</div>}
+            <div className="font-medium text-muted-strong">{bankName || "—"}</div>
+            {bankAccountNumber && <div className="text-muted tabular-nums">{bankAccountNumber}</div>}
+            {bankAccountHolder && <div className="text-faint">{bankAccountHolder}</div>}
           </div>
         )
       },
@@ -318,7 +318,7 @@ export default function CustomersClient() {
       cell: ({ getValue }) => {
         const v = getValue<string | null>()
         return v ? (
-          <span className="text-gray-400 text-xs whitespace-nowrap">{new Date(v).toLocaleDateString("id-ID")}</span>
+          <span className="text-faint text-xs whitespace-nowrap">{new Date(v).toLocaleDateString("id-ID")}</span>
         ) : ""
       },
     },
@@ -338,7 +338,7 @@ export default function CustomersClient() {
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
               title="Chat on WhatsApp"
-              className="inline-flex items-center text-gray-400 hover:text-green-600 transition-colors"
+              className="inline-flex items-center text-faint hover:text-green-600 transition-colors"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
@@ -349,7 +349,7 @@ export default function CustomersClient() {
             type="button"
             onClick={() => setEditRow(row.original)}
             title="Edit"
-            className="text-gray-400 hover:text-brand transition-colors"
+            className="text-faint hover:text-brand transition-colors"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
@@ -360,7 +360,7 @@ export default function CustomersClient() {
             type="button"
             onClick={() => handleDelete(row.original)}
             title="Delete"
-            className="text-gray-400 hover:text-red-500 transition-colors"
+            className="text-faint hover:text-red-500 transition-colors"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 6h18" />
@@ -387,7 +387,7 @@ export default function CustomersClient() {
             <span
               className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold tabular-nums ${
                 !agg || agg.count === 0
-                  ? "bg-cream text-gray-400"
+                  ? "bg-cream text-faint"
                   : (agg.balance ?? 0) > 0
                     ? "bg-red-100 text-red-600"
                     : (agg.balance ?? 0) < 0
@@ -411,7 +411,7 @@ export default function CustomersClient() {
                   </svg>
                 )}
               </div>
-              <div className="text-xs text-gray-500 mt-0.5 truncate uppercase">{row.whatsapp || "—"}{row.name ? ` · ${row.name}` : ""}</div>
+              <div className="text-xs text-muted mt-0.5 truncate uppercase">{row.whatsapp || "—"}{row.name ? ` · ${row.name}` : ""}</div>
             </div>
           </div>
           {/* Chat + kebab. The kebab (not the row itself) opens the action sheet
@@ -424,7 +424,7 @@ export default function CustomersClient() {
                 rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()}
                 aria-label="Chat on WhatsApp"
-                className="inline-flex items-center justify-center p-1.5 text-gray-400 hover:text-green-600 transition-colors"
+                className="inline-flex items-center justify-center p-1.5 text-faint hover:text-green-600 transition-colors"
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
@@ -435,7 +435,7 @@ export default function CustomersClient() {
               type="button"
               onClick={(e) => { e.stopPropagation(); setEditRow(row) }}
               aria-label="More actions"
-              className="p-1.5 text-gray-400 hover:text-brand transition-colors"
+              className="p-1.5 text-faint hover:text-brand transition-colors"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                 <circle cx="12" cy="5" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="12" cy="19" r="1.5" />
@@ -447,7 +447,7 @@ export default function CustomersClient() {
             separated like the expenses card's amount row. */}
         {agg && agg.count > 0 && (
           <div className="flex items-center justify-between gap-3 mt-2.5 pt-2.5 border-t border-cream-border">
-            <span className="text-xs text-gray-400 tabular-nums whitespace-nowrap">
+            <span className="text-xs text-faint tabular-nums whitespace-nowrap">
               {(agg.balance ?? 0) > 0 ? `OUTSTANDING Rp ${fmt(agg.balance)}` : (agg.balance ?? 0) < 0 ? `OVERPAYMENT Rp ${fmt(Math.abs(agg.balance))}` : "SETTLED"}
             </span>
             <span className="text-sm font-semibold tabular-nums text-foreground whitespace-nowrap">Rp {fmt(agg.invoiced ?? 0)}</span>
@@ -490,7 +490,7 @@ export default function CustomersClient() {
         onClick={cycleInvSort}
         aria-label="Sort by total invoiced"
         title={invSort === "desc" ? "Invoiced: high → low" : invSort === "asc" ? "Invoiced: low → high" : "Sort by total invoiced"}
-        className="md:hidden shrink-0 relative border border-cream-border rounded-lg h-[38px] px-3 text-sm text-gray-600 bg-white flex items-center gap-1.5 hover:border-brand transition-colors"
+        className="md:hidden shrink-0 relative border border-cream-border rounded-lg h-[38px] px-3 text-sm text-muted-strong bg-white flex items-center gap-1.5 hover:border-brand transition-colors"
       >
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="m3 16 4 4 4-4" /><path d="M7 20V4" /><path d="m21 8-4-4-4 4" /><path d="M17 4v16" />
@@ -502,7 +502,7 @@ export default function CustomersClient() {
           type="button"
           onClick={() => setBalanceFilterOpen((o) => !o)}
           aria-label="Filter by balance status"
-          className="relative border border-cream-border rounded-lg h-[38px] px-3 text-sm text-gray-600 bg-white flex items-center gap-1.5 hover:border-brand transition-colors"
+          className="relative border border-cream-border rounded-lg h-[38px] px-3 text-sm text-muted-strong bg-white flex items-center gap-1.5 hover:border-brand transition-colors"
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M22 3H2l8 9.46V19l4 2v-8.54z" />
@@ -517,7 +517,7 @@ export default function CustomersClient() {
                 type="button"
                 onClick={() => { handleBalanceFilterChange(key); setBalanceFilterOpen(false) }}
                 className={`text-left px-2.5 py-1.5 rounded-md text-sm transition-colors ${
-                  balanceFilter === key ? "bg-brand-light text-brand font-medium" : "text-gray-600 hover:bg-cream"
+                  balanceFilter === key ? "bg-brand-light text-brand font-medium" : "text-muted-strong hover:bg-cream"
                 }`}
               >
                 {label}
@@ -635,7 +635,7 @@ function CustomerFields({
   return (
     <div className="flex flex-col gap-3">
       <label className="flex flex-col gap-1">
-        <span className="text-xs font-medium text-gray-500">Instagram ID <span className="text-red-500">*</span></span>
+        <span className="text-xs font-medium text-muted">Instagram ID <span className="text-red-500">*</span></span>
         <input
           ref={firstInputRef}
           {...field("instagramId")}
@@ -645,7 +645,7 @@ function CustomerFields({
       </label>
 
       <label className="flex flex-col gap-1">
-        <span className="text-xs font-medium text-gray-500">Name</span>
+        <span className="text-xs font-medium text-muted">Name</span>
         <input
           {...field("name")}
           placeholder="Full name"
@@ -654,7 +654,7 @@ function CustomerFields({
       </label>
 
       <label className="flex flex-col gap-1">
-        <span className="text-xs font-medium text-gray-500">WhatsApp</span>
+        <span className="text-xs font-medium text-muted">WhatsApp</span>
         <input
           {...field("whatsapp")}
           placeholder="08xx-xxxx-xxxx"
@@ -663,7 +663,7 @@ function CustomerFields({
       </label>
 
       <label className="flex flex-col gap-1">
-        <span className="text-xs font-medium text-gray-500">Alamat / Data Diri</span>
+        <span className="text-xs font-medium text-muted">Alamat / Data Diri</span>
         <textarea
           {...field("dataDiri")}
           placeholder="Full name, address, phone…"
@@ -673,7 +673,7 @@ function CustomerFields({
       </label>
 
       <label className="flex flex-col gap-1">
-        <span className="text-xs font-medium text-gray-500">Ekspedisi</span>
+        <span className="text-xs font-medium text-muted">Ekspedisi</span>
         <input
           {...field("ekspedisi")}
           placeholder="e.g. JNE, J&T"
@@ -682,14 +682,14 @@ function CustomerFields({
       </label>
 
       <div className="flex flex-col gap-1">
-        <span className="text-xs font-medium text-gray-500">Ongkos kirim per kg</span>
+        <span className="text-xs font-medium text-muted">Ongkos kirim per kg</span>
         {warehouses.length === 0 ? (
-          <span className="text-xs text-gray-400">No warehouses configured.</span>
+          <span className="text-xs text-faint">No warehouses configured.</span>
         ) : (
           <div className="grid grid-cols-2 gap-3">
             {warehouses.map((wh) => (
               <label key={wh.id} className="flex flex-col gap-1">
-                <span className="text-[11px] font-medium text-gray-400">{wh.name} ({wh.code})</span>
+                <span className="text-[11px] font-medium text-faint">{wh.name} ({wh.code})</span>
                 <input
                   value={draft.ongkir[wh.id] ?? ""}
                   onChange={(e) =>
@@ -709,10 +709,10 @@ function CustomerFields({
 
       <div className="pt-2 border-t border-cream-border" />
 
-      <div className="text-xs font-semibold text-gray-500 -mb-1">Bank Info</div>
+      <div className="text-xs font-semibold text-muted -mb-1">Bank Info</div>
 
       <label className="flex flex-col gap-1">
-        <span className="text-xs font-medium text-gray-500">Bank Name</span>
+        <span className="text-xs font-medium text-muted">Bank Name</span>
         <input
           {...field("bankName")}
           placeholder="e.g. BCA, Mandiri"
@@ -722,7 +722,7 @@ function CustomerFields({
 
       <div className="grid grid-cols-2 gap-3">
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-gray-500">Account Number</span>
+          <span className="text-xs font-medium text-muted">Account Number</span>
           <input
             {...field("bankAccountNumber")}
             placeholder="1234567890"
@@ -731,7 +731,7 @@ function CustomerFields({
         </label>
 
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-gray-500">Account Holder</span>
+          <span className="text-xs font-medium text-muted">Account Holder</span>
           <input
             {...field("bankAccountHolder")}
             placeholder="Name as registered"
@@ -825,7 +825,7 @@ function CreateCustomerModal({
             type="button"
             onClick={onCancel}
             disabled={saving}
-            className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+            className="px-4 py-2 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
           >
             Cancel
           </button>
@@ -901,7 +901,7 @@ function EditCustomerModal({
       >
         <div className="flex items-center justify-between">
           <span className="text-sm font-semibold text-foreground">Edit Customer</span>
-          <span className="text-xs text-gray-400">ID: {rowId}</span>
+          <span className="text-xs text-faint">ID: {rowId}</span>
         </div>
 
         <CustomerFields draft={draft} setDraft={setDraft} warehouses={warehouses} saving={saving} />
@@ -914,7 +914,7 @@ function EditCustomerModal({
             onClick={onDelete}
             disabled={saving}
             aria-label="Delete"
-            className="inline-flex items-center justify-center h-[38px] md:h-auto border border-cream-border md:border-transparent rounded-lg md:rounded-none px-3 md:px-0 md:py-2 text-sm text-gray-400 md:text-red-500 hover:border-brand md:hover:border-transparent md:hover:underline disabled:opacity-50 transition-colors"
+            className="inline-flex items-center justify-center h-[38px] md:h-auto border border-cream-border md:border-transparent rounded-lg md:rounded-none px-3 md:px-0 md:py-2 text-sm text-faint md:text-red-500 hover:border-brand md:hover:border-transparent md:hover:underline disabled:opacity-50 transition-colors"
           >
             <svg className="md:hidden" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M10 11v6" /><path d="M14 11v6" />
@@ -925,7 +925,7 @@ function EditCustomerModal({
             type="button"
             onClick={onCancel}
             disabled={saving}
-            className="ml-auto px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+            className="ml-auto px-4 py-2 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
           >
             Cancel
           </button>

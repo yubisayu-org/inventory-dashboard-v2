@@ -133,7 +133,7 @@ export default function ArriveBulkModal({
         {/* Header */}
         <div className="px-5 py-4 border-b border-cream-border shrink-0">
           <h3 className="text-base md:text-sm font-semibold text-foreground">Add Bulk Arrival</h3>
-          <p className="text-xs text-gray-500 mt-0.5">
+          <p className="text-xs text-muted mt-0.5">
             Select an event, add items + quantities. Extra units beyond demand are logged as overship in Inventory. Toggle &ldquo;wrong product&rdquo; on a line if the supplier shipped a different SKU.
           </p>
         </div>
@@ -237,7 +237,7 @@ export default function ArriveBulkModal({
                           <button
                             type="button"
                             onClick={() => removeLine(line.id)}
-                            className={`text-gray-300 hover:text-red-400 transition-colors ${line.wrongProduct ? "mt-7" : "mt-2"}`}
+                            className={`text-faint hover:text-red-400 transition-colors ${line.wrongProduct ? "mt-7" : "mt-2"}`}
                             aria-label="Remove"
                           >
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -261,7 +261,7 @@ export default function ArriveBulkModal({
                         </div>
                       )}
 
-                      <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none">
+                      <label className="flex items-center gap-1.5 text-xs text-muted cursor-pointer select-none">
                         <input
                           type="checkbox"
                           checked={line.wrongProduct}
@@ -298,7 +298,7 @@ export default function ArriveBulkModal({
                         </div>
                       )}
                     </div>
-                    <span className={`text-xs font-medium ml-3 shrink-0 ${itemResult.rows.length > 0 ? "text-green-600" : "text-gray-400"}`}>
+                    <span className={`text-xs font-medium ml-3 shrink-0 ${itemResult.rows.length > 0 ? "text-green-600" : "text-faint"}`}>
                       {itemResult.rows.length === 0
                         ? "No orders updated"
                         : `${itemResult.rows.length} order${itemResult.rows.length === 1 ? "" : "s"} updated`}
@@ -322,7 +322,7 @@ export default function ArriveBulkModal({
                   )}
 
                   {itemResult.rows.length === 0 ? (
-                    <p className="px-4 py-3 text-sm text-gray-400">
+                    <p className="px-4 py-3 text-sm text-faint">
                       No eligible orders found.
                     </p>
                   ) : (
@@ -339,7 +339,7 @@ export default function ArriveBulkModal({
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand transition-colors"
+            className="px-4 py-2 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand transition-colors"
           >
             Cancel
           </button>
@@ -363,21 +363,21 @@ function ArriveResultTable({ rows }: { rows: UpdatedRow[] }) {
     <table className="w-full text-sm">
       <thead>
         <tr className="border-b border-cream-border text-left">
-          <th className="px-4 py-2 text-xs font-medium text-gray-500 w-10">#</th>
-          <th className="px-4 py-2 text-xs font-medium text-gray-500">Customer</th>
-          <th className="px-4 py-2 text-xs font-medium text-gray-500 text-right w-20">Unit Arrive</th>
-          <th className="px-4 py-2 text-xs font-medium text-gray-500 text-right w-24"></th>
+          <th className="px-4 py-2 text-xs font-medium text-muted w-10">#</th>
+          <th className="px-4 py-2 text-xs font-medium text-muted">Customer</th>
+          <th className="px-4 py-2 text-xs font-medium text-muted text-right w-20">Unit Arrive</th>
+          <th className="px-4 py-2 text-xs font-medium text-muted text-right w-24"></th>
         </tr>
       </thead>
       <tbody>
         {rows.map((row, i) => (
           <tr key={row.rowNumber} className="border-b border-cream-border last:border-0">
-            <td className="px-4 py-2 text-xs text-gray-400">{i + 1}</td>
+            <td className="px-4 py-2 text-xs text-faint">{i + 1}</td>
             <td className="px-4 py-2 text-foreground">{displayIg(row.customer)}</td>
             <td className="px-4 py-2 text-foreground text-right font-medium">{row.unitArrive}</td>
             <td className="px-4 py-2 text-right">
               {row.oldUnitArrive > 0 && (
-                <span className="text-xs text-gray-400">(was {row.oldUnitArrive})</span>
+                <span className="text-xs text-faint">(was {row.oldUnitArrive})</span>
               )}
             </td>
           </tr>

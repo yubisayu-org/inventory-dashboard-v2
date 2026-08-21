@@ -69,7 +69,7 @@ function CopyButton({ value, label = "Copy" }: { value: string; label?: string }
       onClick={(e) => { e.stopPropagation(); copy(value) }}
       title={label}
       aria-label={label}
-      className="shrink-0 p-0.5 rounded text-gray-300 hover:text-brand transition-colors"
+      className="shrink-0 p-0.5 rounded text-faint hover:text-brand transition-colors"
     >
       {copied ? (
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-green-600">
@@ -104,11 +104,11 @@ function Field({ label, action, children }: {
     <label className="flex flex-col gap-1">
       {action ? (
         <span className="flex items-center gap-1.5 h-4">
-          <span className="text-xs font-medium text-gray-500">{label}</span>
+          <span className="text-xs font-medium text-muted">{label}</span>
           {action}
         </span>
       ) : (
-        <span className="text-xs font-medium text-gray-500">{label}</span>
+        <span className="text-xs font-medium text-muted">{label}</span>
       )}
       {children}
     </label>
@@ -378,7 +378,7 @@ export default function ProductsPageClient() {
           <span className="font-medium whitespace-nowrap">{row.original.name}</span>
           <CopyButton value={`${row.original.name} ${fmt(row.original.price)}`} label="Copy name & price" />
           {!row.original.isActive && (
-            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-500 border border-gray-200 whitespace-nowrap">Inactive</span>
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-surface-sunken text-muted border border-cream-border whitespace-nowrap">Inactive</span>
           )}
         </span>
       ),
@@ -439,7 +439,7 @@ export default function ProductsPageClient() {
       size: 70,
       enableSorting: false,
       filterFn: "textContains",
-      cell: ({ row }) => <span className="text-gray-600">{row.original.countryName || "—"}</span>,
+      cell: ({ row }) => <span className="text-muted-strong">{row.original.countryName || "—"}</span>,
     },
     {
       accessorKey: "valas",
@@ -685,7 +685,7 @@ export default function ProductsPageClient() {
             type="button"
             onClick={() => handleSortingChange([{ id: "id", desc: !mobileIdDesc }])}
             aria-label="Toggle sort order"
-            className="shrink-0 inline-flex items-center gap-1 px-3 rounded-lg border border-cream-border bg-white text-sm font-medium text-gray-600 active:border-brand active:text-brand"
+            className="shrink-0 inline-flex items-center gap-1 px-3 rounded-lg border border-cream-border bg-white text-sm font-medium text-muted-strong active:border-brand active:text-brand"
           >
             {mobileIdDesc ? "Newest" : "Oldest"}
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -696,7 +696,7 @@ export default function ProductsPageClient() {
             type="button"
             onClick={() => setFilterOpen(true)}
             aria-label="Filter products"
-            className={`relative shrink-0 inline-flex items-center justify-center w-[42px] rounded-lg border bg-white active:border-brand active:text-brand ${mobileFilterCount > 0 ? "border-brand text-brand" : "border-cream-border text-gray-600"}`}
+            className={`relative shrink-0 inline-flex items-center justify-center w-[42px] rounded-lg border bg-white active:border-brand active:text-brand ${mobileFilterCount > 0 ? "border-brand text-brand" : "border-cream-border text-muted-strong"}`}
           >
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" />
@@ -707,7 +707,7 @@ export default function ProductsPageClient() {
           </button>
         </div>
         {data.length === 0 && (
-          <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">{fetchState.loading ? "Loading…" : "No products"}</div>
+          <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-faint">{fetchState.loading ? "Loading…" : "No products"}</div>
         )}
         {data.map((p) => {
           // Not isAbroad(p): that gates the desktop-table's overseas-only columns
@@ -728,13 +728,13 @@ export default function ProductsPageClient() {
                     <span className="min-w-0 break-words">{p.name}</span>
                     <CopyButton value={`${p.name} ${fmt(p.price)}`} label="Copy name & price" />
                     {!p.isActive && (
-                      <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-500 border border-gray-200">Inactive</span>
+                      <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-surface-sunken text-muted border border-cream-border">Inactive</span>
                     )}
                   </div>
                 </div>
               </div>
               <div className="flex items-center justify-between gap-3 mt-2.5 pt-2.5 border-t border-cream-border">
-                <span className="text-xs text-gray-400 min-w-0 truncate">
+                <span className="text-xs text-faint min-w-0 truncate">
                   {[
                     hasValas ? (countries.find((c) => c.id === p.countryId)?.currency || "—") + (p.valas ? ` ${fmt(p.valas)}` : "") : "",
                     p.gram ? `${fmt(p.gram)} GR` : "",
@@ -754,9 +754,9 @@ export default function ProductsPageClient() {
         })}
         {totalCount > PAGE_SIZE && (
           <div className="flex items-center justify-between gap-3 pt-1">
-            <button type="button" disabled={pagination.pageIndex === 0} onClick={() => setPagination((p) => ({ ...p, pageIndex: p.pageIndex - 1 }))} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-gray-600 disabled:opacity-40">Prev</button>
-            <span className="text-xs text-gray-400">Page {pagination.pageIndex + 1} of {Math.max(1, Math.ceil(totalCount / PAGE_SIZE))}</span>
-            <button type="button" disabled={(pagination.pageIndex + 1) * PAGE_SIZE >= totalCount} onClick={() => setPagination((p) => ({ ...p, pageIndex: p.pageIndex + 1 }))} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-gray-600 disabled:opacity-40">Next</button>
+            <button type="button" disabled={pagination.pageIndex === 0} onClick={() => setPagination((p) => ({ ...p, pageIndex: p.pageIndex - 1 }))} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-muted-strong disabled:opacity-40">Prev</button>
+            <span className="text-xs text-faint">Page {pagination.pageIndex + 1} of {Math.max(1, Math.ceil(totalCount / PAGE_SIZE))}</span>
+            <button type="button" disabled={(pagination.pageIndex + 1) * PAGE_SIZE >= totalCount} onClick={() => setPagination((p) => ({ ...p, pageIndex: p.pageIndex + 1 }))} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-muted-strong disabled:opacity-40">Next</button>
           </div>
         )}
       </div>
@@ -780,11 +780,11 @@ export default function ProductsPageClient() {
           <div className="bg-white rounded-t-2xl border-t border-cream-border p-5 pb-8 flex flex-col gap-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <div className="text-base font-semibold text-foreground">Filter products</div>
-              <button type="button" onClick={() => { setMStore(""); setMValas(""); setMGram("") }} className="text-xs text-gray-400 hover:text-brand">Clear all</button>
+              <button type="button" onClick={() => { setMStore(""); setMValas(""); setMGram("") }} className="text-xs text-faint hover:text-brand">Clear all</button>
             </div>
 
             <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-gray-500">Store</span>
+              <span className="text-xs font-medium text-muted">Store</span>
               <SearchableSelect
                 value={mStore}
                 onChange={setMStore}
@@ -796,14 +796,14 @@ export default function ProductsPageClient() {
 
             {([["valas", "Valas / IDR", mValas, setMValas] as const, ["gram", "Gram", mGram, setMGram] as const]).map(([key, label, val, set]) => (
               <div key={key} className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-gray-500">{label}</span>
+                <span className="text-xs font-medium text-muted">{label}</span>
                 <div className="flex rounded-lg border border-cream-border overflow-hidden text-sm">
                   {([["", "Any"], ["filled", "Has value"], ["blank", "Blank"]] as const).map(([v, t]) => (
                     <button
                       key={v}
                       type="button"
                       onClick={() => set(v)}
-                      className={`flex-1 px-2 py-2 font-medium transition-colors ${val === v ? "bg-brand text-white" : "text-gray-500 hover:bg-cream"}`}
+                      className={`flex-1 px-2 py-2 font-medium transition-colors ${val === v ? "bg-brand text-white" : "text-muted hover:bg-cream"}`}
                     >
                       {t}
                     </button>
@@ -1406,7 +1406,7 @@ function AddProductForm({
           type="button"
           onClick={() => setType("tier_fee")}
           disabled={adding}
-          className={`flex-1 px-3 py-2.5 transition-colors ${type === "tier_fee" ? "bg-brand text-white font-medium" : "bg-white text-gray-600 hover:bg-cream"}`}
+          className={`flex-1 px-3 py-2.5 transition-colors ${type === "tier_fee" ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"}`}
         >
           Tier
         </button>
@@ -1414,7 +1414,7 @@ function AddProductForm({
           type="button"
           onClick={() => { setType("flat_fee"); setCountryId(null) }}
           disabled={adding}
-          className={`flex-1 px-3 py-2.5 transition-colors ${type === "flat_fee" ? "bg-brand text-white font-medium" : "bg-white text-gray-600 hover:bg-cream"}`}
+          className={`flex-1 px-3 py-2.5 transition-colors ${type === "flat_fee" ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"}`}
         >
           Flat
         </button>
@@ -1437,7 +1437,7 @@ function AddProductForm({
           type="button"
           onClick={() => setType("tier_kurs")}
           disabled={adding}
-          className={`flex-1 px-3 py-2.5 transition-colors ${type === "tier_kurs" ? "bg-brand text-white font-medium" : "bg-white text-gray-600 hover:bg-cream"}`}
+          className={`flex-1 px-3 py-2.5 transition-colors ${type === "tier_kurs" ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"}`}
         >
           Tier
         </button>
@@ -1445,7 +1445,7 @@ function AddProductForm({
           type="button"
           onClick={() => setType("flat_kurs")}
           disabled={adding}
-          className={`flex-1 px-3 py-2.5 transition-colors ${type === "flat_kurs" ? "bg-brand text-white font-medium" : "bg-white text-gray-600 hover:bg-cream"}`}
+          className={`flex-1 px-3 py-2.5 transition-colors ${type === "flat_kurs" ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"}`}
         >
           Flat
         </button>
@@ -1501,7 +1501,7 @@ function AddProductForm({
   // The bar's smaller text is what has to be paid back in padding. Mobile keeps py-3,
   // where the bar stands alone with no button to match.
   const readoutBar = (children: React.ReactNode) => (
-    <div className="flex items-center justify-between gap-1 flex-nowrap whitespace-nowrap rounded-lg bg-gray-50 border border-cream-border px-3 py-3 md:py-2.5 text-[9px] md:text-xs text-gray-500">
+    <div className="flex items-center justify-between gap-1 flex-nowrap whitespace-nowrap rounded-lg bg-surface-muted border border-cream-border px-3 py-3 md:py-2.5 text-[9px] md:text-xs text-muted">
       {children}
     </div>
   )
@@ -1634,7 +1634,7 @@ function AddProductForm({
 
   const operator = (glyph: string) => (
     <Field label={" "}>
-      <span className="border border-transparent px-1 py-2 text-sm text-gray-400 flex items-center justify-center select-none">
+      <span className="border border-transparent px-1 py-2 text-sm text-faint flex items-center justify-center select-none">
         {glyph}
       </span>
     </Field>
@@ -1659,7 +1659,7 @@ function AddProductForm({
                 key={m}
                 type="button"
                 onClick={() => setType(m)}
-                className={`px-3 py-1 whitespace-nowrap transition-colors ${active ? "bg-brand text-white font-medium" : "bg-white text-gray-600 hover:bg-cream"}`}
+                className={`px-3 py-1 whitespace-nowrap transition-colors ${active ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"}`}
               >
                 {PRICING_METHOD_LABEL[m]}
               </button>
@@ -1804,7 +1804,7 @@ function AddProductForm({
                   />
                 }
               >
-                <div className={`${formInputCls} bg-gray-50 text-gray-500 flex items-center tabular-nums`}>{fmt(chargedKurs)}</div>
+                <div className={`${formInputCls} bg-surface-muted text-muted flex items-center tabular-nums`}>{fmt(chargedKurs)}</div>
               </Field>
             </div>
             {/* Part of the price, so it belongs in the expression rather than tucked away:
@@ -1818,7 +1818,7 @@ function AddProductForm({
             <div className="hidden md:block" aria-hidden>{operator("=")}</div>
             <div className="flex-1 min-w-0">
               <Field label="Price">
-                <div className={`${formInputCls} bg-gray-50 text-gray-500 flex items-center`}>Rp {fmt(pricePreview.price)}</div>
+                <div className={`${formInputCls} bg-surface-muted text-muted flex items-center`}>Rp {fmt(pricePreview.price)}</div>
               </Field>
             </div>
           </div>
@@ -1868,7 +1868,7 @@ function AddProductForm({
                   // valas × the country's rate plus freight, exactly as valas-mode Tier Fee
                   // shows it. Derived, and the server recomputes it from the same four
                   // inputs on save, so a typed value here would be a second authority.
-                  <div className={`${formInputCls} bg-gray-50 text-gray-500 flex items-center tabular-nums`}>
+                  <div className={`${formInputCls} bg-surface-muted text-muted flex items-center tabular-nums`}>
                     Rp {fmt(Math.round(pricePreview.cogs))}
                   </div>
                 ) : (
@@ -1933,7 +1933,7 @@ function AddProductForm({
             </Field>
             <div className="col-span-2">
               <Field label="Price">
-                <div className={`${formInputCls} bg-gray-50 text-gray-500 flex items-center`}>Rp {fmt(pricePreview.price)}</div>
+                <div className={`${formInputCls} bg-surface-muted text-muted flex items-center`}>Rp {fmt(pricePreview.price)}</div>
               </Field>
             </div>
           </div>
@@ -2005,7 +2005,7 @@ function AddProductForm({
                 />
               </Field>
               <Field label="Price">
-                <div className={`${formInputCls} bg-gray-50 text-gray-500 flex items-center`}>Rp {fmt(pricePreview.price)}</div>
+                <div className={`${formInputCls} bg-surface-muted text-muted flex items-center`}>Rp {fmt(pricePreview.price)}</div>
               </Field>
             </div>
           )}
@@ -2041,7 +2041,7 @@ function AddProductForm({
                     the row reads as its own conversion. */}
                 <div className="col-span-6 md:col-span-6">
                   <Field label="Base Cost (IDR)">
-                    <div className={`${formInputCls} bg-gray-50 text-gray-500 flex items-center tabular-nums`}>
+                    <div className={`${formInputCls} bg-surface-muted text-muted flex items-center tabular-nums`}>
                       Rp {fmt(Math.round(pricePreview.cogs))}
                     </div>
                   </Field>
@@ -2081,7 +2081,7 @@ function AddProductForm({
                 </div>
                 <div className="col-span-6 md:col-span-6">
                   <Field label="Price">
-                    <div className={`${formInputCls} bg-gray-50 text-gray-500 flex items-center`}>Rp {fmt(pricePreview.price)}</div>
+                    <div className={`${formInputCls} bg-surface-muted text-muted flex items-center`}>Rp {fmt(pricePreview.price)}</div>
                   </Field>
                 </div>
               </div>
@@ -2122,7 +2122,7 @@ function AddProductForm({
               the server recomputes it from the same four inputs on save. */}
           <div className="col-span-6 md:col-span-6">
             <Field label="Base Cost (IDR)">
-              <div className={`${formInputCls} bg-gray-50 text-gray-500 flex items-center tabular-nums`}>
+              <div className={`${formInputCls} bg-surface-muted text-muted flex items-center tabular-nums`}>
                 Rp {fmt(Math.round(pricePreview.cogs))}
               </div>
             </Field>
@@ -2139,7 +2139,7 @@ function AddProductForm({
                 third is a two-word toggle that stretches to whatever it is given. */}
             <div className="col-span-6 md:col-span-2">
               <Field label="Flat Fee (IDR)">
-                <div className={`${formInputCls} bg-gray-50 text-gray-500 flex items-center`}>Rp {fmt(flatFee)}</div>
+                <div className={`${formInputCls} bg-surface-muted text-muted flex items-center`}>Rp {fmt(flatFee)}</div>
               </Field>
             </div>
             {/* The percentage itself, straight from Settings. Read-only for the same reason
@@ -2150,8 +2150,8 @@ function AddProductForm({
               <Field label="Flat Fee %">
                 <div
                   title="Set under Settings → Pricing. Applies to every percent-mode Flat Fee product on its next save."
-                  className={`${formInputCls} bg-gray-50 flex items-center tabular-nums ${
-                    flatFeeMode === "percent" ? "text-gray-500" : "text-gray-300"
+                  className={`${formInputCls} bg-surface-muted flex items-center tabular-nums ${
+                    flatFeeMode === "percent" ? "text-muted" : "text-faint"
                   }`}
                 >
                   {fmtRp2(flatFeePctSetting)}%{flatFeeFloored && " → min"}
@@ -2167,7 +2167,7 @@ function AddProductForm({
                     type="button"
                     onClick={() => setFlatFeeMode("fixed")}
                     disabled={adding}
-                    className={`flex-1 px-3 py-2.5 transition-colors ${flatFeeMode === "fixed" ? "bg-brand text-white font-medium" : "bg-white text-gray-600 hover:bg-cream"}`}
+                    className={`flex-1 px-3 py-2.5 transition-colors ${flatFeeMode === "fixed" ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"}`}
                   >
                     Off
                   </button>
@@ -2175,7 +2175,7 @@ function AddProductForm({
                     type="button"
                     onClick={() => setFlatFeeMode("percent")}
                     disabled={adding}
-                    className={`flex-1 px-3 py-2.5 transition-colors ${flatFeeMode === "percent" ? "bg-brand text-white font-medium" : "bg-white text-gray-600 hover:bg-cream"}`}
+                    className={`flex-1 px-3 py-2.5 transition-colors ${flatFeeMode === "percent" ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"}`}
                   >
                     On
                   </button>
@@ -2184,7 +2184,7 @@ function AddProductForm({
             </div>
             <div className="col-span-6 md:col-span-6">
               <Field label="Price">
-                <div className={`${formInputCls} bg-gray-50 text-gray-500 flex items-center`}>Rp {fmt(pricePreview.price)}</div>
+                <div className={`${formInputCls} bg-surface-muted text-muted flex items-center`}>Rp {fmt(pricePreview.price)}</div>
               </Field>
             </div>
           </div>
@@ -2199,7 +2199,7 @@ function AddProductForm({
         <div className="flex items-center gap-2">
           {addError && <p className="text-xs text-red-500">{addError}</p>}
           {onCancel && (
-            <button type="button" onClick={onCancel} disabled={adding} className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
+            <button type="button" onClick={onCancel} disabled={adding} className="px-4 py-2 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
               Cancel
             </button>
           )}
@@ -2259,7 +2259,7 @@ function EditableStoreCell({ row, listId, onSave }: {
         title={error ?? "Click to edit"}
         disabled={saving}
         className={`w-full text-left rounded px-2 py-0.5 -mx-2 whitespace-nowrap transition-colors hover:bg-cream disabled:opacity-50 ${
-          error ? "text-red-700" : row.store ? "text-foreground" : "text-gray-300"
+          error ? "text-red-700" : row.store ? "text-foreground" : "text-faint"
         }`}
       >
         {saving ? "Saving…" : <span className="uppercase">{row.store || "—"}</span>}
@@ -2339,19 +2339,19 @@ function ProductActions({
 
   return (
     <div className="flex gap-2 items-center">
-      <button type="button" onClick={() => { setSaveError(null); setEditing(true) }} title="Edit" className="text-gray-400 hover:text-brand transition-colors">
+      <button type="button" onClick={() => { setSaveError(null); setEditing(true) }} title="Edit" className="text-faint hover:text-brand transition-colors">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
           <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
         </svg>
       </button>
-      <button type="button" onClick={() => onDuplicate(row)} title="Duplicate" className="text-gray-400 hover:text-brand transition-colors">
+      <button type="button" onClick={() => onDuplicate(row)} title="Duplicate" className="text-faint hover:text-brand transition-colors">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
           <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
         </svg>
       </button>
-      <button type="button" onClick={handleDelete} disabled={deleting} title="Delete" className="text-gray-400 hover:text-red-500 disabled:opacity-50 transition-colors">
+      <button type="button" onClick={handleDelete} disabled={deleting} title="Delete" className="text-faint hover:text-red-500 disabled:opacity-50 transition-colors">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
         </svg>
@@ -2659,18 +2659,18 @@ function EditProductModal({
   const calcSummary = (
     <div className="self-end inline-flex flex-col gap-0.5 rounded-lg border border-cream-border px-4 py-2 text-sm">
       <div>
-        <span className="text-gray-500">Price: </span>
+        <span className="text-muted">Price: </span>
         <span className="font-semibold text-foreground">Rp {fmt(editCalc.price)}</span>
       </div>
       {editCalc.cogs != null && (
         <div>
-          <span className="text-gray-500">COGS: </span>
+          <span className="text-muted">COGS: </span>
           <span className="font-semibold text-foreground">Rp {fmt(editCalc.cogs)}</span>
         </div>
       )}
       {editCalc.profit != null && (
         <div>
-          <span className="text-gray-500">Profit: </span>
+          <span className="text-muted">Profit: </span>
           <span className="font-semibold text-green-700">Rp {fmt(editCalc.profit)}</span>
         </div>
       )}
@@ -2682,7 +2682,7 @@ function EditProductModal({
       <div className="bg-white rounded-t-2xl md:rounded-xl border-x border-t border-cream-border md:border shadow-xl p-6 pb-8 md:pb-6 w-full max-h-[90vh] overflow-y-auto flex flex-col gap-4 md:max-w-lg" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between -mx-6 px-6 border-b border-cream-border pb-3 md:mx-0 md:px-0 md:border-b-0 md:pb-0">
           <span className="text-base md:text-sm font-semibold text-foreground">Edit Product</span>
-          <span className="text-xs text-gray-400">ID: {row.id}</span>
+          <span className="text-xs text-faint">ID: {row.id}</span>
         </div>
 
         {/* Store then Name on one desktop row, matching the Add form. This block sits
@@ -2741,7 +2741,7 @@ function EditProductModal({
                       // the row's original rather than leaving it null.
                       countryId: methodNeedsCountry(m) ? (d.countryId ?? row.countryId) : null,
                     }))}
-                    className={`px-3 py-1.5 transition-colors ${active ? "bg-brand text-white font-medium" : "bg-white text-gray-600 hover:bg-cream"}`}
+                    className={`px-3 py-1.5 transition-colors ${active ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"}`}
                   >
                     {PRICING_METHOD_LABEL[m]}
                   </button>
@@ -2762,7 +2762,7 @@ function EditProductModal({
                   type="button"
                   disabled={saving}
                   onClick={() => setDraft((d) => ({ ...d, method: "tier_fee" }))}
-                  className={`px-3 py-1.5 transition-colors ${draft.method === "tier_fee" ? "bg-brand text-white font-medium" : "bg-white text-gray-600 hover:bg-cream"}`}
+                  className={`px-3 py-1.5 transition-colors ${draft.method === "tier_fee" ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"}`}
                 >
                   Tier
                 </button>
@@ -2770,7 +2770,7 @@ function EditProductModal({
                   type="button"
                   disabled={saving}
                   onClick={() => setDraft((d) => ({ ...d, method: "flat_fee", countryId: null }))}
-                  className={`px-3 py-1.5 transition-colors ${draft.method === "flat_fee" ? "bg-brand text-white font-medium" : "bg-white text-gray-600 hover:bg-cream"}`}
+                  className={`px-3 py-1.5 transition-colors ${draft.method === "flat_fee" ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"}`}
                 >
                   Flat
                 </button>
@@ -2788,7 +2788,7 @@ function EditProductModal({
                   type="button"
                   disabled={saving}
                   onClick={() => setDraft((d) => ({ ...d, method: "tier_kurs" }))}
-                  className={`px-3 py-1.5 transition-colors ${draft.method === "tier_kurs" ? "bg-brand text-white font-medium" : "bg-white text-gray-600 hover:bg-cream"}`}
+                  className={`px-3 py-1.5 transition-colors ${draft.method === "tier_kurs" ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"}`}
                 >
                   Tier
                 </button>
@@ -2796,7 +2796,7 @@ function EditProductModal({
                   type="button"
                   disabled={saving}
                   onClick={() => setDraft((d) => ({ ...d, method: "flat_kurs" }))}
-                  className={`px-3 py-1.5 transition-colors ${draft.method === "flat_kurs" ? "bg-brand text-white font-medium" : "bg-white text-gray-600 hover:bg-cream"}`}
+                  className={`px-3 py-1.5 transition-colors ${draft.method === "flat_kurs" ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"}`}
                 >
                   Flat
                 </button>
@@ -2868,12 +2868,12 @@ function EditProductModal({
                 <input value={draft.packFee} onChange={(e) => setDraft((d) => ({ ...d, packFee: e.target.value }))} type="number" min="0" disabled={saving} className={formInputCls} />
               </Field>
               <Field label="Price">
-                <div className={`${formInputCls} bg-gray-50 text-gray-500 flex items-center`}>Rp {fmt(editCalc.price)}</div>
+                <div className={`${formInputCls} bg-surface-muted text-muted flex items-center`}>Rp {fmt(editCalc.price)}</div>
               </Field>
             </div>
 
             {draftCountry && (
-              <div className="flex items-center justify-between gap-1 flex-nowrap whitespace-nowrap rounded-lg bg-gray-50 border border-cream-border px-3 py-3 text-[9px] md:text-xs text-gray-500">
+              <div className="flex items-center justify-between gap-1 flex-nowrap whitespace-nowrap rounded-lg bg-surface-muted border border-cream-border px-3 py-3 text-[9px] md:text-xs text-muted">
                 <span>
                   RATE: {fmt(draftCountry.kurs)}
                   {draftChargedKurs !== draftCountry.kurs && (
@@ -2926,7 +2926,7 @@ function EditProductModal({
                   disabled
                   readOnly
                   title="Locked — set when the product is created. Re-create the product to change this."
-                  className={`${formInputCls} bg-gray-50 text-gray-400 cursor-not-allowed`}
+                  className={`${formInputCls} bg-surface-muted text-faint cursor-not-allowed`}
                 />
               </Field>
               <Field label="Pack Fee">
@@ -2936,18 +2936,18 @@ function EditProductModal({
                   disabled
                   readOnly
                   title="Locked — set when the product is created. Re-create the product to change this."
-                  className={`${formInputCls} bg-gray-50 text-gray-400 cursor-not-allowed`}
+                  className={`${formInputCls} bg-surface-muted text-faint cursor-not-allowed`}
                 />
               </Field>
               <div className="col-span-2">
                 <Field label="Price">
-                  <div className={`${formInputCls} bg-gray-50 text-gray-500 flex items-center`}>Rp {fmt(editCalc.price)}</div>
+                  <div className={`${formInputCls} bg-surface-muted text-muted flex items-center`}>Rp {fmt(editCalc.price)}</div>
                 </Field>
               </div>
             </div>
 
             {draftCountry && (
-              <div className="flex items-center justify-between gap-1 flex-nowrap whitespace-nowrap rounded-lg bg-gray-50 border border-cream-border px-3 py-3 text-[8px] md:text-[9px] text-gray-500">
+              <div className="flex items-center justify-between gap-1 flex-nowrap whitespace-nowrap rounded-lg bg-surface-muted border border-cream-border px-3 py-3 text-[8px] md:text-[9px] text-muted">
                 <span>RATE: {fmt(draftCountry.kurs)}</span>
                 <span>SHIPPING/KG: {fmt(draftCountry.cargoPerKg)}</span>
                 <span>COGS: Rp {fmt(editCalc.cogs ?? 0)}</span>
@@ -3015,13 +3015,13 @@ function EditProductModal({
               </Field>
               <div className="col-span-2">
                 <Field label="Price">
-                  <div className={`${formInputCls} bg-gray-50 text-gray-500 flex items-center`}>Rp {fmt(editCalc.price)}</div>
+                  <div className={`${formInputCls} bg-surface-muted text-muted flex items-center`}>Rp {fmt(editCalc.price)}</div>
                 </Field>
               </div>
             </div>
 
             {draftCountry && (
-              <div className="flex items-center justify-between gap-1 flex-nowrap whitespace-nowrap rounded-lg bg-gray-50 border border-cream-border px-3 py-3 text-[8px] md:text-[9px] text-gray-500">
+              <div className="flex items-center justify-between gap-1 flex-nowrap whitespace-nowrap rounded-lg bg-surface-muted border border-cream-border px-3 py-3 text-[8px] md:text-[9px] text-muted">
                 <span>RATE: {fmt(draftCountry.kurs)}</span>
                 <span>FEE: Rp {fmt(Number(draft.profitFixed) || 0)}</span>
                 <span>COGS: Rp {fmt(editCalc.cogs ?? 0)}</span>
@@ -3042,7 +3042,7 @@ function EditProductModal({
                 {draftTargetValas ? (
                   // Derived from the Country/Valas/Gram above; the server recomputes it from
                   // the same inputs on save, so it is read-only rather than a second source.
-                  <div className={`${formInputCls} bg-gray-50 text-gray-500 flex items-center tabular-nums`}>
+                  <div className={`${formInputCls} bg-surface-muted text-muted flex items-center tabular-nums`}>
                     Rp {fmt(editCalc.cogs ?? 0)}
                   </div>
                 ) : (
@@ -3063,7 +3063,7 @@ function EditProductModal({
 
             {/* Unconditional, unlike the other bars: a rupiah-mode row has no country to
                 gate on, and the margin is exactly what this method needs to show. */}
-            <div className="flex items-center justify-between gap-1 flex-nowrap whitespace-nowrap rounded-lg bg-gray-50 border border-cream-border px-3 py-3 text-[8px] md:text-[9px] text-gray-500">
+            <div className="flex items-center justify-between gap-1 flex-nowrap whitespace-nowrap rounded-lg bg-surface-muted border border-cream-border px-3 py-3 text-[8px] md:text-[9px] text-muted">
               {draftTargetValas && draftCountry && (
                 <>
                   <span>RATE: {fmt(draftCountry.kurs)}</span>
@@ -3089,7 +3089,7 @@ function EditProductModal({
               <Field label={draft.flatFeeMode === "percent" ? `Flat Fee (${fmtRp2(flatFeePctSetting)}%)` : "Flat Fee"}>
                 <div
                   title="Set under Settings → Pricing. Applies to every Flat Fee product on its next save."
-                  className={`${formInputCls} bg-gray-50 text-gray-400 cursor-not-allowed flex items-center`}
+                  className={`${formInputCls} bg-surface-muted text-faint cursor-not-allowed flex items-center`}
                 >
                   Rp {fmt(flatFee)}
                 </div>
@@ -3104,7 +3104,7 @@ function EditProductModal({
                       type="button"
                       disabled={saving}
                       onClick={() => setDraft((d) => ({ ...d, flatFeeMode: m }))}
-                      className={`flex-1 px-3 py-2.5 transition-colors ${draft.flatFeeMode === m ? "bg-brand text-white font-medium" : "bg-white text-gray-600 hover:bg-cream"}`}
+                      className={`flex-1 px-3 py-2.5 transition-colors ${draft.flatFeeMode === m ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"}`}
                     >
                       {m === "fixed" ? "Off" : "On"}
                     </button>
@@ -3115,7 +3115,7 @@ function EditProductModal({
                 <input value={draft.gram} onChange={(e) => setDraft((d) => ({ ...d, gram: e.target.value }))} type="number" min="0" disabled={saving} className={formInputCls} />
               </Field>
               <Field label="Price">
-                <div className={`${formInputCls} bg-gray-50 text-gray-500 flex items-center`}>Rp {fmt(editCalc.price)}</div>
+                <div className={`${formInputCls} bg-surface-muted text-muted flex items-center`}>Rp {fmt(editCalc.price)}</div>
               </Field>
             </div>
             {Number(row.profitFixed) !== flatFee && (
@@ -3131,20 +3131,20 @@ function EditProductModal({
           <div className="flex items-center gap-2 w-full">
             {saveError && <p className="text-xs text-red-500">{saveError}</p>}
             {onDelete && (
-              <button type="button" onClick={onDelete} disabled={saving} aria-label="Delete" className="inline-flex items-center justify-center h-[38px] border border-cream-border rounded-lg px-3 text-sm text-gray-400 hover:border-brand disabled:opacity-50 transition-colors">
+              <button type="button" onClick={onDelete} disabled={saving} aria-label="Delete" className="inline-flex items-center justify-center h-[38px] border border-cream-border rounded-lg px-3 text-sm text-faint hover:border-brand disabled:opacity-50 transition-colors">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M10 11v6" /><path d="M14 11v6" />
                 </svg>
               </button>
             )}
             {onDuplicate && (
-              <button type="button" onClick={onDuplicate} disabled={saving} aria-label="Duplicate" className="md:hidden inline-flex items-center justify-center h-[38px] border border-cream-border rounded-lg px-3 text-sm text-gray-400 hover:border-brand disabled:opacity-50 transition-colors">
+              <button type="button" onClick={onDuplicate} disabled={saving} aria-label="Duplicate" className="md:hidden inline-flex items-center justify-center h-[38px] border border-cream-border rounded-lg px-3 text-sm text-faint hover:border-brand disabled:opacity-50 transition-colors">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                 </svg>
               </button>
             )}
-            <button type="button" onClick={onCancel} disabled={saving} className="ml-auto px-3 py-1.5 rounded-lg border border-cream-border text-gray-500 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
+            <button type="button" onClick={onCancel} disabled={saving} className="ml-auto px-3 py-1.5 rounded-lg border border-cream-border text-muted text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
               Cancel
             </button>
             <button type="button" onClick={handleSave} disabled={saving} className="px-4 py-1.5 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors">

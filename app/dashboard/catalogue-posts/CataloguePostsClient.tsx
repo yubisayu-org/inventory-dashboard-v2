@@ -189,7 +189,7 @@ export default function CataloguePostsClient() {
           aria-label="Bulk actions"
           title="Bulk actions"
           className={`relative h-10 w-10 flex items-center justify-center rounded-lg border border-cream-border shrink-0 ${
-            selectedPostIds.size > 0 ? "bg-brand text-white" : "bg-white text-gray-400"
+            selectedPostIds.size > 0 ? "bg-brand text-white" : "bg-white text-faint"
           }`}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -205,7 +205,7 @@ export default function CataloguePostsClient() {
           onClick={() => setHighlightsOpen(true)}
           aria-label="Highlights"
           title="Highlights"
-          className="h-10 w-10 flex items-center justify-center rounded-lg border border-cream-border bg-white text-gray-400 shrink-0"
+          className="h-10 w-10 flex items-center justify-center rounded-lg border border-cream-border bg-white text-faint shrink-0"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z" />
@@ -216,7 +216,7 @@ export default function CataloguePostsClient() {
             onClick={() => setViewMode("list")}
             aria-label="Tampilan list"
             title="List"
-            className={`h-full px-2.5 flex items-center ${viewMode === "list" ? "bg-brand text-white" : "bg-white text-gray-400"}`}
+            className={`h-full px-2.5 flex items-center ${viewMode === "list" ? "bg-brand text-white" : "bg-white text-faint"}`}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" />
@@ -227,7 +227,7 @@ export default function CataloguePostsClient() {
             onClick={() => setViewMode("gallery")}
             aria-label="Tampilan gallery"
             title="Gallery"
-            className={`h-full px-2.5 flex items-center border-l border-cream-border ${viewMode === "gallery" ? "bg-brand text-white" : "bg-white text-gray-400"}`}
+            className={`h-full px-2.5 flex items-center border-l border-cream-border ${viewMode === "gallery" ? "bg-brand text-white" : "bg-white text-faint"}`}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
@@ -256,7 +256,7 @@ export default function CataloguePostsClient() {
           <div className="bg-white rounded-xl p-5 w-full max-w-sm flex flex-col gap-3" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <span className="text-sm font-semibold text-foreground">Highlights</span>
-              <button onClick={() => setHighlightsOpen(false)} aria-label="Close" className="text-gray-400 hover:text-foreground">
+              <button onClick={() => setHighlightsOpen(false)} aria-label="Close" className="text-faint hover:text-foreground">
                 &times;
               </button>
             </div>
@@ -265,7 +265,7 @@ export default function CataloguePostsClient() {
                 <button
                   key={h.id}
                   onClick={() => { setHighlightsOpen(false); setEditingHighlight(h) }}
-                  className={`px-2.5 py-1 rounded-full text-xs border ${h.visible ? "border-cream-border" : "border-gray-200 text-gray-400"}`}
+                  className={`px-2.5 py-1 rounded-full text-xs border ${h.visible ? "border-cream-border" : "border-cream-border text-faint"}`}
                 >
                   {h.name} ✎
                 </button>
@@ -275,7 +275,7 @@ export default function CataloguePostsClient() {
                   setHighlightsOpen(false)
                   setEditingHighlight({ id: 0, name: "", defaultEvent: null, sortOrder: 0, visible: true, createdAt: "", updatedAt: "" })
                 }}
-                className="px-2.5 py-1 rounded-full text-xs border border-dashed border-cream-border text-gray-500"
+                className="px-2.5 py-1 rounded-full text-xs border border-dashed border-cream-border text-muted"
               >
                 + New
               </button>
@@ -296,9 +296,9 @@ export default function CataloguePostsClient() {
         />
       )}
       {loading ? (
-        <p className="text-sm text-gray-400">Loading…</p>
+        <p className="text-sm text-faint">Loading…</p>
       ) : filteredPosts.length === 0 ? (
-        <p className="text-sm text-gray-400">
+        <p className="text-sm text-faint">
           {listQuery.trim() ? `Tidak ada yang cocok dengan "${listQuery}".` : "Belum ada post."}
         </p>
       ) : viewMode === "list" ? (
@@ -329,7 +329,7 @@ export default function CataloguePostsClient() {
                 )}
                 <div className="min-w-0 flex-1">
                   <PostTitleLabel label={label} muted={muted} />
-                  <p className="flex items-center gap-1 text-xs text-gray-400 truncate">
+                  <p className="flex items-center gap-1 text-xs text-faint truncate">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
                       <path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z" />
                       <circle cx="7.5" cy="7.5" r="1.5" fill="currentColor" />
@@ -356,7 +356,7 @@ export default function CataloguePostsClient() {
                   onClick={() => setEditingProductsPost(post)}
                   aria-label="Edit title & products"
                   title="Edit title & products"
-                  className={`p-1.5 rounded-lg border border-cream-border ${complete ? "text-brand" : "text-gray-500"}`}
+                  className={`p-1.5 rounded-lg border border-cream-border ${complete ? "text-brand" : "text-muted"}`}
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M12 20h9" />
@@ -367,7 +367,7 @@ export default function CataloguePostsClient() {
                   onClick={() => toggleVisible(post)}
                   aria-label={post.visible ? "Visible — klik untuk sembunyikan" : "Hidden — klik untuk tampilkan"}
                   title={post.visible ? "Visible" : "Hidden"}
-                  className={`p-1.5 rounded-lg border border-cream-border ${post.visible ? "text-brand" : "text-gray-500"}`}
+                  className={`p-1.5 rounded-lg border border-cream-border ${post.visible ? "text-brand" : "text-muted"}`}
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z" />
@@ -417,7 +417,7 @@ export default function CataloguePostsClient() {
                     onClick={() => setEditingProductsPost(post)}
                     aria-label="Edit title & products"
                     title="Edit title & products"
-                    className={`p-1.5 rounded-lg border border-cream-border bg-white/90 backdrop-blur-sm shadow-sm ${complete ? "text-brand" : "text-gray-500"}`}
+                    className={`p-1.5 rounded-lg border border-cream-border bg-white/90 backdrop-blur-sm shadow-sm ${complete ? "text-brand" : "text-muted"}`}
                   >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M12 20h9" />
@@ -428,7 +428,7 @@ export default function CataloguePostsClient() {
                     onClick={() => toggleVisible(post)}
                     aria-label={post.visible ? "Visible — klik untuk sembunyikan" : "Hidden — klik untuk tampilkan"}
                     title={post.visible ? "Visible" : "Hidden"}
-                    className={`p-1.5 rounded-lg border border-cream-border bg-white/90 backdrop-blur-sm shadow-sm ${post.visible ? "text-brand" : "text-gray-500"}`}
+                    className={`p-1.5 rounded-lg border border-cream-border bg-white/90 backdrop-blur-sm shadow-sm ${post.visible ? "text-brand" : "text-muted"}`}
                   >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z" />
@@ -445,7 +445,7 @@ export default function CataloguePostsClient() {
                 </div>
               </div>
               <PostTitleLabel label={label} muted={muted} />
-              <p className="flex items-center gap-1 text-xs text-gray-400 truncate">
+              <p className="flex items-center gap-1 text-xs text-faint truncate">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
                   <path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z" />
                   <circle cx="7.5" cy="7.5" r="1.5" fill="currentColor" />
@@ -519,19 +519,19 @@ function BulkActionsModal({ posts, highlights, activeEvents, defaultEvent, onSet
       >
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-foreground">{posts.length} dipilih</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-foreground text-lg leading-none">&times;</button>
+          <button onClick={onClose} className="text-faint hover:text-foreground text-lg leading-none">&times;</button>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => onSetVisible(true)}
-            className="px-2.5 py-1 rounded-lg text-xs border border-cream-border text-gray-500"
+            className="px-2.5 py-1 rounded-lg text-xs border border-cream-border text-muted"
           >
             Set Visible
           </button>
           <button
             onClick={() => onSetVisible(false)}
-            className="px-2.5 py-1 rounded-lg text-xs border border-cream-border text-gray-500"
+            className="px-2.5 py-1 rounded-lg text-xs border border-cream-border text-muted"
           >
             Set Hidden
           </button>
@@ -631,7 +631,7 @@ function BulkSendBar({ posts, activeEvents, defaultEvent, onDone, onCancel }: {
             >
               📤 Kirim ke {event || "…"}
             </button>
-            <button onClick={onCancel} className="px-3 py-1.5 rounded-lg text-xs text-gray-500">
+            <button onClick={onCancel} className="px-3 py-1.5 rounded-lg text-xs text-muted">
               Batal
             </button>
           </>
@@ -647,15 +647,15 @@ function BulkSendBar({ posts, activeEvents, defaultEvent, onDone, onCancel }: {
           {jobs.map((job) => (
             <div key={job.postId} className="flex items-center gap-2 px-3 py-1.5 text-xs border-b border-cream-border last:border-b-0">
               <span className="flex-1 min-w-0 truncate">{job.title}</span>
-              {job.status === "queued" && <span className="text-gray-400">Menunggu…</span>}
-              {job.status === "sending" && <span className="text-gray-400">Mengirim…</span>}
+              {job.status === "queued" && <span className="text-faint">Menunggu…</span>}
+              {job.status === "sending" && <span className="text-faint">Mengirim…</span>}
               {job.status === "done" && <span className="text-green-600">✓ Terkirim</span>}
               {job.status === "failed" && <span className="text-red-500" title={job.error}>Gagal — {job.error}</span>}
             </div>
           ))}
         </div>
       )}
-      {sending && <p className="text-[11px] text-gray-500">Mengirim satu per satu — jangan tutup halaman ini.</p>}
+      {sending && <p className="text-[11px] text-muted">Mengirim satu per satu — jangan tutup halaman ini.</p>}
     </div>
   )
 }
@@ -725,7 +725,7 @@ function EditProductsModal({ post, defaultEvent, activeEvents, onClose }: {
       >
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-foreground">Edit post</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-foreground text-lg leading-none">&times;</button>
+          <button onClick={onClose} className="text-faint hover:text-foreground text-lg leading-none">&times;</button>
         </div>
 
         {draft ? (
@@ -739,7 +739,7 @@ function EditProductsModal({ post, defaultEvent, activeEvents, onClose }: {
           />
         ) : (
           <div className="flex flex-col gap-2">
-            <p className="text-xs text-gray-500">Choose a trip to start tagging products.</p>
+            <p className="text-xs text-muted">Choose a trip to start tagging products.</p>
             <div className="w-56">
               <EventSelect value={event} onChange={setEvent} events={activeEvents} placeholder="Choose a trip…" />
             </div>
@@ -794,7 +794,7 @@ function ResendButton({ post, activeEvents, defaultEvent, onSent }: {
       <span
         aria-label={`Tidak bisa kirim — ${reason}`}
         title={`Tidak bisa kirim — ${reason}`}
-        className="p-1.5 rounded-lg border border-cream-border bg-white/90 backdrop-blur-sm shadow-sm text-gray-500"
+        className="p-1.5 rounded-lg border border-cream-border bg-white/90 backdrop-blur-sm shadow-sm text-muted"
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M22 2 11 13" />
@@ -832,7 +832,7 @@ function ResendButton({ post, activeEvents, defaultEvent, onSent }: {
         onClick={() => setOpen((o) => !o)}
         aria-label={post.everSent ? "Kirim ulang" : "Kirim"}
         title={post.everSent ? "Kirim ulang" : "Kirim"}
-        className={`p-1.5 rounded-lg border border-cream-border bg-white/90 backdrop-blur-sm shadow-sm ${post.everSent ? "text-brand" : "text-gray-500"}`}
+        className={`p-1.5 rounded-lg border border-cream-border bg-white/90 backdrop-blur-sm shadow-sm ${post.everSent ? "text-brand" : "text-muted"}`}
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M22 2 11 13" />
@@ -841,7 +841,7 @@ function ResendButton({ post, activeEvents, defaultEvent, onSent }: {
       </button>
       {open && (
         <div className="absolute right-0 top-full mt-1.5 z-10 w-56 rounded-xl border border-cream-border bg-white p-3 shadow-lg flex flex-col gap-2">
-          <p className="text-[11px] text-gray-500">
+          <p className="text-[11px] text-muted">
             {post.everSent
               ? "Kirim produk & pin terakhir ke trip lain, langsung terkirim."
               : "Kirim ke grup untuk pertama kali, langsung terkirim."}
@@ -849,7 +849,7 @@ function ResendButton({ post, activeEvents, defaultEvent, onSent }: {
           <EventSelect value={event} onChange={setEvent} events={activeEvents} placeholder="Pilih trip…" />
           {error && <p className="text-[11px] text-red-500">{error}</p>}
           <div className="flex justify-end gap-1.5">
-            <button onClick={() => setOpen(false)} className="px-2.5 py-1 rounded-lg text-xs text-gray-500">
+            <button onClick={() => setOpen(false)} className="px-2.5 py-1 rounded-lg text-xs text-muted">
               Batal
             </button>
             <button
@@ -972,7 +972,7 @@ function UploadForm({ options, onCreated, onCancel }: {
           setDragging(false)
           addFiles(e.dataTransfer.files)
         }}
-        className={`relative rounded-xl border border-dashed py-6 text-center text-sm text-gray-500 transition-colors ${
+        className={`relative rounded-xl border border-dashed py-6 text-center text-sm text-muted transition-colors ${
           dragging ? "border-brand bg-brand/5" : "border-cream-border bg-cream"
         }`}
       >
@@ -998,10 +998,10 @@ function UploadForm({ options, onCreated, onCancel }: {
             <div key={job.id} className="flex items-center gap-2 px-3 py-1.5 text-xs border-b border-cream-border last:border-b-0">
               <span className="flex-1 min-w-0 truncate">{job.file.name}</span>
               {job.status === "done" && <span className="text-green-600">✓</span>}
-              {job.status === "uploading" && <span className="text-gray-400">Mengirim…</span>}
+              {job.status === "uploading" && <span className="text-faint">Mengirim…</span>}
               {job.status === "failed" && <span className="text-red-500" title={job.error}>Gagal</span>}
               {job.status === "queued" && (
-                <button type="button" onClick={() => removeFile(job.id)} className="text-gray-400 hover:text-foreground">
+                <button type="button" onClick={() => removeFile(job.id)} className="text-faint hover:text-foreground">
                   &times;
                 </button>
               )}
@@ -1015,7 +1015,7 @@ function UploadForm({ options, onCreated, onCancel }: {
           type="button"
           onClick={onCancel}
           disabled={submitting}
-          className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+          className="px-4 py-2 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
         >
           Cancel
         </button>

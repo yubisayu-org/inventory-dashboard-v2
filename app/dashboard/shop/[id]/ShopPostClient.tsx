@@ -242,7 +242,7 @@ export default function ShopPostClient({
   }
 
   if (error) return <p className="text-sm text-red-600">{error}</p>
-  if (!data) return <p className="text-sm text-gray-500">Loading…</p>
+  if (!data) return <p className="text-sm text-muted">Loading…</p>
 
   const claimed = data.slots.reduce((n, s) => n + s.claimed, 0)
   const bought = data.slots.reduce((n, s) => n + s.bought, 0)
@@ -252,14 +252,14 @@ export default function ShopPostClient({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-3">
-        <Link href="/dashboard/shop" className="text-sm text-gray-500 hover:text-foreground">
+        <Link href="/dashboard/shop" className="text-sm text-muted hover:text-foreground">
           ←
         </Link>
         <div className="min-w-0 flex-1">
           <h1 className="text-xl font-bold uppercase text-foreground truncate">
             {data.post.store || "Untitled shelf"}
           </h1>
-          <p className="text-xs text-gray-500 tabular-nums">
+          <p className="text-xs text-muted tabular-nums">
             {data.post.event} · {data.slots.length} SKU · {bought} of {claimed} units
           </p>
         </div>
@@ -269,7 +269,7 @@ export default function ShopPostClient({
             naming pins whatever was in force — from then on it is a price
             customers have been quoted. */}
         {canName ? (
-          <label className="flex items-center gap-2 text-xs text-gray-500 shrink-0">
+          <label className="flex items-center gap-2 text-xs text-muted shrink-0">
             <select
               value={data.post.pricingMethod ?? ""}
               onChange={(e) => setPricingMethod(e.target.value)}
@@ -298,7 +298,7 @@ export default function ShopPostClient({
             disabled={announcing}
             title="Post to WhatsApp group"
             aria-label="Post to WhatsApp group"
-            className="shrink-0 inline-flex items-center justify-center border border-cream-border rounded-lg px-2 py-1.5 bg-white text-gray-500 hover:border-brand hover:text-brand transition-colors disabled:opacity-50"
+            className="shrink-0 inline-flex items-center justify-center border border-cream-border rounded-lg px-2 py-1.5 bg-white text-muted hover:border-brand hover:text-brand transition-colors disabled:opacity-50"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="m22 2-7 20-4-9-9-4Z" />
@@ -372,7 +372,7 @@ export default function ShopPostClient({
       </div>
 
       {data.slots.length === 0 ? (
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-muted">
           {data.claims.some((c) => c.state !== "rejected")
             ? `${data.claims.filter((c) => c.state !== "rejected").length} mark(s) recorded, not tallied into SKUs yet — that happens at the naming session.`
             : "No items marked on this shelf yet — tap the basket on the photo to record one."}
@@ -406,9 +406,9 @@ export default function ShopPostClient({
                 looks unnamed, and sends you back to the naming screen to check. */}
             <span className="flex-1 min-w-0 text-sm font-medium text-foreground truncate">
               {s.productName || s.label || `SKU ${s.id}`}
-              {s.size ? <span className="text-gray-500 font-normal"> · {s.size}</span> : null}
+              {s.size ? <span className="text-muted font-normal"> · {s.size}</span> : null}
             </span>
-            <span className="text-xs text-gray-400 tabular-nums shrink-0">
+            <span className="text-xs text-faint tabular-nums shrink-0">
               {s.bought}/{s.claimed}
             </span>
             {/* Only the basket opens the tally. The row is where you read what
@@ -462,7 +462,7 @@ export default function ShopPostClient({
       {siblings && siblings.total > 1 ? (
         <div className="flex items-center gap-2">
           <NeighbourLink post={siblings.previous} direction="previous" />
-          <span className="text-xs text-gray-500 tabular-nums shrink-0">
+          <span className="text-xs text-muted tabular-nums shrink-0">
             {siblings.position} of {siblings.total}
           </span>
           <NeighbourLink post={siblings.next} direction="next" />
@@ -562,7 +562,7 @@ function NeighbourLink({
     "flex-1 rounded-xl border border-cream-border px-4 py-2.5 text-sm font-semibold text-center"
 
   if (post === null) {
-    return <span className={`${shared} text-gray-300 bg-cream/50`}>{label}</span>
+    return <span className={`${shared} text-faint bg-cream/50`}>{label}</span>
   }
   return (
     <Link href={`/dashboard/shop/${post.id}`} className={`${shared} bg-white hover:border-brand`}>
@@ -615,10 +615,10 @@ function AddOrderSheet({
         className="w-full max-w-md rounded-t-2xl bg-white p-4 flex flex-col gap-3"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mx-auto h-1 w-9 rounded-full bg-gray-300" />
+        <div className="mx-auto h-1 w-9 rounded-full bg-divider" />
         <div>
           <h2 className="text-sm font-bold text-foreground">Pesanan dari DM</h2>
-          <p className="text-[11px] text-gray-500">
+          <p className="text-[11px] text-muted">
             {target.kind === "slot"
               ? "Ditambahkan ke SKU yang dipilih."
               : "Ditandai di titik yang kakak tap — SKU baru dibuat kalau belum ada."}
@@ -687,7 +687,7 @@ function SlotSheet({
         className="w-full max-w-md rounded-t-2xl bg-white p-4 flex flex-col gap-3"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mx-auto h-1 w-9 rounded-full bg-gray-300" />
+        <div className="mx-auto h-1 w-9 rounded-full bg-divider" />
 
         <div className="flex items-start gap-3">
           {/* Which item this is, at the moment of counting it. Naming happens at
@@ -710,7 +710,7 @@ function SlotSheet({
               placeholder={slot.productName ?? "Name it — e.g. brown bear set"}
               className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
             />
-            <p className="text-xs text-gray-500 tabular-nums">
+            <p className="text-xs text-muted tabular-nums">
               {slot.size ? `Size ${slot.size} · ` : ""}
               {slot.claimed} claimed by {claims.length} {claims.length === 1 ? "person" : "people"}
             </p>
@@ -732,7 +732,7 @@ function SlotSheet({
               </button>
               <div className="flex-1 text-center">
                 <div className="text-3xl font-bold tabular-nums leading-none">{count}</div>
-                <div className="text-[10px] text-gray-500 tracking-wide">
+                <div className="text-[10px] text-muted tracking-wide">
                   GOT / {slot.claimed} CLAIMED
                 </div>
               </div>
@@ -769,7 +769,7 @@ function SlotSheet({
              the count is not theirs to move. */
           <div className="rounded-xl border border-cream-border bg-cream py-3 text-center">
             <div className="text-3xl font-bold tabular-nums leading-none">{slot.bought}</div>
-            <div className="text-[10px] text-gray-500 tracking-wide">
+            <div className="text-[10px] text-muted tracking-wide">
               GOT / {slot.claimed} CLAIMED
             </div>
           </div>
@@ -809,7 +809,7 @@ function SlotSheet({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl border border-cream-border py-2.5 text-sm font-bold text-gray-500"
+            className="rounded-xl border border-cream-border py-2.5 text-sm font-bold text-muted"
           >
             Tutup
           </button>
@@ -919,9 +919,9 @@ function UnknownPanel({
       {error ? <p className="text-[11px] text-red-600">{error}</p> : null}
       {unknown.map((claim) => (
         <div key={claim.id} className="flex flex-col gap-1">
-          <div className="text-[11px] text-gray-600 tabular-nums">
+          <div className="text-[11px] text-muted-strong tabular-nums">
             {contactDigits(claim)} · {claimedAt(claim.createdAt)} · {claim.quantity}×
-            {claim.note ? <span className="text-gray-500"> · “{claim.note}”</span> : null}
+            {claim.note ? <span className="text-muted"> · “{claim.note}”</span> : null}
           </div>
           <div className="flex gap-1.5">
             <input
@@ -976,10 +976,10 @@ function FallbackPanel({
         <div key={claim.id} className="flex flex-col gap-1.5">
           <div className="text-xs">
             <span className="font-semibold">{claim.customer ?? contactDigits(claim)}</span>
-            <span className="text-gray-600"> also wrote </span>
+            <span className="text-muted-strong"> also wrote </span>
             <span className="font-semibold tabular-nums">{sizes.join(", ")}</span>
           </div>
-          <div className="text-[11px] text-gray-600 leading-snug">“{claim.note}”</div>
+          <div className="text-[11px] text-muted-strong leading-snug">“{claim.note}”</div>
           <div className="flex gap-1.5">
             {sizes.map((size) => (
               <button
@@ -1032,13 +1032,13 @@ function ShortPanel({ claims, count, onOpenProof }: { claims: Claim[]; count: nu
           <span className="flex-1 min-w-0">
             <span className="truncate block tabular-nums">
               <span className="font-semibold">{claim.customer ?? contactDigits(claim)}</span>
-              <span className="text-gray-500"> · {contactDigits(claim)} · {claimedAt(claim.createdAt)}</span>
+              <span className="text-muted"> · {contactDigits(claim)} · {claimedAt(claim.createdAt)}</span>
             </span>
             {claim.note ? (
-              <span className="text-gray-500 block truncate">“{claim.note}”</span>
+              <span className="text-muted block truncate">“{claim.note}”</span>
             ) : null}
           </span>
-          <span className="text-gray-500 tabular-nums shrink-0">
+          <span className="text-muted tabular-nums shrink-0">
             {gets} of {claim.quantity}
           </span>
           {claim.replyImagePath !== null ? (

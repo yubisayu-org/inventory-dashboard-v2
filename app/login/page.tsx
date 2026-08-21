@@ -17,12 +17,12 @@ export default async function LoginPage() {
           </div>
           <div className="text-left">
             <p className="font-bold text-foreground leading-tight">Yubisayu</p>
-            <p className="text-xs text-gray-500">Inventory Dashboard</p>
+            <p className="text-xs text-muted">Inventory Dashboard</p>
           </div>
         </div>
 
         <h1 className="text-lg font-semibold text-foreground mb-1">Welcome back</h1>
-        <p className="text-sm text-gray-500 mb-6">Sign in with your Google account to continue</p>
+        <p className="text-sm text-muted mb-6">Sign in with your Google account to continue</p>
 
         <form
           action={async () => {

@@ -369,7 +369,7 @@ export default function DataGrid<T>({
           {!tightToolbar && <div className="flex-1" />}
 
           {!hideRowCount && (
-            <span className="text-xs text-gray-400">{totalRows} rows</span>
+            <span className="text-xs text-faint">{totalRows} rows</span>
           )}
 
           {/* Column visibility (desktop only — mobile uses cards, not columns) */}
@@ -401,7 +401,7 @@ export default function DataGrid<T>({
           <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
             <thead>
               {table.getHeaderGroups().map((hg) => (
-                <tr key={hg.id} className={`text-left text-xs text-gray-500 border-b border-cream-border bg-cream ${boldUppercaseHeader ? "uppercase" : ""}`}>
+                <tr key={hg.id} className={`text-left text-xs text-muted border-b border-cream-border bg-cream ${boldUppercaseHeader ? "uppercase" : ""}`}>
                   {renderExpandedRow && <th className="pl-3 pr-0 py-3 w-8" />}
                   {enableRowSelection && (
                     <th className="pl-4 pr-2 py-3 w-10">
@@ -409,7 +409,7 @@ export default function DataGrid<T>({
                         type="checkbox"
                         checked={table.getIsAllPageRowsSelected()}
                         onChange={table.getToggleAllPageRowsSelectedHandler()}
-                        className="rounded border-gray-300 text-brand focus:ring-brand/30 cursor-pointer"
+                        className="rounded border-cream-border text-brand focus:ring-brand/30 cursor-pointer"
                       />
                     </th>
                   )}
@@ -441,7 +441,7 @@ export default function DataGrid<T>({
             <tbody>
               {table.getRowModel().rows.length === 0 ? (
                 <tr>
-                  <td colSpan={table.getVisibleLeafColumns().length + (enableRowSelection ? 1 : 0) + (renderExpandedRow ? 1 : 0)} className="px-4 py-12 text-center text-gray-400 text-sm">
+                  <td colSpan={table.getVisibleLeafColumns().length + (enableRowSelection ? 1 : 0) + (renderExpandedRow ? 1 : 0)} className="px-4 py-12 text-center text-faint text-sm">
                     No data found.
                   </td>
                 </tr>
@@ -461,7 +461,7 @@ export default function DataGrid<T>({
                           onClick={(e) => { e.stopPropagation(); setExpandedRows((prev) => ({ ...prev, [row.id]: !prev[row.id] })) }}
                           aria-label={isExpanded ? "Collapse row" : "Expand row"}
                           aria-expanded={isExpanded}
-                          className="p-1 text-gray-400 hover:text-brand transition-colors rounded"
+                          className="p-1 text-faint hover:text-brand transition-colors rounded"
                         >
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform ${isExpanded ? "rotate-90" : ""}`}>
                             <path d="m9 18 6-6-6-6" />
@@ -476,7 +476,7 @@ export default function DataGrid<T>({
                           checked={row.getIsSelected()}
                           onChange={row.getToggleSelectedHandler()}
                           onClick={(e) => e.stopPropagation()}
-                          className="rounded border-gray-300 text-brand focus:ring-brand/30 cursor-pointer"
+                          className="rounded border-cream-border text-brand focus:ring-brand/30 cursor-pointer"
                         />
                       </td>
                     )}
@@ -509,7 +509,7 @@ export default function DataGrid<T>({
       {renderMobileCard && (
         <div className="md:hidden flex flex-col gap-2.5">
           {table.getRowModel().rows.length === 0 ? (
-            <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">No data found.</div>
+            <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-faint">No data found.</div>
           ) : (
             table.getRowModel().rows.map((row) => (
               <div key={row.id} className="flex items-start gap-2">
@@ -518,7 +518,7 @@ export default function DataGrid<T>({
                     type="checkbox"
                     checked={row.getIsSelected()}
                     onChange={row.getToggleSelectedHandler()}
-                    className="mt-4 shrink-0 rounded border-gray-300 text-brand focus:ring-brand/30 cursor-pointer"
+                    className="mt-4 shrink-0 rounded border-cream-border text-brand focus:ring-brand/30 cursor-pointer"
                   />
                 )}
                 <div
@@ -553,7 +553,7 @@ function ColumnSortButton<T>({ column }: { column: Column<T, unknown> }) {
     <button
       type="button"
       onClick={column.getToggleSortingHandler()}
-      className={`p-0.5 rounded transition-colors shrink-0 ${isActive ? "text-brand" : "text-gray-300 opacity-0 group-hover:opacity-100 hover:text-brand"}`}
+      className={`p-0.5 rounded transition-colors shrink-0 ${isActive ? "text-brand" : "text-faint opacity-0 group-hover:opacity-100 hover:text-brand"}`}
       title={sorted === "asc" ? "Sorted ascending — click for descending" : sorted === "desc" ? "Sorted descending — click to clear" : "Sort column"}
     >
       {sorted === "asc" ? (
@@ -601,7 +601,7 @@ function ColumnFilterButton<T>({ column }: { column: Column<T, unknown> }) {
         ref={btnRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className={`p-0.5 rounded transition-colors ${isFiltered ? "text-brand" : "text-gray-300 opacity-0 group-hover:opacity-100 hover:text-brand"}`}
+        className={`p-0.5 rounded transition-colors ${isFiltered ? "text-brand" : "text-faint opacity-0 group-hover:opacity-100 hover:text-brand"}`}
         title="Filter column"
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -636,7 +636,7 @@ function TextFilterInput<T>({ column, onClose }: { column: Column<T, unknown>; o
 
   return (
     <div className="flex flex-col gap-2">
-      <span className="text-xs font-medium text-gray-500">Filter: contains</span>
+      <span className="text-xs font-medium text-muted">Filter: contains</span>
       <input
         ref={inputRef}
         type="text"
@@ -650,7 +650,7 @@ function TextFilterInput<T>({ column, onClose }: { column: Column<T, unknown>; o
         <button
           type="button"
           onClick={() => { column.setFilterValue(undefined); onClose() }}
-          className="text-xs text-gray-400 hover:text-brand transition-colors text-left"
+          className="text-xs text-faint hover:text-brand transition-colors text-left"
         >
           Clear filter
         </button>
@@ -675,8 +675,8 @@ function DateRangeFilterInput<T>({ column, onClose }: { column: Column<T, unknow
 
   return (
     <div className="flex flex-col gap-2">
-      <span className="text-xs font-medium text-gray-500">Filter: date range</span>
-      <label className="flex items-center gap-2 text-xs text-gray-500">
+      <span className="text-xs font-medium text-muted">Filter: date range</span>
+      <label className="flex items-center gap-2 text-xs text-muted">
         <span className="w-9 shrink-0">From</span>
         <input
           type="date"
@@ -687,7 +687,7 @@ function DateRangeFilterInput<T>({ column, onClose }: { column: Column<T, unknow
           className={inputCls}
         />
       </label>
-      <label className="flex items-center gap-2 text-xs text-gray-500">
+      <label className="flex items-center gap-2 text-xs text-muted">
         <span className="w-9 shrink-0">To</span>
         <input
           type="date"
@@ -702,7 +702,7 @@ function DateRangeFilterInput<T>({ column, onClose }: { column: Column<T, unknow
         <button
           type="button"
           onClick={() => { setFrom(""); setTo(""); column.setFilterValue(undefined); onClose() }}
-          className="text-xs text-gray-400 hover:text-brand transition-colors text-left"
+          className="text-xs text-faint hover:text-brand transition-colors text-left"
         >
           Clear filter
         </button>
@@ -727,7 +727,7 @@ function NumericFilterInput<T>({ column, onClose }: { column: Column<T, unknown>
 
   return (
     <div className="flex flex-col gap-2">
-      <span className="text-xs font-medium text-gray-500">Filter</span>
+      <span className="text-xs font-medium text-muted">Filter</span>
       <select
         value={op}
         onChange={(e) => { setOp(e.target.value); setTimeout(apply) }}
@@ -756,7 +756,7 @@ function NumericFilterInput<T>({ column, onClose }: { column: Column<T, unknown>
         <button
           type="button"
           onClick={() => { column.setFilterValue(undefined); onClose() }}
-          className="text-xs text-gray-400 hover:text-brand transition-colors text-left"
+          className="text-xs text-faint hover:text-brand transition-colors text-left"
         >
           Clear filter
         </button>
@@ -772,7 +772,7 @@ function BooleanFilterInput<T>({ column, onClose }: { column: Column<T, unknown>
 
   return (
     <div className="flex flex-col gap-2">
-      <span className="text-xs font-medium text-gray-500">Filter</span>
+      <span className="text-xs font-medium text-muted">Filter</span>
       <select
         value={current}
         onChange={(e) => { column.setFilterValue(e.target.value || undefined); onClose() }}
@@ -830,7 +830,7 @@ function ActiveFilters<T>({ table, hiddenIds }: { table: TanTable<T>; hiddenIds?
         <button
           type="button"
           onClick={() => table.resetColumnFilters()}
-          className="text-[11px] text-gray-400 hover:text-brand transition-colors"
+          className="text-[11px] text-faint hover:text-brand transition-colors"
         >
           Clear all
         </button>
@@ -885,7 +885,7 @@ export function ColumnVisibilityMenu<T>({
         ref={btnRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1.5 h-[38px] text-sm text-gray-600 bg-white transition-colors px-3 rounded-lg border border-cream-border hover:border-brand"
+        className="flex items-center gap-1.5 h-[38px] text-sm text-muted-strong bg-white transition-colors px-3 rounded-lg border border-cream-border hover:border-brand"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
@@ -899,7 +899,7 @@ export function ColumnVisibilityMenu<T>({
           {hideableColumns.map((col) => {
             const isVisible = columnVisibility[col.id] !== false
             return (
-              <label key={col.id} className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-cream cursor-pointer text-sm text-gray-600">
+              <label key={col.id} className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-cream cursor-pointer text-sm text-muted-strong">
                 <input
                   type="checkbox"
                   checked={isVisible}
@@ -927,7 +927,7 @@ function Pagination<T>({ table, currentPage, pageCount }: { table: TanTable<T>; 
       <PgBtn onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>‹</PgBtn>
       {pages.map((n, i) =>
         n === "…" ? (
-          <span key={`e${i}`} className="px-1 text-gray-400 text-xs">…</span>
+          <span key={`e${i}`} className="px-1 text-faint text-xs">…</span>
         ) : (
           <PgBtn key={n} onClick={() => table.setPageIndex(n - 1)} active={n === currentPage}>{n}</PgBtn>
         ),
@@ -935,7 +935,7 @@ function Pagination<T>({ table, currentPage, pageCount }: { table: TanTable<T>; 
       <PgBtn onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>›</PgBtn>
       <PgBtn onClick={() => table.setPageIndex(pageCount - 1)} disabled={!table.getCanNextPage()}>»</PgBtn>
       <JumpInput currentPage={currentPage} totalPages={pageCount} onJump={(p) => table.setPageIndex(p - 1)} />
-      <span className="text-xs text-gray-400 ml-1">of {pageCount}</span>
+      <span className="text-xs text-faint ml-1">of {pageCount}</span>
     </div>
   )
 }
@@ -944,9 +944,9 @@ function Pagination<T>({ table, currentPage, pageCount }: { table: TanTable<T>; 
 function SimplePagination<T>({ table, currentPage, pageCount }: { table: TanTable<T>; currentPage: number; pageCount: number }) {
   return (
     <div className="flex items-center justify-between gap-3 pt-1">
-      <button type="button" disabled={!table.getCanPreviousPage()} onClick={() => table.previousPage()} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-gray-600 disabled:opacity-40">Prev</button>
-      <span className="text-xs text-gray-400">Page {currentPage} of {pageCount}</span>
-      <button type="button" disabled={!table.getCanNextPage()} onClick={() => table.nextPage()} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-gray-600 disabled:opacity-40">Next</button>
+      <button type="button" disabled={!table.getCanPreviousPage()} onClick={() => table.previousPage()} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-muted-strong disabled:opacity-40">Prev</button>
+      <span className="text-xs text-faint">Page {currentPage} of {pageCount}</span>
+      <button type="button" disabled={!table.getCanNextPage()} onClick={() => table.nextPage()} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-muted-strong disabled:opacity-40">Next</button>
     </div>
   )
 }
@@ -956,7 +956,7 @@ function PgBtn({ children, onClick, disabled = false, active = false }: {
 }) {
   return (
     <button onClick={onClick} disabled={disabled}
-      className={`min-w-[2rem] h-8 px-2 text-xs rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${active ? "bg-brand text-white font-medium" : "border border-cream-border hover:bg-cream text-gray-600"}`}>
+      className={`min-w-[2rem] h-8 px-2 text-xs rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${active ? "bg-brand text-white font-medium" : "border border-cream-border hover:bg-cream text-muted-strong"}`}>
       {children}
     </button>
   )

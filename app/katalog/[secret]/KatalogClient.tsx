@@ -59,14 +59,14 @@ export default function KatalogClient({ secret }: { secret: string }) {
   if (error) {
     return (
       <main className="min-h-screen bg-cream flex items-center justify-center p-8">
-        <p className="text-sm text-gray-500">{error}</p>
+        <p className="text-sm text-muted">{error}</p>
       </main>
     )
   }
   if (!shelves) {
     return (
       <main className="min-h-screen bg-cream flex items-center justify-center p-8">
-        <p className="text-sm text-gray-500">Memuat…</p>
+        <p className="text-sm text-muted">Memuat…</p>
       </main>
     )
   }
@@ -92,7 +92,7 @@ export default function KatalogClient({ secret }: { secret: string }) {
               beside them is drawn at, and anything the stylesheet decides for
               a heading would quietly break that. */}
           <h1 className="text-base font-bold leading-6 text-foreground">Group Catalogue</h1>
-          <p className="text-xs leading-4 text-gray-500 tabular-nums truncate">
+          <p className="text-xs leading-4 text-muted tabular-nums truncate">
             {event} · {shelves.length} SHELVES
           </p>
         </div>
@@ -115,12 +115,12 @@ export default function KatalogClient({ secret }: { secret: string }) {
               loading="lazy"
               className="w-full aspect-[3/4] object-cover rounded-lg border border-cream-border bg-white"
             />
-            <span className="block text-[11px] text-gray-500 mt-1 truncate">{shelf.store}</span>
+            <span className="block text-[11px] text-muted mt-1 truncate">{shelf.store}</span>
           </button>
         ))}
       </div>
 
-      <p className="px-4 pb-8 text-[11px] text-gray-500 leading-snug">
+      <p className="px-4 pb-8 text-[11px] text-muted leading-snug">
         Ketuk rak untuk melihat detail dan menandai barang yang diinginkan, lalu
         kirim ke grup.
       </p>

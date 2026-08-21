@@ -100,7 +100,7 @@ export default function ReceivedReportControls() {
         aria-label="From date (optional)"
         className={`${INPUT_CLASS} h-[38px] appearance-none flex-1 min-w-0 sm:min-w-[140px]`}
       />
-      <span className="shrink-0 self-center text-gray-400">–</span>
+      <span className="shrink-0 self-center text-faint">–</span>
       <input
         type="date"
         value={to}
@@ -115,7 +115,7 @@ export default function ReceivedReportControls() {
         disabled={loading || !event}
         aria-label="Download PDF"
         title={event ? "Download PDF" : "Select an event first"}
-        className="h-[38px] w-[38px] sm:w-auto shrink-0 rounded-lg border border-cream-border bg-white sm:px-4 text-sm font-medium text-gray-600 transition-colors hover:border-brand hover:text-brand disabled:opacity-50 flex items-center justify-center"
+        className="h-[38px] w-[38px] sm:w-auto shrink-0 rounded-lg border border-cream-border bg-white sm:px-4 text-sm font-medium text-muted-strong transition-colors hover:border-brand hover:text-brand disabled:opacity-50 flex items-center justify-center"
       >
         <svg className="sm:hidden" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -124,7 +124,7 @@ export default function ReceivedReportControls() {
         </svg>
         <span className="hidden sm:inline">{loading ? "Preparing…" : "Download PDF"}</span>
       </button>
-      {message && <span className="text-sm text-gray-500 basis-full">{message}</span>}
+      {message && <span className="text-sm text-muted basis-full">{message}</span>}
     </div>
   )
 }

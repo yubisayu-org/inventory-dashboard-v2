@@ -57,7 +57,7 @@ export default function SlotNameForm({
     // otherwise the server refuses after the button has already been pressed.
     (!needsPrice || Number(price) > 0)
 
-  const field = `border border-cream-border rounded-lg px-2 disabled:bg-cream disabled:text-gray-500 ${
+  const field = `border border-cream-border rounded-lg px-2 disabled:bg-cream disabled:text-muted ${
     compact ? "py-2 text-[13px]" : "py-1.5 text-sm"
   }`
 
@@ -113,14 +113,14 @@ export default function SlotNameForm({
             bare number is exactly where a price tag and a weight get confused
             for one another. */}
         <span className={`flex items-center gap-1.5 ${field}`}>
-          <span className="text-gray-400 text-xs shrink-0">{currency || "Valas"}</span>
+          <span className="text-faint text-xs shrink-0">{currency || "Valas"}</span>
           <input
             value={valas}
             onChange={(e) => setValas(e.target.value)}
             disabled={named}
             inputMode="decimal"
             placeholder="price tag"
-            className="w-full min-w-0 bg-transparent outline-none disabled:text-gray-500"
+            className="w-full min-w-0 bg-transparent outline-none disabled:text-muted"
           />
         </span>
         <span className={`flex items-center gap-1.5 ${field}`}>
@@ -130,9 +130,9 @@ export default function SlotNameForm({
             disabled={named}
             inputMode="numeric"
             placeholder="weight"
-            className="w-full min-w-0 bg-transparent outline-none disabled:text-gray-500"
+            className="w-full min-w-0 bg-transparent outline-none disabled:text-muted"
           />
-          <span className="text-gray-400 text-xs shrink-0">gr</span>
+          <span className="text-faint text-xs shrink-0">gr</span>
         </span>
         {/* Only where the method has no formula to derive a price from. Every
             other method computes one from the valas, the kurs and the weight, so

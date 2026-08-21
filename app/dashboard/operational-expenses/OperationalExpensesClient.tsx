@@ -39,7 +39,7 @@ const CATEGORY_BADGE: Record<ExpenseCategory, string> = {
   Personal: "bg-pink-50 text-pink-600",
   Payroll: "bg-indigo-50 text-indigo-600",
   Dividend: "bg-green-50 text-green-600",
-  Other: "bg-gray-50 text-gray-600",
+  Other: "bg-surface-muted text-muted-strong",
 }
 
 /** Parses an amount typed with optional thousands commas ("1,500,000" → 1500000).
@@ -78,7 +78,7 @@ function inferCurrency(row: OperationalExpenseRow, events: EventOption[]): strin
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-xs font-medium text-gray-500">{label}</span>
+      <span className="text-xs font-medium text-muted">{label}</span>
       {children}
     </label>
   )
@@ -86,7 +86,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function CategoryBadge({ category }: { category: ExpenseCategory }) {
   return (
-    <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-medium ${CATEGORY_BADGE[category] ?? "bg-gray-100 text-gray-500"}`}>
+    <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-medium ${CATEGORY_BADGE[category] ?? "bg-surface-sunken text-muted"}`}>
       {category}
     </span>
   )
@@ -110,7 +110,7 @@ const CATEGORY_ICON: Record<ExpenseCategory, React.ReactNode> = {
 
 function CategoryIcon({ category }: { category: ExpenseCategory }) {
   return (
-    <div className={`w-11 h-11 rounded-full flex items-center justify-center shrink-0 ${CATEGORY_BADGE[category] ?? "bg-gray-100 text-gray-500"}`} title={category}>
+    <div className={`w-11 h-11 rounded-full flex items-center justify-center shrink-0 ${CATEGORY_BADGE[category] ?? "bg-surface-sunken text-muted"}`} title={category}>
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         {CATEGORY_ICON[category] ?? CATEGORY_ICON.Other}
       </svg>
@@ -317,7 +317,7 @@ export default function OperationalExpensesClient() {
       header: "Date",
       size: 100,
       enableColumnFilter: false,
-      cell: ({ row }) => <span className="whitespace-nowrap text-gray-600">{formatDate(row.original.expenseDate)}</span>,
+      cell: ({ row }) => <span className="whitespace-nowrap text-muted-strong">{formatDate(row.original.expenseDate)}</span>,
     },
     {
       accessorKey: "description",
@@ -375,7 +375,7 @@ export default function OperationalExpensesClient() {
       header: "Method",
       size: 120,
       filterFn: "textContains",
-      cell: ({ row }) => <span className="whitespace-nowrap text-gray-600">{row.original.method || "—"}</span>,
+      cell: ({ row }) => <span className="whitespace-nowrap text-muted-strong">{row.original.method || "—"}</span>,
     },
     {
       accessorKey: "remarks",
@@ -426,19 +426,19 @@ export default function OperationalExpensesClient() {
           On mobile Total spans the full width, COGS + OPEX sit side by side below. */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-4">
         <div className="col-span-2 sm:col-span-1 rounded-xl border border-cream-border border-l-4 border-l-brand bg-white px-3 py-3 sm:px-5 sm:py-4">
-          <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Total</div>
+          <div className="text-xs font-medium text-faint uppercase tracking-wide">Total</div>
           <div className="text-lg sm:text-2xl font-bold text-foreground mt-1 tabular-nums whitespace-nowrap">
             {filteredSum !== null ? `Rp ${fmt(filteredSum)}` : "—"}
           </div>
         </div>
         <div className="rounded-xl border border-cream-border border-l-4 border-l-amber-500 bg-white px-3 py-3 sm:px-5 sm:py-4">
-          <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">COGS</div>
+          <div className="text-xs font-medium text-faint uppercase tracking-wide">COGS</div>
           <div className="text-sm sm:text-2xl font-bold text-foreground mt-1 tabular-nums whitespace-nowrap">
             {cogsSum !== null ? `Rp ${fmt(cogsSum)}` : "—"}
           </div>
         </div>
         <div className="rounded-xl border border-cream-border border-l-4 border-l-rose-500 bg-white px-3 py-3 sm:px-5 sm:py-4">
-          <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">OPEX</div>
+          <div className="text-xs font-medium text-faint uppercase tracking-wide">OPEX</div>
           <div className="text-sm sm:text-2xl font-bold text-foreground mt-1 tabular-nums whitespace-nowrap">
             {opexSum !== null ? `Rp ${fmt(opexSum)}` : "—"}
           </div>
@@ -456,10 +456,10 @@ export default function OperationalExpensesClient() {
             className={`${formInputCls} w-full min-w-0 h-[38px] appearance-none ${dateFrom ? "" : "[&::-webkit-datetime-edit]:opacity-0"}`}
           />
           {!dateFrom && (
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 select-none">From</span>
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-faint select-none">From</span>
           )}
         </div>
-        <span className="shrink-0 self-center text-gray-400 select-none">–</span>
+        <span className="shrink-0 self-center text-faint select-none">–</span>
         <div className="relative flex-1 min-w-0 sm:min-w-[140px]">
           <input
             type="date"
@@ -469,7 +469,7 @@ export default function OperationalExpensesClient() {
             className={`${formInputCls} w-full min-w-0 h-[38px] appearance-none ${dateTo ? "" : "[&::-webkit-datetime-edit]:opacity-0"}`}
           />
           {!dateTo && (
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 select-none">To</span>
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-faint select-none">To</span>
           )}
         </div>
         <div className="basis-full h-0 md:hidden" />
@@ -487,7 +487,7 @@ export default function OperationalExpensesClient() {
             type="button"
             onClick={() => setFilterOpen((o) => !o)}
             aria-label="Filters"
-            className="relative h-[38px] w-[38px] flex items-center justify-center rounded-lg border border-cream-border text-gray-500 hover:bg-gray-50 transition-colors"
+            className="relative h-[38px] w-[38px] flex items-center justify-center rounded-lg border border-cream-border text-muted hover:bg-surface-muted transition-colors"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M22 3H2l8 9.46V19l4 2v-8.54z" />
@@ -497,7 +497,7 @@ export default function OperationalExpensesClient() {
           {filterOpen && (
             <div className="absolute right-0 top-full mt-1 z-30 w-52 rounded-lg border border-cream-border bg-white shadow-lg p-3 flex flex-col gap-3">
               <div className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-gray-500">Status</span>
+                <span className="text-xs font-medium text-muted">Status</span>
                 <div className="flex flex-col gap-0.5">
                   {[{ value: "", label: "All status" }, { value: "true", label: "Settled" }, { value: "false", label: "Unsettled" }].map((o) => (
                     <button
@@ -505,7 +505,7 @@ export default function OperationalExpensesClient() {
                       type="button"
                       onClick={() => upsertColumnFilter("isSettled", o.value)}
                       className={`text-left px-2 py-1.5 rounded-lg text-xs transition-colors ${
-                        settledFilterValue === o.value ? "bg-brand/10 text-brand font-medium" : "text-gray-600 hover:bg-gray-50"
+                        settledFilterValue === o.value ? "bg-brand/10 text-brand font-medium" : "text-muted-strong hover:bg-surface-muted"
                       }`}
                     >
                       {o.label}
@@ -514,7 +514,7 @@ export default function OperationalExpensesClient() {
                 </div>
               </div>
               <div className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-gray-500">Method</span>
+                <span className="text-xs font-medium text-muted">Method</span>
                 <div className="flex flex-col gap-0.5">
                   {[{ value: "", label: "All methods" }, ...methods.map((m) => ({ value: m, label: m }))].map((o) => (
                     <button
@@ -522,7 +522,7 @@ export default function OperationalExpensesClient() {
                       type="button"
                       onClick={() => upsertColumnFilter("method", o.value)}
                       className={`text-left px-2 py-1.5 rounded-lg text-xs transition-colors ${
-                        methodFilterValue === o.value ? "bg-brand/10 text-brand font-medium" : "text-gray-600 hover:bg-gray-50"
+                        methodFilterValue === o.value ? "bg-brand/10 text-brand font-medium" : "text-muted-strong hover:bg-surface-muted"
                       }`}
                     >
                       {o.label}
@@ -541,8 +541,8 @@ export default function OperationalExpensesClient() {
               onClick={active ? clearFilters : undefined}
               disabled={!active}
               title={active ? "Clear filters" : "No filters applied"}
-              className={`shrink-0 h-[38px] w-[38px] flex items-center justify-center rounded-lg border border-cream-border text-gray-500 transition-colors ${
-                active ? "hover:bg-gray-50 cursor-pointer" : "text-gray-300 cursor-default"
+              className={`shrink-0 h-[38px] w-[38px] flex items-center justify-center rounded-lg border border-cream-border text-muted transition-colors ${
+                active ? "hover:bg-surface-muted cursor-pointer" : "text-faint cursor-default"
               }`}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -628,7 +628,7 @@ export default function OperationalExpensesClient() {
             type="button"
             onClick={() => handleSortingChange([{ id: "id", desc: !mobileIdDesc }])}
             aria-label="Toggle sort order"
-            className="shrink-0 inline-flex items-center gap-1 px-3 rounded-lg border border-cream-border bg-white text-sm font-medium text-gray-600 active:border-brand active:text-brand"
+            className="shrink-0 inline-flex items-center gap-1 px-3 rounded-lg border border-cream-border bg-white text-sm font-medium text-muted-strong active:border-brand active:text-brand"
           >
             {mobileIdDesc ? "Newest" : "Oldest"}
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -637,7 +637,7 @@ export default function OperationalExpensesClient() {
           </button>
         </div>
         {data.length === 0 && (
-          <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">{fetchState.loading ? "Loading…" : "No expenses"}</div>
+          <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-faint">{fetchState.loading ? "Loading…" : "No expenses"}</div>
         )}
         {data.map((x) => (
           <div
@@ -650,13 +650,13 @@ export default function OperationalExpensesClient() {
                 <CategoryIcon category={x.category} />
                 <div className="min-w-0">
                   <div className="text-sm font-semibold text-foreground truncate">{x.description || "—"}</div>
-                  <div className="text-xs text-gray-500 mt-2 truncate uppercase tabular-nums">{x.rate !== 1 ? `${fmt(x.amountForeign)} × ${fmt(x.rate)}` : "—"}</div>
+                  <div className="text-xs text-muted mt-2 truncate uppercase tabular-nums">{x.rate !== 1 ? `${fmt(x.amountForeign)} × ${fmt(x.rate)}` : "—"}</div>
                 </div>
               </div>
               <SettleToggle row={x} onToggled={() => refreshRef.current()} iconButton />
             </div>
             <div className="flex items-center justify-between gap-3 mt-2.5 pt-2.5 border-t border-cream-border">
-              <span className="text-xs text-gray-400 min-w-0 truncate uppercase">
+              <span className="text-xs text-faint min-w-0 truncate uppercase">
                 {x.event ? `${x.event} · ` : ""}{formatDate(x.expenseDate)}{x.method ? ` · ${x.method}` : ""}
               </span>
               <span className="text-sm font-semibold tabular-nums text-foreground whitespace-nowrap">Rp {fmt(x.amountIdr)}</span>
@@ -665,9 +665,9 @@ export default function OperationalExpensesClient() {
         ))}
         {totalCount > PAGE_SIZE && (
           <div className="flex items-center justify-between gap-3 pt-1">
-            <button type="button" disabled={pagination.pageIndex === 0} onClick={() => setPagination((p) => ({ ...p, pageIndex: p.pageIndex - 1 }))} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-gray-600 disabled:opacity-40">Prev</button>
-            <span className="text-xs text-gray-400">Page {pagination.pageIndex + 1} of {Math.max(1, Math.ceil(totalCount / PAGE_SIZE))}</span>
-            <button type="button" disabled={(pagination.pageIndex + 1) * PAGE_SIZE >= totalCount} onClick={() => setPagination((p) => ({ ...p, pageIndex: p.pageIndex + 1 }))} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-gray-600 disabled:opacity-40">Next</button>
+            <button type="button" disabled={pagination.pageIndex === 0} onClick={() => setPagination((p) => ({ ...p, pageIndex: p.pageIndex - 1 }))} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-muted-strong disabled:opacity-40">Prev</button>
+            <span className="text-xs text-faint">Page {pagination.pageIndex + 1} of {Math.max(1, Math.ceil(totalCount / PAGE_SIZE))}</span>
+            <button type="button" disabled={(pagination.pageIndex + 1) * PAGE_SIZE >= totalCount} onClick={() => setPagination((p) => ({ ...p, pageIndex: p.pageIndex + 1 }))} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-muted-strong disabled:opacity-40">Next</button>
           </div>
         )}
       </div>
@@ -742,7 +742,7 @@ function SettleToggle({ row, onToggled, iconButton }: {
         className={`shrink-0 p-1 rounded-md transition-colors ${
           row.isSettled
             ? "bg-green-100 text-green-700 active:bg-green-200"
-            : "text-gray-300 active:bg-cream"
+            : "text-faint active:bg-cream"
         } cursor-pointer disabled:opacity-50`}
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -809,9 +809,9 @@ function InlineRemarks({ row, onSaved }: { row: OperationalExpenseRow; onSaved: 
       type="button"
       onClick={() => setEditing(true)}
       title="Click to edit"
-      className="text-left text-xs text-gray-500 hover:text-brand min-w-[3rem] truncate"
+      className="text-left text-xs text-muted hover:text-brand min-w-[3rem] truncate"
     >
-      {row.remarks || <span className="text-gray-300">— add —</span>}
+      {row.remarks || <span className="text-faint">— add —</span>}
     </button>
   )
 }
@@ -986,7 +986,7 @@ function AddExpenseForm({
             type="text" inputMode="decimal" placeholder="0"
             disabled={adding || isIdr}
             title={isIdr ? "IDR expense — same as the amount" : "Actual rupiah paid (used to derive the kurs)"}
-            className={`${formInputCls} ${isIdr ? "bg-gray-50 text-gray-400" : ""}`}
+            className={`${formInputCls} ${isIdr ? "bg-surface-muted text-faint" : ""}`}
           />
         </Field>
         <Field label="Method">
@@ -1004,7 +1004,7 @@ function AddExpenseForm({
       <div className="flex items-center justify-end gap-2">
         {addError && <p className="mr-auto text-xs text-red-500">{addError}</p>}
         {onCancel && (
-          <button type="button" onClick={onCancel} disabled={adding} className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
+          <button type="button" onClick={onCancel} disabled={adding} className="px-4 py-2 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
             Cancel
           </button>
         )}
@@ -1071,19 +1071,19 @@ function ExpenseActions({
 
   return (
     <div className="flex gap-2 items-center">
-      <button type="button" onClick={() => { setSaveError(null); setEditing(true) }} title="Edit" className="text-gray-400 hover:text-brand transition-colors">
+      <button type="button" onClick={() => { setSaveError(null); setEditing(true) }} title="Edit" className="text-faint hover:text-brand transition-colors">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
           <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
         </svg>
       </button>
-      <button type="button" onClick={() => onDuplicate(row)} title="Duplicate — prefill the Add form with this row" className="text-gray-400 hover:text-brand transition-colors">
+      <button type="button" onClick={() => onDuplicate(row)} title="Duplicate — prefill the Add form with this row" className="text-faint hover:text-brand transition-colors">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <rect x="9" y="9" width="13" height="13" rx="2" />
           <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
         </svg>
       </button>
-      <button type="button" onClick={handleDelete} disabled={deleting} title="Delete" className="text-gray-400 hover:text-red-500 disabled:opacity-50 transition-colors">
+      <button type="button" onClick={handleDelete} disabled={deleting} title="Delete" className="text-faint hover:text-red-500 disabled:opacity-50 transition-colors">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
         </svg>
@@ -1184,7 +1184,7 @@ function EditExpenseModal({
       <div className="bg-white rounded-t-2xl md:rounded-xl border-x border-t border-cream-border md:border shadow-xl p-6 pb-8 md:pb-6 w-full max-h-[90vh] overflow-y-auto flex flex-col gap-4 md:max-w-lg" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between -mx-6 px-6 border-b border-cream-border pb-3 md:mx-0 md:px-0 md:border-b-0 md:pb-0">
           <span className="text-base md:text-sm font-semibold text-foreground">Edit Expense</span>
-          <span className="text-xs text-gray-400">ID: {row.rowNumber}</span>
+          <span className="text-xs text-faint">ID: {row.rowNumber}</span>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
@@ -1236,7 +1236,7 @@ function EditExpenseModal({
                 value={isIdr ? "1" : (foreignNum > 0 && idrNum > 0 ? String(derivedRate) : "")}
                 type="number" readOnly disabled placeholder="—"
                 title={isIdr ? "IDR expense — kurs is always 1" : "Auto: IDR ÷ amount (the real rate paid)"}
-                className={`${formInputCls} bg-gray-50 text-gray-400`}
+                className={`${formInputCls} bg-surface-muted text-faint`}
               />
             </Field>
           </div>
@@ -1247,7 +1247,7 @@ function EditExpenseModal({
               type="text" inputMode="decimal"
               disabled={saving || isIdr}
               title={isIdr ? "IDR expense — same as the amount" : "Actual rupiah paid (used to derive the kurs)"}
-              className={`${formInputCls} ${isIdr ? "bg-gray-50 text-gray-400" : ""}`}
+              className={`${formInputCls} ${isIdr ? "bg-surface-muted text-faint" : ""}`}
             />
           </Field>
           <Field label="Method">
@@ -1264,7 +1264,7 @@ function EditExpenseModal({
 
         <label className="hidden" title="Settled">
           <input type="checkbox" checked={draft.isSettled} onChange={(e) => setDraft((d) => ({ ...d, isSettled: e.target.checked }))} disabled={saving} className="h-4 w-4 rounded border-cream-border accent-brand" />
-          <span className="text-xs text-gray-500">Settled</span>
+          <span className="text-xs text-muted">Settled</span>
         </label>
 
         {saveError && <p className="text-xs text-red-500">{saveError}</p>}
@@ -1275,7 +1275,7 @@ function EditExpenseModal({
             onClick={onDelete}
             disabled={saving}
             aria-label="Delete"
-            className="inline-flex items-center justify-center h-[38px] border border-cream-border rounded-lg px-3 text-sm text-gray-400 hover:border-brand disabled:opacity-50 transition-colors"
+            className="inline-flex items-center justify-center h-[38px] border border-cream-border rounded-lg px-3 text-sm text-faint hover:border-brand disabled:opacity-50 transition-colors"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M10 11v6" /><path d="M14 11v6" />
@@ -1287,7 +1287,7 @@ function EditExpenseModal({
               onClick={onDuplicate}
               disabled={saving}
               aria-label="Duplicate"
-              className="md:hidden inline-flex items-center justify-center h-[38px] border border-cream-border rounded-lg px-3 text-sm text-gray-400 hover:border-brand disabled:opacity-50 transition-colors"
+              className="md:hidden inline-flex items-center justify-center h-[38px] border border-cream-border rounded-lg px-3 text-sm text-faint hover:border-brand disabled:opacity-50 transition-colors"
             >
               <svg className="md:hidden" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
@@ -1295,7 +1295,7 @@ function EditExpenseModal({
               <span className="hidden md:inline">Duplicate</span>
             </button>
           )}
-          <button type="button" onClick={onCancel} disabled={saving} className="ml-auto px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
+          <button type="button" onClick={onCancel} disabled={saving} className="ml-auto px-4 py-2 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
             Cancel
           </button>
           <button type="button" onClick={handleSave} disabled={saving} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors">

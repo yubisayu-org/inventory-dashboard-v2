@@ -12,7 +12,7 @@ export default function CopyButton({ value, label = "Copy" }: { value: string; l
       onClick={(e) => { e.stopPropagation(); copy(value) }}
       title={label}
       aria-label={label}
-      className="shrink-0 p-0.5 rounded text-gray-300 hover:text-brand transition-colors"
+      className="shrink-0 p-0.5 rounded text-faint hover:text-brand transition-colors"
     >
       {copied ? (
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-green-600">

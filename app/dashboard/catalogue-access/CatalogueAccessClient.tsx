@@ -32,7 +32,7 @@ const ACCESS_LABEL: Record<string, string> = {
 }
 
 const ACCESS_CLASS: Record<string, string> = {
-  none: "bg-gray-100 text-gray-600",
+  none: "bg-surface-sunken text-muted-strong",
   invited: "bg-amber-50 text-amber-700",
   active: "bg-green-50 text-green-700",
   revoked: "bg-red-50 text-red-700",
@@ -165,7 +165,7 @@ export default function CatalogueAccessClient() {
     }
   }
 
-  if (loading) return <p className="text-sm text-gray-500">Loading…</p>
+  if (loading) return <p className="text-sm text-muted">Loading…</p>
 
   return (
     <div className="flex flex-col gap-6">
@@ -182,13 +182,13 @@ export default function CatalogueAccessClient() {
             <h2 className="text-sm font-semibold text-foreground">
               Sign-in links ({links.length})
             </h2>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted">
               Shown once. Copy and send them now — they cannot be retrieved later, only re-issued.
             </p>
             <button
               type="button"
               onClick={() => setLinks([])}
-              className="ml-auto px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-xs font-medium hover:border-brand hover:text-brand transition-colors"
+              className="ml-auto px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-xs font-medium hover:border-brand hover:text-brand transition-colors"
             >
               Dismiss
             </button>
@@ -202,7 +202,7 @@ export default function CatalogueAccessClient() {
                 <span className="text-sm font-medium text-foreground shrink-0">
                   {link.instagramId}
                 </span>
-                <code className="text-xs text-gray-500 truncate flex-1">{link.url}</code>
+                <code className="text-xs text-muted truncate flex-1">{link.url}</code>
                 <CopyButton value={link.url} />
               </div>
             ))}
@@ -226,7 +226,7 @@ export default function CatalogueAccessClient() {
         </div>
 
         {requests.length === 0 ? (
-          <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">
+          <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-faint">
             No pending requests.
           </div>
         ) : (
@@ -242,11 +242,11 @@ export default function CatalogueAccessClient() {
                     Existing customer — re-issue
                   </span>
                 ) : (
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-surface-sunken text-muted-strong">
                     New customer
                   </span>
                 )}
-                <span className="text-xs text-gray-500 flex-1 min-w-0 truncate">{r.note}</span>
+                <span className="text-xs text-muted flex-1 min-w-0 truncate">{r.note}</span>
                 <button
                   type="button"
                   onClick={() => decide(r.id, "approve")}
@@ -259,7 +259,7 @@ export default function CatalogueAccessClient() {
                   type="button"
                   onClick={() => decide(r.id, "reject")}
                   disabled={busy !== null}
-                  className="px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-xs font-medium hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+                  className="px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-xs font-medium hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
                 >
                   Reject
                 </button>
@@ -274,7 +274,7 @@ export default function CatalogueAccessClient() {
           Catalogue customers ({customers.length})
         </h2>
         {customers.length === 0 ? (
-          <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">
+          <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-faint">
             Nobody has catalogue orders or access yet.
           </div>
         ) : (
@@ -287,12 +287,12 @@ export default function CatalogueAccessClient() {
                 <span className="text-sm font-medium text-foreground">{c.instagramId}</span>
                 <span
                   className={`text-xs px-2 py-0.5 rounded-full ${
-                    ACCESS_CLASS[c.catalogueAccess] ?? "bg-gray-100 text-gray-600"
+                    ACCESS_CLASS[c.catalogueAccess] ?? "bg-surface-sunken text-muted-strong"
                   }`}
                 >
                   {ACCESS_LABEL[c.catalogueAccess] ?? c.catalogueAccess}
                 </span>
-                <span className="text-xs text-gray-500">
+                <span className="text-xs text-muted">
                   {c.orderCount} {c.orderCount === 1 ? "order" : "orders"}
                 </span>
                 <div className="ml-auto flex gap-2">
@@ -300,7 +300,7 @@ export default function CatalogueAccessClient() {
                     type="button"
                     onClick={() => issue(c.id, c.instagramId)}
                     disabled={busy !== null}
-                    className="px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-xs font-medium hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+                    className="px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-xs font-medium hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
                   >
                     {c.catalogueAccess === "none" ? "Send link" : "Re-issue link"}
                   </button>

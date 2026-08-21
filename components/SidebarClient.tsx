@@ -349,7 +349,7 @@ export default function SidebarClient({ user }: Props) {
         )}
         <button
           onClick={() => setCollapsed((c) => !c)}
-          className="ml-auto text-gray-400 hover:text-brand transition-colors p-1 rounded"
+          className="ml-auto text-faint hover:text-brand transition-colors p-1 rounded"
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
           <svg
@@ -380,7 +380,7 @@ export default function SidebarClient({ user }: Props) {
                   onClick={() => toggleSection(section.section!)}
                   className="w-full flex items-center justify-between px-2 mb-1 group"
                 >
-                  <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 group-hover:text-brand transition-colors select-none">
+                  <span className="text-[10px] font-semibold uppercase tracking-widest text-faint group-hover:text-brand transition-colors select-none">
                     {section.section}
                   </span>
                   <svg
@@ -392,7 +392,7 @@ export default function SidebarClient({ user }: Props) {
                     strokeWidth="2.5"
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    className={`text-gray-300 group-hover:text-brand transition-all duration-200 ${sectionCollapsed ? "-rotate-90" : ""}`}
+                    className={`text-faint group-hover:text-brand transition-all duration-200 ${sectionCollapsed ? "-rotate-90" : ""}`}
                   >
                     <path d="M6 9l6 6 6-6" />
                   </svg>
@@ -414,7 +414,7 @@ export default function SidebarClient({ user }: Props) {
                           flex items-center gap-3 px-2 py-2 rounded-md text-sm transition-colors
                           ${isActive
                             ? "bg-brand-light text-brand font-medium"
-                            : "text-gray-600 hover:bg-brand-light hover:text-brand"
+                            : "text-muted-strong hover:bg-brand-light hover:text-brand"
                           }
                           ${collapsed ? "justify-center" : ""}
                         `}
@@ -443,7 +443,7 @@ export default function SidebarClient({ user }: Props) {
           {!collapsed && (
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-foreground truncate">{user.name}</p>
-              <p className="text-xs text-gray-400 truncate">
+              <p className="text-xs text-faint truncate">
                 {user.role ? ROLE_LABELS[user.role] : "User"}
               </p>
             </div>
@@ -453,7 +453,7 @@ export default function SidebarClient({ user }: Props) {
           <form action={signOutAction} className="mt-2">
             <button
               type="submit"
-              className="flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs text-gray-500 hover:bg-brand-light hover:text-brand transition-colors"
+              className="flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs text-muted hover:bg-brand-light hover:text-brand transition-colors"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
@@ -469,7 +469,7 @@ export default function SidebarClient({ user }: Props) {
             <button
               type="submit"
               title="Sign out"
-              className="text-gray-400 hover:text-brand transition-colors p-1 rounded"
+              className="text-faint hover:text-brand transition-colors p-1 rounded"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />

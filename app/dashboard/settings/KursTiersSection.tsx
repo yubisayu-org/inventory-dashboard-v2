@@ -28,9 +28,9 @@ import MoneyInput from "@/components/MoneyInput"
 const inputCls =
   "border border-cream-border rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
 const btnCls =
-  "px-3 py-1.5 rounded-lg border border-cream-border text-sm text-gray-600 hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+  "px-3 py-1.5 rounded-lg border border-cream-border text-sm text-muted-strong hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
 const iconBtnCls =
-  "w-7 h-7 shrink-0 inline-flex items-center justify-center rounded-md border border-cream-border text-gray-400 hover:border-brand hover:text-brand disabled:opacity-30 transition-colors"
+  "w-7 h-7 shrink-0 inline-flex items-center justify-center rounded-md border border-cream-border text-faint hover:border-brand hover:text-brand disabled:opacity-30 transition-colors"
 
 const fmt = (n: number) => n.toLocaleString("id-ID")
 
@@ -174,7 +174,7 @@ export default function KursTiersSection() {
     <div className="bg-white border border-cream-border rounded-xl p-4 flex flex-col gap-3">
       <h2 className="text-sm font-semibold text-foreground">Rate</h2>
 
-      <p className="text-xs text-gray-500">
+      <p className="text-xs text-muted">
         Both <span className="font-medium">Rate</span> methods charge an exchange rate above
         what the goods cost. <span className="font-medium">Flat Rate</span> products are
         charged the country&apos;s one flat rate whatever the valas;{" "}
@@ -190,7 +190,7 @@ export default function KursTiersSection() {
           not per country. */}
       <div className="flex flex-col gap-1 pb-3 border-b border-cream-border">
         <div className="flex items-center gap-1">
-          <label className="text-xs text-gray-500" htmlFor="rate-rounding">Rounding</label>
+          <label className="text-xs text-muted" htmlFor="rate-rounding">Rounding</label>
           <InfoTooltip text="Prices for both Rate methods round UP to this step. Shared with nothing else, and read when a product is saved — so changing it reprices each product on its next save, not now." />
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -243,7 +243,7 @@ export default function KursTiersSection() {
         {roundError && <p className="text-xs text-red-500">{roundError}</p>}
       </div>
 
-      {loading && <p className="text-xs text-gray-500">Loading…</p>}
+      {loading && <p className="text-xs text-muted">Loading…</p>}
       {error && <p className="text-xs text-red-500">{error}</p>}
 
       <div className="flex flex-col gap-2 md:grid md:grid-cols-2 md:items-start md:gap-3">
@@ -259,10 +259,10 @@ export default function KursTiersSection() {
           />
         ))}
         {countries.length === 0 && !loading && (
-          <p className="md:col-span-2 text-xs text-gray-400">No countries yet.</p>
+          <p className="md:col-span-2 text-xs text-faint">No countries yet.</p>
         )}
         {countries.length > 0 && visible.length === 0 && !loading && (
-          <p className="md:col-span-2 text-xs text-gray-400">
+          <p className="md:col-span-2 text-xs text-faint">
             No country has a rate configured. Add one above to start.
           </p>
         )}
@@ -417,7 +417,7 @@ function CountryBrackets({
         <svg
           width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
           strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"
-          className={`shrink-0 text-gray-400 transition-transform ${open ? "rotate-90" : ""}`}
+          className={`shrink-0 text-faint transition-transform ${open ? "rotate-90" : ""}`}
         >
           <polyline points="9 18 15 12 9 6" />
         </svg>
@@ -430,7 +430,7 @@ function CountryBrackets({
         {/* The header answers "which countries are configured, and how" without expanding,
             so the flat rate and bracket count belong beside the actual rate rather than
             behind a click. */}
-        <span className={`text-xs shrink-0 tabular-nums ${draft.length > 0 || Number(flatDraft) > 0 ? "text-gray-500" : "text-gray-400"}`}>
+        <span className={`text-xs shrink-0 tabular-nums ${draft.length > 0 || Number(flatDraft) > 0 ? "text-muted" : "text-faint"}`}>
           {[
             `ACTUAL ${fmt(country.kurs)}`,
             [
@@ -448,7 +448,7 @@ function CountryBrackets({
             one of them, and the two methods it serves are picked by a toggle on the product
             rather than by anything here. */}
         <div className="flex flex-col gap-1 pb-3 mb-1 border-b border-cream-border">
-          <label className="text-xs text-gray-500">Flat rate (IDR)</label>
+          <label className="text-xs text-muted">Flat rate (IDR)</label>
           <div className="flex items-center gap-2 flex-wrap">
             <input
               value={flatDraft}
@@ -460,7 +460,7 @@ function CountryBrackets({
             {/* Only the fallback case, when nothing's set — the set case just repeats the
                 number already visible in the input beside it. */}
             {Number(flatDraft) <= 0 && (
-              <span className="text-xs text-gray-400">
+              <span className="text-xs text-faint">
                 not set — Flat Rate products are charged {fmt(country.kurs)}, the cost rate, for no margin
               </span>
             )}
@@ -473,7 +473,7 @@ function CountryBrackets({
             same fix as Markup Tier's bracket rows. */}
         <div className="flex flex-col gap-1.5 overflow-x-auto">
           {draft.length === 0 && (
-            <p className="text-xs text-gray-400">
+            <p className="text-xs text-faint">
               No brackets. Tier Rate products for {country.name} are charged{" "}
               {fmt(country.kurs)}, the cost rate, with no margin.
             </p>
@@ -485,7 +485,7 @@ function CountryBrackets({
               // left, because "from valas 5000 charge 226" wrapped into a ragged three-line
               // block that read as three separate controls rather than one bracket.
               <div key={i} className="flex items-center gap-1.5">
-                <span className="hidden md:inline text-xs text-gray-400 shrink-0">From</span>
+                <span className="hidden md:inline text-xs text-faint shrink-0">From</span>
                 <MoneyInput
                   value={band.minValas}
                   onChange={(v) => setBand(i, { minValas: v })}
@@ -494,7 +494,7 @@ function CountryBrackets({
                   name={`kurs-tier-${country.id}-${i}-from`}
                   wrapClassName="flex-1 min-w-0 md:flex-none md:w-32 md:shrink-0"
                 />
-                <span className="hidden md:inline text-xs text-gray-400 shrink-0">Charge</span>
+                <span className="hidden md:inline text-xs text-faint shrink-0">Charge</span>
                 <input
                   value={band.kurs}
                   onChange={(e) => setBand(i, { kurs: e.target.value })}
@@ -547,9 +547,9 @@ function CountryBrackets({
 
         {/* Runs the same resolver the server runs, over the draft, so a bracket
             set can be checked before any product uses it. */}
-        <div className="rounded-lg bg-gray-50 border border-cream-border px-3 py-2 flex flex-col gap-1.5">
+        <div className="rounded-lg bg-surface-muted border border-cream-border px-3 py-2 flex flex-col gap-1.5">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs font-medium text-gray-500">Try a valas</span>
+            <span className="text-xs font-medium text-muted">Try a valas</span>
             <input
               value={tryValas}
               onChange={(e) => setTryValas(e.target.value)}
@@ -557,7 +557,7 @@ function CountryBrackets({
               className={`${inputCls} w-28 shrink-0`}
             />
           </div>
-          <p className="text-xs text-gray-500 tabular-nums">
+          <p className="text-xs text-muted tabular-nums">
             charged <span className="font-semibold text-foreground">{fmt(charged)}</span>
             {" → price "}
             <span className="font-semibold text-foreground">Rp {fmt(Math.round(preview.price))}</span>
@@ -567,7 +567,7 @@ function CountryBrackets({
               Rp {fmt(kursProfit({ ...preview, packingFee: 0 }))}
             </span>
           </p>
-          <p className="text-[10px] text-gray-400">
+          <p className="text-[10px] text-faint">
             Rounded up to {fmt(roundTo)}, the step set at the top of this card.
           </p>
         </div>

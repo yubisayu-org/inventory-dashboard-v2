@@ -75,7 +75,7 @@ export default function InfoPopover({
         // pseudo-element is absolutely positioned, so it costs no layout — without it
         // the visible size IS the hit area, which is well under any usable minimum.
         className={`relative shrink-0 w-[13px] h-[13px] inline-flex items-center justify-center rounded-full border text-[8px] font-semibold transition-colors disabled:opacity-40 before:absolute before:-inset-1.5 before:content-[''] ${
-          open ? "border-brand text-brand" : "border-cream-border text-gray-400 hover:border-brand hover:text-brand"
+          open ? "border-brand text-brand" : "border-cream-border text-faint hover:border-brand hover:text-brand"
         }`}
       >
         i
