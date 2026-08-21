@@ -259,26 +259,39 @@ function ScheduleChip({ receipt, sentOn }: { receipt: string; sentOn: string }) 
   const mode = dispatchModeOf(receipt)
   const days = daysInTransit(sentOn)
   const status = transitStatus(mode, sentOn)
-  const window = mode === "other" ? null : DISPATCH_MODES[mode]
+  const label = mode === "other" ? "Unknown route" : DISPATCH_MODES[mode].label
+
+  // Everything the clock means, in words, on hover. The chip itself stays a
+  // colour and a shape: a column of dates is a column of numbers to read, and
+  // the point of the clock is that a late box is visible without reading.
   const title = days === null
-    ? `${receipt} — dispatched before departure dates were recorded`
-    : `${receipt} · sent ${sentOn}, ${days} day${days === 1 ? "" : "s"} ago` +
-      (window ? ` · ${DISPATCH_MODES[mode as "hc"].label} usually lands within ${window.warnDays} days, chase after ${window.lateDays}` : "")
+    ? `${receipt} · ${label} — dispatched before departure dates were recorded`
+    : [
+        `${receipt} · ${label}`,
+        `Sent ${sentOn} — ${days} day${days === 1 ? "" : "s"} ago`,
+        mode === "other"
+          ? null
+          : status === "late"
+            ? `Overdue: past ${DISPATCH_MODES[mode].lateDays} days for this route`
+            : status === "warn"
+              ? `Running late: past ${DISPATCH_MODES[mode].warnDays} days, chase after ${DISPATCH_MODES[mode].lateDays}`
+              : `Normal so far — this route usually lands within ${DISPATCH_MODES[mode].warnDays} days`,
+      ].filter(Boolean).join("\n")
 
   return (
     <span className="flex items-center gap-1.5 whitespace-nowrap">
       <span className="text-muted-strong">{receipt}</span>
       <span
         title={title}
-        className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[11px] tabular-nums ${
+        aria-label={title}
+        className={`inline-flex items-center justify-center rounded-full border w-5 h-5 cursor-help ${
           days === null ? "border-cream-border bg-surface-muted text-faint" : TRANSIT_TONE[status]
         }`}
       >
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="12" cy="12" r="9" />
           <path d="M12 7v5l3 2" />
         </svg>
-        {days === null ? "—" : `${sentOn.slice(5)} · ${days}d`}
       </span>
     </span>
   )
@@ -413,16 +426,34 @@ export default function ArrivalListClient() {
 
   const filteredItems = useMemo(() => {
     const q = search.trim().toLowerCase()
-    return items.filter((i) => {
-      const onRoute = route === "all"
-        || i.orders.some((o) => dispatchModeOf(o.dispatchReceipt) === route)
-      if (!onRoute) return false
-      if (!q) return true
-      return i.productName.toLowerCase().includes(q)
-        || i.event.toLowerCase().includes(q)
-        || (i.store ?? "").toLowerCase().includes(q)
-        || i.orders.some((o) => o.dispatchReceipt.toLowerCase().includes(q))
-    })
+    const matchesSearch = (i: ArrivalListItem) => !q
+      || i.productName.toLowerCase().includes(q)
+      || i.event.toLowerCase().includes(q)
+      || (i.store ?? "").toLowerCase().includes(q)
+      || i.orders.some((o) => o.dispatchReceipt.toLowerCase().includes(q))
+
+    if (route === "all") return items.filter(matchesSearch)
+
+    // Narrowed to one route, a row must describe THAT parcel and nothing else.
+    // Filtering which rows to show is not enough: an item split between two
+    // boxes would keep reporting its full quantity and every customer, so
+    // opening the air cargo would list seven units when only three flew — and
+    // the four still at sea would be hunted for on the bench.
+    return items.reduce<ArrivalListItem[]>((out, item) => {
+      const onRoute = item.orders.filter((o) => dispatchModeOf(o.dispatchReceipt) === route)
+      if (onRoute.length === 0) return out
+      const projected: ArrivalListItem = {
+        ...item,
+        orders: onRoute,
+        orderIds: onRoute.map((o) => o.id),
+        customers: Array.from(new Set(onRoute.map((o) => o.customer))),
+        customerCount: new Set(onRoute.map((o) => o.customer)).size,
+        totalPending: onRoute.reduce((n, o) => n + o.pending, 0),
+        totalBought: onRoute.reduce((n, o) => n + o.unitBuy, 0),
+      }
+      if (matchesSearch(projected)) out.push(projected)
+      return out
+    }, [])
   }, [items, search, route])
 
   const grouped = useMemo(() => groupItems(filteredItems), [filteredItems])
