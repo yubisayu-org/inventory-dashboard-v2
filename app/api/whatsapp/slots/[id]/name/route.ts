@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { requireSession, requireOwner } from "@/lib/api"
+import { requireSession, requireRole } from "@/lib/api"
 import { nameSlot } from "@/lib/whatsapp/naming"
 
 type Params = { params: Promise<{ id: string }> }
@@ -7,15 +7,15 @@ type Params = { params: Promise<{ id: string }> }
 /**
  * Turn a counted slot into a product and its orders.
  *
- * Owner-only, unlike every other route these screens use. Counting a shelf and
- * calling it "Brown Bear Set" create nothing; this creates a product, a price,
- * and an order for every customer behind the slot.
+ * Open to any role. Naming is the bulk of the work on this screen and an admin
+ * does it beside the owner; what stays owner-only is the tally, because the
+ * count is the figure the accounts are reconciled against.
  */
 export async function POST(req: NextRequest, { params }: Params) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
-  const ownerError = requireOwner(session)
-  if (ownerError) return ownerError
+  const roleError = requireRole(session)
+  if (roleError) return roleError
 
   const id = Number((await params).id)
   try {

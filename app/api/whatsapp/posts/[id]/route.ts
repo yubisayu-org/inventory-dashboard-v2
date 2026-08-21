@@ -79,7 +79,9 @@ export async function GET(_req: Request, { params }: Params) {
  * shelf is a harmless no-op (ON CONFLICT (post_id) DO NOTHING) — the 400
  * below just gives a clearer answer than silently doing nothing.
  *
- * Owner-only, same reasoning as PATCH: this puts a message in the group.
+ * Owner-only: this puts a message in the customer group. PATCH beside it is
+ * open to any role, so the two no longer share a reason — announcing is the
+ * outward-facing half.
  */
 export async function POST(_req: NextRequest, { params }: Params) {
   const { session, error: authError } = await requireSession()
@@ -114,13 +116,14 @@ export async function POST(_req: NextRequest, { params }: Params) {
  * exists for the shelf that is the exception — a different store, a one-off
  * arrangement — and null puts that shelf back under the setting.
  *
- * Owner-only: this decides what every SKU on the shelf will cost.
+ * Open to any role, alongside naming: choosing the method and using it are
+ * one act, and splitting them across two people helps nobody.
  */
 export async function PATCH(req: NextRequest, { params }: Params) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
-  const ownerError = requireOwner(session)
-  if (ownerError) return ownerError
+  const roleError = requireRole(session)
+  if (roleError) return roleError
 
   const id = Number((await params).id)
   try {

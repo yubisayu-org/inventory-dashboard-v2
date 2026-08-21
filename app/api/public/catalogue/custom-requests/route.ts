@@ -28,6 +28,18 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: corsHeaders() })
 }
 
+/** A positive integer, or null. Never throws: a malformed estimate input must
+ *  not stop a customer submitting a request they otherwise filled in fine. */
+function optionalPositiveInt(v: unknown): number | null {
+  const n = Number(v)
+  return Number.isInteger(n) && n > 0 ? n : null
+}
+
+function optionalPositiveNumber(v: unknown): number | null {
+  const n = Number(v)
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
 export async function POST(req: NextRequest) {
   const declaredLen = Number(req.headers.get("content-length") ?? 0)
   if (declaredLen > MAX_BODY_BYTES) {
@@ -67,20 +79,6 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // What the customer's own live estimate showed at submit time — best
-  // effort, not validated the way the rest of this body is: a malformed
-  // number here becomes null rather than rejecting an otherwise-valid
-  // request over a field the customer never directly typed (it's computed
-  // client-side from country/valas/weight).
-  function toPositiveIntOrNull(v: unknown): number | null {
-    const n = Number(v)
-    return Number.isFinite(n) && Number.isInteger(n) && n > 0 ? n : null
-  }
-  function toPositiveNumberOrNull(v: unknown): number | null {
-    const n = Number(v)
-    return Number.isFinite(n) && n > 0 ? n : null
-  }
-
   try {
     const b = body as Record<string, unknown>
     // From the session, not the body — a custom request must belong to the
@@ -90,10 +88,14 @@ export async function POST(req: NextRequest) {
     const qty = Number(b.qty)
     const note = String(b.note ?? "").trim()
     const referenceImageUrl = b.referenceImageUrl ? String(b.referenceImageUrl).trim() : null
-    const countryId = toPositiveIntOrNull(b.countryId)
-    const valas = toPositiveNumberOrNull(b.valas)
-    const gram = toPositiveNumberOrNull(b.gram)
-    const estimatedPrice = toPositiveIntOrNull(b.estimatedPrice)
+    // What the customer's own live estimate showed at submit time. Kept rather
+    // than dropped: she already typed these to get a price, and re-asking staff
+    // for numbers the customer gave is how they end up guessed at. Best effort —
+    // a malformed number becomes null rather than rejecting the whole request.
+    const countryId = optionalPositiveInt(b.countryId)
+    const valas = optionalPositiveNumber(b.valas)
+    const gram = optionalPositiveNumber(b.gram)
+    const estimatedPrice = optionalPositiveInt(b.estimatedPrice)
 
     if (!description || description.length > MAX_DESCRIPTION_LEN) {
       return NextResponse.json(

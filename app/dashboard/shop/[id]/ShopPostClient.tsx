@@ -74,11 +74,20 @@ const contactDigits = (claim: Claim) =>
   claim.sender ? senderDigits(claim.sender) : (claim.customerWhatsapp ?? "")
 
 export default function ShopPostClient({
-  postId, canName,
+  postId, canName, canTally,
 }: {
   postId: number
-  /** Naming creates products and orders — owners only. */
+  /** Naming a SKU, and the pricing method behind it. */
   canName: boolean
+  /**
+   * Whether the counter in the tally may be moved.
+   *
+   * Owners only. The controls are hidden rather than disabled for an admin:
+   * a stepper that refuses every press reads as a broken screen, and the rest
+   * of the sheet — who claimed, who is unidentified, who is short — is still
+   * worth opening.
+   */
+  canTally: boolean
 }) {
   const [data, setData] = useState<PostPayload | null>(null)
   const [error, setError] = useState("")
@@ -258,8 +267,7 @@ export default function ShopPostClient({
         {/* Default follows Settings → WhatsApp, so changing that setting moves
             every shelf not yet named. Picking one here opts this shelf out, and
             naming pins whatever was in force — from then on it is a price
-            customers have been quoted. Owners only: it decides what everything
-            on the shelf costs. */}
+            customers have been quoted. */}
         {canName ? (
           <label className="flex items-center gap-2 text-xs text-gray-500 shrink-0">
             <select
@@ -521,6 +529,7 @@ export default function ShopPostClient({
           slot={slot}
           claims={data.claims.filter((c) => c.slotId === slot.id && c.state !== "rejected")}
           onClose={() => setOpenSlot(null)}
+          canTally={canTally}
           onSave={(n) => save(slot.id, n)}
           onRename={(label) => rename(slot.id, label)}
           onSwap={swap}
@@ -653,10 +662,12 @@ function AddOrderSheet({
 }
 
 function SlotSheet({
-  slot, claims, onClose, onSave, onRename, onSwap, onLinked, onAddOrder,
+  slot, claims, canTally, onClose, onSave, onRename, onSwap, onLinked, onAddOrder,
 }: {
   slot: Slot
   claims: Claim[]
+  /** Whether the count may be moved. See ShopPostClient. */
+  canTally: boolean
   onClose: () => void
   onSave: (bought: number) => void
   onRename: (label: string) => void
@@ -708,47 +719,61 @@ function SlotSheet({
 
         {/* A stepper, not a keyboard. Claims are small numbers, and a number pad
             in a shop is where a stray 44 comes from. */}
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => setCount((n) => Math.max(0, n - 1))}
-            className="w-12 h-12 rounded-xl border border-cream-border bg-cream text-xl font-semibold"
-            aria-label="One fewer"
-          >
-            −
-          </button>
-          <div className="flex-1 text-center">
-            <div className="text-3xl font-bold tabular-nums leading-none">{count}</div>
+        {canTally ? (
+          <>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setCount((n) => Math.max(0, n - 1))}
+                className="w-12 h-12 rounded-xl border border-cream-border bg-cream text-xl font-semibold"
+                aria-label="One fewer"
+              >
+                −
+              </button>
+              <div className="flex-1 text-center">
+                <div className="text-3xl font-bold tabular-nums leading-none">{count}</div>
+                <div className="text-[10px] text-gray-500 tracking-wide">
+                  GOT / {slot.claimed} CLAIMED
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCount((n) => Math.min(slot.claimed, n + 1))}
+                className="w-12 h-12 rounded-xl border border-cream-border bg-cream text-xl font-semibold"
+                aria-label="One more"
+              >
+                +
+              </button>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setCount(0)}
+                className="flex-1 rounded-full border border-cream-border py-1.5 text-xs font-semibold text-brand bg-brand/5"
+              >
+                None
+              </button>
+              <button
+                type="button"
+                onClick={() => setCount(slot.claimed)}
+                className="flex-1 rounded-full border border-cream-border py-1.5 text-xs font-semibold text-brand bg-brand/5"
+              >
+                All {slot.claimed}
+              </button>
+            </div>
+          </>
+        ) : (
+          /* The same figure, stated rather than offered. An admin needs to know
+             how many were got — it is why half this sheet is worth reading — but
+             the count is not theirs to move. */
+          <div className="rounded-xl border border-cream-border bg-cream py-3 text-center">
+            <div className="text-3xl font-bold tabular-nums leading-none">{slot.bought}</div>
             <div className="text-[10px] text-gray-500 tracking-wide">
               GOT / {slot.claimed} CLAIMED
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setCount((n) => Math.min(slot.claimed, n + 1))}
-            className="w-12 h-12 rounded-xl border border-cream-border bg-cream text-xl font-semibold"
-            aria-label="One more"
-          >
-            +
-          </button>
-        </div>
-
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => setCount(0)}
-            className="flex-1 rounded-full border border-cream-border py-1.5 text-xs font-semibold text-brand bg-brand/5"
-          >
-            None
-          </button>
-          <button
-            type="button"
-            onClick={() => setCount(slot.claimed)}
-            className="flex-1 rounded-full border border-cream-border py-1.5 text-xs font-semibold text-brand bg-brand/5"
-          >
-            All {slot.claimed}
-          </button>
-        </div>
+        )}
 
         {/* An order taken in a DM, on the SKU already open. The other way in is
             the basket on the photograph, for something nobody has claimed yet —
@@ -770,13 +795,25 @@ function SlotSheet({
           <ShortPanel claims={claims} count={count} onOpenProof={setViewingClaimId} />
         ) : null}
 
-        <button
-          type="button"
-          onClick={() => onSave(count)}
-          className="rounded-xl bg-brand py-2.5 text-sm font-bold text-white"
-        >
-          Save
-        </button>
+        {/* Save writes the count and nothing else, so without the tally there is
+            nothing here to save. Closing is the whole exit. */}
+        {canTally ? (
+          <button
+            type="button"
+            onClick={() => onSave(count)}
+            className="rounded-xl bg-brand py-2.5 text-sm font-bold text-white"
+          >
+            Save
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl border border-cream-border py-2.5 text-sm font-bold text-gray-500"
+          >
+            Tutup
+          </button>
+        )}
       </div>
 
       {viewingClaim ? (

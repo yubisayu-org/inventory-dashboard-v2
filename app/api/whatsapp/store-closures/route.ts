@@ -1,19 +1,18 @@
 import { NextRequest, NextResponse } from "next/server"
-import { requireSession, requireOwner } from "@/lib/api"
+import { requireSession, requireRole } from "@/lib/api"
 import { closedStores, closeStore, reopenStore } from "@/lib/db/store-closures"
 
 /**
  * Which shops are closed for orders on a trip, and closing or reopening one.
  *
- * Owner-only. Closing a shop decides what customers can still order, which is
- * the same class of decision as pricing — an admin counting stock does not make
- * it.
+ * Open to any role: the switch sits on the Group Order list, and whoever is
+ * standing in the shop is the one who knows it has nothing left.
  */
 export async function GET(req: NextRequest) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
-  const ownerError = requireOwner(session)
-  if (ownerError) return ownerError
+  const roleError = requireRole(session)
+  if (roleError) return roleError
 
   const event = req.nextUrl.searchParams.get("event") ?? ""
   if (!event) return NextResponse.json({ error: "An event is required" }, { status: 400 })
@@ -32,8 +31,8 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
-  const ownerError = requireOwner(session)
-  if (ownerError) return ownerError
+  const roleError = requireRole(session)
+  if (roleError) return roleError
 
   try {
     const body = await req.json()
