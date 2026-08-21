@@ -103,9 +103,12 @@ export async function updateCustomerProfile(
     })),
   )
   const priceable = resolved.filter((r) => r.rate > 0)
-  // Unpriceable only if NOTHING matched. One warehouse out of several failing
-  // is a gap in that origin's rate set, not a bad address.
-  const needsReview = priceable.length === 0
+  // Flagged if ANY warehouse could not be priced, not only if all of them
+  // failed. A warehouse with no rate for the new address keeps the rate for
+  // the OLD one — a customer who moves from Bandung to Papua would go on being
+  // charged the Bandung rate, silently, and that figure feeds invoice_total.
+  // Never written as 0 either, because 0 is free shipping.
+  const needsReview = priceable.length < resolved.length
 
   await sql.begin(async (tx) => {
     await tx`

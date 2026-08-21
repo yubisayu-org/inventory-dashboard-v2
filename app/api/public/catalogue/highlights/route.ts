@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
+import { browseAllowed } from "@/lib/catalogue-browse-gate"
 import { getVisibleCatalogueHighlights } from "@/lib/db"
 import catalogueSql from "@/lib/db-catalogue-public"
 
@@ -23,7 +24,14 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: corsHeaders() })
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  if (!(await browseAllowed(req))) {
+    return NextResponse.json(
+      { error: "Not signed in" },
+      { status: 401, headers: { ...corsHeaders(), "Cache-Control": "no-store" } },
+    )
+  }
+
   try {
     const highlights = await getVisibleCatalogueHighlights(catalogueSql)
     return NextResponse.json(

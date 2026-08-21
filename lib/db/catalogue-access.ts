@@ -85,6 +85,17 @@ export async function approveAccessRequest(
          SET status = 'approved', decided_at = NOW(), customer_id = ${row.id}
        WHERE id = ${requestId}
     `
+
+    // Claim any request this handle placed before it had a customers row.
+    // The public read path filters on customer_id, so without this an invited
+    // customer signs in to an empty history — and an outstanding offer, which
+    // approve/reject also match on customer_id, could never be accepted.
+    await tx`
+      UPDATE catalogue_requests
+         SET customer_id = ${row.id}
+       WHERE customer_id IS NULL
+         AND lower(replace(customer_handle, '@', '')) = ${handle}
+    `
     return row
   })
 
