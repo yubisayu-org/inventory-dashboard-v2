@@ -36,7 +36,7 @@ ALTER TABLE catalogue_requests
 -- public site.
 GRANT SELECT (id, name, visible, sort_order) ON catalogue_highlights TO catalogue_public;
 
--- Additive: post_id joins the existing INSERT column list (migration 075)
+-- Additive: post_id joins the existing INSERT column list (migration 076)
 -- for the Fix-flow submission path. No public SELECT grant on
 -- catalogue_requests.post_id — nothing on the public read path needs it
 -- (only the owner-side event-prefill query, which runs as the

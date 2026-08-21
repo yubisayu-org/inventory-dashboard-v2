@@ -22,7 +22,7 @@ ALTER TABLE catalogue_requests ADD CONSTRAINT catalogue_requests_status_check
 -- including the four new columns — the two new public routes (approve/
 -- reject) need to read status for their guard, and the existing public
 -- status-lookup GET needs to surface the offer to the customer. Idempotent
--- regardless of prior grant state, same discipline as migration 077.
+-- regardless of prior grant state, same discipline as migration 078.
 REVOKE SELECT ON catalogue_requests FROM catalogue_public;
 GRANT SELECT (
   id, customer_handle, product_id, description, reference_image_url,
