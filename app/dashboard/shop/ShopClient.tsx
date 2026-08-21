@@ -324,7 +324,12 @@ export default function ShopClient({ isOwner }: { isOwner: boolean }) {
                     <Link
                       key={post.id}
                       href={`/dashboard/shop/${post.id}`}
-                      className="flex items-center gap-3 px-4 py-2.5 border-t border-cream-border hover:bg-cream transition-colors"
+                      // hover:bg-cream matched the page ground exactly, so a
+                      // hovered shelf dissolved into the background instead of
+                      // lifting off the white card. Same tint the product table
+                      // uses, which is a shade of the ground rather than the
+                      // ground itself.
+                      className="flex items-center gap-3 px-4 py-2.5 border-t border-cream-border hover:bg-cream/30 transition-colors"
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element -- our own render route. */}
                       <img
