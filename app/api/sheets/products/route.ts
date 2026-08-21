@@ -49,9 +49,15 @@ export async function POST(req: NextRequest) {
   const ownerError = requireOwner(session)
   if (ownerError) return ownerError
 
+  // Named outside the try so the catch can say WHICH product conflicted.
+  let attemptedName = ""
+  let attemptedStore = ""
+
   try {
     const body = await req.json()
     const { name, store } = body
+    attemptedName = String(name ?? "").trim()
+    attemptedStore = String(store ?? "").trim()
     if (!String(name ?? "").trim()) {
       return NextResponse.json({ error: "name is required" }, { status: 400 })
     }
@@ -100,6 +106,18 @@ export async function POST(req: NextRequest) {
     // country, say. Their problem, not ours, so 400 with the reason rather than a 500.
     if (err instanceof PricingInputError) {
       return NextResponse.json({ error: err.message }, { status: 400 })
+    }
+    // products has UNIQUE (name, store), and hitting it is the ordinary way to
+    // learn a product exists — most often from "Duplicate as variant", where
+    // the name has not been edited yet. Saying which name, in which store, is
+    // the difference between "something went wrong" and knowing what to type
+    // next. A conflict is the caller's to resolve, so 409 rather than 500.
+    if (typeof err === "object" && err !== null && (err as { code?: string }).code === "23505") {
+      return NextResponse.json({
+        error: attemptedStore
+          ? `${attemptedName} already exists in ${attemptedStore}. Change the name to create a variant.`
+          : `${attemptedName} already exists. Change the name to create a variant.`,
+      }, { status: 409 })
     }
     console.error("Failed to add product:", err)
     return NextResponse.json({ error: "Failed to add product" }, { status: 500 })
