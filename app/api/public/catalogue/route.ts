@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { browseAllowed } from "@/lib/catalogue-browse-gate"
 import { getVisibleCataloguePosts } from "@/lib/db"
 import catalogueSql from "@/lib/db-catalogue-public"
 
@@ -23,6 +24,13 @@ export async function OPTIONS() {
 }
 
 export async function GET(req: NextRequest) {
+  if (!(await browseAllowed(req))) {
+    return NextResponse.json(
+      { error: "Not signed in" },
+      { status: 401, headers: { ...corsHeaders(), "Cache-Control": "no-store" } },
+    )
+  }
+
   const highlightIdRaw = req.nextUrl.searchParams.get("highlightId")
   let highlightId: number | undefined
   if (highlightIdRaw) {

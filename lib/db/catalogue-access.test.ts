@@ -107,3 +107,37 @@ test("bulk invite covers customers with orders and skips those already signed in
   assert.ok(!invited.includes(alreadyBound), "already has a google account bound")
   assert.ok(!invited.includes(noOrders), "no catalogue history to reach")
 })
+
+test("approving claims requests the handle placed before it had a customer row", async () => {
+  // The public read path filters on customer_id. Without this the invited
+  // customer signs in to an empty history, and an outstanding offer — which
+  // approve/reject also match on customer_id — can never be accepted.
+  const h = handle()
+  await sql`
+    INSERT INTO catalogue_requests (customer_handle, qty, description, status)
+    VALUES (${h}, 1, 'Ordered before signing up', 'offer_pending')`
+
+  const result = await approveAccessRequest(await queueRequest(h))
+
+  const [row] = await sql<{ customer_id: number | null }[]>`
+    SELECT customer_id FROM catalogue_requests
+     WHERE customer_handle = ${h} ORDER BY id DESC LIMIT 1`
+  assert.equal(row.customer_id, result.customerId)
+})
+
+test("claiming never steals a request already linked to someone else", async () => {
+  const mine = handle()
+  const [other] = await sql<{ id: number }[]>`
+    INSERT INTO customers (instagram_id) VALUES (${handle()}) RETURNING id`
+  await sql`
+    INSERT INTO catalogue_requests (customer_handle, customer_id, qty, description)
+    VALUES (${mine}, ${other.id}, 1, 'Already linked elsewhere')`
+
+  await approveAccessRequest(await queueRequest(mine))
+
+  const [row] = await sql<{ customer_id: number }[]>`
+    SELECT customer_id FROM catalogue_requests
+     WHERE description = 'Already linked elsewhere'`
+  assert.equal(row.customer_id, other.id, "an existing link must be left alone")
+})
+

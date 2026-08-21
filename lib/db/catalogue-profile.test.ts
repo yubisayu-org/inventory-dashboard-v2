@@ -98,3 +98,34 @@ test("a priceable address clears the review flag", async () => {
     SELECT ongkir_needs_review FROM customers WHERE id = ${id}`
   assert.equal(row.ongkir_needs_review, false)
 })
+
+test("one unpriceable warehouse out of several still flags for review", async () => {
+  // The dangerous case: a warehouse with no rate for the new address keeps the
+  // OLD address's rate. Charging a moved customer their previous city's
+  // shipping, unflagged, is worse than charging nothing.
+  const id = await makeCustomer()
+  const [extra] = await sql<{ id: number }[]>`
+    INSERT INTO warehouses (code, name) VALUES (${`${TAG}_WH`}, 'Test WH') RETURNING id
+  `
+  try {
+    const [rate] = await sql<{ kab_kota_nama: string; kecamatan_nama: string }[]>`
+      SELECT kab_kota_nama, kecamatan_nama FROM jne_rates LIMIT 1`
+    // Priceable from the real origin, not from the new one.
+    await updateCustomerProfile(id, {
+      name: "Shinta",
+      whatsapp: "08999",
+      dataDiri: "Jl. Baru 42",
+      biteshipAreaId: null,
+      biteshipAreaName: null,
+      kota: rate.kab_kota_nama,
+      kecamatan: rate.kecamatan_nama,
+      kodePos: "12345",
+    })
+    const [row] = await sql<{ ongkir_needs_review: boolean }[]>`
+      SELECT ongkir_needs_review FROM customers WHERE id = ${id}`
+    assert.equal(row.ongkir_needs_review, true, "a partial failure must be visible to staff")
+  } finally {
+    await sql`DELETE FROM warehouses WHERE id = ${extra.id}`
+  }
+})
+
