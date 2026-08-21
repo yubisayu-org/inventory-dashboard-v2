@@ -1156,6 +1156,11 @@ function DuplicateVariantFields({ dv, activeEvents, onClose }: {
   const { product, loadError, name, setName, lockEvent, event, setEvent, submitting, error, submit } = dv
   if (loadError) return <p className="text-xs text-red-500">{loadError}</p>
   if (!product) return <p className="text-xs text-gray-400">Loading…</p>
+  // A locked-but-inactive event must be in the picker's own option list, or
+  // SearchableSelect has no label to show for it and the locked box renders
+  // blank even though `event` state is correctly set — same fix ConvertModal
+  // already needed for this exact case.
+  const eventOptions = (lockEvent && event && !activeEvents.includes(event)) ? [...activeEvents, event] : activeEvents
   return (
     <div className="flex flex-col gap-2">
       <label className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
@@ -1175,7 +1180,7 @@ function DuplicateVariantFields({ dv, activeEvents, onClose }: {
           <span className="ml-auto tabular-nums">{fmt(product.price)}</span>
         </div>
         <div className="w-full md:w-40 h-10 shrink-0">
-          <EventSelect value={event} onChange={setEvent} events={activeEvents} placeholder="Event…" disabled={lockEvent} />
+          <EventSelect value={event} onChange={setEvent} events={eventOptions} placeholder="Event…" disabled={lockEvent} />
         </div>
         <div className="flex gap-2">
           <button onClick={onClose} className="h-10 px-3 rounded-lg border border-cream-border text-xs shrink-0 flex-1 md:flex-none">Cancel</button>
@@ -1719,6 +1724,14 @@ function CreateProductModal({ request, countries, activeEvents, onClose, onDone 
   const [event, setEvent] = useState(
     (request.source === "whatsapp" ? request.resolvedEvent : request.defaultEvent) ?? "",
   )
+  // A locked-but-inactive event must be in the picker's own option list, or
+  // SearchableSelect has no label to show for it and the locked box renders
+  // blank even though `event` state is correctly set — same fix ConvertModal
+  // already needed for this exact case.
+  const eventOptions = useMemo(
+    () => (lockEvent && event && !activeEvents.includes(event)) ? [...activeEvents, event] : activeEvents,
+    [activeEvents, lockEvent, event],
+  )
   // What was actually proposed and approved (migration 089/091) — a row
   // from before that was tracked defaults to 'overseas', same as the
   // column's own DB default.
@@ -1864,7 +1877,7 @@ function CreateProductModal({ request, countries, activeEvents, onClose, onDone 
         )}
         <label className="flex flex-col gap-1">
           <span className={labelCls}>Event</span>
-          <EventSelect value={event} onChange={setEvent} events={activeEvents} placeholder="Select event…" disabled={lockEvent} />
+          <EventSelect value={event} onChange={setEvent} events={eventOptions} placeholder="Select event…" disabled={lockEvent} />
         </label>
         {lockEvent && (
           <p className="text-xs text-gray-400">Trip terkunci — sudah diketahui dari klaim WhatsApp-nya.</p>

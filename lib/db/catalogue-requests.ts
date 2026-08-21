@@ -721,6 +721,15 @@ export async function resolveAskingManually(
  * cleanly, and backfills the number onto the customer record
  * (linkSenderToCustomer) so every future claim from the same number
  * resolves automatically instead of repeating this by hand each time.
+ *
+ * Also backfills every OTHER still-raw row from the same sender, not just
+ * this one — getCatalogueRequests' own display query joins customer_handle
+ * against customers.whatsapp (COALESCE), so as soon as linkSenderToCustomer
+ * sets that column, a sibling row's customer_handle looks resolved on the
+ * list (isUnresolvedIdentity goes false, hiding the Link button) even
+ * though its own column is still the raw number. Without this, that sibling
+ * silently fails convertCatalogueRequest's identity guard — which reads the
+ * raw column, not the display join — with no remaining UI path to fix it.
  */
 export async function resolveRequestIdentity(
   id: number,
@@ -740,7 +749,16 @@ export async function resolveRequestIdentity(
   // linkSenderToCustomer's own digit-strip doesn't drop a WhatsApp
   // participant JID's ":12" device suffix on its own.
   const number = ((request.sender as string).split("@")[0] ?? "").split(":")[0].replace(/\D/g, "")
-  if (number) await linkSenderToCustomer(number, normalized)
+  if (number) {
+    await linkSenderToCustomer(number, normalized)
+    await db`
+      UPDATE catalogue_requests
+      SET customer_handle = ${normalized}, updated_at = NOW()
+      WHERE id <> ${id} AND source = 'whatsapp'
+        AND customer_handle ~ '^[0-9]+$'
+        AND regexp_replace(sender, '\D', '', 'g') = ${number}
+    `
+  }
 }
 
 /** Find the still-open 'asking' row the bot itself posted (matched by the
