@@ -21,6 +21,7 @@ import {
 } from "@tanstack/react-table"
 import { Fragment, useState, useRef, useEffect, useCallback, useMemo } from "react"
 import SearchInput from "./SearchInput"
+import DateRangeField, { type DateRange } from "./DateRangeField"
 
 // Register our custom filter keys with the table types so a column can say
 // `filterFn: "numeric"` (etc.) directly — no `as unknown as undefined` cast.
@@ -661,8 +662,6 @@ function TextFilterInput<T>({ column, onClose }: { column: Column<T, unknown>; o
 
 function DateRangeFilterInput<T>({ column, onClose }: { column: Column<T, unknown>; onClose: () => void }) {
   const current = (column.getFilterValue() as DateRangeFilter | undefined) ?? { from: "", to: "" }
-  const [from, setFrom] = useState(current.from)
-  const [to, setTo] = useState(current.to)
 
   // Push the current bounds to the table; clears the filter when both are empty
   // (autoRemove also guards this, but keeping the value undefined is cleaner).
@@ -671,42 +670,22 @@ function DateRangeFilterInput<T>({ column, onClose }: { column: Column<T, unknow
     else column.setFilterValue({ from: f, to: t })
   }, [column])
 
-  const inputCls = "border border-cream-border rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
-
   return (
     <div className="flex flex-col gap-2">
       <span className="text-xs font-medium text-muted">Filter: date range</span>
-      <label className="flex items-center gap-2 text-xs text-muted">
-        <span className="w-9 shrink-0">From</span>
-        <input
-          type="date"
-          value={from}
-          max={to || undefined}
-          onChange={(e) => { setFrom(e.target.value); apply(e.target.value, to) }}
-          onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Escape") onClose() }}
-          className={inputCls}
-        />
-      </label>
-      <label className="flex items-center gap-2 text-xs text-muted">
-        <span className="w-9 shrink-0">To</span>
-        <input
-          type="date"
-          value={to}
-          min={from || undefined}
-          onChange={(e) => { setTo(e.target.value); apply(from, e.target.value) }}
-          onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Escape") onClose() }}
-          className={inputCls}
-        />
-      </label>
-      {(from || to) && (
-        <button
-          type="button"
-          onClick={() => { setFrom(""); setTo(""); column.setFilterValue(undefined); onClose() }}
-          className="text-xs text-faint hover:text-brand transition-colors text-left"
-        >
-          Clear filter
-        </button>
-      )}
+      {/* The calendar itself, not a field that opens one — this popover is
+          already the layer that opening would have created. A single click
+          filters to one day; a second closes a range and dismisses, which is
+          what the two inputs needed Enter for. */}
+      <DateRangeField
+        inline
+        value={current}
+        onChange={(next: DateRange) => {
+          apply(next.from, next.to)
+          if (next.from && next.to) onClose()
+        }}
+        className="w-[15rem]"
+      />
     </div>
   )
 }

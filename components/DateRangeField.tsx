@@ -57,7 +57,7 @@ function label(from: string, to: string): string {
 }
 
 export default function DateRangeField({
-  value, onChange, max, placeholder = "All dates", className = "",
+  value, onChange, max, placeholder = "All dates", className = "", inline = false,
 }: {
   value: DateRange
   onChange: (next: DateRange) => void
@@ -65,8 +65,16 @@ export default function DateRangeField({
   max?: string
   placeholder?: string
   className?: string
+  /**
+   * Show the calendar itself, with no field to open it.
+   *
+   * For somewhere that is already a popover — a column filter, say — where a
+   * button opening a second popover would be a door behind a door, and the
+   * calendar would have to escape a container that clips it.
+   */
+  inline?: boolean
 }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(inline)
   // Which day the pointer is over while a range is half-made, so the days
   // between light up before the second click commits them.
   const [hover, setHover] = useState("")
@@ -74,7 +82,7 @@ export default function DateRangeField({
   const box = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!open) return
+    if (!open || inline) return
     function away(e: MouseEvent) {
       if (box.current && !box.current.contains(e.target as Node)) setOpen(false)
     }
@@ -85,7 +93,7 @@ export default function DateRangeField({
       document.removeEventListener("mousedown", away)
       document.removeEventListener("keydown", esc)
     }
-  }, [open])
+  }, [open, inline])
 
   const days = useMemo(() => {
     const first = new Date(month.getFullYear(), month.getMonth(), 1, 12)
@@ -109,7 +117,7 @@ export default function DateRangeField({
     if (from && !to) {
       onChange(iso < from ? { from: iso, to: from } : { from, to: iso })
       setHover("")
-      setOpen(false)
+      if (!inline) setOpen(false)
       return
     }
     onChange({ from: iso, to: "" })
@@ -117,6 +125,85 @@ export default function DateRangeField({
   }
 
   const text = label(from, to)
+
+  const calendar = (
+    <div className={inline ? "" : "absolute z-30 mt-1 w-[17rem] rounded-xl border border-cream-border bg-white p-3 shadow-lg"}>
+      <div className="flex items-center justify-between mb-2">
+        <button
+          type="button" aria-label="Previous month"
+          onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1, 12))}
+          className="w-7 h-7 rounded-lg text-muted hover:text-brand hover:bg-surface-sunken flex items-center justify-center"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="m15 18-6-6 6-6" /></svg>
+        </button>
+        <span className="text-sm font-semibold">{MONTHS[month.getMonth()]} {month.getFullYear()}</span>
+        <button
+          type="button" aria-label="Next month"
+          onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1, 12))}
+          className="w-7 h-7 rounded-lg text-muted hover:text-brand hover:bg-surface-sunken flex items-center justify-center"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="m9 18 6-6-6-6" /></svg>
+        </button>
+      </div>
+
+      <div className="grid grid-cols-7 gap-0.5 mb-1">
+        {WEEKDAYS.map((d, i) => (
+          <span key={i} className="text-[10px] text-faint text-center py-1">{d}</span>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-7 gap-0.5" onMouseLeave={() => setHover("")}>
+        {days.map((iso, i) => {
+          if (!iso) return <span key={`pad-${i}`} />
+          const disabled = Boolean(max && iso > max)
+          const isEnd = iso === from || iso === to
+          const inside = Boolean(lo && hi && iso > lo && iso < hi)
+          return (
+            <button
+              key={iso}
+              type="button"
+              disabled={disabled}
+              onMouseEnter={() => setHover(iso)}
+              onClick={() => pick(iso)}
+              className={`h-8 rounded-lg text-xs tabular-nums transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
+                isEnd ? "bg-brand text-white font-semibold"
+                  : inside ? "bg-brand-light text-brand"
+                    : "hover:bg-surface-sunken text-muted-strong"
+              }`}
+            >
+              {atNoon(iso).getDate()}
+            </button>
+          )
+        })}
+      </div>
+
+      <p className="mt-2 text-[11px] text-faint">
+        {from && !to ? "Pick a second day for a range, or the same day twice." : "One day, or click two for a range."}
+      </p>
+    </div>
+  )
+
+  // Inside something that is already a popover, the calendar IS the control —
+  // a button opening a second layer would be a door behind a door.
+  if (inline) {
+    return (
+      <div className={className}>
+        {text && (
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-xs font-medium text-foreground">{text}</span>
+            <button
+              type="button"
+              onClick={() => onChange({ from: "", to: "" })}
+              className="ml-auto text-xs text-faint hover:text-brand transition-colors"
+            >
+              Clear
+            </button>
+          </div>
+        )}
+        {calendar}
+      </div>
+    )
+  }
 
   return (
     <div ref={box} className={`relative ${className}`}>
@@ -143,63 +230,7 @@ export default function DateRangeField({
           </span>
         )}
       </button>
-
-      {open && (
-        <div className="absolute z-30 mt-1 w-[17rem] rounded-xl border border-cream-border bg-white p-3 shadow-lg">
-          <div className="flex items-center justify-between mb-2">
-            <button
-              type="button" aria-label="Previous month"
-              onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1, 12))}
-              className="w-7 h-7 rounded-lg text-muted hover:text-brand hover:bg-surface-sunken flex items-center justify-center"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="m15 18-6-6 6-6" /></svg>
-            </button>
-            <span className="text-sm font-semibold">{MONTHS[month.getMonth()]} {month.getFullYear()}</span>
-            <button
-              type="button" aria-label="Next month"
-              onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1, 12))}
-              className="w-7 h-7 rounded-lg text-muted hover:text-brand hover:bg-surface-sunken flex items-center justify-center"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="m9 18 6-6-6-6" /></svg>
-            </button>
-          </div>
-
-          <div className="grid grid-cols-7 gap-0.5 mb-1">
-            {WEEKDAYS.map((d, i) => (
-              <span key={i} className="text-[10px] text-faint text-center py-1">{d}</span>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-7 gap-0.5" onMouseLeave={() => setHover("")}>
-            {days.map((iso, i) => {
-              if (!iso) return <span key={`pad-${i}`} />
-              const disabled = Boolean(max && iso > max)
-              const isEnd = iso === from || iso === to
-              const inside = Boolean(lo && hi && iso > lo && iso < hi)
-              return (
-                <button
-                  key={iso}
-                  type="button"
-                  disabled={disabled}
-                  onMouseEnter={() => setHover(iso)}
-                  onClick={() => pick(iso)}
-                  className={`h-8 rounded-lg text-xs tabular-nums transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
-                    isEnd ? "bg-brand text-white font-semibold"
-                      : inside ? "bg-brand-light text-brand"
-                        : "hover:bg-surface-sunken text-muted-strong"
-                  }`}
-                >
-                  {atNoon(iso).getDate()}
-                </button>
-              )
-            })}
-          </div>
-
-          <p className="mt-2 text-[11px] text-faint">
-            {from && !to ? "Pick a second day for a range, or the same day twice." : "One day, or click two for a range."}
-          </p>
-        </div>
-      )}
+      {open && calendar}
     </div>
   )
 }
