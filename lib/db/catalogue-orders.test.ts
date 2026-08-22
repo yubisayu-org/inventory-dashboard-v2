@@ -1,7 +1,8 @@
 import { test, after } from "node:test"
 import assert from "node:assert/strict"
 import sql from "../db-pool"
-import { getCustomerOrders, getCustomerBalance } from "./catalogue-orders"
+import { getCustomerBalance } from "./catalogue-orders"
+import { getPublicInvoiceForCustomer } from "./invoice"
 
 const TAG = `ordtest${process.hrtime.bigint()}`
 const MINE = `${TAG}_mine`
@@ -33,34 +34,40 @@ async function seed() {
     VALUES (${EVENT}, ${THEIRS}, ${p.id}, 99000, 9)`
 }
 
+// The catalogue's order history is getPublicInvoiceForCustomer — the same
+// query behind the public recap site. These cover it through the handle the
+// catalogue passes it: whatever else changes, one customer must never see
+// another's lines.
 test("returns only this customer's orders", async () => {
   await seed()
-  const mine = await getCustomerOrders(MINE)
-  assert.equal(mine.length, 2)
-  assert.ok(!mine.some((o) => o.unitPrice === 99000), "must never include another customer's order")
+  const { events } = await getPublicInvoiceForCustomer(MINE, sql)
+  const lines = events.flatMap((e) => e.orders)
+  assert.equal(lines.length, 2)
+  assert.ok(
+    !lines.some((l) => l.price === "99.000"),
+    "must never include another customer's order",
+  )
 })
 
 test("a handle with @ and different case resolves the same", async () => {
-  const upper = await getCustomerOrders(`@${MINE.toUpperCase()}`)
-  assert.equal(upper.length, 2)
+  const { events } = await getPublicInvoiceForCustomer(`@${MINE.toUpperCase()}`, sql)
+  assert.equal(events.flatMap((e) => e.orders).length, 2)
 })
 
-test("computes line totals", async () => {
-  const [newest] = await getCustomerOrders(MINE)
-  // Newest first: the single-unit order was inserted last.
-  assert.equal(newest.total, newest.qty * newest.unitPrice)
+test("line and event totals add up", async () => {
+  const { events } = await getPublicInvoiceForCustomer(MINE, sql)
+  const [ev] = events
+  // 4 × 50.000 + 1 × 20.000
+  assert.equal(ev.totals.unit, 5)
+  assert.equal(ev.totals.subtotal, 220000)
+  assert.equal(ev.invoice.subtotalBarang, 220000)
 })
 
-test("reports the furthest stage reached, and whether it is complete", async () => {
-  const orders = await getCustomerOrders(MINE)
-  const partial = orders.find((o) => o.qty === 4)
-  // 2 of 4 shipped: shipped is the furthest stage with any quantity, but not
-  // all of it — saying "shipped" flatly would be a half-truth.
-  assert.equal(partial?.stage, "shipped")
-  assert.equal(partial?.stageComplete, false)
-
-  const untouched = orders.find((o) => o.qty === 1)
-  assert.equal(untouched?.stage, "ordered")
+test("reports how much of each line is ready", async () => {
+  const { events } = await getPublicInvoiceForCustomer(MINE, sql)
+  const lines = events.flatMap((e) => e.orders)
+  // Nothing has arrived: 2 of 4 shipped, but unit_arrive was never set.
+  assert.ok(lines.every((l) => l.unitArrive === 0))
 })
 
 test("a customer with no invoices has a zero balance, not an error", async () => {
