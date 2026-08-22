@@ -19,7 +19,22 @@ function toPost(r: Record<string, unknown>): CataloguePost {
   }
 }
 
-const POST_SELECT = `
+// Columns the customer site needs. Nothing here touches wa_sends or
+// wa_send_codes: catalogue_public has no grant on either, by design, and a
+// public query reaching into staff tables fails closed — which is what broke
+// the customer catalogue entirely ("permission denied for table wa_sends").
+const POST_SELECT_PUBLIC = `
+  SELECT p.id, p.media_url, p.media_type, p.title, p.visible, p.highlight_id,
+         p.created_at, p.updated_at,
+         COALESCE(ARRAY_AGG(pp.product_id) FILTER (WHERE pp.product_id IS NOT NULL), '{}') AS product_ids
+  FROM catalogue_posts p
+  LEFT JOIN catalogue_post_products pp ON pp.post_id = p.id
+`
+
+// The staff view adds "has this been sent to the group" and "how many of its
+// products are pinned" — operational questions a customer has no use for, and
+// the reason this query cannot be shared with the public path.
+const POST_SELECT_STAFF = `
   SELECT p.id, p.media_url, p.media_type, p.title, p.visible, p.highlight_id,
          p.created_at, p.updated_at,
          COALESCE(ARRAY_AGG(pp.product_id) FILTER (WHERE pp.product_id IS NOT NULL), '{}') AS product_ids,
@@ -55,7 +70,7 @@ export async function getVisibleCataloguePosts(
   const highlightFilter = highlightId != null ? "AND p.highlight_id = $1" : ""
   const rows = await db.unsafe(
     `
-      ${POST_SELECT}
+      ${POST_SELECT_PUBLIC}
       WHERE p.visible = true
       ${highlightFilter}
       GROUP BY p.id
@@ -69,7 +84,7 @@ export async function getVisibleCataloguePosts(
 /** Staff path: every post regardless of visibility. */
 export async function getAllCataloguePosts(db: DBExecutor = sql): Promise<CataloguePost[]> {
   const rows = await db.unsafe(`
-    ${POST_SELECT}
+    ${POST_SELECT_STAFF}
     GROUP BY p.id
     ORDER BY p.created_at DESC
   `)
@@ -82,7 +97,7 @@ export async function getAllCataloguePosts(db: DBExecutor = sql): Promise<Catalo
 export async function getCataloguePost(id: number, db: DBExecutor = sql): Promise<CataloguePost | null> {
   const rows = await db.unsafe(
     `
-      ${POST_SELECT}
+      ${POST_SELECT_STAFF}
       WHERE p.id = $1
       GROUP BY p.id
     `,
