@@ -6,6 +6,7 @@ import {
   approveAccessRequest,
   rejectAccessRequest,
   bulkInviteExistingCustomers,
+  inviteUrl,
 } from "./catalogue-access"
 import { redeemInvite } from "./catalogue-auth"
 
@@ -142,3 +143,20 @@ test("claiming never steals a request already linked to someone else", async () 
   assert.equal(row.customer_id, other.id, "an existing link must be left alone")
 })
 
+
+// An invite link must land on the catalogue, never on this dashboard. Reaching
+// /customer/login directly skips the login nonce, and the sign-in that follows
+// redeems the invite and THEN fails the exchange — spending the invite on an
+// attempt that could never have completed.
+test("an invite link points at the catalogue site, not the dashboard", () => {
+  const url = inviteUrl("tok-123")
+  assert.ok(
+    url.startsWith(`${process.env.CATALOGUE_SITE_URL}/?invite=`),
+    `expected a catalogue URL, got ${url}`,
+  )
+  assert.ok(!url.includes("/customer/login"), "must not jump straight to the dashboard")
+})
+
+test("an invite token is escaped into the link", () => {
+  assert.ok(inviteUrl("a b&c=d").endsWith("?invite=a%20b%26c%3Dd"))
+})
