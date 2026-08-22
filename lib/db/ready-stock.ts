@@ -25,6 +25,13 @@ export type ReadyStockItem = {
   readyQty: number
   /** Bought and on its way. */
   transitQty: number
+  /**
+   * A photo for the gallery, from the newest visible catalogue post carrying
+   * this product. products has no image of its own, and excess_purchase
+   * certainly does not, so this is the only picture the shop already holds.
+   * Null when the product has never been posted.
+   */
+  mediaUrl: string | null
 }
 
 const MATCHED = `
@@ -54,6 +61,7 @@ export async function listReadyStock(
       price: string
       unit_buy: number
       unit_arrive: number | null
+      media_url: string | null
     }[]
   >`
     WITH product_price AS (
@@ -61,9 +69,25 @@ export async function listReadyStock(
         FROM products
        GROUP BY name
     )
-    SELECT e.id, e.items, pp.product_id, pp.price, e.unit_buy, e.unit_arrive
+    SELECT e.id, e.items, pp.product_id, pp.price, e.unit_buy, e.unit_arrive,
+           media.media_url
       FROM excess_purchase e
       JOIN product_price pp ON pp.name = e.items
+      -- The newest visible post showing this product. LATERAL so it is one
+      -- row per item rather than a fan-out to be de-duplicated afterwards.
+      -- Videos are skipped: a poster frame is not something we have. The
+      -- value is 'photo' — migration 058's CHECK allows ('photo','video'),
+      -- and 'image' silently matches nothing.
+      LEFT JOIN LATERAL (
+        SELECT cp.media_url
+          FROM catalogue_post_products cpp
+          JOIN catalogue_posts cp ON cp.id = cpp.post_id
+         WHERE cpp.product_id = pp.product_id
+           AND cp.visible = true
+           AND cp.media_type = 'photo'
+         ORDER BY cp.created_at DESC
+         LIMIT 1
+      ) media ON true
      WHERE e.unit_buy > 0
      ORDER BY e.created_at DESC, e.id DESC
   `
@@ -76,6 +100,7 @@ export async function listReadyStock(
       price: Math.round(Number(r.price)),
       readyQty: arrived,
       transitQty: r.unit_buy - arrived,
+      mediaUrl: r.media_url,
     }
   })
 }
