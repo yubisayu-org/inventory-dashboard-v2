@@ -27,9 +27,9 @@ export interface DispatchRoute {
 
 /** What the app falls back to before Settings has been read. */
 export const FALLBACK_ROUTES: DispatchRoute[] = [
-  { key: "hc", label: "Hand carry", prefix: "HC", warnDays: 7, lateDays: 14 },
-  { key: "cji", label: "Air cargo", prefix: "CJI", warnDays: 28, lateDays: 56 },
-  { key: "mnc", label: "Sea cargo", prefix: "MNC", warnDays: 56, lateDays: 84 },
+  { key: "hc", label: "Hand Carry", prefix: "HC", warnDays: 7, lateDays: 14 },
+  { key: "cji", label: "Air Cargo", prefix: "CJI", warnDays: 28, lateDays: 56 },
+  { key: "mnc", label: "Sea Cargo", prefix: "MNC", warnDays: 56, lateDays: 84 },
 ]
 
 /**

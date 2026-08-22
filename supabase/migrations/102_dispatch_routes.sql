@@ -32,9 +32,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_dispatch_routes_prefix
 -- a suitcase either lands with the person or it never travelled — so 1 and 2
 -- weeks stand until someone says otherwise.
 INSERT INTO dispatch_routes (key, label, prefix, warn_days, late_days, position) VALUES
-  ('hc',  'Hand carry', 'HC',  7,  14, 1),
-  ('cji', 'Air cargo',  'CJI', 28, 56, 2),
-  ('mnc', 'Sea cargo',  'MNC', 56, 84, 3)
+  ('hc',  'Hand Carry', 'HC',  7,  14, 1),
+  ('cji', 'Air Cargo',  'CJI', 28, 56, 2),
+  ('mnc', 'Sea Cargo',  'MNC', 56, 84, 3)
 ON CONFLICT (key) DO NOTHING;
 
 GRANT SELECT ON dispatch_routes TO app_runtime;
