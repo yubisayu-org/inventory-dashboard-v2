@@ -9,6 +9,7 @@ import {
   ineligibleReason,
   ShippingPrefError,
 } from "./shipping-prefs"
+import { reapplyHoldsForArrival } from "./fulfillment"
 
 const TAG = `shiptest${process.hrtime.bigint()}`
 const PAID = `${TAG}_PAID`
@@ -143,4 +144,50 @@ test("another customer's event is not routable", async () => {
     INSERT INTO customers (instagram_id) VALUES (${`${TAG}_stranger`}) RETURNING id`
   assert.equal(await ineligibleReason(other.id, PAID), "unknown")
   await assert.rejects(() => setShippingMode(other.id, PAID, "hold"), ShippingPrefError)
+})
+
+
+// ── the hold is a standing instruction, not a snapshot ──────
+// holdPackingList parks what has arrived when it runs. Stock landing later is
+// unheld unless something re-applies it, which is what every arrival path now
+// calls. Without this a card reads Tunda Kirim while offering to ship.
+//
+// Its own event, with room to receive into: three ordered, two here, paid in
+// full from the start so the arithmetic never moves.
+test("stock arriving after a hold is parked with the rest", async () => {
+  const LATE = `${TAG}_LATE`
+  const [p] = await sql<{ id: number }[]>`SELECT id FROM products ORDER BY id LIMIT 1`
+  await sql`INSERT INTO events (name, warehouse_id) SELECT ${LATE}, id FROM warehouses ORDER BY id LIMIT 1`
+  await sql`
+    INSERT INTO orders (event, customer, product_id, unit_price, unit, unit_arrive)
+    VALUES (${LATE}, ${handle}, ${p.id}, 100000, 3, 2)`
+  await sql`
+    INSERT INTO payments (event, customer, amount, is_checked, kind)
+    VALUES (${LATE}, ${handle}, 300000, true, 'deposit')`
+
+  await setShippingMode(customerId, LATE, "hold")
+  const held = async () => {
+    const [r] = await sql<{ h: string; t: string }[]>`
+      SELECT COALESCE(SUM(unit_hold), 0) AS h,
+             COALESCE(SUM(GREATEST(unit_arrive - COALESCE(unit_ship,0) - COALESCE(unit_hold,0), 0)), 0) AS t
+        FROM orders WHERE event = ${LATE} AND customer = ${handle}`
+    return { hold: Number(r.h), toShip: Number(r.t) }
+  }
+  assert.deepEqual(await held(), { hold: 2, toShip: 0 }, "the two already here")
+
+  // The third lands.
+  await sql`UPDATE orders SET unit_arrive = 3 WHERE event = ${LATE} AND customer = ${handle}`
+  assert.deepEqual(await held(), { hold: 2, toShip: 1 }, "unheld until the instruction is applied again")
+
+  await reapplyHoldsForArrival(LATE, [handle])
+  assert.deepEqual(await held(), { hold: 3, toShip: 0 }, "nothing packable under a hold")
+})
+
+test("an arrival for someone who never asked to hold is left alone", async () => {
+  const [before] = await sql<{ h: string }[]>`
+    SELECT COALESCE(SUM(unit_hold), 0) AS h FROM orders WHERE event = ${PAID} AND customer = ${handle}`
+  await reapplyHoldsForArrival(PAID, [handle])
+  const [after] = await sql<{ h: string }[]>`
+    SELECT COALESCE(SUM(unit_hold), 0) AS h FROM orders WHERE event = ${PAID} AND customer = ${handle}`
+  assert.equal(Number(after.h), Number(before.h))
 })

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { updateFormRow, updateFormRowStage2, updateFormRowStage3, updateOrderOwnerCell, updateOrderNote, updateOrderReceipt, updateOrderDispatchReceipt, deleteFormRow, returnOrderUnitsToExcess, withActor } from "@/lib/db"
+import { updateFormRow, updateFormRowStage2, updateFormRowStage3, updateOrderOwnerCell, reapplyHoldsForArrival, updateOrderNote, updateOrderReceipt, updateOrderDispatchReceipt, deleteFormRow, returnOrderUnitsToExcess, withActor } from "@/lib/db"
 
 type Params = { params: Promise<{ row: string }> }
 
@@ -61,7 +61,17 @@ export async function PUT(req: NextRequest, { params }: Params) {
       if (numericValue !== null && !Number.isFinite(numericValue)) {
         return NextResponse.json({ error: "value must be a number or null" }, { status: 400 })
       }
-      await withActor(session.user.email, (tx) => updateOrderOwnerCell(rowNumber, column, numericValue, tx))
+      await withActor(session.user.email, async (tx) => {
+        await updateOrderOwnerCell(rowNumber, column, numericValue, tx)
+        // Editing unit_arrive by hand raises arrivals the same way receiving
+        // does, so a standing hold has to be re-applied here too — otherwise
+        // one inline edit unparks a held order without saying so.
+        if (column === "unit_arrive") {
+          const [row] = await tx<{ event: string; customer: string }[]>`
+            SELECT event, customer FROM orders WHERE id = ${rowNumber}`
+          if (row) await reapplyHoldsForArrival(row.event, [row.customer], tx)
+        }
+      })
 
     } else if (stage === "receipt_cell") {
       // Inline receipt edit — owner-only (receipt is set during purchasing).

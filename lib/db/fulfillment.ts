@@ -7,6 +7,7 @@ import type { ShipOrderLine, ShipCustomer, ShipStatus, ShipOrdersParams, ShipMer
 import { getPaymentStatus, type PaymentStatus } from "./finance"
 import { fetchPaidStatusMap, compareOrderPriority, type PaidStatus } from "./shopping-list"
 import { appendExcessPurchase, reduceOrderRefundOnly } from "./orders"
+import { notifyCustomer } from "./announcements"
 
 // ─── Ship Orders ────────────────────────────────────────────────────────────
 
@@ -260,6 +261,17 @@ export async function shipCustomerOrders(params: ShipOrdersParams, actor?: strin
       `
     }
 
+    // Her inbox, in the same transaction: a parcel that shipped without a
+    // notice, or a notice about a parcel that did not, are both worse than
+    // failing the whole thing. No tracking number here — whether a resi is
+    // ready to be seen is the shop's call, made on the Shipments screen.
+    const units = toShipRows.reduce((n, o) => n + o.toShip, 0)
+    await notifyCustomer(customer, {
+      title: `${event} is on its way`,
+      body: `${units} ${units === 1 ? "item" : "items"} from ${event} left the warehouse in one parcel. `
+        + `Your tracking number appears on the order once the shop adds it.`,
+    }, tx)
+
     return { shippingId }
   })
 }
@@ -352,6 +364,15 @@ export async function shipMergedCustomerOrders(params: ShipMergedParams, actor?:
       `
     }
 
+    const units = groups.reduce((n, g) => n + g.orders.reduce((m, o) => m + o.toShip, 0), 0)
+    await notifyCustomer(customer, {
+      title: `${events.join(" and ")} went out together`,
+      body: `${units} ${units === 1 ? "item" : "items"} travelled in one box, about ${combinedKg} kg. `
+        + (discount > 0
+            ? `One delivery fee instead of ${events.length} — Rp ${discount.toLocaleString("id-ID")} came off your invoice.`
+            : `One delivery fee instead of ${events.length}.`),
+    }, tx)
+
     return {
       mergeGroup,
       shippingId,
@@ -405,6 +426,40 @@ export async function releasePackingList(params: {
       AND lower(replace(customer, '@', '')) = ${custKey}
       AND COALESCE(unit_hold, 0) > 0
   `
+}
+
+/**
+ * Re-park a customer's hold after new stock lands.
+ *
+ * holdPackingList writes unit_hold from the arrival counts as they stand when
+ * it runs — a snapshot. But `mode = 'hold'` in customer_shipping_prefs is a
+ * standing instruction that outlives the moment she gave it, so anything that
+ * arrives afterwards is unheld and quietly packable: the card still says Tunda
+ * Kirim while offering to ship the new units. Every path that raises
+ * unit_arrive calls this, and the instruction wins again.
+ *
+ * Scoped to the handles the arrival actually touched — an arrival for one
+ * customer is no reason to rewrite another's numbers. Runs on the caller's
+ * transaction, so the parking and the arrival are one write or neither.
+ */
+export async function reapplyHoldsForArrival(
+  event: string,
+  customers: string[],
+  db: DBExecutor = sql,
+): Promise<void> {
+  const keys = Array.from(new Set(customers.map((c) => normalizeId(c)))).filter(Boolean)
+  if (keys.length === 0) return
+  const rows = await db<{ instagram_id: string }[]>`
+    SELECT c.instagram_id
+      FROM customer_shipping_prefs p
+      JOIN customers c ON c.id = p.customer_id
+     WHERE p.event = ${event}
+       AND p.mode = 'hold'
+       AND lower(replace(c.instagram_id, '@', '')) = ANY(${keys})
+  `
+  for (const row of rows) {
+    await holdPackingList({ customer: row.instagram_id, event }, db)
+  }
 }
 
 // ─── Shipments ──────────────────────────────────────────────────────────────
@@ -813,6 +868,9 @@ export async function markProductArrived(data: {
           WHERE id = ${o.id}
         `
       }
+      // Whatever just landed for a customer who asked to hold this event is
+      // parked with the rest, rather than becoming quietly shippable.
+      await reapplyHoldsForArrival(data.event, allocations.map(({ item }) => item.customer), tx)
     })
   }
 

@@ -8,6 +8,7 @@ import {
   deleteAnnouncement,
   listAnnouncementsForCustomer,
   markAnnouncementsRead,
+  notifyCustomer,
 } from "./announcements"
 
 const TAG = `anntest${process.hrtime.bigint()}`
@@ -23,6 +24,14 @@ async function customer(): Promise<number> {
     INSERT INTO customers (instagram_id) VALUES (${`${TAG}_${process.hrtime.bigint()}`})
     RETURNING id`
   return c.id
+}
+
+/** A customer and the handle a shipment would name her by. */
+async function named(): Promise<{ id: number; handle: string }> {
+  const handle = `${TAG}_${process.hrtime.bigint()}`
+  const [c] = await sql<{ id: number }[]>`
+    INSERT INTO customers (instagram_id) VALUES (${handle}) RETURNING id`
+  return { id: c.id, handle }
 }
 
 const mine = <T extends { title: string }>(rows: T[]): T[] =>
@@ -105,4 +114,70 @@ test("deleting takes its read rows with it", async () => {
 
 test("an empty title is refused by the database, not just the form", async () => {
   await assert.rejects(() => createAnnouncement({ title: "   ", body: "something" }))
+})
+
+
+// ── personal notices ────────────────────────────────────────
+// A shipping notice is addressed to one customer. The inbox query is the only
+// thing standing between her parcel and someone else's, so it is tested from
+// both ends: she sees it, and the next customer does not.
+test("a shipping notice reaches its customer and nobody else", async () => {
+  const her = await named()
+  const other = await customer()
+  await notifyCustomer(her.handle, { title: `${TAG} shipped`, body: "one parcel" })
+
+  const hers = mine(await listAnnouncementsForCustomer(her.id))
+  assert.equal(hers[0].title, `${TAG} shipped`)
+  assert.equal(hers[0].kind, "shipping")
+
+  const theirs = mine(await listAnnouncementsForCustomer(other))
+  assert.equal(theirs.find((a) => a.title === `${TAG} shipped`), undefined)
+})
+
+test("a broadcast still reaches everyone", async () => {
+  const her = await customer()
+  await createAnnouncement({ title: `${TAG} everyone`, body: "hello" })
+  const hers = mine(await listAnnouncementsForCustomer(her))
+  assert.ok(hers.some((a) => a.title === `${TAG} everyone`))
+  assert.equal(hers.find((a) => a.title === `${TAG} everyone`)?.kind, "notice")
+})
+
+// @-prefixed, upper-case, however the shipment happens to spell her.
+test("the handle is matched the way every other lookup matches it", async () => {
+  const her = await named()
+  await notifyCustomer(`@${her.handle.toUpperCase()}`, { title: `${TAG} loose`, body: "x" })
+  const hers = mine(await listAnnouncementsForCustomer(her.id))
+  assert.ok(hers.some((a) => a.title === `${TAG} loose`))
+})
+
+// A notice must never be the reason a shipment fails.
+test("a handle nobody owns writes nothing and throws nothing", async () => {
+  await notifyCustomer(`${TAG}_ghost`, { title: `${TAG} nowhere`, body: "x" })
+  const [{ n }] = await sql<{ n: string }[]>`
+    SELECT count(*) AS n FROM announcements WHERE title = ${`${TAG} nowhere`}`
+  assert.equal(Number(n), 0)
+})
+
+test("the shop's own screen does not show the automatic notices", async () => {
+  const her = await named()
+  await notifyCustomer(her.handle, { title: `${TAG} auto`, body: "x" })
+  await createAnnouncement({ title: `${TAG} written`, body: "x" })
+  const staff = mine(await listAnnouncements()).map((a) => a.title)
+  assert.ok(staff.includes(`${TAG} written`))
+  assert.ok(!staff.includes(`${TAG} auto`), "generated notices would bury the written ones")
+})
+
+// Marking read used to insert a row for every announcement in the table.
+test("marking the inbox read does not touch another customer's notices", async () => {
+  const her = await named()
+  const other = await customer()
+  await notifyCustomer(her.handle, { title: `${TAG} private`, body: "x" })
+
+  await markAnnouncementsRead(other)
+
+  const [row] = await sql<{ n: string }[]>`
+    SELECT count(*) AS n FROM announcement_reads r
+      JOIN announcements a ON a.id = r.announcement_id
+     WHERE a.title = ${`${TAG} private`} AND r.customer_id = ${other}`
+  assert.equal(Number(row.n), 0, "a read row for a notice she cannot see")
 })
