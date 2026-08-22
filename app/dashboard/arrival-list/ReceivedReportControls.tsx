@@ -4,6 +4,7 @@ import { useState } from "react"
 import { fetchJson } from "@/lib/api-fetch"
 import { generateReceivedReport } from "@/lib/receiving-report-pdf"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
+import DateRangeField from "@/components/DateRangeField"
 import EventSelect from "@/components/EventSelect"
 import type { ReceivedReportItem } from "@/lib/db"
 
@@ -103,22 +104,14 @@ export default function ReceivedReportControls() {
           placeholder="Select event…"
         />
       </div>
-      <input
-        type="date"
-        value={from}
+      {/* One control for both shapes of the question: the day a parcel landed,
+          or the span of a week being reconciled. Two native date inputs cannot
+          express a range in one field. */}
+      <DateRangeField
+        value={{ from, to }}
+        onChange={(next) => { setFrom(next.from); setTo(next.to) }}
         max={today}
-        onChange={(e) => setFrom(e.target.value)}
-        aria-label="From date (optional)"
-        className={`${INPUT_CLASS} h-[38px] appearance-none flex-1 min-w-0 sm:min-w-[140px]`}
-      />
-      <span className="shrink-0 self-center text-faint">–</span>
-      <input
-        type="date"
-        value={to}
-        max={today}
-        onChange={(e) => setTo(e.target.value)}
-        aria-label="To date (optional)"
-        className={`${INPUT_CLASS} h-[38px] appearance-none flex-1 min-w-0 sm:min-w-[140px]`}
+        className="flex-1 min-w-0 sm:min-w-[200px]"
       />
       <input
         type="text"
