@@ -27,7 +27,24 @@ export default function WhatsAppSection() {
   // The customer-facing link per running trip. Normally handed out by the bot
   // with /katalog; here for a caption, a group not connected yet, or simply
   // checking what customers can see.
-  const [links, setLinks] = useState<{ event: string; url: string }[]>([])
+  const [links, setLinks] = useState<{ event: string; url: string; shelves: number }[]>([])
+  /**
+   * What just saved, and what went wrong.
+   *
+   * These controls write the moment they change — there is no Save to press —
+   * which is only reassuring if the screen says so. Worse before this: neither
+   * handler checked the response, so a failed save looked exactly like a
+   * successful one.
+   */
+  const [savedKey, setSavedKey] = useState("")
+  const [saveError, setSaveError] = useState("")
+
+  function acknowledge(key: string) {
+    setSaveError("")
+    setSavedKey(key)
+    window.setTimeout(() => setSavedKey((k) => (k === key ? "" : k)), 2000)
+  }
+
   const [copied, setCopied] = useState("")
   const [defaults, setDefaults] = useState<ProductDefaults>(DEFAULT_PRODUCT_DEFAULTS)
   const [error, setError] = useState("")
@@ -65,8 +82,19 @@ export default function WhatsAppSection() {
   async function loadLinks() {
     const res = await fetch("/api/whatsapp/katalog", { cache: "no-store" })
     if (!res.ok) return
-    const data = (await res.json()) as { links?: { event: string; url: string }[] }
+    const data = (await res.json()) as { links?: { event: string; url: string; shelves: number }[] }
     setLinks(data.links ?? [])
+  }
+
+  /** Mint the first link for a trip. Nothing exists until this is pressed. */
+  async function createLink(event: string) {
+    const res = await fetch("/api/whatsapp/katalog", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ event, action: "create" }),
+    })
+    if (!res.ok) { setSaveError("Could not create that link"); return }
+    loadLinks()
   }
 
   async function rotate(event: string) {
@@ -81,11 +109,17 @@ export default function WhatsAppSection() {
   }
 
   async function bind(jid: string, event: string) {
-    await fetch("/api/whatsapp/settings", {
+    const res = await fetch("/api/whatsapp/settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ jid, event: event || null }),
     })
+    if (!res.ok) {
+      setSaveError("Could not change that group's trip")
+      reload()
+      return
+    }
+    acknowledge(`group:${jid}`)
     reload()
   }
 
@@ -104,17 +138,28 @@ export default function WhatsAppSection() {
 
   async function saveMethod(value: string) {
     const method = toPricingMethod(value)
+    const previous = defaults?.whatsappPricingMethod
     setDefaults((d) => ({ ...d, whatsappPricingMethod: method }))
-    await fetch("/api/sheets/product-defaults", {
+    const res = await fetch("/api/sheets/product-defaults", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ whatsappPricingMethod: method }),
     })
+    if (!res.ok) {
+      // Put the control back to what is actually stored. Leaving the new value
+      // on screen after a failed write is the one outcome worse than no
+      // feedback at all.
+      setDefaults((d) => ({ ...d, whatsappPricingMethod: previous }))
+      setSaveError("Could not change the pricing method")
+      return
+    }
+    acknowledge("pricing")
   }
 
   return (
     <div className="flex flex-col gap-6">
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
+      {saveError ? <p className="text-sm text-red-600">{saveError}</p> : null}
 
       <section className="rounded-xl border border-cream-border bg-white p-4 flex flex-col gap-3">
         <h2 className="text-sm font-semibold text-foreground">Groups</h2>
@@ -130,6 +175,9 @@ export default function WhatsAppSection() {
           groups.map((group) => (
             <div key={group.jid} className="flex items-center gap-2">
               <span className="flex-1 min-w-0 text-sm truncate">{group.name || group.jid}</span>
+              {savedKey === `group:${group.jid}` && (
+                <span className="shrink-0 text-xs text-green-700">Saved</span>
+              )}
               <div className="w-56 shrink-0">
                 <EventSelect
                   value={group.event ?? ""}
@@ -148,34 +196,61 @@ export default function WhatsAppSection() {
       <section className="rounded-xl border border-cream-border bg-white p-4 flex flex-col gap-3">
         <h2 className="text-sm font-semibold text-foreground">Catalogue links</h2>
         <p className="text-xs text-muted">
-          One per running trip, for whoever joined the group after its shelves
-          were posted. Unguessable, and only while the trip is open — closing it
-          takes the link dark. Rotating retires the old URL for everyone holding
-          it, and leaves other trips alone.
+          For whoever joined the group after its shelves were posted.
+          Unguessable, and only while the trip is open — closing it takes the
+          link dark. Rotating retires the old URL for everyone holding it, and
+          leaves other trips alone.
         </p>
+        {links.length === 0 && (
+          <p className="text-xs text-faint">
+            No running trip has shelves yet. A link appears here once photographs are posted.
+          </p>
+        )}
         {links.map((link) => (
           <div key={link.event} className="flex items-center gap-2">
             <div className="min-w-0 flex-1">
-              <div className="text-sm font-semibold">{link.event}</div>
-              <div className="text-[11px] text-muted font-mono truncate">{link.url}</div>
+              <div className="text-sm font-semibold">
+                {link.event}
+                <span className="ml-1.5 text-[11px] font-normal text-faint">
+                  {link.shelves} {link.shelves === 1 ? "shelf" : "shelves"}
+                </span>
+              </div>
+              {/* A trip that has never been published shows no URL, because it
+                  has none — the secret is minted when the link is asked for,
+                  not when this page is opened. */}
+              <div className="text-[11px] text-muted font-mono truncate">
+                {link.url || <span className="text-faint font-sans italic">no link yet</span>}
+              </div>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                navigator.clipboard?.writeText(link.url)
-                setCopied(link.event)
-              }}
-              className="shrink-0 rounded-lg border border-cream-border px-3 py-1.5 text-xs font-semibold"
-            >
-              {copied === link.event ? "Copied" : "Copy"}
-            </button>
-            <button
-              type="button"
-              onClick={() => rotate(link.event)}
-              className="shrink-0 rounded-lg border border-cream-border px-3 py-1.5 text-xs font-semibold text-brand"
-            >
-              Rotate
-            </button>
+            {link.url ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard?.writeText(link.url)
+                    setCopied(link.event)
+                  }}
+                  className="shrink-0 rounded-lg border border-cream-border px-3 py-1.5 text-xs font-semibold hover:border-brand hover:text-brand transition-colors"
+                >
+                  {copied === link.event ? "Copied" : "Copy"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => rotate(link.event)}
+                  className="shrink-0 rounded-lg border border-cream-border px-3 py-1.5 text-xs font-semibold text-brand hover:border-brand transition-colors"
+                >
+                  Rotate
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => createLink(link.event)}
+                className="shrink-0 rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-dark transition-colors"
+              >
+                Create link
+              </button>
+            )}
           </div>
         ))}
       </section>
@@ -242,7 +317,11 @@ export default function WhatsAppSection() {
       </section>
 
       <section className="rounded-xl border border-cream-border bg-white p-4 flex flex-col gap-3">
-        <h2 className="text-sm font-semibold text-foreground">Pricing for group posts</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-foreground">Pricing for group posts</h2>
+          {/* Saves on change — no button to press — so it says when it has. */}
+          {savedKey === "pricing" && <span className="text-xs text-green-700">Saved</span>}
+        </div>
         <p className="text-xs text-muted">
           Which method a shelf photographed into a group starts on. Separate from the
           Add Product form&apos;s default, because the shops you photograph are

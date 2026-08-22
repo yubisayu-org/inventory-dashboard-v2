@@ -21,14 +21,27 @@ export async function GET() {
   if (ownerError) return ownerError
 
   try {
-    const events = await sql`SELECT name FROM events WHERE is_active ORDER BY id DESC`
-    const links = await Promise.all(
-      events.map(async (row) => {
-        const event = row.name as string
-        const secret = await katalogSecret(event)
-        return { event, url: secret ? catalogueUrl(secret) : "" }
-      }),
-    )
+    // Only trips with shelves on them. A catalogue is the shelf photographs,
+    // so a trip without any has nothing to publish and its row here would be a
+    // link to an empty page.
+    //
+    // And read the secret, never mint one. katalogSecret() creates on demand —
+    // right for the moment a link is asked for, wrong for a listing, which
+    // would quietly hand every running trip a live URL just for opening
+    // Settings. That is the opposite of the lazy minting it documents.
+    const rows = await sql`
+      SELECT e.name, e.catalog_secret, count(p.id)::int AS shelves
+      FROM events e
+      JOIN wa_posts p ON p.event = e.name
+      WHERE e.is_active
+      GROUP BY e.name, e.catalog_secret, e.id
+      ORDER BY e.id DESC
+    `
+    const links = rows.map((row) => ({
+      event: row.name as string,
+      url: row.catalog_secret ? catalogueUrl(row.catalog_secret as string) : "",
+      shelves: row.shelves as number,
+    }))
     return NextResponse.json({ links }, { headers: { "Cache-Control": "no-store" } })
   } catch (err) {
     console.error("Failed to read catalogue links:", err)
@@ -52,6 +65,15 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const event = String(body.event ?? "").trim()
     if (!event) return NextResponse.json({ error: "An event is required" }, { status: 400 })
+
+    // "create" mints the first link for a trip; "rotate" retires the current
+    // one. Separate words because they read differently to the person doing
+    // them, even though the second is the first plus a consequence.
+    if (body.action === "create") {
+      const secret = await katalogSecret(event)
+      if (!secret) return NextResponse.json({ error: "No such trip" }, { status: 404 })
+      return NextResponse.json({ event, url: catalogueUrl(secret) })
+    }
 
     return NextResponse.json({ event, url: catalogueUrl(await rotateKatalogSecret(event)) })
   } catch (err) {
