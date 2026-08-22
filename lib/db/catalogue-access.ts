@@ -2,6 +2,21 @@ import sql from "../db-pool"
 import { normalizeId } from "./helpers"
 import { issueInvite } from "./catalogue-auth"
 
+/**
+ * Where an invite link points.
+ *
+ * The catalogue site, NOT this dashboard's /customer/login. Sign-in has to
+ * begin on the catalogue so a login nonce cookie is set before the Google
+ * round trip. A link that jumps straight to the dashboard skips that, and the
+ * exchange then refuses the code it comes back with — after the invite has
+ * already been redeemed. The customer sees "that link didn't work" on an
+ * invite that has, in fact, just been spent.
+ */
+export function inviteUrl(token: string): string {
+  const site = (process.env.CATALOGUE_SITE_URL ?? "").replace(/\/$/, "")
+  return `${site}/?invite=${encodeURIComponent(token)}`
+}
+
 // Staff-side reads and writes for catalogue access. Everything here runs on
 // the main pool; catalogue_public has no part in any of it.
 
@@ -57,7 +72,7 @@ export async function listPendingAccessRequests(): Promise<AccessRequestRow[]> {
  */
 export async function approveAccessRequest(
   requestId: number,
-): Promise<{ customerId: number; instagramId: string; token: string }> {
+): Promise<{ customerId: number; instagramId: string; token: string; url: string }> {
   const customer = await sql.begin(async (tx) => {
     const [req] = await tx<{ instagram_id: string; status: string }[]>`
       SELECT instagram_id, status FROM catalogue_access_requests
@@ -102,7 +117,12 @@ export async function approveAccessRequest(
   // Outside the transaction: issueInvite opens its own, and nesting them would
   // deadlock on the same connection.
   const token = await issueInvite(customer.id)
-  return { customerId: customer.id, instagramId: customer.instagram_id, token }
+  return {
+    customerId: customer.id,
+    instagramId: customer.instagram_id,
+    token,
+    url: inviteUrl(token),
+  }
 }
 
 export async function rejectAccessRequest(requestId: number): Promise<void> {
@@ -158,7 +178,7 @@ export async function listCatalogueCustomers(): Promise<CatalogueCustomerRow[]> 
  * wall with no way past it.
  */
 export async function bulkInviteExistingCustomers(): Promise<
-  { instagramId: string; token: string }[]
+  { instagramId: string; token: string; url: string }[]
 > {
   const rows = await sql<{ id: number; instagram_id: string }[]>`
     SELECT DISTINCT c.id, c.instagram_id
@@ -168,9 +188,10 @@ export async function bulkInviteExistingCustomers(): Promise<
        AND c.catalogue_access <> 'revoked'
      ORDER BY c.instagram_id
   `
-  const out: { instagramId: string; token: string }[] = []
+  const out: { instagramId: string; token: string; url: string }[] = []
   for (const row of rows) {
-    out.push({ instagramId: row.instagram_id, token: await issueInvite(row.id) })
+    const token = await issueInvite(row.id)
+    out.push({ instagramId: row.instagram_id, token, url: inviteUrl(token) })
   }
   return out
 }

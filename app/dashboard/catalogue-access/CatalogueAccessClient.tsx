@@ -38,10 +38,6 @@ const ACCESS_CLASS: Record<string, string> = {
   revoked: "bg-red-50 text-red-700",
 }
 
-function inviteUrl(token: string): string {
-  return `${window.location.origin}/customer/login?invite=${token}`
-}
-
 export default function CatalogueAccessClient() {
   const [requests, setRequests] = useState<AccessRequest[]>([])
   const [customers, setCustomers] = useState<CatalogueCustomer[]>([])
@@ -81,7 +77,7 @@ export default function CatalogueAccessClient() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "Failed")
       if (action === "approve") {
-        setLinks((prev) => [{ instagramId: data.instagramId, url: inviteUrl(data.token) }, ...prev])
+        setLinks((prev) => [{ instagramId: data.instagramId, url: data.url }, ...prev])
       }
       await load()
     } catch (err) {
@@ -102,7 +98,7 @@ export default function CatalogueAccessClient() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "Failed")
-      setLinks((prev) => [{ instagramId, url: inviteUrl(data.token) }, ...prev])
+      setLinks((prev) => [{ instagramId, url: data.url }, ...prev])
       await load()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed")
@@ -131,9 +127,9 @@ export default function CatalogueAccessClient() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "Failed")
       setLinks(
-        (data.invites as { instagramId: string; token: string }[]).map((i) => ({
+        (data.invites as { instagramId: string; url: string }[]).map((i) => ({
           instagramId: i.instagramId,
-          url: inviteUrl(i.token),
+          url: i.url,
         })),
       )
       await load()

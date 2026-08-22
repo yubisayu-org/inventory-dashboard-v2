@@ -6,7 +6,7 @@ export default function CatalogueAccessPage() {
   return (
     <PageShell>
       <PageHeader
-        title="Catalogue Access"
+        title="Access"
         subtitle="Approve access requests, send sign-in links, and revoke customers"
       />
       <CatalogueAccessClient />

@@ -13,6 +13,19 @@ export async function GET(req: NextRequest) {
   // same browser.
   const siteNonce = req.nextUrl.searchParams.get("nonce") ?? ""
 
+  // Reached without a nonce, which means the sign-in did not start on the
+  // catalogue. Going on would redeem the invite and then fail the exchange,
+  // spending the invite on an attempt that cannot succeed. Send them to the
+  // catalogue to begin properly instead.
+  if (!siteNonce) {
+    const site = (process.env.CATALOGUE_SITE_URL ?? "").replace(/\/$/, "")
+    if (/^https?:\/\//.test(site)) {
+      const start = new URL(`${site}/`)
+      if (invite) start.searchParams.set("invite", invite)
+      return NextResponse.redirect(start.toString())
+    }
+  }
+
   const clientId = process.env.GOOGLE_CLIENT_ID
   if (!clientId) {
     console.error("GOOGLE_CLIENT_ID is not configured")
