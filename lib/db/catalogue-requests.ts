@@ -21,6 +21,7 @@ function toRequest(r: Record<string, unknown>, candidateMap?: Map<number, Candid
     customerHandle: r.customer_handle as string,
     productId: (r.product_id as number | null) ?? null,
     productName: (r.product_name as string | null) ?? null,
+    productPrice: (r.product_price as number | null) ?? null,
     description: r.description as string,
     referenceImageUrl: (r.reference_image_url as string | null) ?? null,
     qty: r.qty as number,
@@ -142,6 +143,7 @@ export async function getCatalogueRequestsByCustomer(
 ): Promise<CatalogueRequest[]> {
   const rows = await db`
     SELECT r.id, r.customer_handle, r.product_id, p.name AS product_name,
+           p.price AS product_price,
            r.description, r.reference_image_url,
            r.qty, r.note, r.status, r.staff_note, r.converted_order_id, r.created_at,
            r.country_id, c.name AS country_name, r.valas, r.gram, r.estimated_price

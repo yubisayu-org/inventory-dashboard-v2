@@ -610,6 +610,10 @@ export interface CatalogueRequest {
   customerHandle: string
   productId: number | null
   productName: string | null
+  /** Catalogue price of the requested product, for a Fix request. Null on a
+   *  custom request, which has estimatedPrice instead, and null on the staff
+   *  paths that do not SELECT it. */
+  productPrice: number | null
   description: string
   referenceImageUrl: string | null
   qty: number

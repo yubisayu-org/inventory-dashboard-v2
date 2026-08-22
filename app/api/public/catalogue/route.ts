@@ -44,9 +44,12 @@ export async function GET(req: NextRequest) {
     const posts = await getVisibleCataloguePosts(catalogueSql, highlightId)
     const productIds = [...new Set(posts.flatMap((p) => p.productIds))]
     const products = productIds.length
-      ? await catalogueSql`SELECT id, name, store, price FROM products WHERE id IN ${catalogueSql(productIds)}`
+      // store is where the shop buys — a supplier name the customer has no
+      // use for and no business seeing. Hiding it in the UI while still
+      // shipping it in the JSON would not be hiding it.
+      ? await catalogueSql`SELECT id, name, price FROM products WHERE id IN ${catalogueSql(productIds)}`
       : []
-    const byId = new Map(products.map((p) => [p.id as number, { id: p.id as number, name: p.name as string, store: p.store as string, price: p.price as number }]))
+    const byId = new Map(products.map((p) => [p.id as number, { id: p.id as number, name: p.name as string, price: p.price as number }]))
     const withProducts = posts.map((post) => ({
       ...post,
       products: post.productIds.map((id) => byId.get(id)).filter((p): p is NonNullable<typeof p> => p != null),
