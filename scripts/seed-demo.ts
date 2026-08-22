@@ -320,38 +320,81 @@ async function main() {
            (${SHIPPING}, ${nowMinus(20)}, ${"Kardus & bubble wrap"}, ${"packing"}, 0, 0, 185000, true, ${"cash"})`
 
   // ── the packing list: ready to send, and held back ───────────────────────
-  // A card is "Siap Kirim" when arrived minus shipped minus held is positive,
-  // and "Tunda Kirim" when anything is held. Held was never exercised, so the
-  // reasons here are the real ones: combining with the next trip, waiting on a
-  // line still in transit, an address being confirmed.
+  // Written against the real ladder in getShipOrdersFiltered, which is
+  // stricter than "something arrived":
   //
-  // Chosen from the data rather than by name — which customer has arrived
-  // units moves as the fixture changes, and naming them meant the holds
-  // silently landed on nobody.
-  const holdable = await sql`
-    SELECT event, customer, array_agg(id ORDER BY id) AS ids
-    FROM orders
-    WHERE COALESCE(unit_arrive,0) > COALESCE(unit_ship,0) AND unit > 0
-    GROUP BY event, customer
-    HAVING count(*) >= 2
-    ORDER BY count(*) DESC
-    LIMIT 3`
+  //   not_arrived → nothing in yet          partial → some lines still coming
+  //   hold        → ALL arrived, some parked
+  //   ready       → ALL arrived, none parked, still to ship, AND paid
+  //   ready_unpaid→ the same but the invoice is not settled
+  //
+  // So a card only reaches Siap Kirim when every line of that customer's event
+  // has landed and the invoice is clear. Seeding "some arrived, some paid"
+  // fills the other buckets and leaves Siap Kirim empty, which is exactly what
+  // it did before this.
+  const invoiceTotal = async (event: string, customer: string) => {
+    const [r] = await sql`
+      SELECT COALESCE(SUM(o.unit_price * o.unit), 0)::int AS subtotal,
+             COALESCE(SUM(COALESCE(p.gram,0) * o.unit), 0)::int AS gram
+      FROM orders o JOIN products p ON p.id = o.product_id
+      WHERE o.event = ${event} AND o.customer = ${customer}`
+    const [c] = await sql`SELECT ongkos_kirim FROM customers WHERE instagram_id = ${customer}`
+    const [a] = await sql`
+      SELECT COALESCE(SUM(amount), 0)::int AS adj FROM adjustments
+      WHERE event = ${event} AND customer = ${customer}`
+    const ongkir = Number(c?.ongkos_kirim ?? 0) * Math.ceil(Number(r.gram) / 1000)
+    return Number(r.subtotal) + ongkir + Number(a.adj)
+  }
 
-  const HOLD_REASONS = [
-    "Digabung dengan trip berikutnya",
-    "Tunggu tas yang masih di jalan",
-    "Alamat baru, tunggu konfirmasi",
-  ]
-  for (const [n, row] of holdable.entries()) {
-    const ids = row.ids as number[]
-    // The first is held whole; the rest keep one line ready, so the packing
-    // list shows a card that is half ready and half waiting — the case a
-    // single-state fixture never produces.
-    const held = n === 0 ? ids : ids.slice(0, Math.max(1, ids.length - 1))
+  const packers = await sql`
+    SELECT customer, count(*)::int AS lines FROM orders
+    WHERE event = ${ARRIVING} AND unit_buy > 0
+    GROUP BY customer HAVING count(*) >= 2 ORDER BY count(*) DESC LIMIT 5`
+
+  for (const [n, row] of packers.entries()) {
+    const who = row.customer as string
+    // Everything landed, nothing shipped yet — the state a card must be in
+    // before it can be either ready or held.
     await sql`
-      UPDATE orders SET unit_hold = GREATEST(COALESCE(unit_arrive,0) - COALESCE(unit_ship,0), 0),
-                        note = ${HOLD_REASONS[n % HOLD_REASONS.length]}
-      WHERE id = ANY(${held})`
+      UPDATE orders SET unit_arrive = unit_buy, unit_ship = 0, unit_hold = 0
+      WHERE event = ${ARRIVING} AND customer = ${who}`
+
+    if (n < 3) {
+      // SIAP KIRIM: settle the invoice, because an unpaid card is a different
+      // tab however ready the goods are.
+      const total = await invoiceTotal(ARRIVING, who)
+      await sql`DELETE FROM payments WHERE event = ${ARRIVING} AND customer = ${who}`
+      await sql`
+        INSERT INTO payments (event, customer, amount, account, is_checked, pay_date, remarks)
+        VALUES (${ARRIVING}, ${who}, ${total}, ${"BCA"}, true, ${nowMinus(2)}, ${"Pelunasan"})`
+    } else {
+      // TUNDA KIRIM: all in, but parked. The reasons are the ones that
+      // actually cause it.
+      const ids = await sql`
+        SELECT id FROM orders WHERE event = ${ARRIVING} AND customer = ${who} ORDER BY id`
+      const reason = n === 3 ? "Digabung dengan trip berikutnya" : "Tunggu tas yang masih di jalan"
+      await sql`
+        UPDATE orders SET unit_hold = unit_arrive, note = ${reason}
+        WHERE id = ANY(${ids.map((r) => r.id as number)})`
+    }
+  }
+
+  // One card left deliberately half-landed, so "Sebagian Tiba" has a row too.
+  // Forcing every packer to fully-arrived emptied that tab, which is the same
+  // mistake in the other direction.
+  const [halfLanded] = await sql`
+    SELECT customer FROM orders
+    WHERE event = ${ARRIVING} AND unit_buy > 0
+      AND customer NOT IN (SELECT DISTINCT customer FROM orders WHERE event = ${ARRIVING} AND unit_hold > 0)
+    GROUP BY customer HAVING count(*) >= 3 ORDER BY count(*) DESC OFFSET 3 LIMIT 1`
+  if (halfLanded) {
+    const ids = await sql`
+      SELECT id FROM orders WHERE event = ${ARRIVING} AND customer = ${halfLanded.customer} ORDER BY id`
+    const half = ids.slice(0, Math.floor(ids.length / 2)).map((r) => r.id as number)
+    await sql`UPDATE orders SET unit_arrive = unit_buy WHERE id = ANY(${half})`
+    await sql`
+      UPDATE orders SET unit_arrive = 0
+      WHERE event = ${ARRIVING} AND customer = ${halfLanded.customer} AND NOT (id = ANY(${half}))`
   }
 
   // ── order requests, one for every section of that screen ────────────────
