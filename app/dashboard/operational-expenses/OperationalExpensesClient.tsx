@@ -12,6 +12,7 @@ import DataGrid, {
 import { usePaginatedFetch, type PageData } from "@/hooks/usePaginatedFetch"
 import SearchableSelect from "@/components/SearchableSelect"
 import SearchInput from "@/components/SearchInput"
+import DateRangeField from "@/components/DateRangeField"
 import EventSelect from "@/components/EventSelect"
 
 const PAGE_SIZE = 25
@@ -447,31 +448,14 @@ export default function OperationalExpensesClient() {
 
       {/* Filters: date range + event, sit above the search bar (both layouts) */}
       <div className="rounded-xl border border-cream-border bg-white p-4 flex items-end gap-x-3 gap-y-1.5 flex-wrap">
-        <div className="relative flex-1 min-w-0 sm:min-w-[140px]">
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => handleDateFromChange(e.target.value)}
-            aria-label="From date"
-            className={`${formInputCls} w-full min-w-0 h-[38px] appearance-none ${dateFrom ? "" : "[&::-webkit-datetime-edit]:opacity-0"}`}
-          />
-          {!dateFrom && (
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-faint select-none">From</span>
-          )}
-        </div>
-        <span className="shrink-0 self-center text-faint select-none">–</span>
-        <div className="relative flex-1 min-w-0 sm:min-w-[140px]">
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(e) => handleDateToChange(e.target.value)}
-            aria-label="To date"
-            className={`${formInputCls} w-full min-w-0 h-[38px] appearance-none ${dateTo ? "" : "[&::-webkit-datetime-edit]:opacity-0"}`}
-          />
-          {!dateTo && (
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-faint select-none">To</span>
-          )}
-        </div>
+        {/* One control for a day or a span, the same as the receiving list's
+            report. Two native inputs cannot say "12 – 14 Aug" between them. */}
+        <DateRangeField
+          value={{ from: dateFrom, to: dateTo }}
+          onChange={(next) => { handleDateFromChange(next.from); handleDateToChange(next.to) }}
+          placeholder="All dates"
+          className="flex-1 min-w-0 sm:min-w-[200px]"
+        />
         <div className="basis-full h-0 md:hidden" />
         <div className="flex-1 min-w-0 md:min-w-[160px] [&_input]:h-[38px]">
           <EventSelect
