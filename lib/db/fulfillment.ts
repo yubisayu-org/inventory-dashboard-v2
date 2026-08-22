@@ -718,6 +718,12 @@ export async function getReceivedReport(
   event: string,
   from?: string | null,
   to?: string | null,
+  /**
+   * Narrow the report to one parcel, matched on the front of the receipt so
+   * "MNC" gives every sea box and "MNC-3109" gives one. Case is ignored, since
+   * the code is typed by hand while packing.
+   */
+  receipt?: string | null,
 ): Promise<ReceivedReportItem[]> {
   // Apply the date window only when a range was given; otherwise every receipt
   // for the event is included regardless of date.
@@ -725,6 +731,9 @@ export async function getReceivedReport(
     from && to
       ? sql`AND (a.at AT TIME ZONE 'Asia/Jakarta')::date BETWEEN ${from}::date AND ${to}::date`
       : sql``
+  const receiptFilter = receipt?.trim()
+    ? sql`AND upper(COALESCE(a.new_row->>'dispatch_receipt', '')) LIKE ${`${receipt.trim().toUpperCase()}%`}`
+    : sql``
   const rows = await sql`
     SELECT
       (a.new_row->>'event')                                        AS event,
@@ -740,6 +749,7 @@ export async function getReceivedReport(
       AND a.action IN ('INSERT', 'UPDATE')
       AND (a.new_row->>'event') = ${event}
       ${dateFilter}
+      ${receiptFilter}
       AND COALESCE((a.new_row->>'unit_arrive')::int, 0)
           > COALESCE((a.old_row->>'unit_arrive')::int, 0)
     GROUP BY event, product_id, p.name, p.store, dispatch_receipt

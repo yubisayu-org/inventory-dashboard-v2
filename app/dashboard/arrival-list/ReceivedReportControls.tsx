@@ -20,6 +20,8 @@ type Report = {
   event: string
   from: string | null
   to: string | null
+  /** Echoed back so a message can name the parcel that had nothing in it. */
+  receipt: string | null
   items: ReceivedReportItem[]
   totalUnits: number
 }
@@ -31,6 +33,10 @@ export default function ReceivedReportControls() {
   // Dates are optional: empty means every date for the selected event.
   const [from, setFrom] = useState("")
   const [to, setTo] = useState("")
+  // Optional, and a prefix: "MNC" reports every sea box, "MNC-3109" one parcel.
+  // Same field the dispatch document has, for the same reason — a report of a
+  // whole trip is rarely what you want when a single box has just landed.
+  const [receipt, setReceipt] = useState("")
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
 
@@ -46,6 +52,8 @@ export default function ReceivedReportControls() {
       const query = new URLSearchParams({ event })
       if (start) query.set("from", start)
       if (end) query.set("to", end)
+      const trimmedReceipt = receipt.trim()
+      if (trimmedReceipt) query.set("receipt", trimmedReceipt)
       const report = await fetchJson<Report>(`/api/sheets/receiving-report?${query.toString()}`)
       if (report.items.length === 0) {
         const span =
@@ -54,7 +62,10 @@ export default function ReceivedReportControls() {
               ? ` on ${report.from}`
               : ` between ${report.from} and ${report.to}`
             : ""
-        setMessage(`No items were received for ${report.event}${span}.`)
+        setMessage(
+          `No items were received for ${report.event}${span}` +
+          `${report.receipt ? ` under ${report.receipt}` : ""}.`,
+        )
         return
       }
       const blob = await generateReceivedReport(report)
@@ -108,6 +119,14 @@ export default function ReceivedReportControls() {
         onChange={(e) => setTo(e.target.value)}
         aria-label="To date (optional)"
         className={`${INPUT_CLASS} h-[38px] appearance-none flex-1 min-w-0 sm:min-w-[140px]`}
+      />
+      <input
+        type="text"
+        value={receipt}
+        onChange={(e) => setReceipt(e.target.value)}
+        aria-label="Parcel receipt (optional)"
+        placeholder="Receipt (optional)"
+        className={`${INPUT_CLASS} h-[38px] flex-1 min-w-0 sm:min-w-[160px]`}
       />
       <button
         type="button"

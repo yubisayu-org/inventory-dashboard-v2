@@ -26,11 +26,15 @@ export async function GET(req: NextRequest) {
   let to = toParam ?? fromParam ?? null
   if (from && to && from > to) [from, to] = [to, from]
 
+  // Optional, and a prefix: "MNC" reports every sea box, "MNC-3109" just that
+  // one. Bounded because it reaches a LIKE.
+  const receipt = (params.get("receipt") ?? "").trim().slice(0, 120)
+
   try {
-    const items = await getReceivedReport(event, from, to)
+    const items = await getReceivedReport(event, from, to, receipt || null)
     const totalUnits = items.reduce((sum, i) => sum + i.unitsReceived, 0)
     return NextResponse.json(
-      { event, from, to, items, totalUnits },
+      { event, from, to, receipt: receipt || null, items, totalUnits },
       { headers: { "Cache-Control": "no-store" } },
     )
   } catch (err) {
