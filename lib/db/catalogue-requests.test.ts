@@ -54,7 +54,9 @@ after(async () => {
   await sql`DELETE FROM orders WHERE event = ${EVENT}`
   if (extraCustomers.length > 0) await sql`DELETE FROM customers WHERE instagram_id IN ${sql(extraCustomers)}`
   await sql`DELETE FROM catalogue_requests WHERE send_id = ${sendId}`
-  await sql`DELETE FROM catalogue_requests WHERE customer_handle = 'web_user'`
+  // Tagged per run now, so match the tag rather than the old fixed handle —
+  // otherwise the row survives and the product it points at cannot be deleted.
+  await sql`DELETE FROM catalogue_requests WHERE customer_handle LIKE ${`${TAG}%`}`
   // her-4/her-8/her-9 are queued by the pre-existing resolveAskingCandidate
   // (owner)/reject tests above, and her-t5 by the new "Tolak a zero-
   // candidate asking row" test (rejectCatalogueRequest queues a ❌ for any
@@ -229,12 +231,22 @@ test("rejectCatalogueRequest on a WhatsApp row queues a ❌", async () => {
 })
 
 test("rejectCatalogueRequest on a catalogue-web row still queues nothing (no message_id to react to)", async () => {
-  await createCatalogueRequest({ customerHandle: "web_user", productId, qty: 1, note: "t" }, sql)
-  const [{ id }] = await sql`SELECT id FROM catalogue_requests WHERE customer_handle = 'web_user'`
-  const before = await sql`SELECT count(*)::int AS n FROM wa_replies`
+  // Handle tagged per run, and the check scoped to rows this rejection could
+  // have written. Counting the whole wa_replies table between two moments made
+  // this fail whenever another test file queued a reply in between — it was
+  // asserting "nobody in the database queued anything", not "this call did
+  // not".
+  const handle = mid("web_user")
+  await createCatalogueRequest({ customerHandle: handle, productId, qty: 1, note: "t" }, sql)
+  const [{ id }] = await sql`SELECT id FROM catalogue_requests WHERE customer_handle = ${handle}`
+  const [{ max: watermark }] = await sql`SELECT COALESCE(MAX(id), 0)::int AS max FROM wa_replies`
   await rejectCatalogueRequest(id, "n/a")
-  const after = await sql`SELECT count(*)::int AS n FROM wa_replies`
-  assert.equal(after[0].n, before[0].n)
+  // A catalogue-web row has no message to react to, so anything queued for it
+  // would carry an empty quoted id — which no other file's fixtures produce.
+  const [{ n }] = await sql`
+    SELECT count(*)::int AS n FROM wa_replies
+    WHERE id > ${watermark} AND COALESCE(quoted_message_id, '') = ''`
+  assert.equal(n, 0, "rejecting a web request must queue no WhatsApp reply")
 })
 
 test("getCatalogueRequests includes source/resolvedCode for a pending WhatsApp row", async () => {

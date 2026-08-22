@@ -885,7 +885,7 @@ export function ColumnVisibilityMenu<T>({
         ref={btnRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1.5 h-[38px] text-sm text-muted-strong bg-white transition-colors px-3 rounded-lg border border-cream-border hover:border-brand"
+        className="flex items-center gap-1.5 h-[38px] text-sm text-muted-strong bg-white transition-colors px-3 rounded-lg border border-cream-border hover:border-brand hover:text-brand"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />

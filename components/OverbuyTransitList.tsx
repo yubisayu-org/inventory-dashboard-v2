@@ -494,7 +494,7 @@ function BulkMarkModal({
           <button type="button" onClick={onClose} disabled={saving} className="px-4 py-2 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
             Cancel
           </button>
-          <button type="button" onClick={onConfirm} disabled={saving} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-hover disabled:opacity-50 transition-colors">
+          <button type="button" onClick={onConfirm} disabled={saving} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-dark disabled:opacity-50 transition-colors">
             {saving ? "Saving…" : actionLabel}
           </button>
         </div>
@@ -581,7 +581,7 @@ function MarkStageModal({
           <button type="button" onClick={onClose} disabled={saving} className="px-4 py-2 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
             Cancel
           </button>
-          <button type="button" onClick={handleSubmit} disabled={saving || quantity < 1} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-hover disabled:opacity-50 transition-colors">
+          <button type="button" onClick={handleSubmit} disabled={saving || quantity < 1} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-dark disabled:opacity-50 transition-colors">
             {saving ? "Saving…" : actionLabel}
           </button>
         </div>

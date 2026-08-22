@@ -319,6 +319,41 @@ async function main() {
            (${ARRIVING}, ${nowMinus(11)}, ${"Bea masuk"}, ${"customs"}, 0, 0, 1250000, true, ${"transfer"}),
            (${SHIPPING}, ${nowMinus(20)}, ${"Kardus & bubble wrap"}, ${"packing"}, 0, 0, 185000, true, ${"cash"})`
 
+  // ── the packing list: ready to send, and held back ───────────────────────
+  // A card is "Siap Kirim" when arrived minus shipped minus held is positive,
+  // and "Tunda Kirim" when anything is held. Held was never exercised, so the
+  // reasons here are the real ones: combining with the next trip, waiting on a
+  // line still in transit, an address being confirmed.
+  //
+  // Chosen from the data rather than by name — which customer has arrived
+  // units moves as the fixture changes, and naming them meant the holds
+  // silently landed on nobody.
+  const holdable = await sql`
+    SELECT event, customer, array_agg(id ORDER BY id) AS ids
+    FROM orders
+    WHERE COALESCE(unit_arrive,0) > COALESCE(unit_ship,0) AND unit > 0
+    GROUP BY event, customer
+    HAVING count(*) >= 2
+    ORDER BY count(*) DESC
+    LIMIT 3`
+
+  const HOLD_REASONS = [
+    "Digabung dengan trip berikutnya",
+    "Tunggu tas yang masih di jalan",
+    "Alamat baru, tunggu konfirmasi",
+  ]
+  for (const [n, row] of holdable.entries()) {
+    const ids = row.ids as number[]
+    // The first is held whole; the rest keep one line ready, so the packing
+    // list shows a card that is half ready and half waiting — the case a
+    // single-state fixture never produces.
+    const held = n === 0 ? ids : ids.slice(0, Math.max(1, ids.length - 1))
+    await sql`
+      UPDATE orders SET unit_hold = GREATEST(COALESCE(unit_arrive,0) - COALESCE(unit_ship,0), 0),
+                        note = ${HOLD_REASONS[n % HOLD_REASONS.length]}
+      WHERE id = ANY(${held})`
+  }
+
   // ── order requests, one for every section of that screen ────────────────
   // The screen sorts requests into five groups, and a fixture that lands
   // everything in one of them proves nothing. Each block below is written to

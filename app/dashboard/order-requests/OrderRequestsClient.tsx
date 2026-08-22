@@ -650,7 +650,7 @@ export default function OrderRequestsClient() {
             type="button"
             onClick={() => setFilterOpen((o) => !o)}
             aria-label="Filters"
-            className="h-full border border-cream-border rounded-lg px-3 py-2 text-sm text-muted-strong bg-white flex items-center gap-1.5 hover:border-brand transition-colors"
+            className="h-full border border-cream-border rounded-lg px-3 py-2 text-sm text-muted-strong bg-white flex items-center gap-1.5 hover:border-brand hover:text-brand transition-colors"
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />

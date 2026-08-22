@@ -490,7 +490,7 @@ export default function CustomersClient() {
         onClick={cycleInvSort}
         aria-label="Sort by total invoiced"
         title={invSort === "desc" ? "Invoiced: high → low" : invSort === "asc" ? "Invoiced: low → high" : "Sort by total invoiced"}
-        className="md:hidden shrink-0 relative border border-cream-border rounded-lg h-[38px] px-3 text-sm text-muted-strong bg-white flex items-center gap-1.5 hover:border-brand transition-colors"
+        className="md:hidden shrink-0 relative border border-cream-border rounded-lg h-[38px] px-3 text-sm text-muted-strong bg-white flex items-center gap-1.5 hover:border-brand hover:text-brand transition-colors"
       >
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="m3 16 4 4 4-4" /><path d="M7 20V4" /><path d="m21 8-4-4-4 4" /><path d="M17 4v16" />
@@ -502,7 +502,7 @@ export default function CustomersClient() {
           type="button"
           onClick={() => setBalanceFilterOpen((o) => !o)}
           aria-label="Filter by balance status"
-          className="relative border border-cream-border rounded-lg h-[38px] px-3 text-sm text-muted-strong bg-white flex items-center gap-1.5 hover:border-brand transition-colors"
+          className="relative border border-cream-border rounded-lg h-[38px] px-3 text-sm text-muted-strong bg-white flex items-center gap-1.5 hover:border-brand hover:text-brand transition-colors"
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M22 3H2l8 9.46V19l4 2v-8.54z" />
@@ -914,7 +914,7 @@ function EditCustomerModal({
             onClick={onDelete}
             disabled={saving}
             aria-label="Delete"
-            className="inline-flex items-center justify-center h-[38px] md:h-auto border border-cream-border md:border-transparent rounded-lg md:rounded-none px-3 md:px-0 md:py-2 text-sm text-faint md:text-red-500 hover:border-brand md:hover:border-transparent md:hover:underline disabled:opacity-50 transition-colors"
+            className="inline-flex items-center justify-center h-[38px] md:h-auto border border-cream-border md:border-transparent rounded-lg md:rounded-none px-3 md:px-0 md:py-2 text-sm text-faint md:text-red-500 hover:border-brand hover:text-brand md:hover:border-transparent md:hover:underline disabled:opacity-50 transition-colors"
           >
             <svg className="md:hidden" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M10 11v6" /><path d="M14 11v6" />

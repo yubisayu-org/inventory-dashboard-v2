@@ -239,7 +239,7 @@ export default function CataloguePostsClient() {
           type="button"
           onClick={() => setAddOpen((o) => !o)}
           className={`inline-flex items-center gap-1.5 h-10 px-4 text-sm rounded-lg border shrink-0 transition-colors ${
-            addOpen ? "bg-brand-light text-brand border-brand/30" : "bg-brand text-white border-transparent hover:bg-brand-hover"
+            addOpen ? "bg-brand-light text-brand border-brand/30" : "bg-brand text-white border-transparent hover:bg-brand-dark"
           }`}
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">

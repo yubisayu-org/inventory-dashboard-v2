@@ -417,7 +417,7 @@ export default function ShoppingListClient() {
           onClick={toggleSelectAll}
           aria-label={allSelected ? "Deselect all" : "Select all"}
           title={allSelected ? "Deselect all" : "Select all"}
-          className="inline-flex items-center gap-1.5 shrink-0 rounded-lg border border-cream-border h-[38px] px-3 text-sm text-muted-strong bg-white hover:border-brand transition-colors"
+          className="inline-flex items-center gap-1.5 shrink-0 rounded-lg border border-cream-border h-[38px] px-3 text-sm text-muted-strong bg-white hover:border-brand hover:text-brand transition-colors"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M9 11l3 3L22 4" />
@@ -427,7 +427,7 @@ export default function ShoppingListClient() {
         </button>
         <button
           onClick={() => setPurchaseOpen(true)}
-          className="hidden md:inline-flex items-center gap-1.5 h-[38px] px-4 text-sm font-medium rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors"
+          className="hidden md:inline-flex items-center gap-1.5 h-[38px] px-4 text-sm font-medium rounded-lg bg-brand text-white hover:bg-brand-dark transition-colors"
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <path d="M12 5v14M5 12h14" />
@@ -1509,7 +1509,7 @@ function ApplyShoppingExcessModal({
             type="button"
             onClick={handleSubmit}
             disabled={saving || quantity < 1}
-            className="px-4 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-50 transition-colors bg-brand hover:bg-brand-hover"
+            className="px-4 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-50 transition-colors bg-brand hover:bg-brand-dark"
           >
             {saving ? "Saving…" : "Apply excess"}
           </button>

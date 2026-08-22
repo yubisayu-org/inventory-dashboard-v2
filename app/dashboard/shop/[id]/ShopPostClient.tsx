@@ -402,7 +402,7 @@ export default function ShopPostClient({
                 <img
                   src={`/api/whatsapp/slots/${s.id}/thumb`}
                   alt=""
-                  className="w-10 h-10 rounded object-cover border border-cream-border hover:border-brand transition-colors"
+                  className="w-10 h-10 rounded object-cover border border-cream-border hover:border-brand hover:text-brand transition-colors"
                 />
               </button>
             ) : null}
@@ -431,7 +431,7 @@ export default function ShopPostClient({
                   ? "Done — open the tally"
                   : `${s.claimed - s.bought} still to buy — open the tally`
               }
-              className={`flex items-center gap-1 shrink-0 rounded-lg border border-cream-border px-2.5 py-1.5 text-xs font-bold tabular-nums hover:border-brand transition-colors ${tone(s.claimed, s.bought)}`}
+              className={`flex items-center gap-1 shrink-0 rounded-lg border border-cream-border px-2.5 py-1.5 text-xs font-bold tabular-nums hover:border-brand hover:text-brand transition-colors ${tone(s.claimed, s.bought)}`}
             >
               {s.claimed - s.bought === 0 ? (
                 <svg
@@ -570,7 +570,7 @@ function NeighbourLink({
     return <span className={`${shared} text-faint bg-cream/50`}>{label}</span>
   }
   return (
-    <Link href={`/dashboard/shop/${post.id}`} className={`${shared} bg-white hover:border-brand`}>
+    <Link href={`/dashboard/shop/${post.id}`} className={`${shared} bg-white hover:border-brand hover:text-brand`}>
       {label}
     </Link>
   )

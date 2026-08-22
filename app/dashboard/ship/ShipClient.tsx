@@ -265,7 +265,7 @@ export default function ShipClient() {
             disabled={bulkShipping}
             aria-label={allSelected ? "Deselect all" : "Select all"}
             title={allSelected ? "Deselect all" : "Select all"}
-            className="hidden md:inline-flex items-center gap-1.5 shrink-0 rounded-lg border border-cream-border h-[38px] px-3 text-sm text-muted-strong bg-white hover:border-brand transition-colors disabled:opacity-50"
+            className="hidden md:inline-flex items-center gap-1.5 shrink-0 rounded-lg border border-cream-border h-[38px] px-3 text-sm text-muted-strong bg-white hover:border-brand hover:text-brand transition-colors disabled:opacity-50"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M9 11l3 3L22 4" />

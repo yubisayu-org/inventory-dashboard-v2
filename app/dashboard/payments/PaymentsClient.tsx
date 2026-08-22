@@ -373,7 +373,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
       <button
         onClick={() => { setAddOpen((o) => !o); setEditingRow(null) }}
         className={`inline-flex items-center gap-1.5 h-[38px] px-4 text-sm rounded-lg border transition-colors ${
-          addOpen ? "bg-brand-light text-brand border-brand/30" : "bg-brand text-white border-transparent hover:bg-brand-hover"
+          addOpen ? "bg-brand-light text-brand border-brand/30" : "bg-brand text-white border-transparent hover:bg-brand-dark"
         }`}
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -491,7 +491,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
               type="button"
               onClick={() => setFilterOpen((o) => !o)}
               aria-label="Filters"
-              className="h-full border border-cream-border rounded-lg px-3 py-2 text-sm text-muted-strong bg-white flex items-center gap-1.5 hover:border-brand transition-colors"
+              className="h-full border border-cream-border rounded-lg px-3 py-2 text-sm text-muted-strong bg-white flex items-center gap-1.5 hover:border-brand hover:text-brand transition-colors"
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
@@ -815,7 +815,7 @@ function EditPaymentModal({
             type="button"
             onClick={handleDelete}
             aria-label="Delete"
-            className="inline-flex items-center justify-center h-[38px] border border-cream-border rounded-lg px-3 text-sm text-faint hover:border-brand disabled:opacity-50 transition-colors"
+            className="inline-flex items-center justify-center h-[38px] border border-cream-border rounded-lg px-3 text-sm text-faint hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M10 11v6" /><path d="M14 11v6" />
@@ -956,7 +956,7 @@ function AddPaymentForm({
           <button
             type="submit"
             disabled={submitting || !canSubmit}
-            className="px-4 py-2 text-sm font-medium rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+            className="px-4 py-2 text-sm font-medium rounded-lg bg-brand text-white hover:bg-brand-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
           >
             {submitting ? "Saving…" : "Add"}
           </button>

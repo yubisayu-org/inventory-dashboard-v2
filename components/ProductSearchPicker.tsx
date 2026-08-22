@@ -74,7 +74,7 @@ export default function ProductSearchPicker({
               disabled={already || pickingId !== null}
               onClick={() => handlePick(p)}
               className={`flex items-center gap-2 text-left px-2 py-1.5 rounded-lg text-xs border ${
-                already || pickingId !== null ? "border-cream-border bg-cream-border/40 text-faint cursor-not-allowed" : "border-cream-border hover:border-brand"
+                already || pickingId !== null ? "border-cream-border bg-cream-border/40 text-faint cursor-not-allowed" : "border-cream-border hover:border-brand hover:text-brand"
               }`}
             >
               <span className="flex-1">{p.name}</span>

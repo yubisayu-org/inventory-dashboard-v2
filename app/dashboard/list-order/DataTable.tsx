@@ -439,7 +439,7 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
         type="button"
         onClick={() => setAddOpen((o) => !o)}
         className={`hidden md:inline-flex items-center gap-1.5 h-[38px] px-4 text-sm rounded-lg border transition-colors ${
-          addOpen ? "bg-brand-light text-brand border-brand/30" : "bg-brand text-white border-transparent hover:bg-brand-hover"
+          addOpen ? "bg-brand-light text-brand border-brand/30" : "bg-brand text-white border-transparent hover:bg-brand-dark"
         }`}
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -1163,7 +1163,7 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
               type="button"
               onClick={() => { onClose(); onDelete(row.rowNumber) }}
               aria-label="Delete"
-              className="inline-flex items-center justify-center h-[38px] border border-cream-border rounded-lg px-3 text-sm text-faint hover:border-brand disabled:opacity-50 transition-colors"
+              className="inline-flex items-center justify-center h-[38px] border border-cream-border rounded-lg px-3 text-sm text-faint hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M10 11v6" /><path d="M14 11v6" />
@@ -1172,7 +1172,7 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
             <button type="button" onClick={onClose} className="ml-auto px-4 py-2 text-sm rounded-lg border border-cream-border text-muted-strong hover:border-brand hover:text-brand transition-colors">
               Cancel
             </button>
-            <button type="submit" disabled={saving} className="px-4 py-2 text-sm font-medium rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors disabled:opacity-50">
+            <button type="submit" disabled={saving} className="px-4 py-2 text-sm font-medium rounded-lg bg-brand text-white hover:bg-brand-dark transition-colors disabled:opacity-50">
               {saving ? "Saving…" : "Save"}
             </button>
           </div>
@@ -1200,7 +1200,7 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
             <button type="button" onClick={() => setConfirmPriceOpen(false)} disabled={saving} className="px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
               Cancel
             </button>
-            <button type="button" onClick={() => void performSave()} disabled={saving} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-hover disabled:opacity-50 transition-colors">
+            <button type="button" onClick={() => void performSave()} disabled={saving} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-dark disabled:opacity-50 transition-colors">
               {saving ? "Saving…" : "Save & update price"}
             </button>
           </div>
