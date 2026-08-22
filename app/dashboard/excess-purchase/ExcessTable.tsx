@@ -48,6 +48,47 @@ function ReasonBadge({ reason }: { reason: ExcessReason }) {
 type UpdatedRow = { rowNumber: number; event: string; customer: string; oldUnitBuy: number; unitBuy: number }
 type ApplyResult = { filled: UpdatedRow[]; remainder: number }
 
+/**
+ * Ready stock the catalogue cannot offer.
+ *
+ * `items` is free text and the price is found by matching it exactly against
+ * a product name, so one stray space leaves a row unpriced — and an unpriced
+ * row is hidden from customers rather than shown at zero. Hiding it is right;
+ * hiding it silently would let stock sit invisible for months, so it is said
+ * out loud here, on the screen where the name can be fixed.
+ */
+function HiddenFromCustomers() {
+  const [hidden, setHidden] = useState<{ id: number; name: string; qty: number }[]>([])
+
+  useEffect(() => {
+    fetch("/api/ready-stock-hidden", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => d && setHidden(d.hidden))
+      .catch(() => {})
+  }, [])
+
+  if (hidden.length === 0) return null
+
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+      <p className="font-medium">
+        {hidden.length} {hidden.length === 1 ? "item is" : "items are"} not visible to customers
+      </p>
+      <p className="text-xs mt-0.5">
+        Their names match no product, so there is no price to show. Rename them to match a
+        product exactly and they appear in the customer&rsquo;s Ready stock.
+      </p>
+      <ul className="mt-2 flex flex-col gap-0.5">
+        {hidden.map((h) => (
+          <li key={h.id} className="text-xs tabular-nums">
+            {h.qty}× <span className="font-medium">{h.name}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 export default function ExcessTable() {
   const options = useSheetOptions()
   const [rows, setRows] = useState<ExcessRow[]>([])
@@ -415,6 +456,7 @@ export default function ExcessTable() {
 
   return (
     <div className="space-y-3">
+      <HiddenFromCustomers />
       {/* Stat cards */}
       <div className="grid grid-cols-2 gap-2 sm:gap-4">
         <div className="rounded-xl border border-cream-border border-l-4 border-l-brand bg-white px-3 py-3 sm:px-5 sm:py-4">
