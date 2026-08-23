@@ -15,6 +15,7 @@ import { FALLBACK_ROUTES, routeOf, routeKeyOf, daysInTransit, transitStatus, typ
 import SelectionActionBar from "@/components/SelectionActionBar"
 import OverbuyTransitList from "@/components/OverbuyTransitList"
 import { groupItems, buildRows, rowKey } from "@/lib/grouped-rows"
+import { TRANSIT_COL } from "@/components/transit-columns"
 
 function computeFill(orders: ArrivalListOrder[], quantityArrived: number) {
   const { allocations, unallocated, excess } = allocateFifo(orders, (o) => o.pending, quantityArrived)
@@ -234,7 +235,7 @@ export default function ArrivalListClient() {
    */
   // Air cargo by default. "All" is every parcel still in transit across every
   // event, which is the largest view and rarely the one you opened the page for.
-  const [route, setRoute] = useState<string>("cji")
+  const [route, setRoute] = useState<string>("air")
   /**
    * The routes as Settings has them. Falls back to the built-in three until
    * the fetch lands, so the tabs never flash empty; a changed prefix simply
@@ -606,19 +607,19 @@ export default function ArrivalListClient() {
                   route — a trip name like POCN202603, or a receipt plus its
                   clock. One width for both, wide enough for either: sizing it
                   per tab slid every other column sideways on a tab switch. */}
-              <th className="text-left px-4 py-2.5 font-medium text-muted w-44">
+              <th className={`text-left px-4 py-2.5 font-medium text-muted ${TRANSIT_COL.group}`}>
                 {route === "all" ? "Event" : "Parcel"}
               </th>
-              <th className="text-left px-4 py-2.5 font-medium text-muted w-36">Store</th>
+              <th className={`text-left px-4 py-2.5 font-medium text-muted ${TRANSIT_COL.store}`}>Store</th>
               <th className="text-left px-4 py-2.5 font-medium text-muted">Product</th>
               {/* One width for both views — a receipt with its clock under
                   "All", a whole trip code under a route. Switching tabs should
                   not shift the columns under your eye. */}
-              <th className="text-left px-4 py-2.5 font-medium text-muted w-40">
+              <th className={`text-left px-4 py-2.5 font-medium text-muted ${TRANSIT_COL.detail}`}>
                 {route === "all" ? "Receipt" : "Event"}
               </th>
-              <th className="text-right px-4 py-2.5 font-medium text-muted w-14">Qty</th>
-              <th className="px-4 py-2.5 w-10" />
+              <th className={`text-right px-4 py-2.5 font-medium text-muted ${TRANSIT_COL.qty}`}>Qty</th>
+              <th className={`px-4 py-2.5 ${TRANSIT_COL.action}`} />
             </tr>
           </thead>
           <tbody>

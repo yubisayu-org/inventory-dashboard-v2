@@ -59,7 +59,8 @@ export default function DispatchRoutesSection() {
         {saved && <span className="text-xs text-green-700">Saved</span>}
       </div>
       <p className="text-xs text-muted">
-        The code you write at the front of a dispatch receipt. The receiving list reads it
+        The codes you write at the front of a dispatch receipt, separated by commas
+        when a route answers to more than one. The receiving list reads them
         to file each parcel under a route — a box written <span className="font-mono">MNC-3109</span> is
         sea cargo — and to say when one is taking too long.
       </p>
@@ -71,7 +72,7 @@ export default function DispatchRoutesSection() {
         <>
           <div className="hidden sm:grid grid-cols-[1fr_7rem_6rem_6rem] gap-2 text-[10px] font-bold uppercase tracking-wide text-muted px-1">
             <span>Route</span>
-            <span>Code</span>
+            <span>Codes</span>
             <span>Chase after</span>
             <span>Late after</span>
           </div>
@@ -83,11 +84,20 @@ export default function DispatchRoutesSection() {
                 className={inputCls}
                 aria-label={`${r.key} name`}
               />
+              {/* Comma-separated, because one route can answer to several
+                  codes — the sea forwarder books under MNC and MU alike. Split
+                  on save rather than on every keystroke, so a half-typed
+                  "MNC, M" is not read as a code of its own while you type. */}
               <input
-                value={r.prefix}
-                onChange={(e) => field(r.key, { prefix: e.target.value.toUpperCase() })}
+                value={r.prefixes.join(", ")}
+                onChange={(e) =>
+                  field(r.key, {
+                    prefixes: e.target.value.toUpperCase().split(",").map((p) => p.trim()),
+                  })
+                }
                 className={`${inputCls} font-mono`}
-                aria-label={`${r.key} code`}
+                aria-label={`${r.key} codes`}
+                placeholder="MNC, MU"
               />
               {/* Days rather than weeks: a receipt is checked against a date,
                   and "56" is unambiguous where "8 weeks" invites rounding. */}
