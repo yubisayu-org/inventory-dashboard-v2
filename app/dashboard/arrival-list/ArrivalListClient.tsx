@@ -709,7 +709,17 @@ export default function ArrivalListClient() {
             <button
               key={key}
               type="button"
-              onClick={() => { setRoute(key); clearSelection() }}
+              // The collapse sets are keyed by whatever the first column groups
+              // by, and that changes with the tab: trip codes under "All",
+              // receipt codes under a route. Carrying the old keys over means
+              // they match nothing, so every group silently reopens — and
+              // collapses again when you switch back. Reset with the tab.
+              onClick={() => {
+                setRoute(key)
+                clearSelection()
+                setCollapsedDesktopEvents(new Set())
+                setCollapsedDesktopStores(new Set())
+              }}
               className={`flex-1 shrink-0 flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
                 active ? "bg-brand text-white" : "text-muted hover:text-foreground"
               }`}
@@ -782,15 +792,18 @@ export default function ArrivalListClient() {
         {/* table-fixed: locks Event/Store/Receipt/Qty/action to their declared
             widths regardless of content, so Receipt's truncate actually clips
             (it silently didn't under auto layout) and Qty/action never get
-            pushed out of view — no horizontal scroll, no wrap. Product has no
-            fixed width (gets whatever's left) and stays nowrap. */}
+            pushed out of view — no horizontal scroll, no wrap. Product takes
+            what's left, and clips: table-fixed sizes a cell but does not clip
+            it, so a long name painted straight over the Receipt column until
+            the cell got overflow-hidden and the name got truncate. */}
         <table className="w-full text-sm border-collapse table-fixed">
           <thead>
             <tr className="border-b border-cream-border bg-surface-muted/80">
               {/* The first column is the trip under "All" and the parcel under a
-                  route, so both its heading and its width follow what it holds:
-                  a trip name like POCN202603, or a receipt plus its clock. */}
-              <th className={`text-left px-4 py-2.5 font-medium text-muted ${route === "all" ? "w-44" : "w-40"}`}>
+                  route — a trip name like POCN202603, or a receipt plus its
+                  clock. One width for both, wide enough for either: sizing it
+                  per tab slid every other column sideways on a tab switch. */}
+              <th className="text-left px-4 py-2.5 font-medium text-muted w-44">
                 {route === "all" ? "Event" : "Parcel"}
               </th>
               <th className="text-left px-4 py-2.5 font-medium text-muted w-36">Store</th>
@@ -871,7 +884,7 @@ export default function ArrivalListClient() {
                       </div>
                     </td>
                   )}
-                  <td className="px-4 py-2.5">
+                  <td className="px-4 py-2.5 overflow-hidden">
                     <div className="flex items-center gap-2">
                       {row.item.totalPending > 0 && (
                         <input
@@ -883,7 +896,7 @@ export default function ArrivalListClient() {
                         />
                       )}
                       <div className="flex items-baseline gap-1.5 min-w-0">
-                        <span className="text-foreground whitespace-nowrap">{row.item.productName}</span>
+                        <span className="text-foreground truncate">{row.item.productName}</span>
                         <CustomerBadge
                           orders={row.item.orders.map((o) => ({ customer: o.customer, qty: o.pending, paidStatus: o.paidStatus }))}
                         />
