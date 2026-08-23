@@ -9,6 +9,36 @@ import { fetchPaidStatusMap, compareOrderPriority, type PaidStatus } from "./sho
 import { appendExcessPurchase, reduceOrderRefundOnly } from "./orders"
 import { notifyCustomer } from "./announcements"
 
+/** Refusal to ship one half of a pair without saying so out loud. */
+export class PairedShipmentError extends Error {
+  constructor(message: string, readonly partners: string[]) {
+    super(message)
+    this.name = "PairedShipmentError"
+  }
+}
+
+/** The other events this one was asked to travel with. */
+async function pairedPartners(customer: string, event: string): Promise<string[]> {
+  const custKey = normalizeId(customer)
+  const rows = await sql<{ event: string }[]>`
+    WITH mine AS (
+      SELECT p.merge_key
+        FROM customer_shipping_prefs p
+        JOIN customers c ON c.id = p.customer_id
+       WHERE p.event = ${event}
+         AND p.merge_key IS NOT NULL
+         AND lower(replace(c.instagram_id, '@', '')) = ${custKey}
+    )
+    SELECT p.event
+      FROM customer_shipping_prefs p
+      JOIN customers c ON c.id = p.customer_id
+      JOIN mine ON mine.merge_key = p.merge_key
+     WHERE p.event <> ${event}
+       AND lower(replace(c.instagram_id, '@', '')) = ${custKey}
+  `
+  return rows.map((r) => r.event)
+}
+
 // ─── Ship Orders ────────────────────────────────────────────────────────────
 
 function buildSearchFilters(opts: { event?: string; search?: string }) {
@@ -33,6 +63,7 @@ function buildShipGroups(
   addressMap: Map<string, RequestedAddress>,
   splitAsked: Set<string>,
   splitBilled: Set<string>,
+  pairing: Map<string, string>,
 ): ShipCustomer[] {
   const groupMap = new Map<string, { customer: string; event: string; rows: Record<string, unknown>[] }>()
   for (const row of orderRows) {
@@ -71,6 +102,8 @@ function buildShipGroups(
     const totalToShipGram = orders.reduce((s, o) => s + o.gram * o.toShip, 0)
     const totalToShip = orders.reduce((s, o) => s + o.toShip, 0)
     const totalHold = orders.reduce((s, o) => s + o.unitHold, 0)
+    const units = orders.reduce((s, o) => s + o.unit, 0)
+    const totalShipped = orders.reduce((s, o) => s + o.unitShip, 0)
     const ongkirPerKg = ongkirMap.get(`${customerKey}|${event}`) ?? 0
 
     // Arrival-first status: compare arrived vs ordered units per line.
@@ -87,11 +120,23 @@ function buildShipGroups(
     // asked to wait, so we surface that even if some other units already went out.
     // She asked for the arrived part to go early. That outranks "partial",
     // which is a card you skip — this one is a card with work on it.
-    const askedSplit = splitAsked.has(`${customerKey}|${event}`) && totalToShip > 0
-    const status: ShipStatus = !anyArrived
+    // The wish, not its current effect: a parked card has no toShip, and it is
+    // still an order she asked to send early.
+    const askedSplit = splitAsked.has(`${customerKey}|${event}`)
+    // A pairing outranks every other status: the pair is the unit of work, and
+    // the Gabung tab is the only place it can be acted on. Being held is not a
+    // competing state here — parking is how pairing keeps the parcel still.
+    const mergeKey = pairing.get(`${customerKey}|${event}`) ?? null
+    const partners = mergeKey
+      ? [...pairing.entries()]
+          .filter(([k, v]) => v === mergeKey && k !== `${customerKey}|${event}`)
+          .map(([k]) => k.split("|")[1])
+      : []
+    const bundled = partners.length > 0 && totalShipped < units
+    const status: ShipStatus = bundled ? "paired" : !anyArrived
       ? "not_arrived"
       : !allArrived
-        ? (totalHold > 0 ? "hold" : askedSplit ? "split_requested" : "partial")
+        ? (totalHold > 0 ? "hold" : askedSplit && totalToShip > 0 ? "split_requested" : "partial")
         : totalHold > 0
           ? "hold"
           : totalToShip > 0
@@ -115,6 +160,8 @@ function buildShipGroups(
       splitRequested: askedSplit,
       splitExtraOngkir: askedSplit ? splitExtraOngkir(orders, ongkirPerKg) : 0,
       splitCharged: splitBilled.has(`${customerKey}|${event}`),
+      mergeKey,
+      pairedWith: partners,
     }]
   })
 }
@@ -169,6 +216,34 @@ type RequestedAddress = { address: string; otherArea: boolean }
  * is what the customer reads on her own invoice.
  */
 export const SPLIT_ONGKIR_NOTE = "Ongkir kirim duluan"
+
+/** The pairing groups these customers have asked for. */
+async function fetchPairings(
+  customerIds: Set<string>,
+  eventNames: Set<string>,
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>()
+  if (customerIds.size === 0 || eventNames.size === 0) return map
+  // Every event in a group this scope touches, not only the ones in scope: a
+  // pairing filtered down to one member is not a pairing, and the card would
+  // quietly go back to looking shippable on its own.
+  const rows = await sql`
+    WITH keys AS (
+      SELECT DISTINCT p.customer_id, p.merge_key
+        FROM customer_shipping_prefs p
+        JOIN customers c ON c.id = p.customer_id
+       WHERE p.merge_key IS NOT NULL
+         AND p.event = ANY(${[...eventNames]})
+         AND lower(replace(c.instagram_id, '@', '')) = ANY(${[...customerIds]})
+    )
+    SELECT p.event, lower(replace(c.instagram_id, '@', '')) AS norm_cust, p.merge_key
+      FROM customer_shipping_prefs p
+      JOIN keys k ON k.customer_id = p.customer_id AND k.merge_key = p.merge_key
+      JOIN customers c ON c.id = p.customer_id
+  `
+  for (const r of rows) map.set(`${r.norm_cust}|${r.event}`, String(r.merge_key))
+  return map
+}
 
 /** Who has asked for the arrived part to go early. */
 async function fetchSplitRequests(
@@ -269,6 +344,41 @@ export interface ShipOrdersFiltered {
   counts: Record<ShipSegment, number>
 }
 
+/**
+ * How many paired groups are ready to leave.
+ *
+ * The pair decides its own timing, not each event in it: one box has one
+ * departure. Every member asking to go early means the box goes now with
+ * whatever has arrived; anything else means it waits for the slowest member,
+ * which is what pairing asks for. A mixed pair therefore waits — you cannot
+ * half-send a shared box.
+ */
+function countReadyBundles(groups: ShipCustomer[], splitAsked: Set<string>): number {
+  const byKey = new Map<string, ShipCustomer[]>()
+  for (const g of groups) {
+    if (g.status !== "paired" || !g.mergeKey) continue
+    const key = `${normalizeId(g.customer)}|${g.mergeKey}`
+    const list = byKey.get(key)
+    if (list) list.push(g)
+    else byKey.set(key, [g])
+  }
+  let ready = 0
+  for (const members of byKey.values()) {
+    if (members.length < 2) continue
+    // toShip is zero on a paired card by design — the pairing parked it — so
+    // readiness counts what has arrived and not yet shipped, which is what the
+    // box would actually contain once combining releases the parking.
+    const waiting = (m: ShipCustomer) =>
+      m.orders.reduce((n, o) => n + Math.max(0, o.unitArrive - o.unitShip), 0)
+    const allSplit = members.every((m) => splitAsked.has(`${normalizeId(m.customer)}|${m.event}`))
+    const done = allSplit
+      ? members.some((m) => waiting(m) > 0)
+      : members.every((m) => m.orders.every((o) => o.unitArrive >= o.unit))
+    if (done) ready++
+  }
+  return ready
+}
+
 export async function getShipOrdersFiltered(opts: {
   segment?: ShipSegment
   search?: string
@@ -302,23 +412,24 @@ export async function getShipOrdersFiltered(opts: {
 
   // Fetch customer details, per-event ongkir, and payment status concurrently —
   // all keyed by normalized customer handle (ongkir/payment additionally by event).
-  const [detailMap, ongkirMap, addressMap, splitAsked, splitBilled, paymentRows] = await Promise.all([
+  const [detailMap, ongkirMap, addressMap, splitAsked, splitBilled, pairing, paymentRows] = await Promise.all([
     fetchCustomerDetails(customerIds),
     fetchEventOngkir(customerIds, eventNames),
     fetchRequestedAddresses(customerIds, eventNames),
     fetchSplitRequests(customerIds, eventNames),
     fetchSplitCharges(customerIds, eventNames),
+    fetchPairings(customerIds, eventNames),
     getPaymentStatus(event),
   ])
   const paymentMap = new Map<string, PaymentStatus>()
   for (const row of paymentRows) paymentMap.set(`${row.customer}|${row.event}`, row.status)
 
-  const allGroups = buildShipGroups(orderRows, detailMap, paymentMap, ongkirMap, addressMap, splitAsked, splitBilled)
+  const allGroups = buildShipGroups(orderRows, detailMap, paymentMap, ongkirMap, addressMap, splitAsked, splitBilled, pairing)
 
   // Counts and the filtered list both derive from the same in-memory status,
   // so the tab badges can never drift from the rows actually shown.
   const counts: Record<ShipSegment, number> = {
-    all: 0, not_arrived: 0, partial: 0, split_requested: 0, ready: 0, ready_unpaid: 0, hold: 0, shipped: 0,
+    all: 0, not_arrived: 0, partial: 0, split_requested: 0, paired: 0, ready: 0, ready_unpaid: 0, hold: 0, shipped: 0,
   }
   const filteredGroups: ShipCustomer[] = []
   for (const g of allGroups) {
@@ -326,6 +437,11 @@ export async function getShipOrdersFiltered(opts: {
     counts[g.status]++
     if (segment === "all" || g.status === segment) filteredGroups.push(g)
   }
+
+  // The Gabung badge counts pairs that can go out, not cards that are paired.
+  // A count that never returns to zero stops being read, and a pair waiting on
+  // stock is not work — it is just waiting.
+  counts.paired = countReadyBundles(allGroups, splitAsked)
 
   return {
     groups: filteredGroups,
@@ -335,15 +451,33 @@ export async function getShipOrdersFiltered(opts: {
 }
 
 export async function shipCustomerOrders(params: ShipOrdersParams, actor?: string | null): Promise<{ shippingId: string }> {
-  const { customer, event, orders, weightKg, ongkirPerKg, tempAddress } = params
+  const { customer, event, orders, weightKg, ongkirPerKg, tempAddress, force } = params
   // Empty-string and undefined both mean "no override" — store NULL so the
   // label flow can fall back to the customer's profile address.
   const tempAddressValue = tempAddress && tempAddress.trim() ? tempAddress : null
 
+  // Checked here rather than in the button, so a bulk ship and a stray click
+  // both meet it. `force` is the Ship-anyway confirm, and it clears the
+  // pairing on the way past: a group of one is not a group, and the partner
+  // must not be left promising a box that already left without it.
+  if (!force) {
+    const partners = await pairedPartners(customer, event)
+    if (partners.length > 0) {
+      throw new PairedShipmentError(
+        `${event} dipasangkan dengan ${partners.join(", ")} oleh customer.`,
+        partners,
+      )
+    }
+  }
+
   return await sql.begin(async (tx) => {
     await tx`SELECT set_config('app.actor', ${actor ?? ""}, true)`
+    // Only the ids we generate are numbers. A hand-entered or imported one
+    // ("SHIP-2600", a courier's own reference) makes the cast throw and takes
+    // every future shipment down with it, so they are skipped rather than cast.
     const [maxRow] = await tx`
-      SELECT COALESCE(MAX(shipping_id::integer), 0) AS max_id FROM shipments
+      SELECT COALESCE(MAX(shipping_id::integer), 0) AS max_id
+        FROM shipments WHERE shipping_id ~ '^[0-9]+$'
     `
     const shippingId = String((maxRow.max_id ?? 0) + 1).padStart(4, "0")
 
@@ -364,6 +498,17 @@ export async function shipCustomerOrders(params: ShipOrdersParams, actor?: strin
         SET unit_ship = COALESCE(unit_ship, 0) + ${order.toShip}, updated_at = NOW()
         WHERE id = ${order.rowNumber}
       `
+    }
+
+    // Shipping alone against a pairing dissolves it, here rather than later:
+    // the partner is now shipping on its own too, and its card should say so.
+    if (force) {
+      await tx`
+        UPDATE customer_shipping_prefs SET merge_key = NULL, updated_at = NOW()
+         WHERE merge_key = (SELECT p.merge_key FROM customer_shipping_prefs p
+                              JOIN customers c ON c.id = p.customer_id
+                             WHERE p.event = ${event}
+                               AND lower(replace(c.instagram_id, '@', '')) = ${normalizeId(customer)})`
     }
 
     // Her inbox, in the same transaction: a parcel that shipped without a
@@ -406,6 +551,19 @@ export async function shipMergedCustomerOrders(params: ShipMergedParams, actor?:
 
   return await sql.begin(async (tx) => {
     await tx`SELECT set_config('app.actor', ${actor ?? ""}, true)`
+
+    // Pairing parks both parcels, and this is the door they leave by — so the
+    // holds come off here rather than needing a Release first. Anything the
+    // customer asked to hold outright is untouched: that is a different wish.
+    for (const g of groups) {
+      const [pref] = await tx<{ mode: string }[]>`
+        SELECT p.mode FROM customer_shipping_prefs p
+          JOIN customers c ON c.id = p.customer_id
+         WHERE p.event = ${g.event}
+           AND lower(replace(c.instagram_id, '@', '')) = ${custKey}`
+      if (pref?.mode !== "hold") await releasePackingList({ customer, event: g.event }, tx)
+    }
+
     // Physical weight of what's actually in the box (rounded up once overall).
     let totalShippedGram = 0
     for (const g of groups) for (const o of g.orders) totalShippedGram += (o.gram || 0) * o.toShip
@@ -432,7 +590,9 @@ export async function shipMergedCustomerOrders(params: ShipMergedParams, actor?:
     const discount = Math.max(0, perEventOngkirTotal - combinedBillingOngkir)
 
     // One shipping_id for the whole package — shared across the per-event rows.
-    const [maxRow] = await tx`SELECT COALESCE(MAX(shipping_id::integer), 0) AS max_id FROM shipments`
+    const [maxRow] = await tx`
+      SELECT COALESCE(MAX(shipping_id::integer), 0) AS max_id
+        FROM shipments WHERE shipping_id ~ '^[0-9]+$'`
     const shippingId = String(((maxRow.max_id ?? 0) as number) + 1).padStart(4, "0")
     const mergeGroup = randomUUID()
 
@@ -468,6 +628,14 @@ export async function shipMergedCustomerOrders(params: ShipMergedParams, actor?:
         VALUES (${groups[0].event}, ${normCust}, ${`Gabung ongkir dengan ${others}`}, ${-discount})
       `
     }
+
+    // The pairing has happened. Leaving the key behind would show her a card
+    // still promising a box that is already in the courier's van.
+    await tx`
+      UPDATE customer_shipping_prefs SET merge_key = NULL, updated_at = NOW()
+       WHERE event = ANY(${events})
+         AND customer_id IN (SELECT id FROM customers
+                              WHERE lower(replace(instagram_id, '@', '')) = ${custKey})`
 
     const units = groups.reduce((n, g) => n + g.orders.reduce((m, o) => m + o.toShip, 0), 0)
     await notifyCustomer(customer, {
@@ -559,7 +727,9 @@ export async function reapplyHoldsForArrival(
       FROM customer_shipping_prefs p
       JOIN customers c ON c.id = p.customer_id
      WHERE p.event = ${event}
-       AND p.mode = 'hold'
+       -- A pairing parks the parcel exactly as a hold does, so it has to be
+       -- re-applied on arrival for exactly the same reason.
+       AND (p.mode = 'hold' OR p.merge_key IS NOT NULL)
        AND lower(replace(c.instagram_id, '@', '')) = ANY(${keys})
   `
   for (const row of rows) {

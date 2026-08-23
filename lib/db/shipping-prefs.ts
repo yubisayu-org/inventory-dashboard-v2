@@ -231,6 +231,10 @@ export async function setMergeGroup(
 
   const key = wanted.length >= 2 ? randomUUID() : null
 
+  const [customer] = await db<{ instagram_id: string }[]>`
+    SELECT instagram_id FROM customers WHERE id = ${customerId}`
+  if (!customer) throw new ShippingPrefError("unknown")
+
   // One transaction, so a group is never half-formed: an event pointing at a
   // key its partner never got is worse than no grouping at all.
   await sql.begin(async (tx) => {
@@ -248,6 +252,29 @@ export async function setMergeGroup(
         DO UPDATE SET merge_key = ${key}, updated_at = NOW()`
     }
   })
+
+  // Pairing parks the parcels. Without this the paired events sit in Siap
+  // Kirim looking like any other order, and one bulk ship breaks the pairing
+  // with nobody told. Combining is what lets them go again.
+  const prefsNow = await getShippingPrefs(customerId, db)
+  const modeOf = (e: string) => prefsNow.find((p) => p.event === e)?.mode
+  for (const event of wanted) {
+    await holdPackingList({ customer: customer.instagram_id, event })
+  }
+  for (const event of orphans) {
+    // An outright hold is a separate wish and survives losing its partner.
+    if (modeOf(event) !== "hold") {
+      await releasePackingList({ customer: customer.instagram_id, event })
+    }
+  }
+  // Naming one event, or none, is how a pairing is undone.
+  if (!key) {
+    for (const event of wanted) {
+      if (modeOf(event) !== "hold") {
+        await releasePackingList({ customer: customer.instagram_id, event })
+      }
+    }
+  }
 
   return key
 }

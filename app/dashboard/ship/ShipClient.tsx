@@ -26,6 +26,7 @@ const SEGMENTS: { id: Segment; label: string }[] = [
   { id: "not_arrived", label: "Belum Tiba" },
   { id: "partial", label: "Tiba Sebagian" },
   { id: "split_requested", label: "Kirim Duluan" },
+  { id: "paired", label: "Gabung" },
   { id: "ready_unpaid", label: "Belum Bayar" },
   { id: "ready", label: "Siap Kirim" },
   { id: "hold", label: "Tunda Kirim" },
@@ -53,6 +54,25 @@ function HoldIcon() {
 }
 
 // Card badge styling per arrival/ship status (mirrors SEGMENTS labels).
+/**
+ * Units that would travel if this card shipped now.
+ *
+ * Not `toShip`, which is zero on a paired card by design — pairing parks the
+ * parcel, and combining is what unparks it. Anything deciding whether a pair
+ * can go has to look past its own parking, or the pair waits for itself.
+ */
+function unparkedToShip(c: ShipCustomer): number {
+  return c.status === "paired"
+    ? c.orders.reduce((n, o) => n + Math.max(0, o.unitArrive - o.unitShip), 0)
+    : c.totalToShip
+}
+
+function unparkedOrders(c: ShipCustomer) {
+  return c.orders
+    .map((o) => ({ ...o, toShip: c.status === "paired" ? Math.max(0, o.unitArrive - o.unitShip) : o.toShip }))
+    .filter((o) => o.toShip > 0)
+}
+
 const STATUS_BADGE: Record<ShipStatus, { label: string; cls: string }> = {
   not_arrived: { label: "Belum Tiba", cls: "bg-surface-sunken text-muted" },
   partial: { label: "Tiba Sebagian", cls: "bg-amber-100 text-amber-700" },
@@ -60,6 +80,7 @@ const STATUS_BADGE: Record<ShipStatus, { label: string; cls: string }> = {
   ready_unpaid: { label: "Belum Bayar", cls: "bg-orange-100 text-orange-700" },
   hold: { label: "Tunda Kirim", cls: "bg-purple-100 text-purple-700" },
   split_requested: { label: "Kirim Duluan", cls: "bg-blue-100 text-blue-700" },
+  paired: { label: "Gabung", cls: "bg-blue-100 text-blue-700" },
   shipped: { label: "Sudah Dikirim", cls: "bg-green-100 text-green-700" },
 }
 
@@ -77,7 +98,7 @@ export default function ShipClient() {
   const router = useRouter()
   const sheetOptions = useSheetOptions()
   const [groups, setGroups] = useState<ShipCustomer[]>([])
-  const [counts, setCounts] = useState<Record<Segment, number>>({ all: 0, not_arrived: 0, partial: 0, split_requested: 0, ready: 0, ready_unpaid: 0, hold: 0, shipped: 0 })
+  const [counts, setCounts] = useState<Record<Segment, number>>({ all: 0, not_arrived: 0, partial: 0, split_requested: 0, paired: 0, ready: 0, ready_unpaid: 0, hold: 0, shipped: 0 })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [segment, setSegment] = useState<Segment>("ready")
@@ -145,6 +166,36 @@ export default function ShipClient() {
   function refresh() {
     fetchData(segment, debouncedSearch, eventFilter)
   }
+
+  // One card per pair. The server marks the members and hands over the key; the
+  // pair's own readiness is decided here, from the same rule the badge counts:
+  // every member early means the box goes now, anything else waits for the
+  // slowest, and a pair with one of each waits — a shared box has one departure.
+  const bundles = (() => {
+    const byKey = new Map<string, ShipCustomer[]>()
+    for (const g of groups) {
+      if (g.status !== "paired" || !g.mergeKey) continue
+      const key = `${normalizeId(g.customer)}|${g.mergeKey}`
+      const list = byKey.get(key)
+      if (list) list.push(g)
+      else byKey.set(key, [g])
+    }
+    return [...byKey.entries()]
+      .filter(([, members]) => members.length >= 2)
+      .map(([key, members]) => {
+        const allSplit = members.every((m) => m.splitRequested)
+        const mixed = !allSplit && members.some((m) => m.splitRequested)
+        const complete = (m: ShipCustomer) => m.orders.every((o) => o.unitArrive >= o.unit)
+        return {
+          key,
+          members,
+          allSplit,
+          mixed,
+          ready: allSplit ? members.some((m) => unparkedToShip(m) > 0) : members.every(complete),
+          waitingFor: members.filter((m) => !complete(m)).map((m) => m.event),
+        }
+      })
+  })()
 
   const readyFiltered = groups.filter((c) => c.totalToShip > 0)
   const allSelected = readyFiltered.length > 0 && readyFiltered.every((c) => selected.has(`${c.customer}|${c.event}`))
@@ -351,7 +402,15 @@ export default function ShipClient() {
               />
             </div>
           )}
-          {pageGroups.map((c) => {
+          {segment === "paired" && bundles.map((b) => (
+            <BundleCard
+              key={b.key}
+              bundle={b}
+              onDone={() => { setSegment("all"); refresh() }}
+              onOpenInvoice={() => setInvoiceCustomer(b.members[0].customer)}
+            />
+          ))}
+          {segment !== "paired" && pageGroups.map((c) => {
             const key = `${c.customer}|${c.event}`
             return (
               <CustomerCard
@@ -922,6 +981,7 @@ function ShipConfirmModal({
   const [useTempAddress, setUseTempAddress] = useState(Boolean(requestedAddress))
   const [tempAddress, setTempAddress] = useState(requestedAddress ?? profileAddress)
   const [msgCopied, setMsgCopied] = useState(false)
+  const [pairedWarning, setPairedWarning] = useState<string[] | null>(null)
   const toShipRows = c.orders.filter((o) => o.toShip > 0)
   const templates = useMessageTemplates()
   const businessProfile = useBusinessProfile()
@@ -952,11 +1012,13 @@ function ShipConfirmModal({
   const urlRef = useRef<string | null>(null)
   useEffect(() => () => { if (urlRef.current) URL.revokeObjectURL(urlRef.current) }, [])
 
-  async function handleConfirm() {
+  async function handleConfirm(force = false) {
     setShipping(true)
     setError(null)
+    setPairedWarning(null)
     const effectiveAddress = useTempAddress ? tempAddress : profileAddress
     const params: ShipOrdersParams = {
+      force,
       customer: c.customer,
       event: c.event,
       orders: c.orders.map((o) => ({
@@ -977,6 +1039,11 @@ function ShipConfirmModal({
         body: JSON.stringify(params),
       })
       const data = await res.json()
+      if (res.status === 409 && data.paired) {
+        setPairedWarning(data.partners ?? [])
+        setShipping(false)
+        return
+      }
       if (!res.ok) throw new Error(data.error ?? "Failed")
 
       const blob = await generateShippingLabel({
@@ -1006,6 +1073,30 @@ function ShipConfirmModal({
         role="dialog"
         aria-modal="true"
       >
+        {pairedWarning && (
+          <div className="px-5 py-3 bg-blue-50 border-b border-cream-border text-xs text-blue-900 flex flex-col gap-2">
+            <span>
+              Customer minta {c.event} digabung dengan <b>{pairedWarning.join(", ")}</b> dalam satu kotak.
+              Kirim sendiri saja? Dia akan bayar dua ongkir, dan pasangannya ikut batal.
+            </span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setPairedWarning(null)}
+                className="px-3 py-1.5 rounded-lg border border-cream-border bg-white text-xs font-medium text-muted-strong"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => handleConfirm(true)}
+                className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium"
+              >
+                Kirim sendiri
+              </button>
+            </div>
+          </div>
+        )}
         <div className="px-5 py-4 border-b border-cream-border shrink-0">
           <div className="text-sm font-semibold text-foreground">
             {result ? "Label Pengiriman" : "Konfirmasi Pengiriman"}
@@ -1167,7 +1258,7 @@ function ShipConfirmModal({
               </button>
               <button
                 type="button"
-                onClick={handleConfirm}
+                onClick={() => handleConfirm()}
                 disabled={shipping}
                 className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 transition-colors disabled:opacity-50"
               >
@@ -1177,6 +1268,142 @@ function ShipConfirmModal({
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+/**
+ * One paired group, as one card.
+ *
+ * The pair is the unit of work here — its members appear in this tab and
+ * nowhere else, because two places for one card is two chances to ship it
+ * twice. Combining releases the parking the pairing put on, so there is no
+ * Release step to remember: the button that fulfils the wish is the door.
+ */
+function BundleCard({
+  bundle: b,
+  onDone,
+  onOpenInvoice,
+}: {
+  bundle: {
+    key: string
+    members: ShipCustomer[]
+    allSplit: boolean
+    mixed: boolean
+    ready: boolean
+    waitingFor: string[]
+  }
+  onDone: () => void
+  onOpenInvoice: () => void
+}) {
+  const [merging, setMerging] = useState(false)
+  const customer = b.members[0].customer
+  const units = b.members.reduce((n, m) => n + unparkedToShip(m), 0)
+  const combinedKg = Math.ceil(
+    b.members.reduce((g, m) => g + unparkedOrders(m).reduce((a, o) => a + o.gram * o.toShip, 0), 0) / 1000,
+  )
+  const ongkirPerKg = b.members[0].ongkirPerKg
+  // What combining saves: ongkir billed per event, each rounded up, against the
+  // whole thing rounded once. The same sum shipMergedCustomerOrders writes as
+  // the "Gabung ongkir" adjustment.
+  const apart = b.members.reduce(
+    (n, m) => n + ongkirPerKg * Math.ceil(m.orders.reduce((g, o) => g + o.gram * o.unit, 0) / 1000),
+    0,
+  )
+  const together =
+    ongkirPerKg *
+    Math.ceil(b.members.reduce((g, m) => g + m.orders.reduce((a, o) => a + o.gram * o.unit, 0), 0) / 1000)
+  const saving = Math.max(0, apart - together)
+  const unpaid = b.members.filter((m) => !["paid", "overpaid", "void"].includes(m.paymentStatus))
+
+  return (
+    <div className="rounded-xl border border-cream-border bg-white overflow-hidden">
+      <div className="px-5 py-4 bg-surface-muted border-b border-cream-border flex justify-between gap-4 items-center flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button type="button" onClick={onOpenInvoice} className="font-semibold text-sm hover:text-brand transition-colors">
+            {displayIg(customer).toUpperCase()}
+          </button>
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+            b.ready ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
+          }`}>
+            {b.ready ? "Siap Gabung" : "Menunggu"}
+          </span>
+          {b.allSplit && (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+              Kirim duluan — satu kotak
+            </span>
+          )}
+          {b.mixed && (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
+              Timing beda — kotak menunggu
+            </span>
+          )}
+        </div>
+        <span className="text-xs text-faint">diminta customer</span>
+      </div>
+
+      {b.members.map((m) => {
+        const arrived = m.orders.reduce((n, o) => n + Math.min(o.unitArrive, o.unit), 0)
+        const ordered = m.orders.reduce((n, o) => n + o.unit, 0)
+        return (
+          <div key={m.event} className="px-5 py-3 border-b border-cream-border last:border-b-0">
+            <div className="flex items-baseline gap-3 flex-wrap mb-1">
+              <span className="text-sm font-medium">{m.event}</span>
+              <span className={`text-xs ${arrived >= ordered ? "text-faint" : "text-amber-700 font-medium"}`}>
+                {arrived} dari {ordered} tiba
+                {arrived < ordered && ` · ${ordered - arrived} masih jalan`}
+              </span>
+            </div>
+            <div className="flex flex-col gap-0.5">
+              {m.orders.map((o) => (
+                <div key={o.rowNumber} className={`flex gap-3 text-sm ${o.unitArrive >= o.unit ? "text-muted-strong" : "text-faint"}`}>
+                  <span className="flex-1 min-w-0 truncate">{o.productName}</span>
+                  <span className="tabular-nums text-xs text-muted">
+                    {o.unitArrive}/{o.unit}
+                    {Math.max(0, o.unitArrive - o.unitShip) > 0 && ` · kirim ${Math.max(0, o.unitArrive - o.unitShip)}`}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })}
+
+      <div className="px-5 py-3 bg-surface-muted border-t border-cream-border flex flex-wrap items-center gap-x-3 gap-y-2">
+        <span className="text-xs text-muted-strong">
+          {b.ready
+            ? <>1 kotak · <b className="tabular-nums text-foreground">{units} unit</b> · est. {combinedKg} kg{b.allSplit && " · sisanya menyusul"}</>
+            : b.mixed
+              ? <>{b.members.filter((m) => m.splitRequested).map((m) => m.event).join(", ")} minta kirim duluan, pasangannya tunggu lengkap</>
+              : <>menunggu {b.waitingFor.join(", ")}</>}
+        </span>
+        {b.ready && saving > 0 && (
+          <span className="text-xs font-medium text-green-700">hemat ongkir Rp {saving.toLocaleString("id-ID")}</span>
+        )}
+        {unpaid.length > 0 && (
+          <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 font-medium">
+            {unpaid.map((m) => m.event).join(", ")} belum lunas
+          </span>
+        )}
+        <span className="flex-1" />
+        <button
+          type="button"
+          onClick={() => setMerging(true)}
+          disabled={!b.ready || unpaid.length > 0 || units === 0}
+          className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          Gabung &amp; Kirim
+        </button>
+      </div>
+
+      {merging && (
+        <MergeShipConfirmModal
+          customer={customer}
+          preselectedEvents={b.members.map((m) => m.event)}
+          onClose={() => setMerging(false)}
+          onSuccess={() => { setMerging(false); onDone() }}
+        />
+      )}
     </div>
   )
 }
@@ -1220,7 +1447,9 @@ function MergeShipConfirmModal({
         if (!res.ok) throw new Error((json as unknown as { error: string }).error ?? "Failed to load")
         if (cancelled) return
         const mine = json.groups
-          .filter((g) => normalizeId(g.customer) === normalizeId(customer) && g.totalToShip > 0)
+          // A paired event has toShip 0 until the merge releases it, and it is
+          // exactly the event this modal exists to ship.
+          .filter((g) => normalizeId(g.customer) === normalizeId(customer) && unparkedToShip(g) > 0)
           .sort((a, b) => a.event.localeCompare(b.event))
         setAllGroups(mine)
         setChecked((prev) => {
@@ -1260,7 +1489,7 @@ function MergeShipConfirmModal({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profileAddress, requestedAddress])
-  const totalGram = checkedGroups.reduce((s, g) => s + g.orders.reduce((a, o) => a + o.gram * o.toShip, 0), 0)
+  const totalGram = checkedGroups.reduce((s, g) => s + unparkedOrders(g).reduce((a, o) => a + o.gram * o.toShip, 0), 0)
   const combinedKg = Math.ceil(totalGram / 1000)
   const combinedOngkir = ongkirPerKg * combinedKg
   const canConfirm = checkedGroups.length >= 2
@@ -1295,8 +1524,7 @@ function MergeShipConfirmModal({
           ongkirPerKg,
           groups: checkedGroups.map((g) => ({
             event: g.event,
-            orders: g.orders
-              .filter((o) => o.toShip > 0)
+            orders: unparkedOrders(g)
               .map((o) => ({ rowNumber: o.rowNumber, productName: o.productName, toShip: o.toShip, gram: o.gram })),
           })),
           tempAddress: useTempAddress ? tempAddress : null,
@@ -1307,7 +1535,7 @@ function MergeShipConfirmModal({
 
       const packingLines: string[] = []
       for (const g of checkedGroups) {
-        for (const o of g.orders.filter((o) => o.toShip > 0)) {
+        for (const o of unparkedOrders(g)) {
           packingLines.push(`[${g.event}] ${o.productName} x ${o.toShip}`)
         }
       }
@@ -1381,7 +1609,7 @@ function MergeShipConfirmModal({
                         <div className="min-w-0 flex-1">
                           <div className="text-xs font-medium text-muted mb-1">{g.event}</div>
                           <div className="flex flex-col gap-0.5">
-                            {g.orders.filter((o) => o.toShip > 0).map((o) => (
+                            {unparkedOrders(g).map((o) => (
                               <div key={o.rowNumber} className="text-sm text-foreground">{o.productName} x {o.toShip}</div>
                             ))}
                           </div>

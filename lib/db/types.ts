@@ -311,6 +311,10 @@ export type ShipStatus =
   // marker on "partial", because it is a queue of work: the extra delivery fee
   // has to be billed and paid before the parcel goes.
   | "split_requested"
+  // Two or more events the customer asked to travel in one box. Its own status
+  // so a paired order appears in the Gabung tab and nowhere else — two places
+  // for one card is two chances to ship it twice.
+  | "paired"
   | "ready"
   | "ready_unpaid"
   | "hold"
@@ -349,6 +353,10 @@ export interface ShipCustomer {
   splitExtraOngkir: number
   /** Whether that fee has already been put on her invoice. */
   splitCharged: boolean
+  /** The group this event travels in, when she has paired it with another. */
+  mergeKey: string | null
+  /** The other events in that group. */
+  pairedWith: string[]
 }
 
 export interface InvoiceResult {
@@ -400,6 +408,12 @@ export interface PublicInvoiceResult {
 export interface ShipOrdersParams {
   customer: string
   event: string
+  /**
+   * Ship this event on its own even though the customer paired it with
+   * another. The confirm behind it says what that costs her; setting it also
+   * dissolves the pairing, since half a pair is not one.
+   */
+  force?: boolean
   orders: Array<{ rowNumber: number; productId: number; productName: string; toShip: number; unitShip: number }>
   weightKg: number
   ongkirPerKg: number
