@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole, isAdmin } from "@/lib/api"
 import { getPaymentRows, getPaymentsPaginated, addPayment, withActor } from "@/lib/db"
+import { withServerTiming } from "@/lib/server-timing"
 
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
 
@@ -29,6 +30,7 @@ export async function GET(req: NextRequest) {
         dateFrom: params.get("dateFrom") ?? undefined,
         dateTo: params.get("dateTo") ?? undefined,
         isChecked: checkedParam == null ? undefined : checkedParam === "true",
+        rejected: params.get("rejected") == null ? undefined : params.get("rejected") === "true",
         sortKey: params.get("sortKey") ?? undefined,
         sortDir: (params.get("sortDir") as "asc" | "desc") ?? undefined,
         skipCount: params.get("skipCount") === "true",
@@ -77,3 +79,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Failed to add payment" }, { status: 500 })
   }
 }
+
+// Timed: the response carries Server-Timing (total / db / dbmax / app).
+// See lib/server-timing.ts for how to read it.
+export const GET = withServerTiming(handleGET)

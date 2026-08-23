@@ -589,6 +589,10 @@ export interface PaymentRow {
   kind: PaymentKind
   createdAt: string
   updatedAt: string
+  /** When the shop said it could not confirm this payment. */
+  rejectedAt: string | null
+  /** Why, in words the customer reads. Empty unless rejectedAt is set. */
+  rejectReason: string
 }
 
 export interface AdjustmentRow {

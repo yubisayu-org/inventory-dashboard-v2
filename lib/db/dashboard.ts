@@ -139,7 +139,9 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
           HAVING SUM(unit - COALESCE(unit_buy, 0)) > 0
         ) g) AS pending_purchase,
         -- Deposits awaiting verification.
-        (SELECT COUNT(*)::int FROM payments WHERE kind = 'deposit' AND is_checked = false) AS unverified_payments,
+        -- A refused payment has been decided, so it is no longer work waiting.
+        (SELECT COUNT(*)::int FROM payments
+          WHERE kind = 'deposit' AND is_checked = false AND rejected_at IS NULL) AS unverified_payments,
         -- Operational costs across the active-event set — the trip/operating
         -- expense ledger (033), summed in rupiah (amount_idr is the IDR source).
         (SELECT COALESCE(SUM(oe.amount_idr), 0)::bigint
