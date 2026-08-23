@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
 import { getCustomers, getCustomersPaginated, addCustomer, parseOngkir, withActor } from "@/lib/db"
+import { withServerTiming } from "@/lib/server-timing"
 
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
 
@@ -82,3 +83,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Failed to add customer" }, { status: 500 })
   }
 }
+
+// Timed: the response carries Server-Timing (total / db / dbmax / app).
+// See lib/server-timing.ts for how to read it.
+export const GET = withServerTiming(handleGET)

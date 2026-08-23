@@ -51,6 +51,29 @@ SUPABASE_URL=                   # project URL, used by lib/storage.ts for catalo
 SUPABASE_SERVICE_ROLE_KEY=      # service-role key, used by lib/storage.ts for catalogue media uploads
 ```
 
+### Timing a slow request
+
+Every pool is wrapped by `instrument()` (`lib/db-instrument.ts`), which logs any
+single query at or over `SLOW_QUERY_MS` to stdout — Railway's log stream in
+production. The SQL text is logged, never the parameters.
+
+```bash
+SLOW_QUERY_MS=300   # default 300; set 0 to turn the log off
+```
+
+The read handlers under `app/api/sheets/*` are additionally wrapped by
+`withServerTiming()` (`lib/server-timing.ts`), so their responses carry:
+
+```
+Server-Timing: total;dur=812, db;dur=740;desc="6 queries", dbmax;dur=690, app;dur=72
+```
+
+Read it in DevTools → Network → the request → Timing. `db` is every query's
+duration summed (parallel queries deliberately double-count against the wall
+clock); `dbmax` is the slowest single query; `app` is everything that was not
+that query. Large `dbmax` points at an index; large `app` with small `db` points
+at the instance or the payload, not the database.
+
 ### One-time setup
 
 Requires Docker Desktop, the Supabase CLI, and `libpq` (for `pg_dump`/`psql`):
