@@ -8,6 +8,7 @@ import {
   SPLIT_ONGKIR_NOTE,
 } from "./fulfillment"
 import { setShippingMode } from "./shipping-prefs"
+import { getPublicInvoiceForCustomer } from "./invoice"
 import { normalizeId } from "./helpers"
 
 // Sending part of an order early costs a second delivery fee, and the shop
@@ -156,4 +157,15 @@ test("the charge leaves the order unpaid until she settles it", async () => {
   const settled = after.groups.find((g) => normalizeId(g.customer) === normalizeId(handle))
   assert.equal(settled?.paymentStatus, "paid")
   assert.equal(settled?.status, "split_requested", "still its own queue, now ready to pack")
+})
+
+
+// Her sheet quotes a price before she picks the option. It has to be the same
+// arithmetic the shop bills from, or the two screens argue with each other.
+test("the estimate she is shown matches what the shop would charge", async () => {
+  const { events } = await getPublicInvoiceForCustomer(handle, sql)
+  const mine = events.find((e) => e.eventId === EVENT)
+  const [adj] = await sql<{ amount: string }[]>`
+    SELECT amount FROM adjustments WHERE event = ${EVENT} AND customer = ${handle}`
+  assert.equal(mine?.splitExtraOngkir, Number(adj.amount))
 })

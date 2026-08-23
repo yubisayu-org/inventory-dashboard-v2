@@ -373,6 +373,12 @@ export interface PublicInvoiceEvent {
   status: string
   shipments: InvoiceShipment[]
   showShipments: boolean
+  /**
+   * What it would cost her to have the arrived part sent ahead of the rest —
+   * shown in the shipping sheet so the choice carries its price. An estimate,
+   * from estimated weights, and nothing is charged until the shop bills it.
+   */
+  splitExtraOngkir: number
   orders: PublicInvoiceOrderLine[]
   totals: { unit: number; subtotal: number; arrive: number; weightKg: number }
   invoice: {
