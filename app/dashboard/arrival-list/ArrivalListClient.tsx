@@ -15,6 +15,7 @@ import SearchInput from "@/components/SearchInput"
 import { FALLBACK_ROUTES, routeOf, routeKeyOf, daysInTransit, transitStatus, type DispatchRoute, type TransitStatus } from "@/lib/dispatch-modes"
 import SelectionActionBar from "@/components/SelectionActionBar"
 import OverbuyTransitList from "@/components/OverbuyTransitList"
+import { groupItems, buildRows, rowKey } from "@/lib/grouped-rows"
 
 function computeFill(orders: ArrivalListOrder[], quantityArrived: number) {
   const { allocations, unallocated, excess } = allocateFifo(orders, (o) => o.pending, quantityArrived)
@@ -34,19 +35,6 @@ function computeFill(orders: ArrivalListOrder[], quantityArrived: number) {
  */
 type ArrivalRow = ArrivalListItem & { parcel?: string; parcelSentOn?: string }
 
-function groupItems(items: ArrivalRow[], keyOf: (i: ArrivalRow) => string = (i) => i.event) {
-  const map = new Map<string, Map<string, ArrivalRow[]>>()
-  for (const item of items) {
-    const top = keyOf(item)
-    if (!map.has(top)) map.set(top, new Map())
-    const storeMap = map.get(top)!
-    const key = item.store || "—"
-    if (!storeMap.has(key)) storeMap.set(key, [])
-    storeMap.get(key)!.push(item)
-  }
-  return map
-}
-
 /**
  * Stable selection key: event + productId, and the parcel too when one is in
  * play. Without the parcel, a product split between the air box and the sea box
@@ -54,67 +42,6 @@ function groupItems(items: ArrivalRow[], keyOf: (i: ArrivalRow) => string = (i) 
  */
 function selKey(item: Pick<ArrivalRow, "event" | "productId"> & { parcel?: string }): string {
   return `${item.event}|${item.productId}${item.parcel ? `|${item.parcel}` : ""}`
-}
-
-type RowDescriptor =
-  | { type: "event-collapsed"; event: string; totalItems: number }
-  | { type: "store-collapsed"; event: string; store: string; totalItems: number; showEvent: boolean; eventRowSpan?: number }
-  | { type: "item"; item: ArrivalRow; event: string; store: string; showEvent: boolean; showStore: boolean; eventRowSpan?: number; storeRowSpan?: number }
-
-function buildRows(
-  grouped: Map<string, Map<string, ArrivalRow[]>>,
-  collapsedEvents: Set<string>,
-  collapsedStores: Set<string>,
-): RowDescriptor[] {
-  const rows: RowDescriptor[] = []
-
-  for (const [event, storeMap] of grouped) {
-    if (collapsedEvents.has(event)) {
-      const totalItems = [...storeMap.values()].reduce((s, arr) => s + arr.length, 0)
-      rows.push({ type: "event-collapsed", event, totalItems })
-      continue
-    }
-
-    let eventRowSpan = 0
-    for (const [store, storeItems] of storeMap) {
-      eventRowSpan += collapsedStores.has(`${event}|${store}`) ? 1 : storeItems.length
-    }
-
-    let firstStoreOfEvent = true
-    for (const [store, storeItems] of storeMap) {
-      const storeKey = `${event}|${store}`
-
-      if (collapsedStores.has(storeKey)) {
-        rows.push({
-          type: "store-collapsed",
-          event,
-          store,
-          totalItems: storeItems.length,
-          showEvent: firstStoreOfEvent,
-          eventRowSpan: firstStoreOfEvent ? eventRowSpan : undefined,
-        })
-        firstStoreOfEvent = false
-        continue
-      }
-
-      storeItems.forEach((item, idx) => {
-        const showEvent = firstStoreOfEvent && idx === 0
-        rows.push({
-          type: "item",
-          item,
-          event,
-          store,
-          showEvent,
-          showStore: idx === 0,
-          eventRowSpan: showEvent ? eventRowSpan : undefined,
-          storeRowSpan: idx === 0 ? storeItems.length : undefined,
-        })
-        if (idx === 0) firstStoreOfEvent = false
-      })
-    }
-  }
-
-  return rows
 }
 
 function CollapseBtn({ collapsed, onClick }: { collapsed: boolean; onClick: () => void }) {
@@ -862,7 +789,7 @@ export default function ArrivalListClient() {
 
               return (
                 <tr
-                  key={`${row.event}|${row.store}|${row.item.productId}`}
+                  key={rowKey(row.event, row.store, row.item)}
                   className="border-b border-cream-border hover:bg-surface-muted/50 transition-colors"
                 >
                   {row.showEvent && (
