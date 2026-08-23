@@ -4,6 +4,16 @@ import { useState } from "react"
 import type { InvoiceEvent } from "@/lib/db"
 import { useCopyFeedback } from "@/hooks/useCopyFeedback"
 import { useModalDismiss } from "@/hooks/useModalDismiss"
+import {
+  NOTICE_TEMPLATES,
+  NOTICE_TOKENS,
+  REFUND_CAUSES,
+  fillNotice,
+  unknownTokens,
+  type NoticeTemplate,
+  type NoticeTokens,
+  type RefundCause,
+} from "@/lib/notice-templates"
 
 // Build a WhatsApp deep link with the message prefilled. Indonesian numbers are
 // normalized to international (0… → 62…, 8… → 62…). Without a number we fall
@@ -20,30 +30,9 @@ export function InvoiceMessageActions({
   event, whatsapp, customer,
 }: { event: InvoiceEvent; whatsapp?: string | null; customer?: string }) {
   const [open, setOpen] = useState(false)
-  const [sending, setSending] = useState(false)
-  const [sent, setSent] = useState(false)
+  const [telling, setTelling] = useState(false)
   const { copied, copy } = useCopyFeedback()
   const { message } = event
-
-  const outstanding = event.invoice.sisaPelunasan
-
-  /* "Send invoice" does not transport anything — her invoice is already live
-     on the catalogue, rendered from this same data. What has been missing is
-     the moment someone says pay this, and that moment is an announcement. */
-  async function send() {
-    if (!customer || sending) return
-    setSending(true)
-    try {
-      const res = await fetch("/api/sheets/invoice/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ event: event.eventId, customer, outstanding }),
-      })
-      if (res.ok) setSent(true)
-    } finally {
-      setSending(false)
-    }
-  }
 
   return (
     <div className="flex items-center gap-2">
@@ -54,15 +43,17 @@ export function InvoiceMessageActions({
       >
         View message
       </button>
-      {customer && outstanding > 0 && (
+      {/* Always offered, whatever the balance: an invoice that is settled can
+          still need a word about a delay or a refund, and a control that
+          vanishes reads as a broken deploy rather than a rule. */}
+      {customer && (
         <button
           type="button"
-          onClick={send}
-          disabled={sending}
-          title="Tell her the invoice is ready to settle"
-          className="shrink-0 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
+          onClick={() => setTelling(true)}
+          title="Send her a notice on the catalogue"
+          className="shrink-0 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 transition-colors"
         >
-          {sending ? "Sending…" : sent ? "Sent ✓" : "Send invoice"}
+          Tell her…
         </button>
       )}
       <button
@@ -72,6 +63,9 @@ export function InvoiceMessageActions({
       >
         {copied ? "Copied!" : "Copy message"}
       </button>
+      {telling && customer && (
+        <TellHerModal event={event} customer={customer} onClose={() => setTelling(false)} />
+      )}
       {open && (
         <InvoiceMessageModal
           message={message}
@@ -143,6 +137,322 @@ function InvoiceMessageModal({
             </svg>
             Send message
           </a>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Tell her ────────────────────────────────────────────────────────────────
+// A reason, the wording filled in from this trip's own numbers, and one press.
+// Editable before it goes, because house style and this particular customer are
+// not always the same sentence — but the edits are for this message only.
+
+function idr(n: number): string {
+  return `Rp ${Math.round(n).toLocaleString("id-ID")}`
+}
+
+function TellHerModal({
+  event, customer, onClose,
+}: { event: InvoiceEvent; customer: string; onClose: () => void }) {
+  const [reason, setReason] = useState<NoticeTemplate>(NOTICE_TEMPLATES[0])
+  const [cause, setCause] = useState<RefundCause>(REFUND_CAUSES[0])
+  const [title, setTitle] = useState(NOTICE_TEMPLATES[0].title)
+  const [body, setBody] = useState(NOTICE_TEMPLATES[0].body)
+  // How many units of each line the refund is about. Keyed by orderId.
+  const [missing, setMissing] = useState<Record<number, number>>({})
+  const [manualAmount, setManualAmount] = useState(0)
+  const [sending, setSending] = useState(false)
+  const [sent, setSent] = useState(false)
+  const [error, setError] = useState("")
+  useModalDismiss(onClose)
+
+  const isRefund = Boolean(reason.isRefund)
+  const needsItems = isRefund && Boolean(cause.needsItems)
+  const needsAmount = isRefund && !cause.needsItems && !cause.fixed
+  const overpaid = Math.max(0, -event.invoice.sisaPelunasan)
+
+  const chosen = event.orders.filter((o) => (missing[o.orderId] ?? 0) > 0)
+  const itemsList = chosen
+    .map((o) => `${o.productName} × ${missing[o.orderId]}`)
+    .join(", ")
+  const itemsTotal = chosen.reduce((n, o) => n + o.rawUnitPrice * (missing[o.orderId] ?? 0), 0)
+
+  // Where the figure comes from depends on the cause: ticked lines, the
+  // invoice's own overpayment, or a number typed. Never all three.
+  const refundAmount = needsItems ? itemsTotal : cause.fixed ? overpaid : manualAmount
+
+  const values: NoticeTokens = {
+    "{customer}": customer,
+    "{event}": event.eventId,
+    "{total}": idr(event.invoice.total),
+    "{outstanding}": idr(Math.max(0, event.invoice.sisaPelunasan)),
+    "{refundAmount}": idr(refundAmount),
+    "{itemsList}": itemsList || "the item",
+    "{cause}": fillNotice(cause.line, {
+      "{event}": event.eventId,
+      "{itemsList}": itemsList || "the item",
+    }),
+  }
+
+  const bad = unknownTokens(`${title} ${body}`)
+  const emptyText = !title.trim() || !body.trim()
+  const noMoney = isRefund && refundAmount <= 0
+  const canSend = !emptyText && bad.length === 0 && !noMoney && !sending
+
+  function loadTemplate(next: NoticeTemplate) {
+    setReason(next)
+    setTitle(next.title)
+    setBody(next.body)
+    setError("")
+    setSent(false)
+  }
+
+  function step(orderId: number, by: number, max: number) {
+    setMissing((prev) => ({
+      ...prev,
+      [orderId]: Math.max(0, Math.min(max, (prev[orderId] ?? 0) + by)),
+    }))
+  }
+
+  async function send() {
+    setSending(true)
+    setError("")
+    try {
+      const res = await fetch("/api/sheets/invoice/notice", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          event: event.eventId,
+          customer,
+          title: fillNotice(title, values),
+          body: fillNotice(body, values),
+          refund: isRefund
+            ? {
+                cause: cause.key,
+                amount: refundAmount,
+                // One line, one refund row. Several lines share a row and name
+                // them in the note, which is what the staff screen already reads.
+                orderId: chosen.length === 1 ? chosen[0].orderId : null,
+                affectedUnits: chosen.reduce((n, o) => n + (missing[o.orderId] ?? 0), 0),
+                items: itemsList,
+              }
+            : null,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? "Failed to send")
+      setSent(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to send")
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const LABEL = "block text-[11px] font-semibold uppercase tracking-wide text-muted mb-1"
+  const INPUT =
+    "w-full px-3 py-2 rounded-lg border border-cream-border text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+      <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white border border-cream-border">
+        <div className="px-5 py-3 border-b border-cream-border flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-base font-bold">What to tell her</h3>
+            <p className="text-xs text-muted">
+              {customer} · {event.eventId} · goes to her inbox on the catalogue
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="text-faint hover:text-brand text-xl leading-none">
+            ×
+          </button>
+        </div>
+
+        <div className="p-5 grid gap-5 md:grid-cols-[15rem_minmax(0,1fr)]">
+          <div className="grid gap-1.5 content-start">
+            {NOTICE_TEMPLATES.map((t) => (
+              <label
+                key={t.key}
+                className={`flex items-start gap-2 text-sm px-3 py-2 rounded-lg border cursor-pointer transition-colors ${
+                  reason.key === t.key ? "border-brand bg-brand-light" : "border-cream-border hover:border-brand"
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="notice-reason"
+                  checked={reason.key === t.key}
+                  onChange={() => loadTemplate(t)}
+                  className="mt-1 accent-brand"
+                />
+                <span>
+                  {t.label}
+                  <span className="block text-[10px] text-faint font-mono">{t.key}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+
+          <div>
+            {isRefund && (
+              <>
+                <div className="mb-3">
+                  <label className={LABEL} htmlFor="notice-cause">Why the money is coming back</label>
+                  <select
+                    id="notice-cause"
+                    value={cause.key}
+                    onChange={(e) => setCause(REFUND_CAUSES.find((c) => c.key === e.target.value) ?? REFUND_CAUSES[0])}
+                    className={INPUT}
+                  >
+                    {REFUND_CAUSES.map((c) => (
+                      <option key={c.key} value={c.key}>{c.label}</option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-faint mt-1">
+                    Saved on the refund as <span className="font-mono">reason: &apos;{cause.key}&apos;</span>, so
+                    her card says the same thing weeks later.
+                  </p>
+                </div>
+
+                {needsItems && (
+                  <div className="mb-3 border border-cream-border rounded-lg overflow-hidden">
+                    <div className="px-3 py-1.5 bg-cream text-[11px] font-semibold uppercase tracking-wide text-brand flex justify-between">
+                      <span>Which lines</span>
+                      <span>{event.orders.length} on this trip</span>
+                    </div>
+                    {event.orders.map((o) => {
+                      const qty = missing[o.orderId] ?? 0
+                      return (
+                        <div
+                          key={o.orderId}
+                          className={`flex items-center gap-2 px-3 py-2 text-sm border-t border-cream-border ${qty ? "bg-brand-light" : ""}`}
+                        >
+                          <span className="flex-1 min-w-0">
+                            {o.productName}
+                            <span className="block text-[11px] text-faint">
+                              {idr(o.rawUnitPrice)} each · {o.unit} ordered
+                            </span>
+                          </span>
+                          <span className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => step(o.orderId, -1, o.unit)}
+                              disabled={qty === 0}
+                              className="w-6 h-6 rounded border border-cream-border text-brand font-bold disabled:opacity-30"
+                            >
+                              −
+                            </button>
+                            <span className="w-12 text-center tabular-nums font-semibold">{qty} / {o.unit}</span>
+                            <button
+                              type="button"
+                              onClick={() => step(o.orderId, 1, o.unit)}
+                              disabled={qty >= o.unit}
+                              className="w-6 h-6 rounded border border-cream-border text-brand font-bold disabled:opacity-30"
+                            >
+                              +
+                            </button>
+                          </span>
+                        </div>
+                      )
+                    })}
+                    <div className="flex justify-between px-3 py-2 bg-surface-muted border-t border-cream-border text-sm font-semibold">
+                      <span>{itemsList || "Nothing chosen yet"}</span>
+                      <span className="tabular-nums text-green-700">{idr(itemsTotal)}</span>
+                    </div>
+                  </div>
+                )}
+
+                {needsAmount && (
+                  <div className="mb-3">
+                    <label className={LABEL} htmlFor="notice-amount">How much</label>
+                    <input
+                      id="notice-amount"
+                      inputMode="numeric"
+                      value={manualAmount ? manualAmount.toLocaleString("id-ID") : ""}
+                      onChange={(e) => setManualAmount(Number(e.target.value.replace(/\D/g, "")) || 0)}
+                      placeholder="0"
+                      className={`${INPUT} tabular-nums font-semibold`}
+                    />
+                  </div>
+                )}
+
+                {cause.fixed && (
+                  <div className="mb-3 flex justify-between px-3 py-2 rounded-lg border border-cream-border text-sm font-semibold">
+                    <span>Overpaid on this invoice</span>
+                    <span className="tabular-nums text-green-700">{idr(overpaid)}</span>
+                  </div>
+                )}
+              </>
+            )}
+
+            <div className="mb-3">
+              <label className={LABEL} htmlFor="notice-title">Title</label>
+              <input id="notice-title" value={title} onChange={(e) => setTitle(e.target.value)} className={INPUT} />
+            </div>
+
+            <div>
+              <label className={LABEL} htmlFor="notice-body">Message</label>
+              <textarea
+                id="notice-body"
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                rows={6}
+                className={`${INPUT} leading-relaxed`}
+              />
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                {NOTICE_TOKENS.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setBody((b) => `${b}${t}`)}
+                    className="font-mono text-[10px] font-semibold px-1.5 py-0.5 rounded border border-cream-border bg-surface-sunken hover:border-brand hover:text-brand"
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {bad.length > 0 && (
+              <p className="text-xs text-amber-700 bg-amber-50 rounded px-2 py-1 mt-2">
+                {bad.join(", ")} is not a placeholder we know — she would read it exactly as written.
+              </p>
+            )}
+            {error && <p className="text-xs text-red-500 mt-2">{error}</p>}
+          </div>
+        </div>
+
+        <div className="px-5 py-3 bg-surface-muted border-t border-cream-border flex items-center justify-between gap-3 flex-wrap">
+          <span className="text-xs text-muted">
+            {sent
+              ? isRefund
+                ? `Sent — and a refund of ${idr(refundAmount)} created with reason '${cause.key}'.`
+                : "Sent. She has it now."
+              : emptyText
+                ? "A title and a message are both required."
+                : noMoney
+                  ? needsItems
+                    ? "Choose which lines it is about."
+                    : "Fill in how much is coming back."
+                  : `She reads: “${fillNotice(title, values)}”`}
+          </span>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => loadTemplate(reason)}
+              className="px-4 py-2 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand transition-colors"
+            >
+              Reset to template
+            </button>
+            <button
+              type="button"
+              onClick={sent ? onClose : send}
+              disabled={!sent && !canSend}
+              className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {sent ? "Close" : sending ? "Sending…" : "Send to inbox"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
