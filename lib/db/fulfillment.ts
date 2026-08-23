@@ -950,7 +950,6 @@ export interface ArrivalListOrder {
   unitBuy: number
   unitArrive: number
   pending: number
-  paidStatus: PaidStatus
   /** Tracking ref this order's units were dispatched under (see the Dispatch List's
    *  "Inventory receipt" field). Empty when dispatched without one. */
   dispatchReceipt: string
@@ -981,64 +980,72 @@ export interface ArrivalListItem {
  * receive what was dispatched. Grouped by event + product, with the per-customer
  * order list nested for the mark-arrived modal.
  */
-export async function getArrivalList(event?: string): Promise<ArrivalListItem[]> {
-  // Arrival gates on unit_dispatch (dispatched stock is what can be received); 'unitBuy' JSON key carries the dispatched count.
-  const rows = event
-    ? await sql`
-        SELECT
-          o.event,
-          o.product_id,
-          p.name AS product_name,
-          p.store,
-          SUM(o.unit_dispatch - COALESCE(o.unit_arrive, 0))::int AS total_pending,
-          SUM(o.unit_dispatch)::int AS total_bought,
-          JSON_AGG(JSON_BUILD_OBJECT(
-            'id', o.id,
-            'customer', o.customer,
-            'unitBuy', o.unit_dispatch,
-            'unitArrive', COALESCE(o.unit_arrive, 0),
-            'pending', o.unit_dispatch - COALESCE(o.unit_arrive, 0),
-            'dispatchReceipt', COALESCE(o.dispatch_receipt, ''),
-            'dispatchedAt', COALESCE(to_char(o.dispatched_at, 'YYYY-MM-DD'), '')
-          ) ORDER BY o.customer, o.id) AS orders
-        FROM orders o
-        JOIN products p ON p.id = o.product_id
-        WHERE o.unit_dispatch IS NOT NULL
-          AND (o.unit_arrive IS NULL OR o.unit_arrive < o.unit_dispatch)
-          AND o.event = ${event}
-        GROUP BY o.event, o.product_id, p.name, p.store
-        HAVING SUM(o.unit_dispatch - COALESCE(o.unit_arrive, 0)) > 0
-        ORDER BY p.name, p.store
-      `
-    : await sql`
-        SELECT
-          o.event,
-          o.product_id,
-          p.name AS product_name,
-          p.store,
-          SUM(o.unit_dispatch - COALESCE(o.unit_arrive, 0))::int AS total_pending,
-          SUM(o.unit_dispatch)::int AS total_bought,
-          JSON_AGG(JSON_BUILD_OBJECT(
-            'id', o.id,
-            'customer', o.customer,
-            'unitBuy', o.unit_dispatch,
-            'unitArrive', COALESCE(o.unit_arrive, 0),
-            'pending', o.unit_dispatch - COALESCE(o.unit_arrive, 0),
-            'dispatchReceipt', COALESCE(o.dispatch_receipt, ''),
-            'dispatchedAt', COALESCE(to_char(o.dispatched_at, 'YYYY-MM-DD'), '')
-          ) ORDER BY o.customer, o.id) AS orders
-        FROM orders o
-        JOIN products p ON p.id = o.product_id
-        JOIN events e ON e.name = o.event
-        WHERE o.unit_dispatch IS NOT NULL
-          AND (o.unit_arrive IS NULL OR o.unit_arrive < o.unit_dispatch)
-        GROUP BY o.event, o.product_id, p.name, p.store
-        HAVING SUM(o.unit_dispatch - COALESCE(o.unit_arrive, 0)) > 0
-        -- Most recently created event first (matches the shopping list and
-        -- dashboard); product name then store within each event. MAX() because
-        -- created_at is constant per event but not in the GROUP BY.
-        ORDER BY MAX(e.created_at) DESC NULLS LAST, o.event, p.name, p.store
-      `
+export async function getArrivalList(event?: string, route?: string): Promise<ArrivalListItem[]> {
+  const ev = event ?? null
+  // "all" and undefined both mean unfiltered; anything else names a route, and
+  // "other" names the absence of one.
+  const rt = route && route !== "all" ? route : null
+
+  // The route a parcel travelled is read off the front of its receipt, longest
+  // code first so a specific code beats a shorter one that happens to be its
+  // start. Resolving it here rather than in the browser is what lets a tab
+  // fetch its own parcels instead of all of them.
+  const pending = sql`
+    SELECT o.id, o.event, o.product_id, o.customer, o.unit_dispatch, o.unit_arrive,
+           o.dispatch_receipt, o.dispatched_at,
+           COALESCE(rt.route_key, 'other') AS route_key
+      FROM orders o
+      LEFT JOIN LATERAL (
+        SELECT dp.route_key
+          FROM dispatch_route_prefixes dp
+         WHERE upper(btrim(COALESCE(o.dispatch_receipt, ''))) LIKE dp.prefix || '%'
+         ORDER BY length(dp.prefix) DESC
+         LIMIT 1
+      ) rt ON TRUE
+     WHERE o.unit_dispatch IS NOT NULL
+       AND (o.unit_arrive IS NULL OR o.unit_arrive < o.unit_dispatch)
+       AND (${ev}::text IS NULL OR o.event = ${ev})
+  `
+
+  // Arrival gates on unit_dispatch (dispatched stock is what can be received);
+  // 'unitBuy' JSON key carries the dispatched count.
+  //
+  // The quantities and the customer list are rebuilt from whatever survives the
+  // route filter, never from the whole order: nine units of which five flew
+  // must read as five on the air tab, or somebody hunts the bench for four
+  // boxes that are still at sea.
+  const itemsQuery = sql`
+    WITH pending AS (${pending})
+    SELECT
+      pd.event,
+      pd.product_id,
+      p.name AS product_name,
+      p.store,
+      SUM(pd.unit_dispatch - COALESCE(pd.unit_arrive, 0))::int AS total_pending,
+      SUM(pd.unit_dispatch)::int AS total_bought,
+      JSON_AGG(JSON_BUILD_OBJECT(
+        'id', pd.id,
+        'customer', pd.customer,
+        'unitBuy', pd.unit_dispatch,
+        'unitArrive', COALESCE(pd.unit_arrive, 0),
+        'pending', pd.unit_dispatch - COALESCE(pd.unit_arrive, 0),
+        'dispatchReceipt', COALESCE(pd.dispatch_receipt, ''),
+        'dispatchedAt', COALESCE(to_char(pd.dispatched_at, 'YYYY-MM-DD'), '')
+      ) ORDER BY pd.customer, pd.id) AS orders
+      FROM pending pd
+      JOIN products p ON p.id = pd.product_id
+      LEFT JOIN events e ON e.name = pd.event
+     WHERE (${rt}::text IS NULL OR pd.route_key = ${rt})
+     GROUP BY pd.event, pd.product_id, p.name, p.store
+    HAVING SUM(pd.unit_dispatch - COALESCE(pd.unit_arrive, 0)) > 0
+     -- Most recently created event first (matches the shopping list and
+     -- dashboard); product name then store within each event. MAX() because
+     -- created_at is constant per event but not in the GROUP BY. With one event
+     -- selected this collapses to name-then-store, which is what that view wants.
+     ORDER BY MAX(e.created_at) DESC NULLS LAST, pd.event, p.name, p.store
+  `
+
+  const rows = await itemsQuery
 
   const items: ArrivalListItem[] = rows.map((r) => ({
     event: r.event as string,
@@ -1053,12 +1060,12 @@ export async function getArrivalList(event?: string): Promise<ArrivalListItem[]>
   // Order each product's customers by allocation priority (paid → partial →
   // unpaid, then earliest order) so the arrive modal's fill preview matches the
   // server-side allocation in markProductArrived.
+  // Sorted by it, never sent with it: the receiving table shows no per-customer
+  // payment state, so the status is the server's business and the order of the
+  // array carries everything the arrive modal needs.
   const statusMap = await fetchPaidStatusMap(event ? [event] : null)
   for (const item of items) {
     item.orders.sort(compareOrderPriority(item.event, statusMap))
-    for (const order of item.orders) {
-      order.paidStatus = statusMap.get(`${item.event}|${order.customer}`) ?? "unpaid"
-    }
   }
 
   return items

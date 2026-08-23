@@ -12,6 +12,7 @@ import EventSelect from "@/components/EventSelect"
 import SearchInput from "@/components/SearchInput"
 import SelectionActionBar from "@/components/SelectionActionBar"
 import OverbuyTransitList from "@/components/OverbuyTransitList"
+import { TRANSIT_COL } from "@/components/transit-columns"
 
 const INPUT_CLASS =
   "border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
@@ -114,133 +115,6 @@ function CollapseBtn({ collapsed, onClick }: { collapsed: boolean; onClick: () =
     >
       {collapsed ? "+" : "−"}
     </button>
-  )
-}
-
-type CustomerBadgeOrder = { customer: string; qty: number; paidStatus: PaidStatus }
-
-const PAID_DOT: Record<PaidStatus, string> = {
-  paid:    "bg-green-500",
-  partial: "bg-yellow-400",
-  unpaid:  "bg-divider",
-}
-const PAID_LABEL: Record<PaidStatus, string> = {
-  paid:    "Paid",
-  partial: "Partial",
-  unpaid:  "Unpaid",
-}
-
-function CustomerBadge({ orders }: { orders: CustomerBadgeOrder[] }) {
-  const [open, setOpen] = useState(false)
-  const [popupStyle, setPopupStyle] = useState<React.CSSProperties>({})
-  const triggerRef = useRef<HTMLButtonElement>(null)
-  const popupRef = useRef<HTMLDivElement>(null)
-
-  const entries = useMemo(() => {
-    // Orders sharing a customer also share an (event, customer) pair, so they
-    // all carry the same paidStatus — keep the first one we see.
-    const map = new Map<string, { qty: number; paidStatus: PaidStatus }>()
-    for (const o of orders) {
-      const prev = map.get(o.customer)
-      map.set(o.customer, {
-        qty: (prev?.qty ?? 0) + o.qty,
-        paidStatus: prev?.paidStatus ?? o.paidStatus,
-      })
-    }
-    return [...map.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([customer, v]) => ({ customer, qty: v.qty, paidStatus: v.paidStatus }))
-  }, [orders])
-
-  const paidCount = entries.filter((e) => e.paidStatus === "paid").length
-  const totalCount = entries.length
-  const allPaid = totalCount > 0 && paidCount === totalCount
-
-  useEffect(() => {
-    if (!open) return
-    function onPointerDown(e: PointerEvent) {
-      const target = e.target as Node
-      if (!triggerRef.current?.contains(target) && !popupRef.current?.contains(target)) {
-        setOpen(false)
-      }
-    }
-    function onScroll(e: Event) {
-      // Ignore scrolls inside the popup itself
-      if (popupRef.current?.contains(e.target as Node)) return
-      setOpen(false)
-    }
-    document.addEventListener("pointerdown", onPointerDown)
-    window.addEventListener("scroll", onScroll, true)
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown)
-      window.removeEventListener("scroll", onScroll, true)
-    }
-  }, [open])
-
-  function handleToggle() {
-    if (!open && triggerRef.current) {
-      const rect = triggerRef.current.getBoundingClientRect()
-      const POPUP_HEIGHT = 260
-      const spaceBelow = window.innerHeight - rect.bottom
-      const flipUp = spaceBelow < POPUP_HEIGHT && rect.top > POPUP_HEIGHT
-      setPopupStyle({
-        position: "fixed",
-        top: flipUp ? rect.top - POPUP_HEIGHT - 4 : rect.bottom + 4,
-        left: rect.left,
-        minWidth: 200,
-      })
-    }
-    setOpen((o) => !o)
-  }
-
-  return (
-    <>
-      <button
-        ref={triggerRef}
-        type="button"
-        onClick={handleToggle}
-        title={allPaid ? "All customers paid" : `${paidCount} of ${totalCount} paid`}
-        className="inline-flex items-baseline gap-1 text-faint hover:text-brand transition-colors cursor-pointer"
-      >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="self-center">
-          <circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
-        </svg>
-        <span className="text-xs tabular-nums">{totalCount}</span>
-        {allPaid ? (
-          <span className="text-xs text-green-600"> · all paid</span>
-        ) : paidCount > 0 ? (
-          <span className="text-xs">
-            {" · "}
-            <span className="text-green-600 font-medium">{paidCount}</span>
-            {" paid"}
-          </span>
-        ) : null}
-      </button>
-      {open && (
-        <div
-          ref={popupRef}
-          style={popupStyle}
-          className="z-50 max-h-64 overflow-y-auto rounded-lg border border-cream-border bg-white shadow-lg py-1"
-        >
-          {entries.map((e) => (
-            <div
-              key={e.customer}
-              className="flex items-center justify-between gap-3 px-3 py-1 text-xs hover:bg-surface-muted whitespace-nowrap"
-            >
-              <span className="flex items-center gap-2 min-w-0">
-                <span
-                  className={`inline-block w-2 h-2 rounded-full shrink-0 ${PAID_DOT[e.paidStatus]}`}
-                  title={PAID_LABEL[e.paidStatus]}
-                  aria-label={PAID_LABEL[e.paidStatus]}
-                />
-                <span className="text-foreground truncate">{displayIg(e.customer)}</span>
-              </span>
-              <span className="text-muted tabular-nums shrink-0">{e.qty}×</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </>
   )
 }
 
@@ -456,11 +330,11 @@ export default function DispatchListClient() {
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="border-b border-cream-border bg-surface-muted/80">
-              <th className="text-left px-4 py-2.5 font-medium text-muted w-44">Event</th>
-              <th className="text-left px-4 py-2.5 font-medium text-muted w-36">Store</th>
+              <th className={`text-left px-4 py-2.5 font-medium text-muted ${TRANSIT_COL.group}`}>Event</th>
+              <th className={`text-left px-4 py-2.5 font-medium text-muted ${TRANSIT_COL.store}`}>Store</th>
               <th className="text-left px-4 py-2.5 font-medium text-muted">Product</th>
-              <th className="text-right px-4 py-2.5 font-medium text-muted w-20">Qty</th>
-              <th className="px-4 py-2.5 w-10" />
+              <th className={`text-right px-4 py-2.5 font-medium text-muted ${TRANSIT_COL.qty}`}>Qty</th>
+              <th className={`px-4 py-2.5 ${TRANSIT_COL.action}`} />
             </tr>
           </thead>
           <tbody>
@@ -542,13 +416,6 @@ export default function DispatchListClient() {
                       )}
                       <div className="flex items-baseline gap-1.5 min-w-0">
                         <span className="text-foreground">{row.item.productName}</span>
-                        <CustomerBadge
-                          orders={row.item.orders.map((o) => ({
-                            customer: o.customer,
-                            qty: o.pending,
-                            paidStatus: o.paidStatus,
-                          }))}
-                        />
                       </div>
                     </div>
                   </td>
@@ -620,13 +487,6 @@ export default function DispatchListClient() {
                             <div className="text-xs text-foreground">{item.productName}</div>
                             {/* Same badge as desktop — tap to see who ordered. */}
                             <div className="mt-0.5">
-                              <CustomerBadge
-                                orders={item.orders.map((o) => ({
-                                  customer: o.customer,
-                                  qty: o.pending,
-                                  paidStatus: o.paidStatus,
-                                }))}
-                              />
                             </div>
                           </div>
                           {/* Match desktop: bold = remaining to dispatch, faded "/ total" only when partially dispatched. */}

@@ -2,9 +2,8 @@
 
 import { displayIg, fmt } from "@/lib/format"
 import TableSkeleton from "@/components/TableSkeleton"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import type { ArrivalListItem, ArrivalListOrder, ExcessTransitItem } from "@/lib/db"
-import type { PaidStatus } from "@/lib/db/shopping-list"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import { allocateFifo } from "@/lib/fifo-fill"
 import { fetchJson } from "@/lib/api-fetch"
@@ -12,9 +11,11 @@ import ArriveBulkModal from "./ArriveBulkModal"
 import EventSelect from "@/components/EventSelect"
 import SearchableSelect from "@/components/SearchableSelect"
 import SearchInput from "@/components/SearchInput"
-import { FALLBACK_ROUTES, routeOf, routeKeyOf, daysInTransit, transitStatus, type DispatchRoute, type TransitStatus } from "@/lib/dispatch-modes"
+import { FALLBACK_ROUTES, routeOf, daysInTransit, transitStatus, type DispatchRoute, type TransitStatus } from "@/lib/dispatch-modes"
 import SelectionActionBar from "@/components/SelectionActionBar"
 import OverbuyTransitList from "@/components/OverbuyTransitList"
+import { groupItems, buildRows, rowKey } from "@/lib/grouped-rows"
+import { TRANSIT_COL } from "@/components/transit-columns"
 
 function computeFill(orders: ArrivalListOrder[], quantityArrived: number) {
   const { allocations, unallocated, excess } = allocateFifo(orders, (o) => o.pending, quantityArrived)
@@ -34,19 +35,6 @@ function computeFill(orders: ArrivalListOrder[], quantityArrived: number) {
  */
 type ArrivalRow = ArrivalListItem & { parcel?: string; parcelSentOn?: string }
 
-function groupItems(items: ArrivalRow[], keyOf: (i: ArrivalRow) => string = (i) => i.event) {
-  const map = new Map<string, Map<string, ArrivalRow[]>>()
-  for (const item of items) {
-    const top = keyOf(item)
-    if (!map.has(top)) map.set(top, new Map())
-    const storeMap = map.get(top)!
-    const key = item.store || "—"
-    if (!storeMap.has(key)) storeMap.set(key, [])
-    storeMap.get(key)!.push(item)
-  }
-  return map
-}
-
 /**
  * Stable selection key: event + productId, and the parcel too when one is in
  * play. Without the parcel, a product split between the air box and the sea box
@@ -54,67 +42,6 @@ function groupItems(items: ArrivalRow[], keyOf: (i: ArrivalRow) => string = (i) 
  */
 function selKey(item: Pick<ArrivalRow, "event" | "productId"> & { parcel?: string }): string {
   return `${item.event}|${item.productId}${item.parcel ? `|${item.parcel}` : ""}`
-}
-
-type RowDescriptor =
-  | { type: "event-collapsed"; event: string; totalItems: number }
-  | { type: "store-collapsed"; event: string; store: string; totalItems: number; showEvent: boolean; eventRowSpan?: number }
-  | { type: "item"; item: ArrivalRow; event: string; store: string; showEvent: boolean; showStore: boolean; eventRowSpan?: number; storeRowSpan?: number }
-
-function buildRows(
-  grouped: Map<string, Map<string, ArrivalRow[]>>,
-  collapsedEvents: Set<string>,
-  collapsedStores: Set<string>,
-): RowDescriptor[] {
-  const rows: RowDescriptor[] = []
-
-  for (const [event, storeMap] of grouped) {
-    if (collapsedEvents.has(event)) {
-      const totalItems = [...storeMap.values()].reduce((s, arr) => s + arr.length, 0)
-      rows.push({ type: "event-collapsed", event, totalItems })
-      continue
-    }
-
-    let eventRowSpan = 0
-    for (const [store, storeItems] of storeMap) {
-      eventRowSpan += collapsedStores.has(`${event}|${store}`) ? 1 : storeItems.length
-    }
-
-    let firstStoreOfEvent = true
-    for (const [store, storeItems] of storeMap) {
-      const storeKey = `${event}|${store}`
-
-      if (collapsedStores.has(storeKey)) {
-        rows.push({
-          type: "store-collapsed",
-          event,
-          store,
-          totalItems: storeItems.length,
-          showEvent: firstStoreOfEvent,
-          eventRowSpan: firstStoreOfEvent ? eventRowSpan : undefined,
-        })
-        firstStoreOfEvent = false
-        continue
-      }
-
-      storeItems.forEach((item, idx) => {
-        const showEvent = firstStoreOfEvent && idx === 0
-        rows.push({
-          type: "item",
-          item,
-          event,
-          store,
-          showEvent,
-          showStore: idx === 0,
-          eventRowSpan: showEvent ? eventRowSpan : undefined,
-          storeRowSpan: idx === 0 ? storeItems.length : undefined,
-        })
-        if (idx === 0) firstStoreOfEvent = false
-      })
-    }
-  }
-
-  return rows
 }
 
 function CollapseBtn({ collapsed, onClick }: { collapsed: boolean; onClick: () => void }) {
@@ -125,128 +52,6 @@ function CollapseBtn({ collapsed, onClick }: { collapsed: boolean; onClick: () =
     >
       {collapsed ? "+" : "−"}
     </button>
-  )
-}
-
-const PAID_DOT: Record<PaidStatus, string> = {
-  paid:    "bg-green-500",
-  partial: "bg-yellow-400",
-  unpaid:  "bg-divider",
-}
-const PAID_LABEL: Record<PaidStatus, string> = {
-  paid:    "Paid",
-  partial: "Partial",
-  unpaid:  "Unpaid",
-}
-
-function CustomerBadge({ orders }: { orders: { customer: string; qty: number; paidStatus: PaidStatus }[] }) {
-  const [open, setOpen] = useState(false)
-  const [popupStyle, setPopupStyle] = useState<React.CSSProperties>({})
-  const triggerRef = useRef<HTMLButtonElement>(null)
-  const popupRef = useRef<HTMLDivElement>(null)
-
-  const entries = useMemo(() => {
-    const map = new Map<string, { qty: number; paidStatus: PaidStatus }>()
-    for (const o of orders) {
-      const prev = map.get(o.customer)
-      map.set(o.customer, {
-        qty: (prev?.qty ?? 0) + o.qty,
-        paidStatus: prev?.paidStatus ?? o.paidStatus,
-      })
-    }
-    return [...map.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([customer, v]) => ({ customer, qty: v.qty, paidStatus: v.paidStatus }))
-  }, [orders])
-
-  const paidCount = entries.filter((e) => e.paidStatus === "paid").length
-  const totalCount = entries.length
-  const allPaid = totalCount > 0 && paidCount === totalCount
-
-  useEffect(() => {
-    if (!open) return
-    function onPointerDown(e: PointerEvent) {
-      const target = e.target as Node
-      if (!triggerRef.current?.contains(target) && !popupRef.current?.contains(target)) {
-        setOpen(false)
-      }
-    }
-    function onScroll(e: Event) {
-      if (popupRef.current?.contains(e.target as Node)) return
-      setOpen(false)
-    }
-    document.addEventListener("pointerdown", onPointerDown)
-    window.addEventListener("scroll", onScroll, true)
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown)
-      window.removeEventListener("scroll", onScroll, true)
-    }
-  }, [open])
-
-  function handleToggle() {
-    if (!open && triggerRef.current) {
-      const rect = triggerRef.current.getBoundingClientRect()
-      const POPUP_HEIGHT = 260
-      const spaceBelow = window.innerHeight - rect.bottom
-      const flipUp = spaceBelow < POPUP_HEIGHT && rect.top > POPUP_HEIGHT
-      setPopupStyle({
-        position: "fixed",
-        top: flipUp ? rect.top - POPUP_HEIGHT - 4 : rect.bottom + 4,
-        left: rect.left,
-        minWidth: 200,
-      })
-    }
-    setOpen((o) => !o)
-  }
-
-  return (
-    <>
-      <button
-        ref={triggerRef}
-        type="button"
-        onClick={handleToggle}
-        title={allPaid ? "All customers paid" : `${paidCount} of ${totalCount} paid`}
-        className="inline-flex items-baseline gap-1 text-faint hover:text-brand transition-colors cursor-pointer"
-      >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="self-center">
-          <circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
-        </svg>
-        <span className="text-xs tabular-nums">{totalCount}</span>
-        {allPaid ? (
-          <span className="text-xs text-green-600"> · all paid</span>
-        ) : paidCount > 0 ? (
-          <span className="text-xs">
-            {" · "}
-            <span className="text-green-600 font-medium">{paidCount}</span>
-            {" paid"}
-          </span>
-        ) : null}
-      </button>
-      {open && (
-        <div
-          ref={popupRef}
-          style={popupStyle}
-          className="z-50 max-h-64 overflow-y-auto rounded-lg border border-cream-border bg-white shadow-lg py-1"
-        >
-          {entries.map((e) => (
-            <div
-              key={e.customer}
-              className="flex items-center justify-between gap-3 px-3 py-1 text-xs hover:bg-surface-muted whitespace-nowrap"
-            >
-              <span className="flex items-center gap-2 min-w-0">
-                <span
-                  className={`inline-block w-2 h-2 rounded-full shrink-0 ${PAID_DOT[e.paidStatus]}`}
-                  title={PAID_LABEL[e.paidStatus]}
-                  aria-label={PAID_LABEL[e.paidStatus]}
-                />
-                <span className="text-foreground truncate">{displayIg(e.customer)}</span>
-              </span>
-              <span className="text-muted tabular-nums shrink-0">{e.qty}×</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </>
   )
 }
 
@@ -428,7 +233,9 @@ export default function ArrivalListClient() {
    * suitcase, CJI by air, MNC by sea. A parcel arrives as one box, and this
    * is how the bench sees what should have been in it.
    */
-  const [route, setRoute] = useState<string>("all")
+  // Air cargo by default. "All" is every parcel still in transit across every
+  // event, which is the largest view and rarely the one you opened the page for.
+  const [route, setRoute] = useState<string>("air")
   /**
    * The routes as Settings has them. Falls back to the built-in three until
    * the fetch lands, so the tabs never flash empty; a changed prefix simply
@@ -468,12 +275,17 @@ export default function ArrivalListClient() {
   const [receiveOpen, setReceiveOpen] = useState(false)
   const [notReceivedOpen, setNotReceivedOpen] = useState(false)
 
-  const fetchItems = useCallback((event?: string, silent = false) => {
+  const fetchItems = useCallback((event?: string, route?: string, silent = false) => {
     if (!silent) setLoading(true)
     setError("")
-    const url = event
-      ? `/api/sheets/arrival-list?event=${encodeURIComponent(event)}`
-      : "/api/sheets/arrival-list"
+    // The route goes to the server now. Filtering in the browser meant every
+    // tab downloaded every parcel still in transit and then showed a tenth of
+    // them; asking for one route fetches one route.
+    const params = new URLSearchParams()
+    if (event) params.set("event", event)
+    if (route && route !== "all") params.set("route", route)
+    const qs = params.toString()
+    const url = qs ? `/api/sheets/arrival-list?${qs}` : "/api/sheets/arrival-list"
     fetchJson<{ items: ArrivalListItem[]; excessPending?: ExcessTransitItem[] }>(url)
       .then((data) => {
         const items = data.items ?? []
@@ -491,14 +303,14 @@ export default function ArrivalListClient() {
   }, [])
 
   useEffect(() => {
-    fetchItems(selectedEvent || undefined)
-  }, [fetchItems, selectedEvent])
+    fetchItems(selectedEvent || undefined, route)
+  }, [fetchItems, selectedEvent, route])
 
   // Partial fills change multiple orders' pending qty in non-trivial ways.
   // Refetching is simpler and more correct than incremental local state updates.
   // Silent so the open modal isn't unmounted by the TableSkeleton fallback.
   function handleArrivedSuccess() {
-    fetchItems(selectedEvent || undefined, true)
+    fetchItems(selectedEvent || undefined, route, true)
   }
 
   // Resolve selected keys back to live items (off `items`, not `filteredItems`,
@@ -551,19 +363,6 @@ export default function ArrivalListClient() {
   }
 
   /** How many lines are waiting on each route, for the counts on the tabs. */
-  const routeCounts = useMemo(() => {
-    const counts: Record<string, number> = { all: 0, other: 0 }
-    for (const r of routes) counts[r.key] = 0
-    for (const item of items) {
-      counts.all += 1
-      const modes = new Set(item.orders.map((o) => routeKeyOf(o.dispatchReceipt, routes)))
-      // An item can span two parcels — half flown, half shipped — so it counts
-      // once against each route it is actually travelling on.
-      for (const m of modes) counts[m] = (counts[m] ?? 0) + 1
-    }
-    return counts
-  }, [items, routes])
-
   const filteredItems = useMemo<ArrivalRow[]>(() => {
     const q = search.trim().toLowerCase()
     const matchesSearch = (i: ArrivalRow) => !q
@@ -574,19 +373,18 @@ export default function ArrivalListClient() {
 
     if (route === "all") return items.filter(matchesSearch)
 
-    // Narrowed to one route, a row must describe THAT parcel and nothing else.
-    // Filtering which rows to show is not enough: an item split between two
-    // boxes would keep reporting its full quantity and every customer, so
-    // opening the air cargo would list seven units when only three flew — and
-    // the four still at sea would be hunted for on the bench.
     // One row per box, not per item: a route can hold several parcels, and a
-    // product may sit in two of them. Splitting here is what lets the table
-    // group by receipt below — and what makes each row's quantity, customers
-    // and order ids describe the box in front of you.
+    // product may sit in two of them. The server has already narrowed the
+    // quantities to this route — nine units of which five flew arrive here as
+    // five — and splitting per parcel is what lets the table group by receipt
+    // below.
     return items.reduce<ArrivalRow[]>((out, item) => {
       const byParcel = new Map<string, typeof item.orders>()
       for (const o of item.orders) {
-        if (routeKeyOf(o.dispatchReceipt, routes) !== route) continue
+        // No route check: the server returned this route's orders and nothing
+        // else. Re-testing here would use the browser's copy of the routes,
+        // which is FALLBACK_ROUTES until Settings loads — and that copy knows
+        // MNC but not MU, so it would drop parcels the server had rightly sent.
         const key = o.dispatchReceipt || "—"
         byParcel.set(key, [...(byParcel.get(key) ?? []), o])
       }
@@ -657,8 +455,8 @@ export default function ArrivalListClient() {
     const data = await res.json().catch(() => ({}))
     if (!res.ok) throw new Error(data.error ?? "Could not rename")
     clearSelection()
-    fetchItems(selectedEvent || undefined, true)
-  }, [fetchItems, selectedEvent])
+    fetchItems(selectedEvent || undefined, route, true)
+  }, [fetchItems, selectedEvent, route])
 
   // Desktop-only state (see above) — mobile's own render loop reads collapsedEvents/
   // collapsedStores directly, not through `rows`.
@@ -678,7 +476,7 @@ export default function ArrivalListClient() {
       <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-sm text-red-700 flex items-center justify-between gap-3">
         <span>{error}</span>
         <button
-          onClick={() => fetchItems(selectedEvent || undefined)}
+          onClick={() => fetchItems(selectedEvent || undefined, route)}
           className="text-xs px-3 py-1.5 rounded-lg border border-red-300 text-red-700 hover:bg-red-100 transition-colors shrink-0"
         >
           Retry
@@ -696,11 +494,11 @@ export default function ArrivalListClient() {
           are operated the same way. */}
       <div className="flex items-center gap-1 w-full rounded-xl border border-cream-border bg-white p-1 mb-3 overflow-x-auto">
         {routeTabs.map(({ key, label }) => {
-          const count = routeCounts[key] ?? 0
-          // "Other" catches an unrecognised prefix — a typo, usually. It stays
-          // out of the bar while empty rather than offering a tab that shows
-          // nothing.
-          if (key === "other" && count === 0) return null
+          // No count beside the label any more: the browser holds one route's
+          // parcels, so it has nothing to count the others with. "Other" is
+          // always offered — it is where an unrecognised code lands, and it
+          // cannot hide itself when empty without also hiding itself when the
+          // server simply has not been asked.
           const active = route === key
           return (
             <button
@@ -722,7 +520,6 @@ export default function ArrivalListClient() {
               }`}
             >
               {label}
-              <span className={`tabular-nums text-xs ${active ? "text-white/70" : "text-faint"}`}>{count}</span>
             </button>
           )
         })}
@@ -800,19 +597,19 @@ export default function ArrivalListClient() {
                   route — a trip name like POCN202603, or a receipt plus its
                   clock. One width for both, wide enough for either: sizing it
                   per tab slid every other column sideways on a tab switch. */}
-              <th className="text-left px-4 py-2.5 font-medium text-muted w-44">
+              <th className={`text-left px-4 py-2.5 font-medium text-muted ${TRANSIT_COL.group}`}>
                 {route === "all" ? "Event" : "Parcel"}
               </th>
-              <th className="text-left px-4 py-2.5 font-medium text-muted w-36">Store</th>
+              <th className={`text-left px-4 py-2.5 font-medium text-muted ${TRANSIT_COL.store}`}>Store</th>
               <th className="text-left px-4 py-2.5 font-medium text-muted">Product</th>
               {/* One width for both views — a receipt with its clock under
                   "All", a whole trip code under a route. Switching tabs should
                   not shift the columns under your eye. */}
-              <th className="text-left px-4 py-2.5 font-medium text-muted w-40">
+              <th className={`text-left px-4 py-2.5 font-medium text-muted ${TRANSIT_COL.detail}`}>
                 {route === "all" ? "Receipt" : "Event"}
               </th>
-              <th className="text-right px-4 py-2.5 font-medium text-muted w-14">Qty</th>
-              <th className="px-4 py-2.5 w-10" />
+              <th className={`text-right px-4 py-2.5 font-medium text-muted ${TRANSIT_COL.qty}`}>Qty</th>
+              <th className={`px-4 py-2.5 ${TRANSIT_COL.action}`} />
             </tr>
           </thead>
           <tbody>
@@ -862,7 +659,7 @@ export default function ArrivalListClient() {
 
               return (
                 <tr
-                  key={`${row.event}|${row.store}|${row.item.productId}`}
+                  key={rowKey(row.event, row.store, row.item)}
                   className="border-b border-cream-border hover:bg-surface-muted/50 transition-colors"
                 >
                   {row.showEvent && (
@@ -894,9 +691,6 @@ export default function ArrivalListClient() {
                       )}
                       <div className="flex items-baseline gap-1.5 min-w-0">
                         <span className="text-foreground truncate">{row.item.productName}</span>
-                        <CustomerBadge
-                          orders={row.item.orders.map((o) => ({ customer: o.customer, qty: o.pending, paidStatus: o.paidStatus }))}
-                        />
                       </div>
                     </div>
                   </td>
@@ -996,9 +790,6 @@ export default function ArrivalListClient() {
                         <div className="flex-1 min-w-0">
                           <div className="text-xs text-foreground">{item.productName}</div>
                           <div className="mt-0.5">
-                            <CustomerBadge
-                              orders={item.orders.map((o) => ({ customer: o.customer, qty: o.pending, paidStatus: o.paidStatus }))}
-                            />
                           </div>
                         </div>
                         <div className="text-sm font-bold tabular-nums whitespace-nowrap text-foreground">
@@ -1027,7 +818,7 @@ export default function ArrivalListClient() {
       <OverbuyTransitList
         items={excessPending}
         stage="arrive"
-        onMarked={() => fetchItems(selectedEvent || undefined, true)}
+        onMarked={() => fetchItems(selectedEvent || undefined, route, true)}
       />
 
       {arrivingItem && (

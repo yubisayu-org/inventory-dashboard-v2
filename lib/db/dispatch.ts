@@ -1,5 +1,5 @@
 import sql from "../db-pool"
-import { PAID_PRIORITY_RANK, fetchPaidStatusMap, type PaidStatus } from "./shopping-list"
+import { fetchPaidStatusMap, compareOrderPriority } from "./shopping-list"
 import type { ExcessTransitItem, ExcessReason } from "./types"
 
 // ─── Dispatch List ──────────────────────────────────────────────────────────
@@ -16,9 +16,6 @@ export interface DispatchListOrder {
   unitBuy: number      // cap for this stage — units bought, i.e. dispatchable
   unitDispatch: number // already dispatched (0 if none)
   pending: number      // unitBuy - unitDispatch
-  // Whether the customer has settled this event's invoice. Mirrors the same
-  // math as computeEventCore: paid >= subtotal + ongkir*weight + adjustments.
-  paidStatus: PaidStatus
 }
 
 export interface DispatchListItem {
@@ -145,19 +142,16 @@ export async function getDispatchList(event?: string): Promise<DispatchListItem[
     totalOriginal: r.total_original as number,
     customerCount: r.customer_count as number,
     orderIds: r.order_ids as number[],
-    orders: (r.orders as Omit<DispatchListOrder, "paidStatus">[]).map((o) => ({
-      ...o,
-      paidStatus: statusMap.get(`${r.event}|${o.customer}`) ?? "unpaid",
-    })),
+    orders: r.orders as DispatchListOrder[],
   }))
 
   // Order each product's customers by allocation priority (paid → partial →
   // unpaid, then earliest order) so the dispatch modal's fill preview — which
   // walks this array in order — matches the server-side allocation.
+  // Sorted by payment status, not shipped with it — the dispatch table shows no
+  // per-customer payment state, so the array's order is the whole message.
   for (const item of items) {
-    item.orders.sort(
-      (a, b) => PAID_PRIORITY_RANK[a.paidStatus] - PAID_PRIORITY_RANK[b.paidStatus] || a.id - b.id,
-    )
+    item.orders.sort(compareOrderPriority(item.event, statusMap))
   }
 
   return items

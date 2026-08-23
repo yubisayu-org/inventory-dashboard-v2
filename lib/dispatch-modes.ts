@@ -15,10 +15,15 @@
  */
 
 export interface DispatchRoute {
-  /** Stable and internal; the label and prefix are the owner's to change. */
+  /** Stable and internal; the label and codes are the owner's to change. */
   key: string
   label: string
-  prefix: string
+  /**
+   * Every code that means this route. A forwarder books the same sea freight
+   * under more than one series, and both belong to one tab rather than to a
+   * second route wearing the same name.
+   */
+  prefixes: string[]
   /** How long this route usually takes — past this, a box is worth chasing. */
   warnDays: number
   /** Past this it is a problem rather than merely slow. */
@@ -27,9 +32,9 @@ export interface DispatchRoute {
 
 /** What the app falls back to before Settings has been read. */
 export const FALLBACK_ROUTES: DispatchRoute[] = [
-  { key: "hc", label: "Hand Carry", prefix: "HC", warnDays: 7, lateDays: 14 },
-  { key: "cji", label: "Air Cargo", prefix: "CJI", warnDays: 28, lateDays: 56 },
-  { key: "mnc", label: "Sea Cargo", prefix: "MNC", warnDays: 56, lateDays: 84 },
+  { key: "hc", label: "Hand Carry", prefixes: ["HC"], warnDays: 7, lateDays: 14 },
+  { key: "air", label: "Air Cargo", prefixes: ["CJI"], warnDays: 28, lateDays: 56 },
+  { key: "sea", label: "Sea Cargo", prefixes: ["MNC"], warnDays: 56, lateDays: 84 },
 ]
 
 /**
@@ -51,9 +56,14 @@ export type TransitStatus = "unknown" | "ontime" | "warn" | "late"
 export function routeOf(receipt: string, routes: DispatchRoute[]): DispatchRoute | null {
   const head = receipt.trim().toUpperCase()
   if (!head) return null
-  return [...routes]
+  // Flattened to (code, route) pairs first: with several codes per route, the
+  // most specific code has to win across ALL routes, not merely against the
+  // other codes of its own.
+  return routes
+    .flatMap((r) => r.prefixes.map((p) => ({ prefix: p.trim().toUpperCase(), route: r })))
+    .filter((x) => x.prefix !== "")
     .sort((a, b) => b.prefix.length - a.prefix.length)
-    .find((r) => head.startsWith(r.prefix.trim().toUpperCase())) ?? null
+    .find((x) => head.startsWith(x.prefix))?.route ?? null
 }
 
 /** The route's key, or "other". Convenient for grouping and tab keys. */

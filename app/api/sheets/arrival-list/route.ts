@@ -10,10 +10,13 @@ async function handleGET(req: NextRequest) {
   if (roleError) return roleError
 
   const event = req.nextUrl.searchParams.get("event") ?? undefined
+  // Absent or "all" means every route. The receiving list names one so the
+  // response carries that route's parcels rather than everything in transit.
+  const route = req.nextUrl.searchParams.get("route") ?? undefined
 
   try {
     const [items, excessPending] = await Promise.all([
-      getArrivalList(event),
+      getArrivalList(event, route),
       getExcessArrivalPending(event),
     ])
     return NextResponse.json({ items, excessPending }, { headers: { "Cache-Control": "no-store" } })
