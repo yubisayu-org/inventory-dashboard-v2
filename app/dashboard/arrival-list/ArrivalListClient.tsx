@@ -2,9 +2,8 @@
 
 import { displayIg, fmt } from "@/lib/format"
 import TableSkeleton from "@/components/TableSkeleton"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import type { ArrivalListItem, ArrivalListOrder, ExcessTransitItem } from "@/lib/db"
-import type { PaidStatus } from "@/lib/db/shopping-list"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import { allocateFifo } from "@/lib/fifo-fill"
 import { fetchJson } from "@/lib/api-fetch"
@@ -52,128 +51,6 @@ function CollapseBtn({ collapsed, onClick }: { collapsed: boolean; onClick: () =
     >
       {collapsed ? "+" : "−"}
     </button>
-  )
-}
-
-const PAID_DOT: Record<PaidStatus, string> = {
-  paid:    "bg-green-500",
-  partial: "bg-yellow-400",
-  unpaid:  "bg-divider",
-}
-const PAID_LABEL: Record<PaidStatus, string> = {
-  paid:    "Paid",
-  partial: "Partial",
-  unpaid:  "Unpaid",
-}
-
-function CustomerBadge({ orders }: { orders: { customer: string; qty: number; paidStatus: PaidStatus }[] }) {
-  const [open, setOpen] = useState(false)
-  const [popupStyle, setPopupStyle] = useState<React.CSSProperties>({})
-  const triggerRef = useRef<HTMLButtonElement>(null)
-  const popupRef = useRef<HTMLDivElement>(null)
-
-  const entries = useMemo(() => {
-    const map = new Map<string, { qty: number; paidStatus: PaidStatus }>()
-    for (const o of orders) {
-      const prev = map.get(o.customer)
-      map.set(o.customer, {
-        qty: (prev?.qty ?? 0) + o.qty,
-        paidStatus: prev?.paidStatus ?? o.paidStatus,
-      })
-    }
-    return [...map.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([customer, v]) => ({ customer, qty: v.qty, paidStatus: v.paidStatus }))
-  }, [orders])
-
-  const paidCount = entries.filter((e) => e.paidStatus === "paid").length
-  const totalCount = entries.length
-  const allPaid = totalCount > 0 && paidCount === totalCount
-
-  useEffect(() => {
-    if (!open) return
-    function onPointerDown(e: PointerEvent) {
-      const target = e.target as Node
-      if (!triggerRef.current?.contains(target) && !popupRef.current?.contains(target)) {
-        setOpen(false)
-      }
-    }
-    function onScroll(e: Event) {
-      if (popupRef.current?.contains(e.target as Node)) return
-      setOpen(false)
-    }
-    document.addEventListener("pointerdown", onPointerDown)
-    window.addEventListener("scroll", onScroll, true)
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown)
-      window.removeEventListener("scroll", onScroll, true)
-    }
-  }, [open])
-
-  function handleToggle() {
-    if (!open && triggerRef.current) {
-      const rect = triggerRef.current.getBoundingClientRect()
-      const POPUP_HEIGHT = 260
-      const spaceBelow = window.innerHeight - rect.bottom
-      const flipUp = spaceBelow < POPUP_HEIGHT && rect.top > POPUP_HEIGHT
-      setPopupStyle({
-        position: "fixed",
-        top: flipUp ? rect.top - POPUP_HEIGHT - 4 : rect.bottom + 4,
-        left: rect.left,
-        minWidth: 200,
-      })
-    }
-    setOpen((o) => !o)
-  }
-
-  return (
-    <>
-      <button
-        ref={triggerRef}
-        type="button"
-        onClick={handleToggle}
-        title={allPaid ? "All customers paid" : `${paidCount} of ${totalCount} paid`}
-        className="inline-flex items-baseline gap-1 text-faint hover:text-brand transition-colors cursor-pointer"
-      >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="self-center">
-          <circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
-        </svg>
-        <span className="text-xs tabular-nums">{totalCount}</span>
-        {allPaid ? (
-          <span className="text-xs text-green-600"> · all paid</span>
-        ) : paidCount > 0 ? (
-          <span className="text-xs">
-            {" · "}
-            <span className="text-green-600 font-medium">{paidCount}</span>
-            {" paid"}
-          </span>
-        ) : null}
-      </button>
-      {open && (
-        <div
-          ref={popupRef}
-          style={popupStyle}
-          className="z-50 max-h-64 overflow-y-auto rounded-lg border border-cream-border bg-white shadow-lg py-1"
-        >
-          {entries.map((e) => (
-            <div
-              key={e.customer}
-              className="flex items-center justify-between gap-3 px-3 py-1 text-xs hover:bg-surface-muted whitespace-nowrap"
-            >
-              <span className="flex items-center gap-2 min-w-0">
-                <span
-                  className={`inline-block w-2 h-2 rounded-full shrink-0 ${PAID_DOT[e.paidStatus]}`}
-                  title={PAID_LABEL[e.paidStatus]}
-                  aria-label={PAID_LABEL[e.paidStatus]}
-                />
-                <span className="text-foreground truncate">{displayIg(e.customer)}</span>
-              </span>
-              <span className="text-muted tabular-nums shrink-0">{e.qty}×</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </>
   )
 }
 
@@ -355,7 +232,9 @@ export default function ArrivalListClient() {
    * suitcase, CJI by air, MNC by sea. A parcel arrives as one box, and this
    * is how the bench sees what should have been in it.
    */
-  const [route, setRoute] = useState<string>("all")
+  // Air cargo by default. "All" is every parcel still in transit across every
+  // event, which is the largest view and rarely the one you opened the page for.
+  const [route, setRoute] = useState<string>("cji")
   /**
    * The routes as Settings has them. Falls back to the built-in three until
    * the fetch lands, so the tabs never flash empty; a changed prefix simply
@@ -821,9 +700,6 @@ export default function ArrivalListClient() {
                       )}
                       <div className="flex items-baseline gap-1.5 min-w-0">
                         <span className="text-foreground truncate">{row.item.productName}</span>
-                        <CustomerBadge
-                          orders={row.item.orders.map((o) => ({ customer: o.customer, qty: o.pending, paidStatus: o.paidStatus }))}
-                        />
                       </div>
                     </div>
                   </td>
@@ -923,9 +799,6 @@ export default function ArrivalListClient() {
                         <div className="flex-1 min-w-0">
                           <div className="text-xs text-foreground">{item.productName}</div>
                           <div className="mt-0.5">
-                            <CustomerBadge
-                              orders={item.orders.map((o) => ({ customer: o.customer, qty: o.pending, paidStatus: o.paidStatus }))}
-                            />
                           </div>
                         </div>
                         <div className="text-sm font-bold tabular-nums whitespace-nowrap text-foreground">

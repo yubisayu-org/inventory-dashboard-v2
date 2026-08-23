@@ -950,7 +950,6 @@ export interface ArrivalListOrder {
   unitBuy: number
   unitArrive: number
   pending: number
-  paidStatus: PaidStatus
   /** Tracking ref this order's units were dispatched under (see the Dispatch List's
    *  "Inventory receipt" field). Empty when dispatched without one. */
   dispatchReceipt: string
@@ -1053,12 +1052,12 @@ export async function getArrivalList(event?: string): Promise<ArrivalListItem[]>
   // Order each product's customers by allocation priority (paid → partial →
   // unpaid, then earliest order) so the arrive modal's fill preview matches the
   // server-side allocation in markProductArrived.
+  // Sorted by it, never sent with it: the receiving table shows no per-customer
+  // payment state, so the status is the server's business and the order of the
+  // array carries everything the arrive modal needs.
   const statusMap = await fetchPaidStatusMap(event ? [event] : null)
   for (const item of items) {
     item.orders.sort(compareOrderPriority(item.event, statusMap))
-    for (const order of item.orders) {
-      order.paidStatus = statusMap.get(`${item.event}|${order.customer}`) ?? "unpaid"
-    }
   }
 
   return items
