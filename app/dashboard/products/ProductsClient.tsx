@@ -118,7 +118,7 @@ export default function ProductsClient() {
           type="button"
           onClick={() => setEditingRow(row.original)}
           title="Edit"
-          className="text-gray-400 hover:text-brand transition-colors"
+          className="text-faint hover:text-brand transition-colors"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
@@ -133,7 +133,7 @@ export default function ProductsClient() {
     <div className="rounded-xl border border-cream-border bg-white p-3.5 flex items-center justify-between gap-3">
       <div className="min-w-0">
         <div className="text-sm font-semibold text-foreground truncate">{row.product}</div>
-        <div className="text-xs text-gray-500 mt-0.5">{row.store}</div>
+        <div className="text-xs text-muted mt-0.5">{row.store}</div>
       </div>
       <div className="flex items-center gap-3 shrink-0">
         <span className="text-sm font-medium tabular-nums text-foreground">{fmt(row.price)}</span>
@@ -141,7 +141,7 @@ export default function ProductsClient() {
           type="button"
           onClick={(e) => { e.stopPropagation(); setEditingRow(row) }}
           title="Edit"
-          className="text-gray-400 hover:text-brand transition-colors"
+          className="text-faint hover:text-brand transition-colors"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
@@ -295,12 +295,12 @@ function EditProductIndoModal({
       <div className="bg-white rounded-xl border border-cream-border shadow-xl p-6 w-full max-w-md flex flex-col gap-4" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <span className="text-sm font-semibold text-foreground">Edit Produk</span>
-          <span className="text-xs text-gray-400">Row: {row.rowNumber}</span>
+          <span className="text-xs text-faint">Row: {row.rowNumber}</span>
         </div>
 
         <div className="flex flex-col gap-3">
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-500">Product</span>
+            <span className="text-xs font-medium text-muted">Product</span>
             <input
               value={draft.product}
               onChange={(e) => setDraft((d) => ({ ...d, product: e.target.value }))}
@@ -311,7 +311,7 @@ function EditProductIndoModal({
             />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-500">Store</span>
+            <span className="text-xs font-medium text-muted">Store</span>
             <input
               value={draft.store}
               onChange={(e) => setDraft((d) => ({ ...d, store: e.target.value }))}
@@ -325,7 +325,7 @@ function EditProductIndoModal({
             </datalist>
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-500">Price</span>
+            <span className="text-xs font-medium text-muted">Price</span>
             <input
               value={draft.price}
               onChange={(e) => setDraft((d) => ({ ...d, price: e.target.value }))}
@@ -344,7 +344,7 @@ function EditProductIndoModal({
             type="button"
             onClick={onCancel}
             disabled={saving}
-            className="px-3 py-1.5 rounded-lg border border-cream-border text-gray-500 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+            className="px-3 py-1.5 rounded-lg border border-cream-border text-muted text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
           >
             Batal
           </button>
@@ -352,7 +352,7 @@ function EditProductIndoModal({
             type="button"
             onClick={handleSave}
             disabled={saving}
-            className="px-4 py-1.5 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
+            className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
           >
             {saving ? "Menyimpan…" : "Simpan"}
           </button>

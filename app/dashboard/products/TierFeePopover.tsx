@@ -63,9 +63,9 @@ export default function TierFeePopover({
       </p>
 
       {brackets == null ? (
-        <p className="text-xs text-gray-500">Loading…</p>
+        <p className="text-xs text-muted">Loading…</p>
       ) : sorted.length === 0 ? (
-        <p className={`text-xs ${rounding ? "text-amber-700" : "text-gray-500"}`}>
+        <p className={`text-xs ${rounding ? "text-amber-700" : "text-muted"}`}>
           {rounding
             ? "No brackets, so the fee is 0 and this product is priced at cost."
             : "No brackets set, so nothing is suggested."}
@@ -78,8 +78,8 @@ export default function TierFeePopover({
             return (
               <div
                 key={b.id}
-                className={`flex items-center justify-between gap-2 px-2 py-1 rounded-md text-xs tabular-nums ${
-                  isActive ? "bg-brand/10 text-foreground font-medium" : "text-gray-500"
+                className={`flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg text-xs tabular-nums ${
+                  isActive ? "bg-brand/10 text-foreground font-medium" : "text-muted"
                 }`}
               >
                 <span>from {fmt2(b.minBase)}</span>
@@ -100,26 +100,26 @@ export default function TierFeePopover({
       <div className="border-t border-cream-border pt-2 flex flex-col gap-1">
         {rounding ? (
           <>
-            <p className="text-xs text-gray-500 tabular-nums">
+            <p className="text-xs text-muted tabular-nums">
               Base cost <span className="font-semibold text-foreground">Rp {fmt(Math.round(base))}</span>
               {" + fee "}
               <span className="font-semibold text-foreground">Rp {fmt(Math.round(fee))}</span>
               {` = Rp ${fmt(Math.round(raw))}`}
             </p>
-            <p className="text-xs text-gray-500 tabular-nums">
+            <p className="text-xs text-muted tabular-nums">
               rounded up to {fmt(rounding)} → price{" "}
               <span className="font-semibold text-foreground">Rp {fmt(Math.round(price))}</span>
             </p>
             {/* The round-up lands in profit, not cost, so a small base can show a
                 margin well above the bracket's own fee. */}
             {Math.round(price) !== Math.round(raw) && (
-              <p className="text-[11px] text-gray-400 tabular-nums">
+              <p className="text-[11px] text-faint tabular-nums">
                 The rounding added Rp {fmt(Math.round(price - raw))} on top of the fee.
               </p>
             )}
           </>
         ) : (
-          <p className="text-xs text-gray-500 tabular-nums">
+          <p className="text-xs text-muted tabular-nums">
             Base cost <span className="font-semibold text-foreground">Rp {fmt(Math.round(base))}</span>
             {" → fee "}
             <span className="font-semibold text-foreground">Rp {fmt(Math.round(fee))}</span>
@@ -139,7 +139,7 @@ export default function TierFeePopover({
         )}
       </div>
 
-      <p className="text-[10px] text-gray-400">
+      <p className="text-[10px] text-faint">
         {rounding ? (
           <>
             Brackets are edited under Settings → Pricing, and the rounding step at the top

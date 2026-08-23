@@ -69,7 +69,7 @@ function Row({
         separator ? "border-t border-cream-border mt-1 pt-2" : ""
       } ${strong ? "font-semibold" : ""}`}
     >
-      <dt className="text-gray-600">{label}</dt>
+      <dt className="text-muted-strong">{label}</dt>
       <dd className={valueClassName ?? "text-foreground"}>{value}</dd>
     </div>
   )

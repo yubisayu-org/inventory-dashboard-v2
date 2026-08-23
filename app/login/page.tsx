@@ -9,7 +9,7 @@ export default async function LoginPage() {
 
   return (
     <main className="min-h-screen flex items-center justify-center bg-cream">
-      <div className="bg-white p-8 rounded-2xl shadow-sm border border-cream-border w-full max-w-sm text-center">
+      <div className="bg-white p-8 rounded-xl shadow-sm border border-cream-border w-full max-w-sm text-center">
         {/* Logo */}
         <div className="flex items-center justify-center gap-3 mb-6">
           <div className="w-10 h-10 rounded-lg bg-brand flex items-center justify-center">
@@ -17,12 +17,12 @@ export default async function LoginPage() {
           </div>
           <div className="text-left">
             <p className="font-bold text-foreground leading-tight">Yubisayu</p>
-            <p className="text-xs text-gray-500">Inventory Dashboard</p>
+            <p className="text-xs text-muted">Inventory Dashboard</p>
           </div>
         </div>
 
         <h1 className="text-lg font-semibold text-foreground mb-1">Welcome back</h1>
-        <p className="text-sm text-gray-500 mb-6">Sign in with your Google account to continue</p>
+        <p className="text-sm text-muted mb-6">Sign in with your Google account to continue</p>
 
         <form
           action={async () => {

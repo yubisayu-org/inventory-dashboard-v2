@@ -34,7 +34,7 @@ import type { CountryRow, TierFeeBracketRow } from "@/lib/db"
 const inputCls =
   "border border-cream-border rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
 const btnCls =
-  "px-3 py-1.5 rounded-lg border border-cream-border text-sm text-gray-600 hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+  "px-3 py-1.5 rounded-lg border border-cream-border text-sm text-muted-strong hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
 
 const fmt = (n: number) => n.toLocaleString("id-ID")
 const fmt2 = (n: number) => (Math.round(n * 100) / 100).toLocaleString("id-ID")
@@ -68,7 +68,7 @@ export default function TierFeeBracketsSection() {
     <div className="bg-white border border-cream-border rounded-xl p-4 flex flex-col gap-3">
       <h2 className="text-sm font-semibold text-foreground">Markup Tier</h2>
 
-      <p className="text-xs text-gray-500">
+      <p className="text-xs text-muted">
         A <span className="font-medium">Markup Tier</span> product is priced base cost + fee,
         where the fee comes from the bracket its base cost falls into. Highest matching
         minimum wins, and minimums are inclusive.{" "}
@@ -77,7 +77,7 @@ export default function TierFeeBracketsSection() {
         valas × rate + freight, and is shared by every country.
       </p>
 
-      {loading && <p className="text-xs text-gray-500">Loading…</p>}
+      {loading && <p className="text-xs text-muted">Loading…</p>}
       {error && <p className="text-xs text-red-500">{error}</p>}
 
       <div className="flex flex-col gap-2 md:grid md:grid-cols-2 md:items-start md:gap-3">
@@ -240,12 +240,12 @@ function ScopeBrackets({
         type="button"
         onClick={onToggle}
         aria-expanded={open}
-        className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-cream/40 transition-colors"
+        className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-cream transition-colors"
       >
         <svg
           width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
           strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"
-          className={`shrink-0 text-gray-400 transition-transform ${open ? "rotate-90" : ""}`}
+          className={`shrink-0 text-faint transition-transform ${open ? "rotate-90" : ""}`}
         >
           <polyline points="9 18 15 12 9 6" />
         </svg>
@@ -253,19 +253,19 @@ function ScopeBrackets({
           {isValas ? "VALAS" : "RUPIAH"}
         </span>
         {isValas && (
-          <span className="text-xs text-gray-400 shrink-0 tabular-nums">
+          <span className="text-xs text-faint shrink-0 tabular-nums">
           </span>
         )}
         <span className="flex-1" />
         {dirty && <span className="text-xs text-amber-700 shrink-0">unsaved</span>}
         {saved && <span className="text-xs text-green-600 shrink-0">Saved</span>}
-        <span className={`text-xs shrink-0 ${draft.length > 0 ? "text-gray-500" : "text-gray-400"}`}>
+        <span className={`text-xs shrink-0 ${draft.length > 0 ? "text-muted" : "text-faint"}`}>
           {summary}
         </span>
       </button>
 
       <div className={`px-3 pb-3 flex flex-col gap-2 ${open ? "" : "hidden"}`}>
-        <p className="text-[11px] text-gray-400">
+        <p className="text-[11px] text-faint">
           {isValas ? (
             <>
               Matched against the base cost derived from valas × rate + freight, so the
@@ -288,7 +288,7 @@ function ScopeBrackets({
             clipping or wrapping it. */}
         <div className="flex flex-col gap-1.5 overflow-x-auto">
           {draft.length === 0 && (
-            <p className="text-xs text-gray-400">
+            <p className="text-xs text-faint">
               {isValas
                 ? "No brackets. Markup Tier products with a country are priced at cost, with no fee."
                 : "No brackets. The Fee field is left at 0 and typed in by hand."}
@@ -300,7 +300,7 @@ function ScopeBrackets({
               // labels move into the controls, which is fine now that the worked example
               // (once shown per-row) lives in "Try a base cost" below instead.
               <div key={i} className="flex items-center gap-1.5">
-                <span className="hidden md:inline text-xs text-gray-400 shrink-0">From</span>
+                <span className="hidden md:inline text-xs text-faint shrink-0">From</span>
                 <MoneyInput
                   value={bracket.minBase}
                   onChange={(v) => setBracket(i, { minBase: v })}
@@ -308,7 +308,7 @@ function ScopeBrackets({
                   name={`bracket-${scope}-${i}-from`}
                   wrapClassName="flex-1 min-w-0 md:flex-none md:w-28 md:shrink-0"
                 />
-                <span className="hidden md:inline text-xs text-gray-400 shrink-0 ml-2">Fee</span>
+                <span className="hidden md:inline text-xs text-faint shrink-0 ml-2">Fee</span>
                 {/* Fixed, not flex-1 like From/Fee beside it: on mobile, splitting the row
                     three ways evenly left From too narrow to read its own value once it
                     grew a "Rp" prefix. text-sm (not text-xs) so its py-1.5 matches the
@@ -319,7 +319,7 @@ function ScopeBrackets({
                     type="button"
                     onClick={() => setBracket(i, { feeMode: "fixed" })}
                     aria-pressed={bracket.feeMode === "fixed"}
-                    className={`flex-1 py-1.5 transition-colors ${bracket.feeMode === "fixed" ? "bg-brand text-white" : "text-gray-500 hover:bg-cream"}`}
+                    className={`flex-1 py-2 transition-colors ${bracket.feeMode === "fixed" ? "bg-brand text-white" : "text-muted hover:bg-cream"}`}
                   >
                     {unit}
                   </button>
@@ -327,7 +327,7 @@ function ScopeBrackets({
                     type="button"
                     onClick={() => setBracket(i, { feeMode: "percent" })}
                     aria-pressed={bracket.feeMode === "percent"}
-                    className={`flex-1 py-1.5 transition-colors ${bracket.feeMode === "percent" ? "bg-brand text-white" : "text-gray-500 hover:bg-cream"}`}
+                    className={`flex-1 py-2 transition-colors ${bracket.feeMode === "percent" ? "bg-brand text-white" : "text-muted hover:bg-cream"}`}
                   >
                     %
                   </button>
@@ -351,7 +351,7 @@ function ScopeBrackets({
                     setDraft((d) => d.filter((_, j) => j !== i))
                     setDirty(true)
                   }}
-                  className="shrink-0 inline-flex items-center justify-center w-8 h-[34px] text-gray-300 hover:text-gray-400 transition-colors md:w-7 md:h-7 md:text-gray-400 md:border md:border-cream-border md:rounded-md md:hover:border-brand md:hover:text-brand disabled:opacity-30"
+                  className="shrink-0 inline-flex items-center justify-center w-8 h-[34px] text-faint hover:text-faint transition-colors md:w-7 md:h-7 md:text-faint md:border md:border-cream-border md:rounded-lg md:hover:border-brand md:hover:text-brand disabled:opacity-30"
                   aria-label="Remove bracket"
                 >
                   <svg className="md:hidden" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
@@ -386,7 +386,7 @@ function ScopeBrackets({
             }}
             title="Reset to default"
             aria-label="Reset to default"
-            className="inline-flex items-center justify-center h-[30px] w-[30px] rounded-lg border border-cream-border text-gray-500 hover:border-brand hover:text-brand transition-colors"
+            className="inline-flex items-center justify-center h-[30px] w-[30px] rounded-lg border border-cream-border text-muted hover:border-brand hover:text-brand transition-colors"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="1 4 1 10 7 10" />
@@ -397,7 +397,7 @@ function ScopeBrackets({
             type="button"
             onClick={handleSave}
             disabled={saving || !dirty || problems.length > 0}
-            className="px-3 py-1.5 rounded-lg bg-brand text-white text-sm disabled:opacity-50"
+            className="px-4 py-2 rounded-lg bg-brand text-white text-sm disabled:opacity-50"
           >
             {saving ? "Saving…" : "Save"}
           </button>
@@ -412,9 +412,9 @@ function ScopeBrackets({
 
         {/* Runs the same resolver and formula the server runs, over the draft, so a
             bracket set can be checked before any product uses it. */}
-        <div className="rounded-lg bg-gray-50 border border-cream-border px-3 py-2 flex flex-col gap-1.5">
+        <div className="rounded-lg bg-surface-muted border border-cream-border px-3 py-2 flex flex-col gap-1.5">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs font-medium text-gray-500">
+            <span className="text-xs font-medium text-muted">
               Try a base cost
             </span>
             <MoneyInput
@@ -425,12 +425,12 @@ function ScopeBrackets({
           </div>
           {isValas ? (
             <>
-              <p className="text-xs text-gray-400 tabular-nums">{feeExplain}</p>
-              <p className="text-xs text-gray-500 tabular-nums">
+              <p className="text-xs text-faint tabular-nums">{feeExplain}</p>
+              <p className="text-xs text-muted tabular-nums">
                 fee <span className="font-semibold text-foreground">{unit} {fmt2(fee)}</span>
                 {` → Rp ${fmt(previewBase)} + Rp ${fmt2(fee)}, rounded up to ${fmt(roundTo)}`}
               </p>
-              <p className="text-xs text-gray-500 tabular-nums">
+              <p className="text-xs text-muted tabular-nums">
                 rounded up to {fmt(roundTo)} → price{" "}
                 <span className="font-semibold text-foreground">Rp {fmt(Math.round(preview.price))}</span>
                 {" · cost Rp "}{fmt(Math.round(preview.cogs))}
@@ -440,19 +440,19 @@ function ScopeBrackets({
                 </span>
               </p>
               {preview.price !== rawTotal && (
-                <p className="text-[10px] text-gray-400 tabular-nums">
+                <p className="text-[10px] text-faint tabular-nums">
                   The rounding added Rp {fmt(Math.round(preview.price - rawTotal))} on top of the fee.
                 </p>
               )}
             </>
           ) : (
             <>
-              <p className="text-xs text-gray-400 tabular-nums">{feeExplain}</p>
-              <p className="text-xs text-gray-500 tabular-nums">
+              <p className="text-xs text-faint tabular-nums">{feeExplain}</p>
+              <p className="text-xs text-muted tabular-nums">
                 fee <span className="font-semibold text-foreground">Rp {fmt2(fee)}</span>
                 {` → Rp ${fmt(previewBase)} + Rp ${fmt2(fee)}, rounded up to ${fmt(RUPIAH_TIER_FEE_ROUND_TO)}`}
               </p>
-              <p className="text-xs text-gray-500 tabular-nums">
+              <p className="text-xs text-muted tabular-nums">
                 rounded up to {fmt(RUPIAH_TIER_FEE_ROUND_TO)} → price{" "}
                 <span className="font-semibold text-foreground">Rp {fmt(Math.round(preview.price))}</span>
                 {" · cost Rp "}{fmt(Math.round(preview.cogs))}
@@ -462,7 +462,7 @@ function ScopeBrackets({
                 </span>
               </p>
               {preview.price !== rawTotal && (
-                <p className="text-[10px] text-gray-400 tabular-nums">
+                <p className="text-[10px] text-faint tabular-nums">
                   The rounding added Rp {fmt(Math.round(preview.price - rawTotal))} on top of the fee.
                 </p>
               )}

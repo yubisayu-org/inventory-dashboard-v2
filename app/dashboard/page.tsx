@@ -27,7 +27,7 @@ export default function DashboardPage() {
 
 function DashboardLoading() {
   return (
-    <div className="rounded-xl border border-cream-border bg-white p-12 text-center text-sm text-gray-400">
+    <div className="rounded-xl border border-cream-border bg-white p-12 text-center text-sm text-faint">
       Loading…
     </div>
   )

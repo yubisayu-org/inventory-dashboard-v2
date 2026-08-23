@@ -291,3 +291,13 @@ export async function getDispatchDocument(
     receipt: (r.receipt as string) ?? "",
   }))
 }
+
+/**
+ * How a dispatched parcel travelled, read off the front of its receipt.
+ *
+ * The code is typed by hand at dispatch time, so this is a convention rather
+ * than a constraint: HC went in a suitcase, CJI flew as cargo, MNC came by
+ * sea. Anything else — or nothing at all — is "other", which is deliberately
+ * visible rather than hidden, because an unrecognised prefix is usually a typo
+ * worth seeing.
+ */

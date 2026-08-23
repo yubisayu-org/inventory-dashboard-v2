@@ -4,6 +4,7 @@ import { useState } from "react"
 import { fetchJson } from "@/lib/api-fetch"
 import { generateReceivedReport } from "@/lib/receiving-report-pdf"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
+import DateRangeField from "@/components/DateRangeField"
 import EventSelect from "@/components/EventSelect"
 import type { ReceivedReportItem } from "@/lib/db"
 
@@ -20,6 +21,8 @@ type Report = {
   event: string
   from: string | null
   to: string | null
+  /** Echoed back so a message can name the parcel that had nothing in it. */
+  receipt: string | null
   items: ReceivedReportItem[]
   totalUnits: number
 }
@@ -31,6 +34,10 @@ export default function ReceivedReportControls() {
   // Dates are optional: empty means every date for the selected event.
   const [from, setFrom] = useState("")
   const [to, setTo] = useState("")
+  // Optional, and a prefix: "MNC" reports every sea box, "MNC-3109" one parcel.
+  // Same field the dispatch document has, for the same reason — a report of a
+  // whole trip is rarely what you want when a single box has just landed.
+  const [receipt, setReceipt] = useState("")
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
 
@@ -46,6 +53,8 @@ export default function ReceivedReportControls() {
       const query = new URLSearchParams({ event })
       if (start) query.set("from", start)
       if (end) query.set("to", end)
+      const trimmedReceipt = receipt.trim()
+      if (trimmedReceipt) query.set("receipt", trimmedReceipt)
       const report = await fetchJson<Report>(`/api/sheets/receiving-report?${query.toString()}`)
       if (report.items.length === 0) {
         const span =
@@ -54,7 +63,10 @@ export default function ReceivedReportControls() {
               ? ` on ${report.from}`
               : ` between ${report.from} and ${report.to}`
             : ""
-        setMessage(`No items were received for ${report.event}${span}.`)
+        setMessage(
+          `No items were received for ${report.event}${span}` +
+          `${report.receipt ? ` under ${report.receipt}` : ""}.`,
+        )
         return
       }
       const blob = await generateReceivedReport(report)
@@ -92,22 +104,22 @@ export default function ReceivedReportControls() {
           placeholder="Select event…"
         />
       </div>
-      <input
-        type="date"
-        value={from}
+      {/* One control for both shapes of the question: the day a parcel landed,
+          or the span of a week being reconciled. Two native date inputs cannot
+          express a range in one field. */}
+      <DateRangeField
+        value={{ from, to }}
+        onChange={(next) => { setFrom(next.from); setTo(next.to) }}
         max={today}
-        onChange={(e) => setFrom(e.target.value)}
-        aria-label="From date (optional)"
-        className={`${INPUT_CLASS} h-[38px] appearance-none flex-1 min-w-0 sm:min-w-[140px]`}
+        className="flex-1 min-w-0 sm:min-w-[200px]"
       />
-      <span className="shrink-0 self-center text-gray-400">–</span>
       <input
-        type="date"
-        value={to}
-        max={today}
-        onChange={(e) => setTo(e.target.value)}
-        aria-label="To date (optional)"
-        className={`${INPUT_CLASS} h-[38px] appearance-none flex-1 min-w-0 sm:min-w-[140px]`}
+        type="text"
+        value={receipt}
+        onChange={(e) => setReceipt(e.target.value)}
+        aria-label="Parcel receipt (optional)"
+        placeholder="Receipt (optional)"
+        className={`${INPUT_CLASS} h-[38px] flex-1 min-w-0 sm:min-w-[160px]`}
       />
       <button
         type="button"
@@ -115,7 +127,7 @@ export default function ReceivedReportControls() {
         disabled={loading || !event}
         aria-label="Download PDF"
         title={event ? "Download PDF" : "Select an event first"}
-        className="h-[38px] w-[38px] sm:w-auto shrink-0 rounded-lg border border-cream-border bg-white sm:px-4 text-sm font-medium text-gray-600 transition-colors hover:border-brand hover:text-brand disabled:opacity-50 flex items-center justify-center"
+        className="h-[38px] w-[38px] sm:w-auto shrink-0 rounded-lg border border-cream-border bg-white sm:px-4 text-sm font-medium text-muted-strong transition-colors hover:border-brand hover:text-brand disabled:opacity-50 flex items-center justify-center"
       >
         <svg className="sm:hidden" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -124,7 +136,7 @@ export default function ReceivedReportControls() {
         </svg>
         <span className="hidden sm:inline">{loading ? "Preparing…" : "Download PDF"}</span>
       </button>
-      {message && <span className="text-sm text-gray-500 basis-full">{message}</span>}
+      {message && <span className="text-sm text-muted basis-full">{message}</span>}
     </div>
   )
 }

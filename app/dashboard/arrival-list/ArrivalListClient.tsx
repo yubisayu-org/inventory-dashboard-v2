@@ -12,6 +12,7 @@ import ArriveBulkModal from "./ArriveBulkModal"
 import EventSelect from "@/components/EventSelect"
 import SearchableSelect from "@/components/SearchableSelect"
 import SearchInput from "@/components/SearchInput"
+import { FALLBACK_ROUTES, routeOf, routeKeyOf, daysInTransit, transitStatus, type DispatchRoute, type TransitStatus } from "@/lib/dispatch-modes"
 import SelectionActionBar from "@/components/SelectionActionBar"
 import OverbuyTransitList from "@/components/OverbuyTransitList"
 
@@ -26,11 +27,19 @@ function computeFill(orders: ArrivalListOrder[], quantityArrived: number) {
 
 // ─── Grouping helpers ───────────────────────────────────────────────────────
 
-function groupItems(items: ArrivalListItem[]) {
-  const map = new Map<string, Map<string, ArrivalListItem[]>>()
+/**
+ * An item as this screen holds it. `parcel` is set only while a route tab is
+ * selected: the row then describes one box rather than the whole item, and the
+ * top level of the table groups by that box instead of by trip.
+ */
+type ArrivalRow = ArrivalListItem & { parcel?: string; parcelSentOn?: string }
+
+function groupItems(items: ArrivalRow[], keyOf: (i: ArrivalRow) => string = (i) => i.event) {
+  const map = new Map<string, Map<string, ArrivalRow[]>>()
   for (const item of items) {
-    if (!map.has(item.event)) map.set(item.event, new Map())
-    const storeMap = map.get(item.event)!
+    const top = keyOf(item)
+    if (!map.has(top)) map.set(top, new Map())
+    const storeMap = map.get(top)!
     const key = item.store || "—"
     if (!storeMap.has(key)) storeMap.set(key, [])
     storeMap.get(key)!.push(item)
@@ -38,18 +47,22 @@ function groupItems(items: ArrivalListItem[]) {
   return map
 }
 
-/** Stable selection key: event + productId (productId repeats across events). */
-function selKey(item: Pick<ArrivalListItem, "event" | "productId">): string {
-  return `${item.event}|${item.productId}`
+/**
+ * Stable selection key: event + productId, and the parcel too when one is in
+ * play. Without the parcel, a product split between the air box and the sea box
+ * would share a key, so ticking the air row would silently tick the sea one.
+ */
+function selKey(item: Pick<ArrivalRow, "event" | "productId"> & { parcel?: string }): string {
+  return `${item.event}|${item.productId}${item.parcel ? `|${item.parcel}` : ""}`
 }
 
 type RowDescriptor =
   | { type: "event-collapsed"; event: string; totalItems: number }
   | { type: "store-collapsed"; event: string; store: string; totalItems: number; showEvent: boolean; eventRowSpan?: number }
-  | { type: "item"; item: ArrivalListItem; event: string; store: string; showEvent: boolean; showStore: boolean; eventRowSpan?: number; storeRowSpan?: number }
+  | { type: "item"; item: ArrivalRow; event: string; store: string; showEvent: boolean; showStore: boolean; eventRowSpan?: number; storeRowSpan?: number }
 
 function buildRows(
-  grouped: Map<string, Map<string, ArrivalListItem[]>>,
+  grouped: Map<string, Map<string, ArrivalRow[]>>,
   collapsedEvents: Set<string>,
   collapsedStores: Set<string>,
 ): RowDescriptor[] {
@@ -108,7 +121,7 @@ function CollapseBtn({ collapsed, onClick }: { collapsed: boolean; onClick: () =
   return (
     <button
       onClick={onClick}
-      className="inline-flex items-center justify-center w-4 h-4 rounded border border-gray-300 bg-white text-gray-500 hover:text-brand hover:border-brand transition-colors text-xs font-bold shrink-0"
+      className="inline-flex items-center justify-center w-4 h-4 rounded border border-cream-border bg-white text-muted hover:text-brand hover:border-brand transition-colors text-xs font-bold shrink-0"
     >
       {collapsed ? "+" : "−"}
     </button>
@@ -118,7 +131,7 @@ function CollapseBtn({ collapsed, onClick }: { collapsed: boolean; onClick: () =
 const PAID_DOT: Record<PaidStatus, string> = {
   paid:    "bg-green-500",
   partial: "bg-yellow-400",
-  unpaid:  "bg-gray-300",
+  unpaid:  "bg-divider",
 }
 const PAID_LABEL: Record<PaidStatus, string> = {
   paid:    "Paid",
@@ -193,7 +206,7 @@ function CustomerBadge({ orders }: { orders: { customer: string; qty: number; pa
         type="button"
         onClick={handleToggle}
         title={allPaid ? "All customers paid" : `${paidCount} of ${totalCount} paid`}
-        className="inline-flex items-baseline gap-1 text-gray-400 hover:text-brand transition-colors cursor-pointer"
+        className="inline-flex items-baseline gap-1 text-faint hover:text-brand transition-colors cursor-pointer"
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="self-center">
           <circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
@@ -218,7 +231,7 @@ function CustomerBadge({ orders }: { orders: { customer: string; qty: number; pa
           {entries.map((e) => (
             <div
               key={e.customer}
-              className="flex items-center justify-between gap-3 px-3 py-1 text-xs hover:bg-gray-50 whitespace-nowrap"
+              className="flex items-center justify-between gap-3 px-3 py-1 text-xs hover:bg-surface-muted whitespace-nowrap"
             >
               <span className="flex items-center gap-2 min-w-0">
                 <span
@@ -228,7 +241,7 @@ function CustomerBadge({ orders }: { orders: { customer: string; qty: number; pa
                 />
                 <span className="text-foreground truncate">{displayIg(e.customer)}</span>
               </span>
-              <span className="text-gray-500 tabular-nums shrink-0">{e.qty}×</span>
+              <span className="text-muted tabular-nums shrink-0">{e.qty}×</span>
             </div>
           ))}
         </div>
@@ -239,6 +252,169 @@ function CustomerBadge({ orders }: { orders: { customer: string; qty: number; pa
 
 // ─── Main component ─────────────────────────────────────────────────────────
 
+
+/**
+ * A parcel's departure date, in a clock coloured by how the journey is going:
+ * green while it is within the usual window for its route, amber once it is
+ * worth chasing, red when it is a problem.
+ *
+ * The date sits inside the chip rather than beside it, so a row carrying two
+ * parcels reads as two objects rather than a run of numbers.
+ */
+const TRANSIT_TONE: Record<TransitStatus, string> = {
+  // Grey says "nothing to judge by" — no date, or a code on no known route.
+  unknown: "border-cream-border bg-surface-muted text-faint",
+  ontime: "border-green-200 bg-green-50 text-green-800",
+  warn: "border-amber-200 bg-amber-50 text-amber-800",
+  late: "border-red-200 bg-red-50 text-red-700",
+}
+
+function ScheduleChip({ receipt, sentOn, routes }: { receipt: string; sentOn: string; routes: DispatchRoute[] }) {
+  const route = routeOf(receipt, routes)
+  const days = daysInTransit(sentOn)
+  const status = transitStatus(route, sentOn)
+  const label = route?.label ?? "Unknown route"
+
+  // Everything the clock means, in words, on hover. The chip itself stays a
+  // colour and a shape: a column of dates is a column of numbers to read, and
+  // the point of the clock is that a late box is visible without reading.
+  const title = days === null
+    ? `${receipt} · ${label} — dispatched before departure dates were recorded`
+    : !route
+      ? `${receipt} — sent ${sentOn}, ${days} day${days === 1 ? "" : "s"} ago. No route code, so there is no window to judge it by.`
+      : [
+        `${receipt} · ${label}`,
+        `Sent ${sentOn} — ${days} day${days === 1 ? "" : "s"} ago`,
+        !route
+          ? null
+          : status === "late"
+            ? `Overdue: past ${route.lateDays} days for this route`
+            : status === "warn"
+              ? `Running late: past ${route.warnDays} days, chase after ${route.lateDays}`
+              : `Normal so far — this route usually lands within ${route.warnDays} days`,
+      ].filter(Boolean).join("\n")
+
+  return (
+    <span className="flex items-center gap-1.5 whitespace-nowrap">
+      {/* Upper-cased on screen, not in the data. Codes typed while packing come
+          out as "Box 2" beside an "HC-3101", and a column of parcels reads as
+          one kind of thing when they all look alike. What was typed is what is
+          stored — matching a route already ignores case. */}
+      <span className="text-muted-strong uppercase">{receipt}</span>
+      <span
+        title={title}
+        aria-label={title}
+        className={`inline-flex items-center justify-center rounded-full border w-5 h-5 cursor-help ${TRANSIT_TONE[status]}`}
+      >
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 7v5l3 2" />
+        </svg>
+      </span>
+    </span>
+  )
+}
+
+
+/**
+ * The parcel's code, editable in place.
+ *
+ * Packing runs ahead of paperwork — a box goes out as "MNC - box 1" and the
+ * courier's number arrives later — so the header is where that correction
+ * belongs, next to the thing being corrected.
+ *
+ * It warns before a rename that would change the route, because the route is
+ * read from the prefix: replacing "MNC - box 1" with a bare courier number
+ * moves the parcel off the Sea tab and into Other. Warned rather than
+ * forbidden — it is the owner's box and the owner's naming.
+ */
+function ParcelEditor({
+  receipt, sentOn, routes, onRename,
+}: {
+  receipt: string
+  sentOn: string
+  routes: DispatchRoute[]
+  onRename: (from: string, to: string) => Promise<void>
+}) {
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState(receipt)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState("")
+
+  const nextRoute = routeOf(value, routes)
+  const movesRoute = value.trim() !== "" && nextRoute?.key !== routeOf(receipt, routes)?.key
+
+  async function save() {
+    const to = value.trim()
+    if (!to || to === receipt) { setEditing(false); setValue(receipt); return }
+    setBusy(true); setError("")
+    try {
+      await onRename(receipt, to)
+      setEditing(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not rename")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!editing) {
+    // The code itself is the control. A pencil beside it would be a second
+    // thing to aim at for the same job, and this cell is already narrow.
+    return (
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); setValue(receipt); setEditing(true) }}
+        title="Click to rename — for when the tracking number arrives later"
+        className="flex items-center gap-1.5 rounded-lg -mx-1 px-1 py-0.5 hover:bg-surface-sunken transition-colors text-left"
+      >
+        <ScheduleChip receipt={receipt} sentOn={sentOn} routes={routes} />
+      </button>
+    )
+  }
+
+  return (
+    // Stacked, not squeezed: the column is 40 units wide and a field plus two
+    // buttons on one line does not fit inside it — they ended up under the
+    // Store heading. The field takes the width it has, the actions sit beneath.
+    <span className="flex flex-col gap-1 max-w-full" onClick={(e) => e.stopPropagation()}>
+      <input
+        autoFocus
+        value={value}
+        disabled={busy}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") save()
+          if (e.key === "Escape") { setEditing(false); setValue(receipt); setError("") }
+        }}
+        placeholder="Tracking no."
+        className="w-full min-w-0 border border-cream-border rounded-lg px-2 py-1 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
+      />
+      <span className="flex items-center gap-2">
+        <button
+          type="button" onClick={save} disabled={busy}
+          className="text-xs font-semibold text-brand disabled:opacity-50"
+        >
+          {busy ? "Saving…" : "Save"}
+        </button>
+        <button
+          type="button"
+          onClick={() => { setEditing(false); setValue(receipt); setError("") }}
+          className="text-xs text-faint hover:text-muted"
+        >
+          Cancel
+        </button>
+      </span>
+      {movesRoute && (
+        <span className="text-[11px] text-amber-700 leading-tight">
+          Moves to {nextRoute?.label ?? "Other"}
+        </span>
+      )}
+      {error && <span className="text-[11px] text-red-600 leading-tight">{error}</span>}
+    </span>
+  )
+}
+
 export default function ArrivalListClient() {
   const options = useSheetOptions()
   const [items, setItems] = useState<ArrivalListItem[]>([])
@@ -247,6 +423,37 @@ export default function ArrivalListClient() {
   const [error, setError] = useState("")
   const [selectedEvent, setSelectedEvent] = useState("")
   const [search, setSearch] = useState("")
+  /**
+   * Which route to show, read off each line's dispatch receipt — HC by
+   * suitcase, CJI by air, MNC by sea. A parcel arrives as one box, and this
+   * is how the bench sees what should have been in it.
+   */
+  const [route, setRoute] = useState<string>("all")
+  /**
+   * The routes as Settings has them. Falls back to the built-in three until
+   * the fetch lands, so the tabs never flash empty; a changed prefix simply
+   * appears a moment later.
+   */
+  const [routes, setRoutes] = useState<DispatchRoute[]>(FALLBACK_ROUTES)
+
+  useEffect(() => {
+    fetch("/api/sheets/dispatch-routes", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d: { routes?: DispatchRoute[] }) => { if (d.routes?.length) setRoutes(d.routes) })
+      // A failed load leaves the fallback in place: filing parcels under the
+      // usual codes beats an empty screen.
+      .catch(() => {})
+  }, [])
+
+  /** All / one per configured route / Other, which hides itself while empty. */
+  const routeTabs = useMemo(
+    () => [
+      { key: "all", label: "All" },
+      ...routes.map((r) => ({ key: r.key, label: r.label })),
+      { key: "other", label: "Other" },
+    ],
+    [routes],
+  )
   const [arrivingItem, setArrivingItem] = useState<ArrivalListItem | null>(null)
   const [bulkOpen, setBulkOpen] = useState(false)
   const [collapsedEvents, setCollapsedEvents] = useState<Set<string>>(new Set())
@@ -297,10 +504,6 @@ export default function ArrivalListClient() {
   // Resolve selected keys back to live items (off `items`, not `filteredItems`,
   // so a search-hidden selection still appears in the document). Drops anything
   // no longer pending after a refresh.
-  const selectedItems = useMemo(
-    () => items.filter((i) => selected.has(selKey(i))),
-    [items, selected],
-  )
 
   function toggleSelect(item: ArrivalListItem) {
     setSelected((prev) => {
@@ -347,19 +550,119 @@ export default function ArrivalListClient() {
     })
   }
 
-  const filteredItems = useMemo(() => {
-    if (!search.trim()) return items
-    const q = search.toLowerCase()
-    return items.filter(
-      (i) =>
-        i.productName.toLowerCase().includes(q) ||
-        i.event.toLowerCase().includes(q) ||
-        (i.store ?? "").toLowerCase().includes(q) ||
-        i.orders.some((o) => o.dispatchReceipt.toLowerCase().includes(q)),
-    )
-  }, [items, search])
+  /** How many lines are waiting on each route, for the counts on the tabs. */
+  const routeCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: 0, other: 0 }
+    for (const r of routes) counts[r.key] = 0
+    for (const item of items) {
+      counts.all += 1
+      const modes = new Set(item.orders.map((o) => routeKeyOf(o.dispatchReceipt, routes)))
+      // An item can span two parcels — half flown, half shipped — so it counts
+      // once against each route it is actually travelling on.
+      for (const m of modes) counts[m] = (counts[m] ?? 0) + 1
+    }
+    return counts
+  }, [items, routes])
 
-  const grouped = useMemo(() => groupItems(filteredItems), [filteredItems])
+  const filteredItems = useMemo<ArrivalRow[]>(() => {
+    const q = search.trim().toLowerCase()
+    const matchesSearch = (i: ArrivalRow) => !q
+      || i.productName.toLowerCase().includes(q)
+      || i.event.toLowerCase().includes(q)
+      || (i.store ?? "").toLowerCase().includes(q)
+      || i.orders.some((o) => o.dispatchReceipt.toLowerCase().includes(q))
+
+    if (route === "all") return items.filter(matchesSearch)
+
+    // Narrowed to one route, a row must describe THAT parcel and nothing else.
+    // Filtering which rows to show is not enough: an item split between two
+    // boxes would keep reporting its full quantity and every customer, so
+    // opening the air cargo would list seven units when only three flew — and
+    // the four still at sea would be hunted for on the bench.
+    // One row per box, not per item: a route can hold several parcels, and a
+    // product may sit in two of them. Splitting here is what lets the table
+    // group by receipt below — and what makes each row's quantity, customers
+    // and order ids describe the box in front of you.
+    return items.reduce<ArrivalRow[]>((out, item) => {
+      const byParcel = new Map<string, typeof item.orders>()
+      for (const o of item.orders) {
+        if (routeKeyOf(o.dispatchReceipt, routes) !== route) continue
+        const key = o.dispatchReceipt || "—"
+        byParcel.set(key, [...(byParcel.get(key) ?? []), o])
+      }
+      for (const [parcel, orders] of byParcel) {
+        const projected: ArrivalRow = {
+          ...item,
+          parcel,
+          // A receipt is one box that left once, so any of its lines carries
+          // the date; the first is as good as another.
+          parcelSentOn: orders[0]?.dispatchedAt ?? "",
+          orders,
+          orderIds: orders.map((o) => o.id),
+          customers: Array.from(new Set(orders.map((o) => o.customer))),
+          customerCount: new Set(orders.map((o) => o.customer)).size,
+          totalPending: orders.reduce((n, o) => n + o.pending, 0),
+          totalBought: orders.reduce((n, o) => n + o.unitBuy, 0),
+        }
+        if (matchesSearch(projected)) out.push(projected)
+      }
+      return out
+    }, [])
+  }, [items, search, route])
+
+  /**
+   * Resolved against the rows on screen, not the raw list.
+   *
+   * Under a route those rows are projected onto one parcel and their selection
+   * key carries it, so matching against `items` — which has no parcel — found
+   * nothing and the bulk dialogs opened over zero items with no quantities to
+   * adjust. Selecting acts on what you can see, which is also what makes
+   * receiving apply to that box alone.
+   */
+  const selectedItems = useMemo(
+    () => filteredItems.filter((i) => selected.has(selKey(i))),
+    [filteredItems, selected],
+  )
+
+  const grouped = useMemo(
+    () => groupItems(filteredItems, route === "all" ? undefined : (i) => i.parcel ?? "—"),
+    [filteredItems, route],
+  )
+
+  /** The date each parcel left, so a group header can carry its clock. */
+  const parcelDates = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const i of filteredItems) if (i.parcel && !m.has(i.parcel)) m.set(i.parcel, i.parcelSentOn ?? "")
+    return m
+  }, [filteredItems])
+
+  /**
+   * What the first column says. Under "All" that is the trip; under a route it
+   * is the box — receipt and clock — because the question there is "what is in
+   * this parcel", and the trip is a detail of the lines inside it.
+   */
+  const groupLabel = (key: string) =>
+    route === "all"
+      ? <span className="font-medium text-foreground">{key}</span>
+      : <ParcelEditor receipt={key} sentOn={parcelDates.get(key) ?? ""} routes={routes} onRename={renameParcel} />
+
+  /**
+   * Rename a whole parcel. Refetches rather than patching state: the rename
+   * moves every line of the box at once, and may move the box to another tab
+   * if the new code reads as a different route.
+   */
+  const renameParcel = useCallback(async (from: string, to: string) => {
+    const res = await fetch("/api/sheets/arrival-list", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "rename_receipt", from, to }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.error ?? "Could not rename")
+    clearSelection()
+    fetchItems(selectedEvent || undefined, true)
+  }, [fetchItems, selectedEvent])
+
   // Desktop-only state (see above) — mobile's own render loop reads collapsedEvents/
   // collapsedStores directly, not through `rows`.
   const rows = useMemo(
@@ -389,6 +692,35 @@ export default function ArrivalListClient() {
 
   return (
     <>
+      {/* Which parcel to check in. The route is read off each line's dispatch
+          receipt, so picking one shows exactly what should have travelled
+          together — the hand-carried suitcase, the air cargo, the sea box.
+          Same segmented bar as the Payments type filter, so the two screens
+          are operated the same way. */}
+      <div className="flex items-center gap-1 w-full rounded-xl border border-cream-border bg-white p-1 mb-3 overflow-x-auto">
+        {routeTabs.map(({ key, label }) => {
+          const count = routeCounts[key] ?? 0
+          // "Other" catches an unrecognised prefix — a typo, usually. It stays
+          // out of the bar while empty rather than offering a tab that shows
+          // nothing.
+          if (key === "other" && count === 0) return null
+          const active = route === key
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => { setRoute(key); clearSelection() }}
+              className={`flex-1 shrink-0 flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+                active ? "bg-brand text-white" : "text-muted hover:text-foreground"
+              }`}
+            >
+              {label}
+              <span className={`tabular-nums text-xs ${active ? "text-white/70" : "text-faint"}`}>{count}</span>
+            </button>
+          )
+        })}
+      </div>
+
       <div className="flex items-center gap-2 flex-wrap mb-3">
         <SearchInput
           value={search}
@@ -411,7 +743,7 @@ export default function ArrivalListClient() {
           onClick={toggleSelectAll}
           aria-label={allSelected ? "Deselect all" : "Select all"}
           title={allSelected ? "Deselect all" : "Select all"}
-          className="inline-flex items-center gap-1.5 shrink-0 rounded-lg border border-cream-border h-[38px] px-3 text-sm text-gray-600 bg-white hover:border-brand transition-colors"
+          className="inline-flex items-center gap-1.5 shrink-0 rounded-lg border border-cream-border h-[38px] px-3 text-sm text-muted-strong bg-white hover:border-brand hover:text-brand transition-colors"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M9 11l3 3L22 4" />
@@ -421,7 +753,7 @@ export default function ArrivalListClient() {
         </button>
         <button
           onClick={() => setBulkOpen(true)}
-          className="hidden md:inline-flex items-center gap-1.5 h-[38px] px-3 text-sm font-medium rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors"
+          className="hidden md:inline-flex items-center gap-1.5 h-[38px] px-4 text-sm font-medium rounded-lg bg-brand text-white hover:bg-brand-dark transition-colors"
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <path d="M12 5v14M5 12h14" />
@@ -444,7 +776,7 @@ export default function ArrivalListClient() {
       <div className="hidden md:block rounded-xl border border-cream-border bg-white overflow-hidden">
         {/* Same title-bar style as OverbuyTransitList's "INVENTORY AWAITING ARRIVAL"
             below, so the two sections read as one matched pair. */}
-        <div className="px-4 py-2.5 border-b border-cream-border border-l-[3px] border-brand bg-gray-50/80">
+        <div className="px-4 py-2.5 border-b border-cream-border border-l-[3px] border-brand bg-cream">
           <div className="font-bold text-sm text-foreground">CUSTOMER ORDER</div>
         </div>
         {/* table-fixed: locks Event/Store/Receipt/Qty/action to their declared
@@ -454,19 +786,29 @@ export default function ArrivalListClient() {
             fixed width (gets whatever's left) and stays nowrap. */}
         <table className="w-full text-sm border-collapse table-fixed">
           <thead>
-            <tr className="border-b border-cream-border bg-gray-50/80">
-              <th className="text-left px-4 py-2.5 font-medium text-gray-500 w-44">Event</th>
-              <th className="text-left px-4 py-2.5 font-medium text-gray-500 w-36">Store</th>
-              <th className="text-left px-4 py-2.5 font-medium text-gray-500">Product</th>
-              <th className="text-left px-4 py-2.5 font-medium text-gray-500 w-28">Receipt</th>
-              <th className="text-right px-4 py-2.5 font-medium text-gray-500 w-14">Qty</th>
+            <tr className="border-b border-cream-border bg-surface-muted/80">
+              {/* The first column is the trip under "All" and the parcel under a
+                  route, so both its heading and its width follow what it holds:
+                  a trip name like POCN202603, or a receipt plus its clock. */}
+              <th className={`text-left px-4 py-2.5 font-medium text-muted ${route === "all" ? "w-44" : "w-40"}`}>
+                {route === "all" ? "Event" : "Parcel"}
+              </th>
+              <th className="text-left px-4 py-2.5 font-medium text-muted w-36">Store</th>
+              <th className="text-left px-4 py-2.5 font-medium text-muted">Product</th>
+              {/* One width for both views — a receipt with its clock under
+                  "All", a whole trip code under a route. Switching tabs should
+                  not shift the columns under your eye. */}
+              <th className="text-left px-4 py-2.5 font-medium text-muted w-40">
+                {route === "all" ? "Receipt" : "Event"}
+              </th>
+              <th className="text-right px-4 py-2.5 font-medium text-muted w-14">Qty</th>
               <th className="px-4 py-2.5 w-10" />
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 && (
               <tr>
-                <td colSpan={6} className="text-center text-gray-400 py-12 text-sm">
+                <td colSpan={6} className="text-center text-faint py-12 text-sm">
                   No items pending arrival
                 </td>
               </tr>
@@ -478,8 +820,8 @@ export default function ArrivalListClient() {
                     <td colSpan={6} className="px-4 py-2.5">
                       <div className="flex items-center gap-2">
                         <CollapseBtn collapsed onClick={() => toggleDesktopEvent(row.event)} />
-                        <span className="font-medium text-foreground">{row.event}</span>
-                        <span className="text-xs text-gray-400">{row.totalItems} items</span>
+                        {groupLabel(row.event)}
+                        <span className="text-xs text-faint">{row.totalItems} items</span>
                       </div>
                     </td>
                   </tr>
@@ -493,15 +835,15 @@ export default function ArrivalListClient() {
                       <td rowSpan={row.eventRowSpan} className="px-4 py-2.5 align-top border-r border-cream-border">
                         <div className="flex items-center gap-2 pt-0.5">
                           <CollapseBtn collapsed={false} onClick={() => toggleDesktopEvent(row.event)} />
-                          <span className="font-medium text-foreground">{row.event}</span>
+                          {groupLabel(row.event)}
                         </div>
                       </td>
                     )}
-                    <td colSpan={5} className="px-4 py-2.5 bg-gray-50/40">
+                    <td colSpan={5} className="px-4 py-2.5 bg-surface-muted/40">
                       <div className="flex items-center gap-2">
                         <CollapseBtn collapsed onClick={() => toggleDesktopStore(row.event, row.store)} />
-                        <span className="text-gray-600">{row.store}</span>
-                        <span className="text-xs text-gray-400">{row.totalItems} items</span>
+                        <span className="text-muted-strong">{row.store}</span>
+                        <span className="text-xs text-faint">{row.totalItems} items</span>
                       </div>
                     </td>
                   </tr>
@@ -511,13 +853,13 @@ export default function ArrivalListClient() {
               return (
                 <tr
                   key={`${row.event}|${row.store}|${row.item.productId}`}
-                  className="border-b border-cream-border hover:bg-gray-50/50 transition-colors"
+                  className="border-b border-cream-border hover:bg-surface-muted/50 transition-colors"
                 >
                   {row.showEvent && (
                     <td rowSpan={row.eventRowSpan} className="px-4 py-2.5 align-top border-r border-cream-border">
                       <div className="flex items-center gap-2 pt-0.5">
                         <CollapseBtn collapsed={false} onClick={() => toggleDesktopEvent(row.event)} />
-                        <span className="font-medium text-foreground">{row.event}</span>
+                        {groupLabel(row.event)}
                       </div>
                     </td>
                   )}
@@ -525,7 +867,7 @@ export default function ArrivalListClient() {
                     <td rowSpan={row.storeRowSpan} className="px-4 py-2.5 align-top border-r border-cream-border">
                       <div className="flex items-center gap-2 pt-0.5">
                         <CollapseBtn collapsed={false} onClick={() => toggleDesktopStore(row.event, row.store)} />
-                        <span className="text-gray-600">{row.store}</span>
+                        <span className="text-muted-strong">{row.store}</span>
                       </div>
                     </td>
                   )}
@@ -548,23 +890,37 @@ export default function ArrivalListClient() {
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-2.5 text-gray-500">
+                  <td className="px-4 py-2.5 text-muted">
                     {(() => {
-                      const receipts = Array.from(
-                        new Set(row.item.orders.map((o) => o.dispatchReceipt).filter(Boolean)),
-                      )
-                      const text = receipts.length ? receipts.join(", ") : "—"
+                      // Under a route the parcel is the group header, so
+                      // repeating it here would say the same thing twice; the
+                      // trip is the useful detail instead. Under "All" a row
+                      // can span parcels, and each carries its own date and
+                      // verdict — a box that flew is overdue long before one
+                      // on a boat is.
+                      if (route !== "all") {
+                        return <span className="block whitespace-nowrap">{row.item.event}</span>
+                      }
+                      const parcels = new Map<string, string>()
+                      for (const o of row.item.orders) {
+                        if (o.dispatchReceipt && !parcels.has(o.dispatchReceipt)) {
+                          parcels.set(o.dispatchReceipt, o.dispatchedAt ?? "")
+                        }
+                      }
+                      if (parcels.size === 0) return <span className="block truncate">—</span>
                       return (
-                        <span className="block truncate" title={text}>
-                          {text}
-                        </span>
+                        <div className="flex flex-col gap-1">
+                          {[...parcels].map(([receipt, sentOn]) => (
+                            <ScheduleChip key={receipt} receipt={receipt} sentOn={sentOn} routes={routes} />
+                          ))}
+                        </div>
                       )
                     })()}
                   </td>
                   <td className="px-4 py-2.5 text-right whitespace-nowrap">
                     <span className="tabular-nums font-bold text-foreground">{row.item.totalPending}</span>
                     {row.item.totalPending < row.item.totalBought && (
-                      <span className="text-gray-400 font-normal tabular-nums" title="Partially arrived">
+                      <span className="text-faint font-normal tabular-nums" title="Partially arrived">
                         {" "}/ {row.item.totalBought}
                       </span>
                     )}
@@ -573,7 +929,7 @@ export default function ArrivalListClient() {
                     <button
                       onClick={() => setArrivingItem(row.item)}
                       title="Mark as arrived"
-                      className="text-gray-400 hover:text-blue-600 transition-colors"
+                      className="text-faint hover:text-blue-600 transition-colors"
                     >
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
@@ -592,7 +948,7 @@ export default function ArrivalListClient() {
       {/* Grouped cards (mobile) */}
       <div className="md:hidden flex flex-col gap-2.5">
         {grouped.size === 0 && (
-          <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">No items pending arrival</div>
+          <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-faint">No items pending arrival</div>
         )}
         {[...grouped.entries()].map(([event, storeMap]) => {
           const allItems = [...storeMap.values()].flat()
@@ -600,19 +956,21 @@ export default function ArrivalListClient() {
           return (
             <div key={event} className="rounded-xl border border-cream-border bg-white overflow-hidden">
               <button type="button" onClick={() => toggleEvent(event)} className="w-full flex items-center gap-2.5 px-4 py-3 border-l-[3px] border-brand text-left">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`text-gray-400 transition-transform ${eventCollapsed ? "-rotate-90" : ""}`}><path d="m6 9 6 6 6-6" /></svg>
-                <span className="font-bold text-sm text-foreground">{event}</span>
-                <span className="ml-auto text-xs text-gray-400">{allItems.length} items</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`text-faint transition-transform ${eventCollapsed ? "-rotate-90" : ""}`}><path d="m6 9 6 6 6-6" /></svg>
+                {route === "all"
+                  ? <span className="font-bold text-sm text-foreground">{event}</span>
+                  : <ScheduleChip receipt={event} sentOn={parcelDates.get(event) ?? ""} routes={routes} />}
+                <span className="ml-auto text-xs text-faint">{allItems.length} items</span>
               </button>
               {!eventCollapsed && [...storeMap.entries()].map(([store, storeItems]) => {
                 const storeKey = `${event}|${store}`
                 const storeCollapsed = collapsedStores.has(storeKey)
                 return (
                   <div key={storeKey}>
-                    <button type="button" onClick={() => toggleStore(event, store)} className="w-full flex items-center gap-2 px-4 py-2.5 bg-gray-50/60 border-t border-cream-border text-left">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`text-gray-400 transition-transform ${storeCollapsed ? "-rotate-90" : ""}`}><path d="m6 9 6 6 6-6" /></svg>
-                      <span className="text-xs font-bold text-gray-600">{store}</span>
-                      <span className="ml-auto text-[11px] text-gray-400">{storeItems.length}</span>
+                    <button type="button" onClick={() => toggleStore(event, store)} className="w-full flex items-center gap-2 px-4 py-2.5 bg-surface-muted/60 border-t border-cream-border text-left">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`text-faint transition-transform ${storeCollapsed ? "-rotate-90" : ""}`}><path d="m6 9 6 6 6-6" /></svg>
+                      <span className="text-xs font-bold text-muted-strong">{store}</span>
+                      <span className="ml-auto text-[11px] text-faint">{storeItems.length}</span>
                     </button>
                     {!storeCollapsed && storeItems.map((item) => (
                       <div key={item.productId} className="flex items-center gap-3 px-4 py-2.5 border-t border-cream-border">
@@ -636,7 +994,7 @@ export default function ArrivalListClient() {
                         <div className="text-sm font-bold tabular-nums whitespace-nowrap text-foreground">
                           {item.totalPending}
                           {item.totalPending < item.totalBought && (
-                            <span className="text-gray-400 font-normal" title="Partially arrived"> / {item.totalBought}</span>
+                            <span className="text-faint font-normal" title="Partially arrived"> / {item.totalBought}</span>
                           )}
                         </div>
                         <button type="button" onClick={() => setArrivingItem(item)} aria-label="Mark as arrived" className="w-9 h-9 rounded-lg border border-cream-border text-brand flex items-center justify-center shrink-0 active:bg-blue-50 active:text-blue-700 active:border-blue-200">
@@ -852,20 +1210,20 @@ function ConfirmReceivePanel({
           <h3 className="text-sm font-semibold text-foreground">
             Mark {totalQty} item{totalQty === 1 ? "" : "s"} received
           </h3>
-          <p className="text-xs text-gray-500 mt-0.5">Adjust quantities if needed. Units are assigned to waiting customers, highest-priority first.</p>
+          <p className="text-xs text-muted mt-0.5">Adjust quantities if needed. Units are assigned to waiting customers, highest-priority first.</p>
         </div>
 
         <div className="px-5 py-4 overflow-y-auto min-h-0 flex flex-col gap-4">
           {[...byEvent.entries()].map(([event, evItems]) => (
             <div key={event} className="flex flex-col gap-2">
-              <div className="text-xs font-semibold text-gray-500">{event}</div>
+              <div className="text-xs font-semibold text-muted">{event}</div>
               {evItems.map((it) => {
                 const k = selKey(it)
                 return (
                   <div key={k} className="flex items-center gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="text-sm text-foreground break-words">{it.productName}</div>
-                      {it.store && <div className="text-[11px] text-gray-400">{it.store}</div>}
+                      {it.store && <div className="text-[11px] text-faint">{it.store}</div>}
                     </div>
                     <input
                       type="number"
@@ -874,7 +1232,7 @@ function ConfirmReceivePanel({
                       onChange={(e) => setQtys((p) => ({ ...p, [k]: e.target.value }))}
                       className="w-20 shrink-0 border border-cream-border rounded-lg px-2 py-1.5 text-sm text-right bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
                     />
-                    <span className="text-[11px] text-gray-400 w-16 shrink-0">/ {it.totalPending} pending</span>
+                    <span className="text-[11px] text-faint w-16 shrink-0">/ {it.totalPending} pending</span>
                   </div>
                 )
               })}
@@ -894,7 +1252,7 @@ function ConfirmReceivePanel({
               type="button"
               onClick={onClose}
               disabled={submitting}
-              className="px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+              className="px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
             >
               Cancel
             </button>
@@ -1079,11 +1437,11 @@ function ArriveModal({
         <div className="flex items-start justify-between gap-3 shrink-0">
           <div>
             <div className="text-sm font-semibold text-foreground">{item.productName}</div>
-            <div className="text-xs text-gray-400 mt-0.5">
+            <div className="text-xs text-faint mt-0.5">
               {item.event}{item.store ? ` · ${item.store}` : ""}
             </div>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-brand transition-colors shrink-0">
+          <button onClick={onClose} className="text-faint hover:text-brand transition-colors shrink-0">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M18 6 6 18M6 6l12 12" />
             </svg>
@@ -1095,7 +1453,7 @@ function ArriveModal({
             its content length) is active. */}
         <div className="flex-1 overflow-y-auto min-h-0 flex flex-col gap-5 -mr-2 pr-2">
         <div className="flex flex-col gap-1.5">
-          <span className="text-xs font-medium text-gray-500">What happened?</span>
+          <span className="text-xs font-medium text-muted">What happened?</span>
           <div className="flex rounded-lg border border-cream-border overflow-hidden text-xs">
             {([
               ["arrive", "Arrived"],
@@ -1118,7 +1476,7 @@ function ArriveModal({
                     // to the all-selected behavior the delivery-problem modes use.
                     setCancelIds(m === "cancelled" ? new Set() : new Set(item.orders.map((o) => o.id)))
                   }}
-                  className={`flex-1 px-2 py-1.5 whitespace-nowrap transition-colors ${active ? `${activeCls} font-medium` : "bg-white text-gray-600 hover:bg-cream"}`}
+                  className={`flex-1 px-2 py-1.5 whitespace-nowrap transition-colors ${active ? `${activeCls} font-medium` : "bg-white text-muted-strong hover:bg-cream"}`}
                 >
                   {label}
                 </button>
@@ -1131,16 +1489,16 @@ function ArriveModal({
             (pending / unit_buy) instead of a typed count — shown here read-only
             so the row layout matches Wrong/Broken/Arrived OK. */}
         <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-medium text-gray-500">
+          <label className="text-xs font-medium text-muted">
             {mode === "wrong" ? "Units received (wrong product)" : mode === "broken" ? "Units broken" : mode === "missing" ? "Units missing" : mode === "cancelled" ? "Units cancelled" : "Units arrived"}{" "}
-            <span className="text-gray-400">(pending: {item.totalPending})</span>
+            <span className="text-faint">(pending: {item.totalPending})</span>
           </label>
           {mode === "missing" || mode === "cancelled" ? (
-            <div className="border border-cream-border rounded-lg px-3 py-2 text-sm bg-cream/50 text-gray-500 tabular-nums">
+            <div className="border border-cream-border rounded-lg px-3 py-2 text-sm bg-cream/50 text-muted tabular-nums">
               {mode === "missing"
                 ? item.orders.filter((o) => cancelIds.has(o.id)).reduce((s, o) => s + o.pending, 0)
                 : item.orders.filter((o) => cancelIds.has(o.id)).reduce((s, o) => s + o.unitBuy, 0)}{" "}
-              <span className="text-gray-400">(from checked orders below)</span>
+              <span className="text-faint">(from checked orders below)</span>
             </div>
           ) : (
             <input
@@ -1167,14 +1525,14 @@ function ArriveModal({
                 options={itemOptions}
                 placeholder="Search item…"
               />
-              <p className="text-[11px] text-gray-400">Logged to Inventory as ready stock.</p>
+              <p className="text-[11px] text-faint">Logged to Inventory as ready stock.</p>
             </div>
 
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-yellow-700">Affected orders</label>
               <div className="flex flex-col gap-0.5 max-h-40 overflow-y-auto pr-0.5">
                 {item.orders.map((o) => (
-                  <label key={o.id} className="flex items-center justify-between gap-2 px-2 py-1 rounded-md bg-gray-50 cursor-pointer">
+                  <label key={o.id} className="flex items-center justify-between gap-2 px-2 py-1 rounded-lg bg-surface-muted cursor-pointer">
                     <span className="flex items-center gap-1.5 min-w-0">
                       <input
                         type="checkbox"
@@ -1187,15 +1545,15 @@ function ArriveModal({
                         })}
                         className="accent-yellow-600"
                       />
-                      <span className="truncate text-gray-600">{displayIg(o.customer)}</span>
+                      <span className="truncate text-muted-strong">{displayIg(o.customer)}</span>
                     </span>
-                    <span className="text-gray-400 tabular-nums shrink-0">
+                    <span className="text-faint tabular-nums shrink-0">
                       {mode === "cancelled" ? o.unitBuy : o.pending}×
                     </span>
                   </label>
                 ))}
               </div>
-              <p className="text-[11px] text-gray-400">
+              <p className="text-[11px] text-faint">
                 {mode === "broken"
                   ? "Broken units are logged to Inventory (flagged “broken”, not sellable). "
                   : mode === "missing"
@@ -1208,7 +1566,7 @@ function ArriveModal({
               {mode === "cancelled" && (
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-medium text-yellow-700">
-                    Inventory receipt <span className="text-gray-400 font-normal">(tags the returned stock)</span>
+                    Inventory receipt <span className="text-faint font-normal">(tags the returned stock)</span>
                   </label>
                   <input
                     type="text"
@@ -1228,10 +1586,10 @@ function ArriveModal({
           <div className="flex flex-col gap-2 text-xs">
             {preview.filled.length > 0 && (
               <div>
-                <div className="font-medium text-gray-500 mb-1">Will mark as arrived ({preview.filled.reduce((s, f) => s + f.allocated, 0)} units):</div>
+                <div className="font-medium text-muted mb-1">Will mark as arrived ({preview.filled.reduce((s, f) => s + f.allocated, 0)} units):</div>
                 <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto pr-0.5">
                   {preview.filled.map((f) => (
-                    <div key={f.order.id} className="flex items-center justify-between px-2 py-1 rounded-md bg-blue-50">
+                    <div key={f.order.id} className="flex items-center justify-between px-2 py-1 rounded-lg bg-blue-50">
                       <span className="text-blue-800 truncate">{displayIg(f.order.customer)}</span>
                       <span className="text-blue-700 font-medium ml-2 shrink-0 tabular-nums">
                         {f.allocated}×
@@ -1247,12 +1605,12 @@ function ArriveModal({
 
             {preview.unfilled.length > 0 && (
               <div>
-                <div className="font-medium text-gray-500 mb-1">Stays in list ({preview.unfilled.reduce((s, o) => s + o.pending, 0)} units):</div>
+                <div className="font-medium text-muted mb-1">Stays in list ({preview.unfilled.reduce((s, o) => s + o.pending, 0)} units):</div>
                 <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto pr-0.5">
                   {preview.unfilled.map((o) => (
-                    <div key={o.id} className="flex items-center justify-between px-2 py-1 rounded-md bg-gray-50">
-                      <span className="text-gray-500 truncate">{displayIg(o.customer)}</span>
-                      <span className="text-gray-400 font-medium ml-2 shrink-0 tabular-nums">{o.pending}×</span>
+                    <div key={o.id} className="flex items-center justify-between px-2 py-1 rounded-lg bg-surface-muted">
+                      <span className="text-muted truncate">{displayIg(o.customer)}</span>
+                      <span className="text-faint font-medium ml-2 shrink-0 tabular-nums">{o.pending}×</span>
                     </div>
                   ))}
                 </div>
@@ -1260,7 +1618,7 @@ function ArriveModal({
             )}
 
             {preview.unassignedUnits > 0 && (
-              <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-amber-50 border border-amber-200">
+              <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-amber-50 border border-amber-200">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-600 shrink-0">
                   <path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
                 </svg>
@@ -1277,7 +1635,7 @@ function ArriveModal({
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+            className="px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
           >
             Cancel
           </button>
@@ -1433,7 +1791,7 @@ function NotReceivedPanel({
           <h3 className="text-sm font-semibold text-foreground">
             Not received — {items.length} item{items.length === 1 ? "" : "s"}
           </h3>
-          <p className="text-xs text-gray-500 mt-0.5">
+          <p className="text-xs text-muted mt-0.5">
             Records the chosen quantity as not received, refunding the highest-priority orders first. Leftover units stay pending.
           </p>
         </div>
@@ -1447,7 +1805,7 @@ function NotReceivedPanel({
                   key={m}
                   type="button"
                   onClick={() => setMode(m)}
-                  className={`flex-1 px-2 py-1.5 font-medium transition-colors ${active ? "bg-amber-500 text-white" : "text-gray-500 hover:bg-cream"}`}
+                  className={`flex-1 px-2 py-1.5 font-medium transition-colors ${active ? "bg-amber-500 text-white" : "text-muted hover:bg-cream"}`}
                 >
                   {label}
                 </button>
@@ -1459,7 +1817,7 @@ function NotReceivedPanel({
         <div className="px-5 py-4 overflow-y-auto min-h-0 flex flex-col gap-4">
           {[...byEvent.entries()].map(([event, evItems]) => (
             <div key={event} className="flex flex-col gap-2">
-              <div className="text-xs font-semibold text-gray-500">{event}</div>
+              <div className="text-xs font-semibold text-muted">{event}</div>
               {evItems.map((it) => {
                 const k = selKey(it)
                 const sku = received[k]
@@ -1469,7 +1827,7 @@ function NotReceivedPanel({
                     <div className="flex items-center gap-3">
                       <div className="flex-1 min-w-0">
                         <div className="text-sm text-foreground break-words">{it.productName}</div>
-                        {it.store && <div className="text-[11px] text-gray-400">{it.store}</div>}
+                        {it.store && <div className="text-[11px] text-faint">{it.store}</div>}
                       </div>
                       <input
                         type="number"
@@ -1479,7 +1837,7 @@ function NotReceivedPanel({
                         onChange={(e) => setQtys((p) => ({ ...p, [k]: e.target.value }))}
                         className="w-20 shrink-0 border border-cream-border rounded-lg px-2 py-1.5 text-sm text-right bg-white focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-500 transition-colors"
                       />
-                      <span className="text-[11px] text-gray-400 w-16 shrink-0">/ {it.totalPending} pending</span>
+                      <span className="text-[11px] text-faint w-16 shrink-0">/ {it.totalPending} pending</span>
                     </div>
                     {mode === "wrong" && (
                       <div className="flex flex-col gap-1">
@@ -1511,7 +1869,7 @@ function NotReceivedPanel({
               type="button"
               onClick={onClose}
               disabled={submitting}
-              className="px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+              className="px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
             >
               Cancel
             </button>

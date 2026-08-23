@@ -334,8 +334,11 @@ function mapFormRow(r: Record<string, unknown>): FormRow {
   }
 }
 
-export async function appendOrders(orders: OrderRow[], db: DBExecutor = sql): Promise<void> {
-  if (orders.length === 0) return
+export async function appendOrders(
+  orders: OrderRow[],
+  db: DBExecutor = sql,
+): Promise<{ id: number; productId: number }[]> {
+  if (orders.length === 0) return []
 
   const normalized = orders.map((o) => ({
     ...o,
@@ -350,7 +353,7 @@ export async function appendOrders(orders: OrderRow[], db: DBExecutor = sql): Pr
     ON CONFLICT (instagram_id) DO NOTHING
   `
 
-  await db`
+  const inserted = await db`
     INSERT INTO orders ${db(
       normalized.map((o) => ({
         event: o.event,
@@ -361,7 +364,9 @@ export async function appendOrders(orders: OrderRow[], db: DBExecutor = sql): Pr
         note: o.note,
       }))
     )}
+    RETURNING id, product_id
   `
+  return inserted.map((r) => ({ id: r.id as number, productId: r.product_id as number }))
 }
 
 export async function updateFormRow(
@@ -629,6 +634,10 @@ export async function bulkUpdateDispatch(updates: DispatchUpdate[], db: DBExecut
     UPDATE orders SET
       unit_dispatch = data.unit_dispatch,
       dispatch_receipt = data.dispatch_receipt,
+      -- Stamped on the first dispatch and never again: correcting a receipt,
+      -- or dispatching the rest of a part-filled line later, must not restart
+      -- the clock the receiving list measures a parcel's age with.
+      dispatched_at = COALESCE(orders.dispatched_at, NOW()),
       updated_at = NOW()
     FROM unnest(${ids}::int[], ${dispatches}::int[], ${receipts}::text[])
       AS data(id, unit_dispatch, dispatch_receipt)
@@ -645,6 +654,7 @@ export async function bulkUpdateExcessDispatch(updates: ExcessDispatchUpdate[], 
     UPDATE excess_purchase SET
       unit_dispatch = data.unit_dispatch,
       dispatch_receipt = data.dispatch_receipt,
+      dispatched_at = COALESCE(excess_purchase.dispatched_at, NOW()),
       updated_at = NOW()
     FROM unnest(${ids}::int[], ${dispatches}::int[], ${receipts}::text[])
       AS data(id, unit_dispatch, dispatch_receipt)

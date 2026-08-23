@@ -49,7 +49,7 @@ export default function CustomLabelClient() {
       <div className="w-full md:w-72 md:shrink-0">
         <div className="rounded-xl border border-cream-border bg-white overflow-hidden">
           <div className="px-5 py-4 border-b border-cream-border bg-cream">
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted">
               Fill in the fields and generate a custom shipping label PDF.
             </p>
           </div>

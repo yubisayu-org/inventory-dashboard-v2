@@ -81,16 +81,16 @@ export default function KursTierPopover({
       </p>
 
       {!country ? (
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-muted">
           Select a country to see {flat ? "its rate" : "its brackets"}.
         </p>
       ) : flat ? (
         <div className="flex flex-col gap-1">
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-muted">
             One rate for the whole country, whatever the valas.
           </p>
           {flatSet ? (
-            <p className="text-xs tabular-nums text-gray-500">
+            <p className="text-xs tabular-nums text-muted">
               <span className="font-semibold text-foreground">{fmt(charged)}</span> charged ·{" "}
               {fmt(country.kurs)} cost
               {country.kurs > 0 && (
@@ -121,8 +121,8 @@ export default function KursTierPopover({
             return (
               <div
                 key={t.id}
-                className={`flex items-center justify-between gap-2 px-2 py-1 rounded-md text-xs tabular-nums ${
-                  isActive ? "bg-brand/10 text-foreground font-medium" : "text-gray-500"
+                className={`flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg text-xs tabular-nums ${
+                  isActive ? "bg-brand/10 text-foreground font-medium" : "text-muted"
                 }`}
               >
                 <span>from {fmt(t.minValas)}</span>
@@ -142,13 +142,13 @@ export default function KursTierPopover({
 
       {country && (
         <div className="border-t border-cream-border pt-2 flex flex-col gap-1">
-          <p className="text-xs text-gray-500 tabular-nums">
+          <p className="text-xs text-muted tabular-nums">
             valas <span className="font-semibold text-foreground">{fmt(valas)}</span>
             {" × charged "}
             <span className="font-semibold text-foreground">{fmt(charged)}</span>
             {" = Rp "}{fmt(Math.round(raw))}
           </p>
-          <p className="text-xs text-gray-500 tabular-nums">
+          <p className="text-xs text-muted tabular-nums">
             rounded up to {fmt(roundTo)} → price{" "}
             <span className="font-semibold text-foreground">Rp {fmt(Math.round(price))}</span>
             {" · cost Rp "}{fmt(Math.round(cogs))}
@@ -160,7 +160,7 @@ export default function KursTierPopover({
           {/* Worth calling out: the round-up lands in profit, not cost, so a small
               valas can show a margin well above the bracket's own markup. */}
           {Math.round(price) !== Math.round(raw) && (
-            <p className="text-[11px] text-gray-400 tabular-nums">
+            <p className="text-[11px] text-faint tabular-nums">
               The rounding added Rp {fmt(Math.round(price - raw))} of profit.
             </p>
           )}
@@ -173,7 +173,7 @@ export default function KursTierPopover({
         </div>
       )}
 
-      <p className="text-[10px] text-gray-400">
+      <p className="text-[10px] text-faint">
         {flat ? "The flat rate is" : "Brackets are"} edited under Settings → Pricing, and the
         rounding step at the top of that same card. Both are read when the product is saved.
       </p>

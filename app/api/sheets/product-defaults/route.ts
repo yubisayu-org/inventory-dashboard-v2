@@ -50,13 +50,41 @@ export async function PATCH(req: NextRequest) {
     const defaultPricingMethod = has("defaultPricingMethod")
       ? toPricingMethod(body.defaultPricingMethod)
       : current.defaultPricingMethod
+    // Same narrowing, same "only when sent" rule, separate column: the WhatsApp
+    // default and the form default are edited from different cards.
+    const whatsappPricingMethod = has("whatsappPricingMethod")
+      ? toPricingMethod(body.whatsappPricingMethod)
+      : current.whatsappPricingMethod
     const flatFee = has("flatFee") ? Number(body.flatFee) : current.flatFee
     const flatFeePct = has("flatFeePct") ? Number(body.flatFeePct) : current.flatFeePct
     const flatFeeMin = has("flatFeeMin") ? Number(body.flatFeeMin) : current.flatFeeMin
     const dpPercent = has("dpPercent") ? Number(body.dpPercent) : current.dpPercent
+    const customRequestProfitPct = has("customRequestProfitPct") ? Number(body.customRequestProfitPct) : current.customRequestProfitPct
+    const customRequestOperationalFee = has("customRequestOperationalFee") ? Number(body.customRequestOperationalFee) : current.customRequestOperationalFee
+    const customRequestPackingFee = has("customRequestPackingFee") ? Number(body.customRequestPackingFee) : current.customRequestPackingFee
+    const tierKursSites = has("tierKursSites")
+      ? (body.tierKursSites as string[]).map((s) => s.trim()).filter(Boolean)
+      : current.tierKursSites
 
     if (!Number.isFinite(profitPct) || !Number.isFinite(operationalFee) || !Number.isFinite(packingFee) || !Number.isFinite(markupPct)) {
       return NextResponse.json({ error: "profitPct, operationalFee, packingFee and markupPct must be numbers" }, { status: 400 })
+    }
+    // Same shape as the Add Product Profit Margin fields above, own card
+    // (order-requests' custom-request flow), own guard.
+    if (
+      !Number.isFinite(customRequestProfitPct) || customRequestProfitPct < 0 || customRequestProfitPct > 99 ||
+      !Number.isInteger(customRequestOperationalFee) || customRequestOperationalFee < 0 ||
+      !Number.isInteger(customRequestPackingFee) || customRequestPackingFee < 0
+    ) {
+      return NextResponse.json(
+        { error: "customRequestProfitPct must be 0-99, customRequestOperationalFee/customRequestPackingFee must be whole numbers of 0 or more" },
+        { status: 400 },
+      )
+    }
+    // Bare domains only — a match strips protocol/"www." before comparing, so a
+    // stored entry with either would never match.
+    if (!Array.isArray(tierKursSites) || tierKursSites.some((s) => typeof s !== "string" || s.includes("://"))) {
+      return NextResponse.json({ error: "tierKursSites must be a list of bare domains" }, { status: 400 })
     }
     // Guarded separately from the pre-fill fields: this one is a price input, and
     // it lands in an INTEGER column with a CHECK (>= 0). 0 is legal — it prices a
@@ -106,7 +134,9 @@ export async function PATCH(req: NextRequest) {
         updateProductDefaults({
           profitPct, operationalFee, packingFee, markupPct, tierKursRoundTo,
           profitMarginRoundTo, flatFee, flatFeePct, flatFeeMin, defaultCountryId,
-          defaultPricingMethod, dpPercent,
+          defaultPricingMethod, whatsappPricingMethod, dpPercent,
+          customRequestProfitPct, customRequestOperationalFee, customRequestPackingFee,
+          tierKursSites,
         }, tx),
       )
     } catch (err) {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireOwner } from "@/lib/api"
-import { getArrivalList, getExcessArrivalPending, markProductArrived, recordWrongProduct, recordBrokenArrival, recordMissingArrival, recordCustomerCancellation, recordNotReceived, withActor } from "@/lib/db"
+import { getArrivalList, getExcessArrivalPending, markProductArrived, recordWrongProduct, recordBrokenArrival, recordMissingArrival, recordCustomerCancellation, recordNotReceived, renameDispatchReceipt, withActor } from "@/lib/db"
 
 export async function GET(req: NextRequest) {
   const { session, error: authError } = await requireSession()
@@ -30,6 +30,29 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json()
+
+    // Packing runs ahead of paperwork: a box leaves as "MNC - box 1" and the
+    // courier's number turns up later. Renaming moves every line of that
+    // parcel, because the receipt is what makes them one box.
+    if (body.action === "rename_receipt") {
+      const from = String(body.from ?? "").trim()
+      const to = String(body.to ?? "").trim()
+      if (!from || !to) {
+        return NextResponse.json({ error: "from and to are required" }, { status: 400 })
+      }
+      if (to.length > 120) {
+        return NextResponse.json({ error: "That tracking number is too long" }, { status: 400 })
+      }
+      const result = await withActor(session.user?.email ?? null, (tx) =>
+        renameDispatchReceipt(from, to, tx))
+      if (result.moved === 0) {
+        return NextResponse.json(
+          { error: "Nothing was renamed — that parcel may have been renamed already" },
+          { status: 409 },
+        )
+      }
+      return NextResponse.json({ success: true, ...result })
+    }
 
     // Wrong-product path: supplier sent a different SKU. Log it to ready stock
     // and zero the chosen customer orders (refunds auto-materialize if paid).

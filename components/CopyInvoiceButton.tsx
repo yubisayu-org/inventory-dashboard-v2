@@ -50,7 +50,7 @@ export default function CopyInvoiceButton({ customer, event }: { customer: strin
       className={`inline-flex items-center justify-center p-1 transition-colors rounded disabled:opacity-50 ${
         status === "copied" ? "text-green-600"
         : status === "error" ? "text-red-500"
-        : "text-gray-400 hover:text-brand"
+        : "text-faint hover:text-brand"
       }`}
     >
       <span className="inline-flex items-center justify-center w-3.5 h-3.5">

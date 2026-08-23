@@ -44,7 +44,7 @@ export default function InfoTooltip({ text }: { text: string }) {
         type="button"
         onClick={handleToggle}
         aria-label="More info"
-        className="flex items-center justify-center w-4 h-4 rounded-full text-gray-400 hover:text-brand transition-colors"
+        className="flex items-center justify-center w-4 h-4 rounded-full text-faint hover:text-brand transition-colors"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="12" cy="12" r="10" />
@@ -56,7 +56,7 @@ export default function InfoTooltip({ text }: { text: string }) {
         <div
           ref={popupRef}
           style={{ ...popupStyle, width: POPUP_WIDTH }}
-          className="z-20 rounded-lg border border-cream-border bg-white shadow-lg p-2.5 text-[10px] text-gray-500 leading-relaxed"
+          className="z-20 rounded-lg border border-cream-border bg-white shadow-lg p-2.5 text-[10px] text-muted leading-relaxed"
         >
           {text}
         </div>

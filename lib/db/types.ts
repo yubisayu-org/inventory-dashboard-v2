@@ -221,6 +221,10 @@ export interface CustomerRow {
   invoiceCount: number
   totalInvoiced: number
   totalOutstanding: number
+  /** True once this customer has bound a Google account and can sign in to the
+   *  catalogue site. Derived from google_sub — the address itself is never
+   *  collected, since the OAuth request asks for `openid` scope only. */
+  catalogueSignedIn: boolean
   createdAt: string | null
   updatedAt: string | null
 }
@@ -242,6 +246,11 @@ export interface WarehouseRow {
   code: string
   name: string
   isDefault: boolean
+  /** Biteship origin. Null until set in Settings; rate lookups stay dormant
+   *  and fall back to jne_rates until then. */
+  biteshipAreaId: string | null
+  biteshipAreaName: string | null
+  postalCode: string
 }
 
 // Free text — "overpayment" stays special-cased in code (materializeOverpaymentRefunds,
@@ -295,7 +304,21 @@ export interface RefundRow {
  *                   drops out of "ready" until released.
  *   shipped       — every line fully arrived AND nothing left to ship
  */
-export type ShipStatus = "not_arrived" | "partial" | "ready" | "ready_unpaid" | "hold" | "shipped"
+export type ShipStatus =
+  | "not_arrived"
+  | "partial"
+  // She asked for what has arrived to go early. Its own status rather than a
+  // marker on "partial", because it is a queue of work: the extra delivery fee
+  // has to be billed and paid before the parcel goes.
+  | "split_requested"
+  // Two or more events the customer asked to travel in one box. Its own status
+  // so a paired order appears in the Gabung tab and nowhere else — two places
+  // for one card is two chances to ship it twice.
+  | "paired"
+  | "ready"
+  | "ready_unpaid"
+  | "hold"
+  | "shipped"
 
 export interface ShipCustomer {
   customer: string
@@ -307,6 +330,33 @@ export interface ShipCustomer {
   ongkirPerKg: number
   status: ShipStatus
   paymentStatus: PaymentStatus
+  /**
+   * A one-off address the customer asked for on this event, from
+   * customer_shipping_prefs. Null when she has not asked for one, which is
+   * the usual case — then the label uses her profile address as before.
+   */
+  requestedAddress: string | null
+  /**
+   * True when that address sits in a different Biteship area than her profile
+   * — her standing ongkir was priced for the other one, so the cost may not
+   * match. Surfaced, never re-rated automatically.
+   */
+  requestedOtherArea: boolean
+  /** She asked for the arrived part to go early, and it has not gone yet. */
+  splitRequested: boolean
+  /**
+   * What sending early costs on top of what the invoice already charges:
+   * (ongkir on this parcel + ongkir on the rest) − ongkir on the whole event.
+   * The mirror image of the "Gabung ongkir" discount — same weights, same
+   * rounding, opposite sign.
+   */
+  splitExtraOngkir: number
+  /** Whether that fee has already been put on her invoice. */
+  splitCharged: boolean
+  /** The group this event travels in, when she has paired it with another. */
+  mergeKey: string | null
+  /** The other events in that group. */
+  pairedWith: string[]
 }
 
 export interface InvoiceResult {
@@ -331,6 +381,12 @@ export interface PublicInvoiceEvent {
   status: string
   shipments: InvoiceShipment[]
   showShipments: boolean
+  /**
+   * What it would cost her to have the arrived part sent ahead of the rest —
+   * shown in the shipping sheet so the choice carries its price. An estimate,
+   * from estimated weights, and nothing is charged until the shop bills it.
+   */
+  splitExtraOngkir: number
   orders: PublicInvoiceOrderLine[]
   totals: { unit: number; subtotal: number; arrive: number; weightKg: number }
   invoice: {
@@ -352,6 +408,12 @@ export interface PublicInvoiceResult {
 export interface ShipOrdersParams {
   customer: string
   event: string
+  /**
+   * Ship this event on its own even though the customer paired it with
+   * another. The confirm behind it says what that costs her; setting it also
+   * dissolves the pairing, since half a pair is not one.
+   */
+  force?: boolean
   orders: Array<{ rowNumber: number; productId: number; productName: string; toShip: number; unitShip: number }>
   weightKg: number
   ongkirPerKg: number
@@ -563,5 +625,132 @@ export interface OperationalExpenseRow {
   remarks: string
   createdAt: string
   updatedAt: string
+}
+
+export interface CatalogueHighlight {
+  id: number
+  name: string
+  defaultEvent: string | null
+  sortOrder: number
+  visible: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CataloguePost {
+  id: number
+  mediaUrl: string
+  mediaType: "photo" | "video"
+  /** The one title this post is always sent under — see the rename in
+   *  migration 086; this used to be a separate "caption" field. */
+  title: string
+  visible: boolean
+  createdAt: string
+  updatedAt: string
+  highlightId: number | null
+  /** Products tagged in this post. */
+  productIds: number[]
+  /** Whether this post has ever actually gone out to a WhatsApp group —
+   *  gates whether "Kirim ulang" (quick-resend) is offered at all. */
+  everSent: boolean
+  /** How many of `productIds` have a placed pin (from any send that ever
+   *  carried them) — used to tell whether tagging is actually finished. */
+  pinnedCount: number
+}
+
+export interface CatalogueRequest {
+  id: number
+  customerHandle: string
+  productId: number | null
+  productName: string | null
+  /** Catalogue price of the requested product, for a Fix request. Null on a
+   *  custom request, which has estimatedPrice instead, and null on the staff
+   *  paths that do not SELECT it. */
+  productPrice: number | null
+  description: string
+  referenceImageUrl: string | null
+  qty: number
+  note: string
+  status: "pending" | "offer_pending" | "approved" | "asking" | "converted" | "rejected"
+  staffNote: string
+  convertedOrderId: number | null
+  createdAt: string
+  countryId: number | null
+  countryName: string | null
+  valas: number | null
+  gram: number | null
+  estimatedPrice: number | null
+  /** Which formula the owner's proposal (editCatalogueRequest) used to
+   *  arrive at estimatedPrice — defaults to 'overseas' on a fresh request
+   *  that's never been proposed. */
+  proposedPricingMethod: "overseas" | "tier_kurs"
+  /** The exact profit%/fees the owner proposed under Profit Margin — set
+   *  only once an offer has actually been proposed that way, null
+   *  otherwise (including when proposedPricingMethod is 'tier_kurs', which
+   *  doesn't use these). Lets "Create product from approved offer" start
+   *  from what was actually approved instead of guessing at a fixed
+   *  default. */
+  proposedProfitPct: number | null
+  proposedOperationalFee: number | null
+  /** Applies under either method — Tier Kurs still has a packing fee. */
+  proposedPackingFee: number | null
+  /** The rate actually charged under Tier Kurs, resolved server-side and
+   *  snapshotted the same way products.tiered_kurs is — null unless
+   *  proposedPricingMethod is 'tier_kurs'. */
+  proposedTieredKurs: number | null
+  /** The product name the owner set while quoting a price (migration 093) —
+   *  separate from `description`, which stays what the customer originally
+   *  typed. Null until a quotation has been made. */
+  proposedName: string | null
+  postId: number | null
+  /** Resolved from post -> highlight -> default_event, unconditionally —
+   *  the caller (ConvertModal) is responsible for checking it's still in
+   *  the active events list before using it as a picker default. Owner-read
+   *  path only, see getCatalogueRequests — the public status-lookup path
+   *  never populates this (stays null), since a customer has no use for
+   *  staff's purchasing-event bookkeeping. */
+  defaultEvent: string | null
+  /** WhatsApp claim inbox fields (migration 081). 'catalogue' for every row
+   *  written by the public/staff paths above; 'whatsapp' plus the rest of
+   *  these fields populated only for rows written by
+   *  createDirectClaim/createAskingRequest/createRejectedClaim in
+   *  lib/db/catalogue-requests.ts. Rows fetched through
+   *  getCatalogueRequestsByHandle/getCatalogueRequests (which SELECT an
+   *  explicit column list that doesn't include these) fall back to
+   *  source: 'catalogue' and the rest empty/null, same as an actual
+   *  'catalogue'-sourced row would read. */
+  source: "catalogue" | "whatsapp"
+  sendId: number | null
+  sendCodeId: number | null
+  sender: string
+  messageId: string
+  botMessageId: string
+  candidateSendCodeIds: number[] | null
+  /** The code this row is claimed against, if any (via send_code_id) —
+   *  joined from wa_send_codes. null when send_code_id is null (a
+   *  'catalogue'-source row, or an unresolved 'asking' row). Owner-read
+   *  path only, see getCatalogueRequests. */
+  resolvedCode: string | null
+  /** Which send resolvedCode belongs to — for a future "view post" link.
+   *  null exactly when resolvedCode is null. */
+  resolvedCodeSendId: number | null
+  /** The trip a WhatsApp-sourced row's claim was made against — joined from
+   *  wa_sends.event via send_id, NOT from postId/defaultEvent (a WhatsApp
+   *  row's post_id is always null, so defaultEvent is always null for it —
+   *  see the final whole-branch review's finding 4). Populated for BOTH a
+   *  resolved claim and a still-open 'asking' row (send_id is set from the
+   *  moment the row is created, independent of which candidate — if any —
+   *  it eventually resolves to). Distinct from defaultEvent (which stays
+   *  the catalogue-web highlight-derived suggestion for a 'catalogue'-
+   *  source row) — deliberately NOT merged into that field, since one is an
+   *  authoritative fact about a WhatsApp row and the other is only ever a
+   *  suggestion. Owner-read path only, see getCatalogueRequests; null for
+   *  a 'catalogue'-source row and for the public status-lookup path. */
+  resolvedEvent: string | null
+  /** For an 'asking' row, the candidate codes she could mean — batch-resolved
+   *  from candidateSendCodeIds by getCatalogueRequests so the dashboard's
+   *  disambiguation picker needs no extra client-side fetch. null when
+   *  candidateSendCodeIds is null/empty. */
+  candidates: { id: number; code: string; productId: number; productName: string; price: number }[] | null
 }
 

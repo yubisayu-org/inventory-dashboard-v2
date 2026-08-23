@@ -21,7 +21,7 @@ const STATUS_LABELS: Record<PaymentStatus, string> = {
 }
 
 const STATUS_COLORS: Record<PaymentStatus, string> = {
-  void: "bg-gray-100 text-gray-500 border-gray-200",
+  void: "bg-surface-sunken text-muted border-cream-border",
   unpaid: "bg-red-50 text-red-700 border-red-200",
   partial: "bg-yellow-50 text-yellow-700 border-yellow-200",
   paid: "bg-green-50 text-green-700 border-green-200",
@@ -116,7 +116,7 @@ export function PaymentStatusPanel({
       header: "Event",
       size: 130,
       filterFn: "textContains",
-      cell: ({ getValue }) => <span className="text-gray-500 whitespace-nowrap">{getValue<string>()}</span>,
+      cell: ({ getValue }) => <span className="text-muted whitespace-nowrap">{getValue<string>()}</span>,
     },
     {
       accessorKey: "customer",
@@ -191,7 +191,7 @@ export function PaymentStatusPanel({
             type="button"
             onClick={() => setAdjustingRow({ event: row.original.event, customer: row.original.customer })}
             title="Add adjustment for this invoice"
-            className="text-gray-400 hover:text-brand transition-colors p-1 rounded"
+            className="text-faint hover:text-brand transition-colors p-1 rounded"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="12" y1="5" x2="12" y2="19" />
@@ -224,7 +224,7 @@ export function PaymentStatusPanel({
           <button
             type="button"
             onClick={() => onOpenCustomer(r.customer)}
-            className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-brand transition-colors text-left min-w-0 uppercase"
+            className="inline-flex items-center gap-1 text-xs text-faint hover:text-brand transition-colors text-left min-w-0 uppercase"
           >
             <span className="truncate">{displayIg(r.customer)}</span>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
@@ -236,16 +236,16 @@ export function PaymentStatusPanel({
 
       <div className="mt-2.5 pt-2.5 border-t border-cream-border flex flex-col gap-1 text-xs">
         <div className="flex items-center justify-between">
-          <span className="text-gray-400">Items</span>
+          <span className="text-faint">Items</span>
           <span className="tabular-nums text-foreground">{fmt(r.totalItems)}</span>
         </div>
         <div className="flex items-center justify-between">
-          <span className="text-gray-400">Invoice</span>
+          <span className="text-faint">Invoice</span>
           <span className="tabular-nums text-foreground">Rp {fmt(r.invoiceTotal)}</span>
         </div>
         {r.outstanding !== 0 && (
           <div className="flex items-center justify-between">
-            <span className="text-gray-400">{r.outstanding > 0 ? "Outstanding" : "Overpayment"}</span>
+            <span className="text-faint">{r.outstanding > 0 ? "Outstanding" : "Overpayment"}</span>
             <span className={`tabular-nums font-medium ${r.outstanding > 0 ? "text-red-600" : "text-blue-600"}`}>
               {r.outstanding > 0 ? "Rp " + fmt(r.outstanding) : "−Rp " + fmt(Math.abs(r.outstanding))}
             </span>
@@ -263,7 +263,7 @@ export function PaymentStatusPanel({
           type="button"
           onClick={() => setAdjustingRow({ event: r.event, customer: r.customer })}
           title="Add adjustment for this invoice"
-          className="text-gray-400 hover:text-brand transition-colors p-1 rounded"
+          className="text-faint hover:text-brand transition-colors p-1 rounded"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="12" y1="5" x2="12" y2="19" />
@@ -276,7 +276,7 @@ export function PaymentStatusPanel({
   ), [onOpenCustomer])
 
   if (loading) {
-    return <div className="rounded-xl border border-cream-border bg-white py-12 text-center text-sm text-gray-400">Loading…</div>
+    return <div className="rounded-xl border border-cream-border bg-white py-12 text-center text-sm text-faint">Loading…</div>
   }
   if (error) {
     return <div className="rounded-xl border border-red-200 bg-red-50 py-8 px-4 text-sm text-red-500">{error}</div>
@@ -287,11 +287,11 @@ export function PaymentStatusPanel({
       {rows.length > 0 && (
         <div className="grid grid-cols-2 gap-2 sm:gap-4 mb-3">
           <div className="rounded-xl border border-cream-border border-l-4 border-l-red-500 bg-white px-3 py-3 sm:px-5 sm:py-4">
-            <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Outstanding</div>
+            <div className="text-xs font-medium text-faint uppercase tracking-wide">Outstanding</div>
             <div className="text-lg sm:text-2xl font-bold text-foreground mt-1 tabular-nums">Rp {fmt(totals.outstanding)}</div>
           </div>
           <div className="rounded-xl border border-cream-border border-l-4 border-l-blue-500 bg-white px-3 py-3 sm:px-5 sm:py-4">
-            <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Overpayment</div>
+            <div className="text-xs font-medium text-faint uppercase tracking-wide">Overpayment</div>
             <div className="text-lg sm:text-2xl font-bold text-foreground mt-1 tabular-nums">Rp {fmt(totals.overpaid)}</div>
           </div>
         </div>
@@ -305,15 +305,15 @@ export function PaymentStatusPanel({
             <button
               key={key}
               onClick={() => setFilter(key)}
-              className={`flex-1 shrink-0 flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+              className={`flex-1 shrink-0 flex items-center justify-center gap-1 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
                 active
                   ? "bg-brand text-white"
-                  : "text-gray-500 hover:text-foreground"
+                  : "text-muted hover:text-foreground"
               }`}
             >
               {label}
               {count ? (
-                <span className={`hidden sm:inline text-xs rounded-full px-1.5 py-0.5 tabular-nums ${active ? "bg-white/20 text-white" : "bg-gray-100 text-gray-500"}`}>
+                <span className={`hidden sm:inline text-xs rounded-full px-1.5 py-0.5 tabular-nums ${active ? "bg-white/20 text-white" : "bg-surface-sunken text-muted"}`}>
                   {count}
                 </span>
               ) : null}
@@ -405,23 +405,23 @@ function ExpandedInvoice({
   }, [customer, cache])
 
   if (error) {
-    return <div className="px-6 py-4 bg-cream/40 text-sm text-red-500">{error}</div>
+    return <div className="px-6 py-4 bg-cream text-sm text-red-500">{error}</div>
   }
   if (!result) {
-    return <div className="px-6 py-4 bg-cream/40 text-sm text-gray-400">Loading invoice…</div>
+    return <div className="px-6 py-4 bg-cream text-sm text-faint">Loading invoice…</div>
   }
 
   const ev = result.events.find((e) => e.eventId === event)
   if (!ev) {
-    return <div className="px-6 py-4 bg-cream/40 text-sm text-gray-400">No invoice found for {event}.</div>
+    return <div className="px-6 py-4 bg-cream text-sm text-faint">No invoice found for {event}.</div>
   }
 
   return (
-    <div className="bg-cream/40">
+    <div className="bg-cream">
       {/* Order lines */}
       <table className="w-full text-sm">
         <thead>
-          <tr className="text-left text-xs text-gray-500 border-b border-cream-border">
+          <tr className="text-left text-xs text-muted border-b border-cream-border bg-surface-muted/80">
             <th className="pl-12 pr-4 py-2 font-medium">Order</th>
             <th className="px-4 py-2 font-medium text-right w-20">Unit</th>
             <th className="px-4 py-2 font-medium text-right w-28">Price</th>
@@ -431,7 +431,7 @@ function ExpandedInvoice({
         </thead>
         <tbody>
           {[...ev.orders].reverse().map((r, i) => (
-            <tr key={i} className="border-b border-cream-border/60">
+            <tr key={i} className="border-b border-cream-border">
               <td className="pl-12 pr-4 py-2">{r.productName || r.order}</td>
               <td className="px-4 py-2 text-right tabular-nums">{r.unit}</td>
               <td className="px-4 py-2 text-right tabular-nums">{r.price}</td>

@@ -107,12 +107,12 @@ export function AddAdjustmentFromInvoiceModal({
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 md:items-center md:bg-black/30 md:px-4" onClick={onClose}>
       <form
-        className="bg-white rounded-t-2xl md:rounded-xl border-x border-t border-cream-border md:border shadow-xl w-full md:max-w-sm flex flex-col gap-4 p-5 pb-8 md:p-6"
+        className="bg-white rounded-t-xl md:rounded-xl border-x border-t border-cream-border md:border shadow-xl w-full md:max-w-sm flex flex-col gap-4 p-5 pb-8 md:p-6"
         onClick={(e) => e.stopPropagation()}
         onSubmit={handleSubmit}
       >
         <div className="-mx-5 px-5 border-b border-cream-border pb-3 md:mx-0 md:px-0 md:border-b-0 md:pb-0">
-          <div className="text-xs text-gray-400">
+          <div className="text-xs text-faint">
             {displayIg(customer)} · {event}
           </div>
         </div>
@@ -136,7 +136,7 @@ export function AddAdjustmentFromInvoiceModal({
                   key={t}
                   type="button"
                   onClick={() => switchTab(t)}
-                  className={`flex-1 px-3 py-2 font-medium transition-colors ${tab === t ? "bg-brand text-white" : "text-gray-500 hover:bg-cream"}`}
+                  className={`flex-1 px-4 py-2 font-medium transition-colors ${tab === t ? "bg-brand text-white" : "text-muted hover:bg-cream"}`}
                 >
                   {label}
                 </button>
@@ -146,7 +146,7 @@ export function AddAdjustmentFromInvoiceModal({
             {tab === "payment" ? (
               <div className="flex flex-col gap-3">
                 <label className="flex flex-col gap-1">
-                  <span className="text-xs font-medium text-gray-500">Amount (Rp) <span className="text-brand">*</span></span>
+                  <span className="text-xs font-medium text-muted">Amount (Rp) <span className="text-brand">*</span></span>
                   <input
                     type="number"
                     value={payAmount}
@@ -158,7 +158,7 @@ export function AddAdjustmentFromInvoiceModal({
                   />
                 </label>
                 <label className="flex flex-col gap-1">
-                  <span className="text-xs font-medium text-gray-500">Account</span>
+                  <span className="text-xs font-medium text-muted">Account</span>
                   <SearchableSelect
                     value={account}
                     onChange={setAccount}
@@ -168,7 +168,7 @@ export function AddAdjustmentFromInvoiceModal({
                   />
                 </label>
                 <label className="flex flex-col gap-1">
-                  <span className="text-xs font-medium text-gray-500">Date</span>
+                  <span className="text-xs font-medium text-muted">Date</span>
                   <input
                     type="date"
                     value={payDate}
@@ -178,7 +178,7 @@ export function AddAdjustmentFromInvoiceModal({
                   />
                 </label>
                 <label className="flex flex-col gap-1">
-                  <span className="text-xs font-medium text-gray-500">Remarks <span className="text-gray-400 font-normal">(optional)</span></span>
+                  <span className="text-xs font-medium text-muted">Remarks <span className="text-faint font-normal">(optional)</span></span>
                   <input
                     type="text"
                     value={remarks}
@@ -192,7 +192,7 @@ export function AddAdjustmentFromInvoiceModal({
             ) : (
               <div className="flex flex-col gap-3">
                 <label className="flex flex-col gap-1">
-                  <span className="text-xs font-medium text-gray-500">Description</span>
+                  <span className="text-xs font-medium text-muted">Description</span>
                   <SearchableSelect
                     value={description}
                     onChange={setDescription}
@@ -202,7 +202,7 @@ export function AddAdjustmentFromInvoiceModal({
                   />
                 </label>
                 <label className="flex flex-col gap-1">
-                  <span className="text-xs font-medium text-gray-500">Amount (Rp) <span className="text-brand">*</span></span>
+                  <span className="text-xs font-medium text-muted">Amount (Rp) <span className="text-brand">*</span></span>
                   <input
                     type="number"
                     value={adjAmount}
@@ -220,7 +220,7 @@ export function AddAdjustmentFromInvoiceModal({
             {error && <p className="text-xs text-red-500">{error}</p>}
 
             <div className="flex justify-end gap-2">
-              <button type="button" onClick={onClose} disabled={saving} className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
+              <button type="button" onClick={onClose} disabled={saving} className="px-4 py-2 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
                 Cancel
               </button>
               <button type="submit" disabled={saving || !canSubmit} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors">

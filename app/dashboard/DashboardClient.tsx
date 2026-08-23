@@ -1,8 +1,11 @@
 "use client"
 
-import { use } from "react"
+import { use, useState } from "react"
 import Link from "next/link"
 import type { DashboardSummary, DashboardEvent, DashboardTotals } from "@/lib/db"
+// The shape the event-analytics route returns, imported from the route itself
+// so the card and its endpoint cannot drift apart.
+import type { EventAnalytics } from "@/app/api/dashboard/event-analytics/route"
 
 function formatRp(n: number): string {
   return `Rp ${new Intl.NumberFormat("id-ID").format(n)}`
@@ -71,13 +74,13 @@ export default function DashboardClient({
         <div className="rounded-xl border border-cream-border bg-white p-8 text-center">
           <div className="text-2xl mb-2">🎉</div>
           <p className="text-sm font-medium text-foreground">All caught up</p>
-          <p className="text-xs text-gray-500 mt-1">No pending actions across the pipeline.</p>
+          <p className="text-xs text-muted mt-1">No pending actions across the pipeline.</p>
         </div>
       ) : (
         <section className="flex flex-col gap-2">
           <div className="flex items-baseline justify-between">
             <h2 className="text-sm font-semibold text-foreground">Action queue</h2>
-            <span className="text-xs text-gray-400">{items.reduce((s, i) => s + i.count, 0)} pending</span>
+            <span className="text-xs text-faint">{items.reduce((s, i) => s + i.count, 0)} pending</span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {items.map((item) => (
@@ -103,12 +106,12 @@ export default function DashboardClient({
       <section className="flex flex-col gap-2">
         <div className="flex items-baseline justify-between">
           <h2 className="text-sm font-semibold text-foreground">Active events</h2>
-          <span className="text-xs text-gray-400">
+          <span className="text-xs text-faint">
             {summary.events.length} {summary.events.length === 1 ? "event" : "events"} in pipeline
           </span>
         </div>
         {summary.events.length === 0 ? (
-          <div className="rounded-xl border border-cream-border bg-white p-6 text-center text-sm text-gray-400">
+          <div className="rounded-xl border border-cream-border bg-white p-6 text-center text-sm text-faint">
             No active events.
           </div>
         ) : (
@@ -194,7 +197,7 @@ function StatCards({ totals }: { totals: DashboardTotals }) {
               <span className="hidden sm:inline">{full}</span>
             </span>
             {"sub" in c && c.sub && (
-              <span className="text-xs text-gray-400 tabular-nums truncate">{c.sub}</span>
+              <span className="text-xs text-faint tabular-nums truncate">{c.sub}</span>
             )}
           </div>
         )
@@ -204,6 +207,23 @@ function StatCards({ totals }: { totals: DashboardTotals }) {
 }
 
 function EventCard({ event }: { event: DashboardEvent }) {
+  const [expanded, setExpanded] = useState(false)
+  const [analytics, setAnalytics] = useState<EventAnalytics | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  async function handleToggle() {
+    if (expanded) { setExpanded(false); return }
+    setExpanded(true)
+    if (analytics) return
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/dashboard/event-analytics?event=${encodeURIComponent(event.name)}`)
+      if (res.ok) setAnalytics(await res.json())
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const stages = [
     { label: "Bought", num: event.totalBought, denom: event.totalUnits, color: "bg-green-500" },
     { label: "Arrived", num: event.totalArrived, denom: event.totalUnits, color: "bg-blue-500" },
@@ -211,18 +231,22 @@ function EventCard({ event }: { event: DashboardEvent }) {
   ]
 
   return (
-    <div className="rounded-xl border border-cream-border bg-white p-4 flex flex-col gap-3">
-      <div className="flex items-baseline justify-between gap-2">
+    <div className="rounded-xl border border-cream-border bg-white flex flex-col">
+      <button
+        onClick={handleToggle}
+        className="p-4 flex flex-col gap-3 text-left w-full hover:bg-surface-muted/60 transition-colors rounded-xl"
+      >
+      <div className="flex items-center justify-between gap-2">
         <span className="font-semibold text-foreground truncate">{event.name}</span>
-        {event.eta && <span className="text-xs text-gray-400 shrink-0">{event.eta}</span>}
+        {event.eta && <span className="text-xs text-faint shrink-0">{event.eta}</span>}
       </div>
 
-      <div className="flex flex-nowrap items-baseline gap-x-2 text-[11px] text-gray-500">
+      <div className="flex flex-nowrap items-baseline gap-x-2 text-[11px] text-muted">
         <span className="whitespace-nowrap"><span className="font-medium text-foreground">{event.customerCount}</span> customers</span>
         <span className="whitespace-nowrap"><span className="font-medium text-foreground">{event.totalUnits}</span> units</span>
         <span className="ml-auto whitespace-nowrap tabular-nums">
           <span className="text-foreground font-medium">{formatRp(event.totalPaid)}</span>
-          <span className="text-gray-400"> / {formatRp(event.totalSubtotal)}</span>
+          <span className="text-faint"> / {formatRp(event.totalSubtotal)}</span>
         </span>
       </div>
 
@@ -231,18 +255,50 @@ function EventCard({ event }: { event: DashboardEvent }) {
           const p = pct(s.num, s.denom)
           return (
             <div key={s.label} className="contents">
-              <span className="text-gray-500">{s.label}</span>
-              <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+              <span className="text-muted">{s.label}</span>
+              <div className="h-2 rounded-full bg-surface-sunken overflow-hidden">
                 <div className={`h-full ${s.color} transition-all`} style={{ width: `${p}%` }} />
               </div>
-              <span className="whitespace-nowrap text-right tabular-nums text-gray-600">
-                {s.num}<span className="text-gray-400">/{s.denom}</span>
-                <span className="text-gray-400 ml-1">({p}%)</span>
+              <span className="whitespace-nowrap text-right tabular-nums text-muted-strong">
+                {s.num}<span className="text-faint">/{s.denom}</span>
+                <span className="text-faint ml-1">({p}%)</span>
               </span>
             </div>
           )
         })}
       </div>
+      </button>
+
+      {expanded && (
+        <div className="px-4 pb-4 border-t border-cream-border">
+          <p className="text-xs font-semibold text-muted mt-3 mb-2">Top items by units ordered</p>
+          {loading ? (
+            <p className="text-xs text-faint">Loading…</p>
+          ) : analytics && analytics.topItems.length > 0 ? (
+            <div className="flex flex-col gap-1.5">
+              {analytics.topItems.map((item, i) => {
+                const maxUnits = analytics.topItems[0].totalUnits
+                const p = pct(item.totalUnits, maxUnits)
+                return (
+                  <div key={i} className="flex items-center gap-2 text-xs">
+                    <span className="w-4 shrink-0 text-faint tabular-nums">{i + 1}.</span>
+                    <span className="min-w-0 flex-1 truncate text-muted-strong">
+                      {item.productName}
+                      {item.store && <span className="text-faint ml-1">· {item.store}</span>}
+                    </span>
+                    <div className="w-16 h-1.5 rounded-full bg-surface-sunken overflow-hidden shrink-0">
+                      <div className="h-full bg-indigo-400 transition-all" style={{ width: `${p}%` }} />
+                    </div>
+                    <span className="w-8 shrink-0 text-right tabular-nums text-muted-strong">{item.totalUnits}</span>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <p className="text-xs text-faint">No data.</p>
+          )}
+        </div>
+      )}
     </div>
   )
 }

@@ -6,7 +6,7 @@ import SelectionActionBar from "@/components/SelectionActionBar"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import type { ShipCustomer, ShipOrdersParams, ShipSegment, ShipStatus, ShipOrdersFiltered, PaymentStatus } from "@/lib/db"
-import { normalizeId } from "@/lib/db/helpers"
+import { normalizeId, parcelPlanExtra } from "@/lib/db/helpers"
 import { generateShippingLabel } from "@/lib/shipping-label"
 import { useModalDismiss } from "@/hooks/useModalDismiss"
 import { useResizableColumns } from "@/hooks/useResizableColumns"
@@ -25,6 +25,8 @@ const SEGMENTS: { id: Segment; label: string }[] = [
   { id: "all", label: "Semua" },
   { id: "not_arrived", label: "Belum Tiba" },
   { id: "partial", label: "Tiba Sebagian" },
+  { id: "split_requested", label: "Kirim Duluan" },
+  { id: "paired", label: "Gabung" },
   { id: "ready_unpaid", label: "Belum Bayar" },
   { id: "ready", label: "Siap Kirim" },
   { id: "hold", label: "Tunda Kirim" },
@@ -52,12 +54,33 @@ function HoldIcon() {
 }
 
 // Card badge styling per arrival/ship status (mirrors SEGMENTS labels).
+/**
+ * Units that would travel if this card shipped now.
+ *
+ * Not `toShip`, which is zero on a paired card by design — pairing parks the
+ * parcel, and combining is what unparks it. Anything deciding whether a pair
+ * can go has to look past its own parking, or the pair waits for itself.
+ */
+function unparkedToShip(c: ShipCustomer): number {
+  return c.status === "paired"
+    ? c.orders.reduce((n, o) => n + Math.max(0, o.unitArrive - o.unitShip), 0)
+    : c.totalToShip
+}
+
+function unparkedOrders(c: ShipCustomer) {
+  return c.orders
+    .map((o) => ({ ...o, toShip: c.status === "paired" ? Math.max(0, o.unitArrive - o.unitShip) : o.toShip }))
+    .filter((o) => o.toShip > 0)
+}
+
 const STATUS_BADGE: Record<ShipStatus, { label: string; cls: string }> = {
-  not_arrived: { label: "Belum Tiba", cls: "bg-gray-100 text-gray-500" },
+  not_arrived: { label: "Belum Tiba", cls: "bg-surface-sunken text-muted" },
   partial: { label: "Tiba Sebagian", cls: "bg-amber-100 text-amber-700" },
   ready: { label: "Siap Kirim", cls: "bg-brand/10 text-brand" },
   ready_unpaid: { label: "Belum Bayar", cls: "bg-orange-100 text-orange-700" },
   hold: { label: "Tunda Kirim", cls: "bg-purple-100 text-purple-700" },
+  split_requested: { label: "Kirim Duluan", cls: "bg-blue-100 text-blue-700" },
+  paired: { label: "Gabung", cls: "bg-blue-100 text-blue-700" },
   shipped: { label: "Sudah Dikirim", cls: "bg-green-100 text-green-700" },
 }
 
@@ -68,14 +91,14 @@ const PAYMENT_BADGE: Record<PaymentStatus, { label: string; cls: string }> = {
   overpaid: { label: "Lebih Bayar",    cls: "bg-blue-100 text-blue-700" },
   partial:  { label: "Bayar Sebagian", cls: "bg-amber-100 text-amber-700" },
   unpaid:   { label: "Belum Bayar",    cls: "bg-rose-100 text-rose-700" },
-  void:     { label: "Void",           cls: "bg-gray-100 text-gray-500" },
+  void:     { label: "Void",           cls: "bg-surface-sunken text-muted" },
 }
 
 export default function ShipClient() {
   const router = useRouter()
   const sheetOptions = useSheetOptions()
   const [groups, setGroups] = useState<ShipCustomer[]>([])
-  const [counts, setCounts] = useState<Record<Segment, number>>({ all: 0, not_arrived: 0, partial: 0, ready: 0, ready_unpaid: 0, hold: 0, shipped: 0 })
+  const [counts, setCounts] = useState<Record<Segment, number>>({ all: 0, not_arrived: 0, partial: 0, split_requested: 0, paired: 0, ready: 0, ready_unpaid: 0, hold: 0, shipped: 0 })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [segment, setSegment] = useState<Segment>("ready")
@@ -143,6 +166,36 @@ export default function ShipClient() {
   function refresh() {
     fetchData(segment, debouncedSearch, eventFilter)
   }
+
+  // One card per pair. The server marks the members and hands over the key; the
+  // pair's own readiness is decided here, from the same rule the badge counts:
+  // every member early means the box goes now, anything else waits for the
+  // slowest, and a pair with one of each waits — a shared box has one departure.
+  const bundles = (() => {
+    const byKey = new Map<string, ShipCustomer[]>()
+    for (const g of groups) {
+      if (g.status !== "paired" || !g.mergeKey) continue
+      const key = `${normalizeId(g.customer)}|${g.mergeKey}`
+      const list = byKey.get(key)
+      if (list) list.push(g)
+      else byKey.set(key, [g])
+    }
+    return [...byKey.entries()]
+      .filter(([, members]) => members.length >= 2)
+      .map(([key, members]) => {
+        const allSplit = members.every((m) => m.splitRequested)
+        const mixed = !allSplit && members.some((m) => m.splitRequested)
+        const complete = (m: ShipCustomer) => m.orders.every((o) => o.unitArrive >= o.unit)
+        return {
+          key,
+          members,
+          allSplit,
+          mixed,
+          ready: allSplit ? members.some((m) => unparkedToShip(m) > 0) : members.every(complete),
+          waitingFor: members.filter((m) => !complete(m)).map((m) => m.event),
+        }
+      })
+  })()
 
   const readyFiltered = groups.filter((c) => c.totalToShip > 0)
   const allSelected = readyFiltered.length > 0 && readyFiltered.every((c) => selected.has(`${c.customer}|${c.event}`))
@@ -219,10 +272,10 @@ export default function ShipClient() {
             key={s.id}
             type="button"
             onClick={() => { setSegment(s.id); setSelected(new Set()) }}
-            className={`flex-1 shrink-0 flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+            className={`flex-1 shrink-0 flex items-center justify-center gap-1 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
               segment === s.id
                 ? "bg-brand text-white"
-                : "text-gray-500 hover:text-foreground"
+                : "text-muted hover:text-foreground"
             }`}
           >
             {s.label}
@@ -230,7 +283,7 @@ export default function ShipClient() {
               className={`hidden sm:inline text-xs rounded-full px-1.5 py-0.5 tabular-nums ${
                 segment === s.id
                   ? "bg-white/20 text-white"
-                  : "bg-gray-100 text-gray-500"
+                  : "bg-surface-sunken text-muted"
               }`}
             >
               {counts[s.id]}
@@ -265,7 +318,7 @@ export default function ShipClient() {
             disabled={bulkShipping}
             aria-label={allSelected ? "Deselect all" : "Select all"}
             title={allSelected ? "Deselect all" : "Select all"}
-            className="hidden md:inline-flex items-center gap-1.5 shrink-0 rounded-lg border border-cream-border h-[38px] px-3 text-sm text-gray-600 bg-white hover:border-brand transition-colors disabled:opacity-50"
+            className="hidden md:inline-flex items-center gap-1.5 shrink-0 rounded-lg border border-cream-border h-[38px] px-3 text-sm text-muted-strong bg-white hover:border-brand hover:text-brand transition-colors disabled:opacity-50"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M9 11l3 3L22 4" />
@@ -284,7 +337,7 @@ export default function ShipClient() {
         </div>
       )}
       {!loading && !error && groups.length === 0 && (
-        <div className="rounded-xl border border-cream-border bg-white p-12 text-center text-gray-400 text-sm">
+        <div className="rounded-xl border border-cream-border bg-white p-12 text-center text-faint text-sm">
           Tidak ada pesanan.
         </div>
       )}
@@ -349,7 +402,15 @@ export default function ShipClient() {
               />
             </div>
           )}
-          {pageGroups.map((c) => {
+          {segment === "paired" && bundles.map((b) => (
+            <BundleCard
+              key={b.key}
+              bundle={b}
+              onDone={() => { setSegment("all"); refresh() }}
+              onOpenInvoice={() => setInvoiceCustomer(b.members[0].customer)}
+            />
+          ))}
+          {segment !== "paired" && pageGroups.map((c) => {
             const key = `${c.customer}|${c.event}`
             return (
               <CustomerCard
@@ -359,15 +420,16 @@ export default function ShipClient() {
                 isSelected={selected.has(key)}
                 onToggleSelect={c.totalToShip > 0 ? () => toggleSelect(key) : undefined}
                 onShipped={() => { setSegment("all"); refresh() }}
+                onRefresh={refresh}
                 onOpenInvoice={() => setInvoiceCustomer(c.customer)}
               />
             )
           })}
           {paginated && pageCount > 1 && (
             <div className="flex items-center justify-between gap-3 pt-1">
-              <button type="button" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-gray-600 disabled:opacity-40">Prev</button>
-              <span className="text-xs text-gray-400">Page {page + 1} of {pageCount}</span>
-              <button type="button" disabled={page >= pageCount - 1} onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-gray-600 disabled:opacity-40">Next</button>
+              <button type="button" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-muted-strong disabled:opacity-40">Prev</button>
+              <span className="text-xs text-faint">Page {page + 1} of {pageCount}</span>
+              <button type="button" disabled={page >= pageCount - 1} onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-muted-strong disabled:opacity-40">Next</button>
             </div>
           )}
         </>
@@ -472,7 +534,7 @@ function CopyConfirmMessageButton({ customer: c, className }: { customer: ShipCu
       className={`${className ?? "p-1 rounded"} inline-flex items-center justify-center transition-colors disabled:opacity-50 ${
         status === "copied" ? "text-green-600"
         : status === "error" ? "text-red-500"
-        : "text-gray-400 hover:text-brand"
+        : "text-faint hover:text-brand"
       }`}
     >
       {label ? (
@@ -492,6 +554,7 @@ function CustomerCard({
   isSelected,
   onToggleSelect,
   onShipped,
+  onRefresh,
   onOpenInvoice,
 }: {
   customer: ShipCustomer
@@ -499,15 +562,42 @@ function CustomerCard({
   isSelected?: boolean
   onToggleSelect?: () => void
   onShipped: () => void
+  // Reloads without moving you: charging a fee is not a reason to lose your
+  // place in the tab you were working through, which onShipped would do.
+  onRefresh: () => void
   onOpenInvoice: () => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [holdBusy, setHoldBusy] = useState(false)
   const [holdError, setHoldError] = useState<string | null>(null)
+  const [splitBusy, setSplitBusy] = useState(false)
+  const [splitError, setSplitError] = useState<string | null>(null)
+  const paymentClear = ["paid", "overpaid", "void"].includes(c.paymentStatus)
   const { customerDetail } = c
   const { widths, startResize } = useResizableColumns({ items: 200, unit: 80, unitArrive: 80, unitShip: 80, toShip: 80 })
   const totalHold = c.orders.reduce((s, o) => s + o.unitHold, 0)
+
+  async function postSplitCharge() {
+    if (!confirm(
+      `Tagih ongkir tambahan Rp ${c.splitExtraOngkir.toLocaleString("id-ID")} ke ${displayIg(c.customer).toUpperCase()} · ${c.event}?`,
+    )) return
+    setSplitBusy(true)
+    setSplitError(null)
+    try {
+      const res = await fetch("/api/sheets/ship/split-charge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customer: c.customer, event: c.event }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "Failed")
+      onRefresh()
+    } catch (err) {
+      setSplitError(err instanceof Error ? err.message : "Failed")
+      setSplitBusy(false)
+    }
+  }
 
   async function postHoldAction(path: "hold" | "release", confirmMessage: string) {
     if (!confirm(confirmMessage)) return
@@ -535,14 +625,14 @@ function CustomerCard({
       {/* items-center: both sides are a single row now that the ship/hold counts
           live inside their buttons, so the identity line and the buttons should
           sit on the same axis. */}
-      <div className="px-5 py-4 bg-gray-50 border-b border-cream-border flex justify-between gap-4 items-center">
+      <div className="px-5 py-4 bg-surface-muted border-b border-cream-border flex justify-between gap-4 items-center">
         <div className="flex items-center gap-3 min-w-0">
           {onToggleSelect && (
             <input
               type="checkbox"
               checked={isSelected ?? false}
               onChange={onToggleSelect}
-              className="rounded border-gray-300 text-brand focus:ring-brand/30 cursor-pointer shrink-0"
+              className="rounded border-cream-border text-brand focus:ring-brand/30 cursor-pointer shrink-0"
             />
           )}
         <div className="flex flex-col gap-1 min-w-0">
@@ -552,7 +642,7 @@ function CustomerCard({
               <button
                 type="button"
                 onClick={onOpenInvoice}
-                className="text-xs text-gray-500 font-medium hover:text-brand hover:underline cursor-pointer text-left truncate min-w-0"
+                className="text-xs text-muted font-medium hover:text-brand hover:underline cursor-pointer text-left truncate min-w-0"
                 title="Lihat invoice"
               >
                 {displayIg(c.customer).toUpperCase()}
@@ -574,6 +664,14 @@ function CustomerCard({
                 (e.g. "Tiba Sebagian") — the "hold" status only wins once every
                 line has arrived, so without this a held unit on a partial event
                 would show no sign it's being held back. */}
+            {/* Visible on the card, not only inside the modal: a redirected
+                parcel that is only discoverable by opening the ship dialog is
+                one bulk print away from going to the wrong house. */}
+            {c.requestedAddress && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
+                Alamat lain diminta
+              </span>
+            )}
             {totalHold > 0 && c.status !== "hold" && (
               <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE.hold.cls}`}>
                 {STATUS_BADGE.hold.label}
@@ -588,17 +686,60 @@ function CustomerCard({
             so a hold on a "Tiba Sebagian" card is still releasable — otherwise a
             held unit whose siblings haven't arrived would be stranded with no
             checkbox, Ship, or Release control. */}
+        {/* An early parcel is billed before it is packed: the shop asked for the
+            extra delivery fee to be settled while the customer still wants the
+            parcel, rather than chased afterwards. Until then the Ship button is
+            the ordinary payment gate's problem, not this block's. */}
+        {c.splitRequested && (
+          <div className="px-5 py-2.5 border-b border-cream-border bg-blue-50/60 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
+            <span className="text-blue-800 font-medium">Customer Request — kirim yang sudah tiba duluan</span>
+            {c.splitExtraOngkir > 0 ? (
+              <span className="text-muted-strong">
+                Ongkir tambahan{" "}
+                <span className="tabular-nums font-semibold text-foreground">
+                  Rp {c.splitExtraOngkir.toLocaleString("id-ID")}
+                </span>
+              </span>
+            ) : (
+              <span className="text-muted-strong">Tidak ada ongkir tambahan — pembulatan berat menutupinya</span>
+            )}
+            <span className="flex-1" />
+            {c.splitExtraOngkir > 0 && !c.splitCharged && (
+              <button
+                type="button"
+                onClick={() => postSplitCharge()}
+                disabled={splitBusy}
+                className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              >
+                {splitBusy ? "…" : "Tagih ongkir tambahan"}
+              </button>
+            )}
+            {c.splitCharged && !paymentClear && (
+              <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-medium">
+                Sudah ditagih — menunggu pembayaran
+              </span>
+            )}
+            {c.splitCharged && paymentClear && (
+              <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">
+                Ongkir tambahan lunas — siap dikirim
+              </span>
+            )}
+          </div>
+        )}
+        {splitError && (
+          <div className="px-5 py-2 text-xs text-red-700 bg-red-50 border-b border-cream-border">{splitError}</div>
+        )}
         {(c.totalToShip > 0 || totalHold > 0) && (
           <div className="shrink-0 flex items-center gap-3">
             {c.totalToShip > 0 && (
               <div className="flex flex-col items-end gap-1">
                 <div className="flex items-center gap-1.5">
-                  <CopyConfirmMessageButton customer={c} className="px-3 py-1.5 rounded-lg border border-gray-300 hover:bg-gray-50" />
+                  <CopyConfirmMessageButton customer={c} className="px-3 py-1.5 rounded-lg border border-cream-border hover:bg-surface-muted" />
                   <button
                     type="button"
                     onClick={() => postHoldAction("hold", `Hold this packing list for ${displayIg(c.customer).toUpperCase()} · ${c.event}?`)}
                     disabled={holdBusy}
-                    className="px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                    className="px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-xs font-medium hover:bg-surface-muted disabled:opacity-50 transition-colors"
                   >
                     {holdBusy ? "…" : "Hold"}
                   </button>
@@ -652,7 +793,7 @@ function CustomerCard({
       <div className="hidden md:block overflow-x-auto">
         <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
           <thead>
-            <tr className="text-left text-xs text-gray-500 border-b border-cream-border">
+            <tr className="text-left text-xs text-muted border-b border-cream-border bg-surface-muted/80">
               <th className="px-4 py-2 font-medium relative select-none" style={{ width: widths.items }}>
                 Item
                 <div onMouseDown={(e) => startResize("items", e)} className="absolute inset-y-0 right-0 w-1 cursor-col-resize hover:bg-brand/30 active:bg-brand/60" />
@@ -677,7 +818,7 @@ function CustomerCard({
           </thead>
           <tbody>
             {c.orders.map((o) => (
-              <tr key={o.rowNumber} className="border-b border-cream-border/60">
+              <tr key={o.rowNumber} className="border-b border-cream-border">
                 <td className="px-4 py-2">
                   {o.productName}
                   {o.unitHold > 0 && <HoldIcon />}
@@ -685,7 +826,7 @@ function CustomerCard({
                 <td className="px-4 py-2 text-right">{o.unit}</td>
                 <td className="px-4 py-2 text-right">{o.unitArrive}</td>
                 <td className="px-4 py-2 text-right">{o.unitShip}</td>
-                <td className={`px-4 py-2 text-right font-semibold ${o.toShip > 0 ? "text-brand" : "text-gray-400"}`}>
+                <td className={`px-4 py-2 text-right font-semibold ${o.toShip > 0 ? "text-brand" : "text-faint"}`}>
                   {o.toShip}
                 </td>
               </tr>
@@ -703,11 +844,11 @@ function CustomerCard({
                 {o.productName}
                 {o.unitHold > 0 && <HoldIcon />}
               </div>
-              <div className="text-xs text-gray-400 tabular-nums mt-0.5">
+              <div className="text-xs text-faint tabular-nums mt-0.5">
                 Order {o.unit} · Tiba {o.unitArrive} · Kirim {o.unitShip}
               </div>
             </div>
-            <div className={`shrink-0 text-xs font-semibold tabular-nums ${o.toShip > 0 ? "text-brand" : "text-gray-400"}`}>
+            <div className={`shrink-0 text-xs font-semibold tabular-nums ${o.toShip > 0 ? "text-brand" : "text-faint"}`}>
               {o.toShip}
             </div>
           </div>
@@ -720,7 +861,7 @@ function CustomerCard({
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}
-            className="w-full flex items-center justify-between px-5 py-3 text-xs text-gray-500 hover:text-brand transition-colors"
+            className="w-full flex items-center justify-between px-5 py-3 text-xs text-muted hover:text-brand transition-colors"
           >
             <span className="font-medium">Alamat pengiriman</span>
             <svg
@@ -772,23 +913,23 @@ function BulkShipConfirmModal({
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-t-2xl md:rounded-xl border-x border-t border-cream-border md:border shadow-xl w-full max-w-md flex flex-col max-h-[90vh]"
+        className="bg-white rounded-t-xl md:rounded-xl border-x border-t border-cream-border md:border shadow-xl w-full max-w-md flex flex-col max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
       >
         <div className="px-5 py-4 border-b border-cream-border shrink-0">
           <h3 className="text-base md:text-sm font-semibold text-foreground">Konfirmasi Pengiriman</h3>
-          <p className="text-xs text-gray-500 mt-0.5">Kirim {total} paket sekaligus?</p>
+          <p className="text-xs text-muted mt-0.5">Kirim {total} paket sekaligus?</p>
         </div>
         <div className="px-5 py-4 overflow-y-auto flex flex-col gap-1.5">
           {groups.map((c) => (
             <div key={`${c.customer}|${c.event}`} className="flex items-center justify-between gap-3 text-sm">
               <span className="min-w-0 truncate">
                 <span className="font-medium text-foreground uppercase">{displayIg(c.customer)}</span>
-                <span className="text-gray-400"> · {c.event}</span>
+                <span className="text-faint"> · {c.event}</span>
               </span>
-              <span className="tabular-nums text-gray-500 shrink-0">{c.totalToShip}</span>
+              <span className="tabular-nums text-muted shrink-0">{c.totalToShip}</span>
             </div>
           ))}
         </div>
@@ -797,7 +938,7 @@ function BulkShipConfirmModal({
             type="button"
             onClick={onClose}
             disabled={busy}
-            className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+            className="px-4 py-2 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
           >
             Batal
           </button>
@@ -831,10 +972,16 @@ function ShipConfirmModal({
   // customer's profile data_diri. Toggle on reveals an editable textarea pre-
   // filled with that same address so admin can tweak just the parts that
   // differ (receiver name, street) without retyping the whole block.
+  // A one-off address the customer asked for on this event beats both: the
+  // override starts on, filled with hers. Leaving it off would print her
+  // profile address on the label while her own order card says the parcel was
+  // redirected — and nobody finds out until it arrives at the wrong house.
   const profileAddress = c.customerDetail?.dataDiri ?? ""
-  const [useTempAddress, setUseTempAddress] = useState(false)
-  const [tempAddress, setTempAddress] = useState(profileAddress)
+  const requestedAddress = c.requestedAddress
+  const [useTempAddress, setUseTempAddress] = useState(Boolean(requestedAddress))
+  const [tempAddress, setTempAddress] = useState(requestedAddress ?? profileAddress)
   const [msgCopied, setMsgCopied] = useState(false)
+  const [pairedWarning, setPairedWarning] = useState<string[] | null>(null)
   const toShipRows = c.orders.filter((o) => o.toShip > 0)
   const templates = useMessageTemplates()
   const businessProfile = useBusinessProfile()
@@ -865,11 +1012,13 @@ function ShipConfirmModal({
   const urlRef = useRef<string | null>(null)
   useEffect(() => () => { if (urlRef.current) URL.revokeObjectURL(urlRef.current) }, [])
 
-  async function handleConfirm() {
+  async function handleConfirm(force = false) {
     setShipping(true)
     setError(null)
+    setPairedWarning(null)
     const effectiveAddress = useTempAddress ? tempAddress : profileAddress
     const params: ShipOrdersParams = {
+      force,
       customer: c.customer,
       event: c.event,
       orders: c.orders.map((o) => ({
@@ -890,6 +1039,11 @@ function ShipConfirmModal({
         body: JSON.stringify(params),
       })
       const data = await res.json()
+      if (res.status === 409 && data.paired) {
+        setPairedWarning(data.partners ?? [])
+        setShipping(false)
+        return
+      }
       if (!res.ok) throw new Error(data.error ?? "Failed")
 
       const blob = await generateShippingLabel({
@@ -919,11 +1073,35 @@ function ShipConfirmModal({
         role="dialog"
         aria-modal="true"
       >
+        {pairedWarning && (
+          <div className="px-5 py-3 bg-blue-50 border-b border-cream-border text-xs text-blue-900 flex flex-col gap-2">
+            <span>
+              Customer minta {c.event} digabung dengan <b>{pairedWarning.join(", ")}</b> dalam satu kotak.
+              Kirim sendiri saja? Dia akan bayar dua ongkir, dan pasangannya ikut batal.
+            </span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setPairedWarning(null)}
+                className="px-3 py-1.5 rounded-lg border border-cream-border bg-white text-xs font-medium text-muted-strong"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => handleConfirm(true)}
+                className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium"
+              >
+                Kirim sendiri
+              </button>
+            </div>
+          </div>
+        )}
         <div className="px-5 py-4 border-b border-cream-border shrink-0">
           <div className="text-sm font-semibold text-foreground">
             {result ? "Label Pengiriman" : "Konfirmasi Pengiriman"}
           </div>
-          <div className="text-xs text-gray-500 mt-0.5">
+          <div className="text-xs text-muted mt-0.5">
             {displayIg(c.customer).toUpperCase()} · {c.event}
             {result && <span className="ml-2 font-mono">#{result.shippingId}</span>}
           </div>
@@ -938,7 +1116,7 @@ function ShipConfirmModal({
         ) : (
           <div className="px-5 py-4 flex flex-col gap-4 overflow-y-auto">
             <div>
-              <div className="text-xs font-medium text-gray-500 mb-2">Item yang dikirim</div>
+              <div className="text-xs font-medium text-muted mb-2">Item yang dikirim</div>
               <div className="flex flex-col gap-1">
                 {toShipRows.map((o) => (
                   <div key={o.rowNumber} className="text-sm text-foreground">{o.items}</div>
@@ -948,20 +1126,20 @@ function ShipConfirmModal({
 
             <div>
               <div className="flex items-center justify-between mb-1">
-                <div className="text-xs font-medium text-gray-500">
+                <div className="text-xs font-medium text-muted">
                   Alamat pengiriman
                   {useTempAddress && (
                     <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-purple-100 text-purple-700">
-                      Sementara
+                      {requestedAddress && tempAddress === requestedAddress ? "Customer Request" : "Sementara"}
                     </span>
                   )}
                 </div>
-                <label className="inline-flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                <label className="inline-flex items-center gap-1.5 text-xs text-muted-strong cursor-pointer">
                   <input
                     type="checkbox"
                     checked={useTempAddress}
                     onChange={(e) => setUseTempAddress(e.target.checked)}
-                    className="rounded border-gray-300 text-brand focus:ring-brand/30 cursor-pointer"
+                    className="rounded border-cream-border text-brand focus:ring-brand/30 cursor-pointer"
                   />
                   Kirim ke alamat berbeda
                 </label>
@@ -975,9 +1153,17 @@ function ShipConfirmModal({
                     placeholder={"Nama Penerima\nAlamat lengkap\nNo. telepon"}
                     className="w-full border border-purple-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-300 focus:border-purple-500 transition-colors resize-none"
                   />
-                  <p className="text-[11px] text-gray-400 mt-1">
-                    Alamat ini hanya untuk pengiriman ini. Alamat utama customer tidak berubah.
+                  <p className="text-[11px] text-faint mt-1">
+                    {requestedAddress && tempAddress === requestedAddress
+                      ? "Customer sendiri yang minta alamat ini untuk pesanan ini. Alamat utamanya tidak berubah."
+                      : "Alamat ini hanya untuk pengiriman ini. Alamat utama customer tidak berubah."}
                   </p>
+                  {c.requestedOtherArea && tempAddress === requestedAddress && (
+                    <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 mt-1">
+                      Area-nya beda dari alamat utama. Ongkir yang tertagih masih pakai tarif area lamanya —
+                      cek dulu kalau selisihnya besar.
+                    </p>
+                  )}
                 </>
               ) : (
                 profileAddress ? (
@@ -994,15 +1180,15 @@ function ShipConfirmModal({
 
             <div className="rounded-lg bg-cream/50 px-4 py-3 flex flex-col gap-1 text-sm">
               <div className="flex justify-between">
-                <span className="text-gray-500">Estimasi berat</span>
+                <span className="text-muted">Estimasi berat</span>
                 <span className="font-medium">{c.weightKg} kg</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-500">Ongkir/kg</span>
+                <span className="text-muted">Ongkir/kg</span>
                 <span className="font-medium">Rp {c.ongkirPerKg.toLocaleString("id-ID")}</span>
               </div>
               <div className="flex justify-between border-t border-cream-border mt-1 pt-1">
-                <span className="text-gray-500">Total ongkir</span>
+                <span className="text-muted">Total ongkir</span>
                 <span className="font-semibold">Rp {(c.weightKg * c.ongkirPerKg).toLocaleString("id-ID")}</span>
               </div>
             </div>
@@ -1021,14 +1207,14 @@ function ShipConfirmModal({
               <a
                 href={result.pdfUrl}
                 download={`label-${result.shippingId}.pdf`}
-                className="px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-xs font-medium hover:border-brand hover:text-brand transition-colors"
+                className="px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-xs font-medium hover:border-brand hover:text-brand transition-colors"
               >
                 Download PDF
               </a>
               <button
                 type="button"
                 onClick={onSuccess}
-                className="px-4 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 transition-colors"
+                className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 transition-colors"
               >
                 Tutup
               </button>
@@ -1040,7 +1226,7 @@ function ShipConfirmModal({
                 onClick={handleCopyMessage}
                 disabled={!templates || !businessProfile}
                 title="Salin pesan konfirmasi pengiriman"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-xs font-medium hover:border-brand hover:text-brand transition-colors disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-xs font-medium hover:border-brand hover:text-brand transition-colors disabled:opacity-50"
               >
                 {msgCopied ? (
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
@@ -1066,15 +1252,15 @@ function ShipConfirmModal({
                 type="button"
                 onClick={onClose}
                 disabled={shipping}
-                className="px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-xs font-medium hover:border-brand hover:text-brand transition-colors disabled:opacity-50"
+                className="px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-xs font-medium hover:border-brand hover:text-brand transition-colors disabled:opacity-50"
               >
                 Batal
               </button>
               <button
                 type="button"
-                onClick={handleConfirm}
+                onClick={() => handleConfirm()}
                 disabled={shipping}
-                className="px-4 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 transition-colors disabled:opacity-50"
+                className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 transition-colors disabled:opacity-50"
               >
                 {shipping ? "Mengirim…" : "Konfirmasi Kirim"}
               </button>
@@ -1082,6 +1268,225 @@ function ShipConfirmModal({
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+/**
+ * One paired group, as one card.
+ *
+ * The pair is the unit of work here — its members appear in this tab and
+ * nowhere else, because two places for one card is two chances to ship it
+ * twice. Combining releases the parking the pairing put on, so there is no
+ * Release step to remember: the button that fulfils the wish is the door.
+ */
+function BundleCard({
+  bundle: b,
+  onDone,
+  onOpenInvoice,
+}: {
+  bundle: {
+    key: string
+    members: ShipCustomer[]
+    allSplit: boolean
+    mixed: boolean
+    ready: boolean
+    waitingFor: string[]
+  }
+  onDone: () => void
+  onOpenInvoice: () => void
+}) {
+  const [merging, setMerging] = useState(false)
+  const [charging, setCharging] = useState(false)
+  const [chargeError, setChargeError] = useState<string | null>(null)
+  const customer = b.members[0].customer
+  const units = b.members.reduce((n, m) => n + unparkedToShip(m), 0)
+  const combinedKg = Math.ceil(
+    b.members.reduce((g, m) => g + unparkedOrders(m).reduce((a, o) => a + o.gram * o.toShip, 0), 0) / 1000,
+  )
+  const ongkirPerKg = b.members[0].ongkirPerKg
+  // What combining saves: ongkir billed per event, each rounded up, against the
+  // whole thing rounded once. The same sum shipMergedCustomerOrders writes as
+  // the "Gabung ongkir" adjustment.
+  const apart = b.members.reduce(
+    (n, m) => n + ongkirPerKg * Math.ceil(m.orders.reduce((g, o) => g + o.gram * o.unit, 0) / 1000),
+    0,
+  )
+  const together =
+    ongkirPerKg *
+    Math.ceil(b.members.reduce((g, m) => g + m.orders.reduce((a, o) => a + o.gram * o.unit, 0), 0) / 1000)
+  const saving = Math.max(0, apart - together)
+  const unpaid = b.members.filter((m) => !["paid", "overpaid", "void"].includes(m.paymentStatus))
+
+  // The whole plan, priced once: this box now, one remainder later, against
+  // what both invoices already bill. Positive means she owes the difference
+  // before it goes; negative is the saving combining gives her, and that one
+  // is applied at ship time as it always was.
+  const planExtra = parcelPlanExtra(
+    b.members.map((m) => ({
+      lines: m.orders.map((o) => ({
+        gram: o.gram,
+        unit: o.unit,
+        toShip: Math.max(0, o.unitArrive - o.unitShip),
+      })),
+    })),
+    ongkirPerKg,
+  )
+  const charged = b.members.some((m) => m.splitCharged)
+  const owesForEarly = planExtra > 0 && !charged
+
+  async function chargePlan() {
+    if (!confirm(
+      `Tagih ongkir tambahan Rp ${planExtra.toLocaleString("id-ID")} ke ${displayIg(customer).toUpperCase()} untuk ${b.members.map((m) => m.event).join(" + ")}?`,
+    )) return
+    setCharging(true)
+    setChargeError(null)
+    try {
+      const res = await fetch("/api/sheets/ship/split-charge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customer,
+          event: b.members[0].event,
+          events: b.members.map((m) => m.event),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "Failed")
+      onDone()
+    } catch (err) {
+      setChargeError(err instanceof Error ? err.message : "Failed")
+      setCharging(false)
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-cream-border bg-white overflow-hidden">
+      <div className="px-5 py-4 bg-surface-muted border-b border-cream-border flex justify-between gap-4 items-center flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button type="button" onClick={onOpenInvoice} className="font-semibold text-sm hover:text-brand transition-colors">
+            {displayIg(customer).toUpperCase()}
+          </button>
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+            b.ready ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
+          }`}>
+            {b.ready ? "Siap Gabung" : "Menunggu"}
+          </span>
+          {b.allSplit && (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+              Kirim duluan — satu kotak
+            </span>
+          )}
+          {b.mixed && (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
+              Timing beda — kotak menunggu
+            </span>
+          )}
+        </div>
+        <span className="text-xs text-faint">diminta customer</span>
+      </div>
+
+      {planExtra > 0 && (
+        <div className="px-5 py-2.5 border-b border-cream-border bg-blue-50/60 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
+          <span className="text-blue-800 font-medium">Kotak duluan — sisanya tetap digabung</span>
+          <span className="text-muted-strong">
+            Ongkir tambahan{" "}
+            <span className="tabular-nums font-semibold text-foreground">
+              Rp {planExtra.toLocaleString("id-ID")}
+            </span>{" "}
+            untuk seluruh rencana
+          </span>
+          <span className="flex-1" />
+          {!charged && (
+            <button
+              type="button"
+              onClick={chargePlan}
+              disabled={charging}
+              className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            >
+              {charging ? "…" : "Tagih ongkir tambahan"}
+            </button>
+          )}
+          {charged && unpaid.length > 0 && (
+            <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-medium">
+              Sudah ditagih — menunggu pembayaran
+            </span>
+          )}
+          {charged && unpaid.length === 0 && (
+            <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">
+              Ongkir tambahan lunas
+            </span>
+          )}
+        </div>
+      )}
+      {chargeError && (
+        <div className="px-5 py-2 text-xs text-red-700 bg-red-50 border-b border-cream-border">{chargeError}</div>
+      )}
+      {b.members.map((m) => {
+        const arrived = m.orders.reduce((n, o) => n + Math.min(o.unitArrive, o.unit), 0)
+        const ordered = m.orders.reduce((n, o) => n + o.unit, 0)
+        return (
+          <div key={m.event} className="px-5 py-3 border-b border-cream-border last:border-b-0">
+            <div className="flex items-baseline gap-3 flex-wrap mb-1">
+              <span className="text-sm font-medium">{m.event}</span>
+              <span className={`text-xs ${arrived >= ordered ? "text-faint" : "text-amber-700 font-medium"}`}>
+                {arrived} dari {ordered} tiba
+                {arrived < ordered && ` · ${ordered - arrived} masih jalan`}
+              </span>
+            </div>
+            <div className="flex flex-col gap-0.5">
+              {m.orders.map((o) => (
+                <div key={o.rowNumber} className={`flex gap-3 text-sm ${o.unitArrive >= o.unit ? "text-muted-strong" : "text-faint"}`}>
+                  <span className="flex-1 min-w-0 truncate">{o.productName}</span>
+                  <span className="tabular-nums text-xs text-muted">
+                    {o.unitArrive}/{o.unit}
+                    {Math.max(0, o.unitArrive - o.unitShip) > 0 && ` · kirim ${Math.max(0, o.unitArrive - o.unitShip)}`}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })}
+
+      <div className="px-5 py-3 bg-surface-muted border-t border-cream-border flex flex-wrap items-center gap-x-3 gap-y-2">
+        <span className="text-xs text-muted-strong">
+          {b.ready
+            ? <>1 kotak · <b className="tabular-nums text-foreground">{units} unit</b> · est. {combinedKg} kg{b.allSplit && " · sisanya menyusul"}</>
+            : b.mixed
+              ? <>{b.members.filter((m) => m.splitRequested).map((m) => m.event).join(", ")} minta kirim duluan, pasangannya tunggu lengkap</>
+              : <>menunggu {b.waitingFor.join(", ")}</>}
+        </span>
+        {b.ready && saving > 0 && planExtra <= 0 && (
+          <span className="text-xs font-medium text-green-700">hemat ongkir Rp {saving.toLocaleString("id-ID")}</span>
+        )}
+        {b.ready && planExtra > 0 && (
+          <span className="text-xs text-muted">sisanya menyusul dalam satu kotak, tanpa ongkir lagi</span>
+        )}
+        {unpaid.length > 0 && (
+          <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 font-medium">
+            {unpaid.map((m) => m.event).join(", ")} belum lunas
+          </span>
+        )}
+        <span className="flex-1" />
+        <button
+          type="button"
+          onClick={() => setMerging(true)}
+          disabled={!b.ready || unpaid.length > 0 || units === 0 || owesForEarly}
+          className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          Gabung &amp; Kirim
+        </button>
+      </div>
+
+      {merging && (
+        <MergeShipConfirmModal
+          customer={customer}
+          preselectedEvents={b.members.map((m) => m.event)}
+          onClose={() => setMerging(false)}
+          onSuccess={() => { setMerging(false); onDone() }}
+        />
+      )}
     </div>
   )
 }
@@ -1112,6 +1517,7 @@ function MergeShipConfirmModal({
   // parts that differ. One address per box — merged shipments share it.
   const [useTempAddress, setUseTempAddress] = useState(false)
   const [tempAddress, setTempAddress] = useState("")
+  const [addressFromCustomer, setAddressFromCustomer] = useState(false)
 
   // Pull every shippable event for this customer, regardless of which tab the
   // cards live on, so partial + ready events can be combined freely.
@@ -1124,7 +1530,9 @@ function MergeShipConfirmModal({
         if (!res.ok) throw new Error((json as unknown as { error: string }).error ?? "Failed to load")
         if (cancelled) return
         const mine = json.groups
-          .filter((g) => normalizeId(g.customer) === normalizeId(customer) && g.totalToShip > 0)
+          // A paired event has toShip 0 until the merge releases it, and it is
+          // exactly the event this modal exists to ship.
+          .filter((g) => normalizeId(g.customer) === normalizeId(customer) && unparkedToShip(g) > 0)
           .sort((a, b) => a.event.localeCompare(b.event))
         setAllGroups(mine)
         setChecked((prev) => {
@@ -1142,15 +1550,29 @@ function MergeShipConfirmModal({
   const customerDetail = allGroups?.[0]?.customerDetail ?? null
   const ongkirPerKg = allGroups?.[0]?.ongkirPerKg ?? 0
   const profileAddress = customerDetail?.dataDiri ?? ""
+  // One box, one address — so if any event in it was redirected, that is the
+  // address the box goes to. Two different requests in one box is a question
+  // for the customer, not something to resolve silently: both are shown.
+  const requestedAddresses = Array.from(
+    new Set(checkedGroups.map((g) => g.requestedAddress).filter((a): a is string => Boolean(a))),
+  )
+  const requestedAddress = requestedAddresses[0] ?? null
 
-  // Seed the temp-address textarea with the customer's profile address once
-  // the fetch completes. Only seeds when empty so admin's typing isn't blown
-  // away by a re-render.
+  // Seed the temp-address textarea once the fetch completes: what the customer
+  // asked for if she asked, her profile address otherwise. Only seeds when
+  // empty so admin's typing isn't blown away by a re-render.
   useEffect(() => {
-    if (profileAddress && !tempAddress) setTempAddress(profileAddress)
+    const seed = requestedAddress || profileAddress
+    if (seed && !tempAddress) {
+      setTempAddress(seed)
+      if (requestedAddress) {
+        setUseTempAddress(true)
+        setAddressFromCustomer(true)
+      }
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profileAddress])
-  const totalGram = checkedGroups.reduce((s, g) => s + g.orders.reduce((a, o) => a + o.gram * o.toShip, 0), 0)
+  }, [profileAddress, requestedAddress])
+  const totalGram = checkedGroups.reduce((s, g) => s + unparkedOrders(g).reduce((a, o) => a + o.gram * o.toShip, 0), 0)
   const combinedKg = Math.ceil(totalGram / 1000)
   const combinedOngkir = ongkirPerKg * combinedKg
   const canConfirm = checkedGroups.length >= 2
@@ -1185,8 +1607,7 @@ function MergeShipConfirmModal({
           ongkirPerKg,
           groups: checkedGroups.map((g) => ({
             event: g.event,
-            orders: g.orders
-              .filter((o) => o.toShip > 0)
+            orders: unparkedOrders(g)
               .map((o) => ({ rowNumber: o.rowNumber, productName: o.productName, toShip: o.toShip, gram: o.gram })),
           })),
           tempAddress: useTempAddress ? tempAddress : null,
@@ -1197,7 +1618,7 @@ function MergeShipConfirmModal({
 
       const packingLines: string[] = []
       for (const g of checkedGroups) {
-        for (const o of g.orders.filter((o) => o.toShip > 0)) {
+        for (const o of unparkedOrders(g)) {
           packingLines.push(`[${g.event}] ${o.productName} x ${o.toShip}`)
         }
       }
@@ -1232,7 +1653,7 @@ function MergeShipConfirmModal({
           <div className="text-sm font-semibold text-foreground">
             {result ? "Label Pengiriman" : "Gabung Pengiriman"}
           </div>
-          <div className="text-xs text-gray-500 mt-0.5">
+          <div className="text-xs text-muted mt-0.5">
             {displayIg(customer).toUpperCase()}
             {result
               ? <> · {checkedGroups.map((g) => g.event).join(", ")}<span className="ml-2 font-mono">#{result.shippingId}</span></>
@@ -1247,9 +1668,9 @@ function MergeShipConfirmModal({
             {loadErr ? (
               <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{loadErr}</div>
             ) : !allGroups ? (
-              <div className="py-8 text-center text-sm text-gray-400">Memuat event…</div>
+              <div className="py-8 text-center text-sm text-faint">Memuat event…</div>
             ) : allGroups.length < 2 ? (
-              <div className="rounded-lg bg-cream/50 px-4 py-3 text-sm text-gray-500">
+              <div className="rounded-lg bg-cream/50 px-4 py-3 text-sm text-muted">
                 Customer ini hanya punya satu event siap kirim — tidak ada yang bisa digabung.
               </div>
             ) : (
@@ -1260,18 +1681,18 @@ function MergeShipConfirmModal({
                     return (
                       <label
                         key={g.event}
-                        className={`flex gap-3 rounded-lg border px-3 py-2 cursor-pointer transition-colors ${isOn ? "border-brand bg-brand/5" : "border-cream-border"}`}
+                        className={`flex gap-3 rounded-lg border px-4 py-2 cursor-pointer transition-colors ${isOn ? "border-brand bg-brand/5" : "border-cream-border"}`}
                       >
                         <input
                           type="checkbox"
                           checked={isOn}
                           onChange={() => toggle(g.event)}
-                          className="mt-0.5 rounded border-gray-300 text-brand focus:ring-brand/30 cursor-pointer shrink-0"
+                          className="mt-0.5 rounded border-cream-border text-brand focus:ring-brand/30 cursor-pointer shrink-0"
                         />
                         <div className="min-w-0 flex-1">
-                          <div className="text-xs font-medium text-gray-500 mb-1">{g.event}</div>
+                          <div className="text-xs font-medium text-muted mb-1">{g.event}</div>
                           <div className="flex flex-col gap-0.5">
-                            {g.orders.filter((o) => o.toShip > 0).map((o) => (
+                            {unparkedOrders(g).map((o) => (
                               <div key={o.rowNumber} className="text-sm text-foreground">{o.productName} x {o.toShip}</div>
                             ))}
                           </div>
@@ -1283,7 +1704,7 @@ function MergeShipConfirmModal({
 
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <div className="text-xs font-medium text-gray-500">
+                    <div className="text-xs font-medium text-muted">
                       Alamat pengiriman
                       {useTempAddress && (
                         <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-purple-100 text-purple-700">
@@ -1291,12 +1712,12 @@ function MergeShipConfirmModal({
                         </span>
                       )}
                     </div>
-                    <label className="inline-flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                    <label className="inline-flex items-center gap-1.5 text-xs text-muted-strong cursor-pointer">
                       <input
                         type="checkbox"
                         checked={useTempAddress}
                         onChange={(e) => setUseTempAddress(e.target.checked)}
-                        className="rounded border-gray-300 text-brand focus:ring-brand/30 cursor-pointer"
+                        className="rounded border-cream-border text-brand focus:ring-brand/30 cursor-pointer"
                       />
                       Kirim ke alamat berbeda
                     </label>
@@ -1310,9 +1731,20 @@ function MergeShipConfirmModal({
                         placeholder={"Nama Penerima\nAlamat lengkap\nNo. telepon"}
                         className="w-full border border-purple-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-300 focus:border-purple-500 transition-colors resize-none"
                       />
-                      <p className="text-[11px] text-gray-400 mt-1">
+                      <p className="text-[11px] text-faint mt-1">
                         Seluruh paket gabungan akan dikirim ke alamat ini. Alamat utama customer tidak berubah.
                       </p>
+                      {addressFromCustomer && (
+                        <p className="text-[11px] text-purple-700 mt-1">
+                          Diisi dari permintaan customer.
+                        </p>
+                      )}
+                      {requestedAddresses.length > 1 && (
+                        <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 mt-1">
+                          Customer minta dua alamat berbeda untuk event yang digabung. Satu kotak hanya bisa satu
+                          alamat — pastikan dulu ke dia, atau kirim terpisah.
+                        </p>
+                      )}
                     </>
                   ) : (
                     profileAddress ? (
@@ -1329,18 +1761,18 @@ function MergeShipConfirmModal({
 
                 <div className="rounded-lg bg-cream/50 px-4 py-3 flex flex-col gap-1 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-gray-500">Estimasi berat (gabungan)</span>
+                    <span className="text-muted">Estimasi berat (gabungan)</span>
                     <span className="font-medium">{combinedKg} kg</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-500">Ongkir/kg</span>
+                    <span className="text-muted">Ongkir/kg</span>
                     <span className="font-medium">Rp {ongkirPerKg.toLocaleString("id-ID")}</span>
                   </div>
                   <div className="flex justify-between border-t border-cream-border mt-1 pt-1">
-                    <span className="text-gray-500">Total ongkir (sekali)</span>
+                    <span className="text-muted">Total ongkir (sekali)</span>
                     <span className="font-semibold">Rp {combinedOngkir.toLocaleString("id-ID")}</span>
                   </div>
-                  <div className="text-xs text-gray-400 mt-1">
+                  <div className="text-xs text-faint mt-1">
                     Ongkir ditagih sekali untuk paket gabungan. Diskon ongkir gabungan otomatis diterapkan ke invoice.
                   </div>
                 </div>
@@ -1369,14 +1801,14 @@ function MergeShipConfirmModal({
               <a
                 href={result.pdfUrl}
                 download={`label-${result.shippingId}.pdf`}
-                className="px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-xs font-medium hover:border-brand hover:text-brand transition-colors"
+                className="px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-xs font-medium hover:border-brand hover:text-brand transition-colors"
               >
                 Download PDF
               </a>
               <button
                 type="button"
                 onClick={onSuccess}
-                className="px-4 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 transition-colors"
+                className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 transition-colors"
               >
                 Tutup
               </button>
@@ -1387,7 +1819,7 @@ function MergeShipConfirmModal({
                 type="button"
                 onClick={onClose}
                 disabled={shipping}
-                className="px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-xs font-medium hover:border-brand hover:text-brand transition-colors disabled:opacity-50"
+                className="px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-xs font-medium hover:border-brand hover:text-brand transition-colors disabled:opacity-50"
               >
                 Batal
               </button>
@@ -1395,7 +1827,7 @@ function MergeShipConfirmModal({
                 type="button"
                 onClick={handleConfirm}
                 disabled={shipping || !canConfirm}
-                className="px-4 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 transition-colors disabled:opacity-50"
+                className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 transition-colors disabled:opacity-50"
               >
                 {shipping ? "Mengirim…" : "Konfirmasi Gabung & Kirim"}
               </button>

@@ -26,7 +26,7 @@ export function InvoiceMessageActions({ event, whatsapp }: { event: InvoiceEvent
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="shrink-0 px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-xs font-medium hover:border-brand hover:text-brand transition-colors"
+        className="shrink-0 px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-xs font-medium hover:border-brand hover:text-brand transition-colors"
       >
         View message
       </button>
@@ -78,7 +78,7 @@ function InvoiceMessageModal({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="text-gray-400 hover:text-foreground transition-colors"
+            className="text-faint hover:text-foreground transition-colors"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M18 6 6 18" />
@@ -93,7 +93,7 @@ function InvoiceMessageModal({
           <button
             type="button"
             onClick={() => copy(message)}
-            className="px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-xs font-medium hover:border-brand hover:text-brand transition-colors"
+            className="px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-xs font-medium hover:border-brand hover:text-brand transition-colors"
           >
             {copied ? "Copied!" : "Copy"}
           </button>

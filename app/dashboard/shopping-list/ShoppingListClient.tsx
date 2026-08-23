@@ -109,7 +109,7 @@ function CollapseBtn({ collapsed, onClick }: { collapsed: boolean; onClick: () =
   return (
     <button
       onClick={onClick}
-      className="inline-flex items-center justify-center w-4 h-4 rounded border border-gray-300 bg-white text-gray-500 hover:text-brand hover:border-brand transition-colors text-xs font-bold shrink-0"
+      className="inline-flex items-center justify-center w-4 h-4 rounded border border-cream-border bg-white text-muted hover:text-brand hover:border-brand transition-colors text-xs font-bold shrink-0"
     >
       {collapsed ? "+" : "−"}
     </button>
@@ -121,7 +121,7 @@ type CustomerBadgeOrder = { customer: string; qty: number; paidStatus: PaidStatu
 const PAID_DOT: Record<PaidStatus, string> = {
   paid:    "bg-green-500",
   partial: "bg-yellow-400",
-  unpaid:  "bg-gray-300",
+  unpaid:  "bg-divider",
 }
 const PAID_LABEL: Record<PaidStatus, string> = {
   paid:    "Paid",
@@ -208,7 +208,7 @@ function CustomerBadge({ orders }: { orders: CustomerBadgeOrder[] }) {
         type="button"
         onClick={handleToggle}
         title={allPaid ? "All customers paid" : `${paidCount} of ${totalCount} paid`}
-        className="inline-flex items-baseline gap-1 text-gray-400 hover:text-brand transition-colors cursor-pointer"
+        className="inline-flex items-baseline gap-1 text-faint hover:text-brand transition-colors cursor-pointer"
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="self-center">
           <circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
@@ -224,7 +224,7 @@ function CustomerBadge({ orders }: { orders: CustomerBadgeOrder[] }) {
           {entries.map((e) => (
             <div
               key={e.customer}
-              className="flex items-center justify-between gap-3 px-3 py-1 text-xs hover:bg-gray-50 whitespace-nowrap"
+              className="flex items-center justify-between gap-3 px-3 py-1 text-xs hover:bg-surface-muted whitespace-nowrap"
             >
               <span className="flex items-center gap-2 min-w-0">
                 <span
@@ -234,7 +234,7 @@ function CustomerBadge({ orders }: { orders: CustomerBadgeOrder[] }) {
                 />
                 <span className="text-foreground truncate">{displayIg(e.customer)}</span>
               </span>
-              <span className="text-gray-500 tabular-nums shrink-0">{e.qty}×</span>
+              <span className="text-muted tabular-nums shrink-0">{e.qty}×</span>
             </div>
           ))}
         </div>
@@ -417,7 +417,7 @@ export default function ShoppingListClient() {
           onClick={toggleSelectAll}
           aria-label={allSelected ? "Deselect all" : "Select all"}
           title={allSelected ? "Deselect all" : "Select all"}
-          className="inline-flex items-center gap-1.5 shrink-0 rounded-lg border border-cream-border h-[38px] px-3 text-sm text-gray-600 bg-white hover:border-brand transition-colors"
+          className="inline-flex items-center gap-1.5 shrink-0 rounded-lg border border-cream-border h-[38px] px-3 text-sm text-muted-strong bg-white hover:border-brand hover:text-brand transition-colors"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M9 11l3 3L22 4" />
@@ -427,7 +427,7 @@ export default function ShoppingListClient() {
         </button>
         <button
           onClick={() => setPurchaseOpen(true)}
-          className="hidden md:inline-flex items-center gap-1.5 h-[38px] px-3 text-sm font-medium rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors"
+          className="hidden md:inline-flex items-center gap-1.5 h-[38px] px-4 text-sm font-medium rounded-lg bg-brand text-white hover:bg-brand-dark transition-colors"
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <path d="M12 5v14M5 12h14" />
@@ -450,18 +450,18 @@ export default function ShoppingListClient() {
       <div className="hidden md:block rounded-xl border border-cream-border bg-white overflow-hidden">
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="border-b border-cream-border bg-gray-50/80">
-              <th className="text-left px-4 py-2.5 font-medium text-gray-500 w-44">Event</th>
-              <th className="text-left px-4 py-2.5 font-medium text-gray-500 w-36">Store</th>
-              <th className="text-left px-4 py-2.5 font-medium text-gray-500">Product</th>
-              <th className="text-right px-4 py-2.5 font-medium text-gray-500 w-14">Qty</th>
+            <tr className="border-b border-cream-border bg-surface-muted/80">
+              <th className="text-left px-4 py-2.5 font-medium text-muted w-44">Event</th>
+              <th className="text-left px-4 py-2.5 font-medium text-muted w-36">Store</th>
+              <th className="text-left px-4 py-2.5 font-medium text-muted">Product</th>
+              <th className="text-right px-4 py-2.5 font-medium text-muted w-14">Qty</th>
               <th className="px-4 py-2.5 w-10" />
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 && (
               <tr>
-                <td colSpan={5} className="text-center text-gray-400 py-12 text-sm">
+                <td colSpan={5} className="text-center text-faint py-12 text-sm">
                   No items
                 </td>
               </tr>
@@ -474,7 +474,7 @@ export default function ShoppingListClient() {
                       <div className="flex items-center gap-2">
                         <CollapseBtn collapsed onClick={() => toggleDesktopEvent(row.event)} />
                         <span className="font-medium text-foreground">{row.event}</span>
-                        <span className="text-xs text-gray-400">{row.totalItems} items</span>
+                        <span className="text-xs text-faint">{row.totalItems} items</span>
                       </div>
                     </td>
                   </tr>
@@ -492,11 +492,11 @@ export default function ShoppingListClient() {
                         </div>
                       </td>
                     )}
-                    <td colSpan={4} className="px-4 py-2.5 bg-gray-50/40">
+                    <td colSpan={4} className="px-4 py-2.5 bg-surface-muted/40">
                       <div className="flex items-center gap-2">
                         <CollapseBtn collapsed onClick={() => toggleDesktopStore(row.event, row.store)} />
-                        <span className="text-gray-600">{row.store}</span>
-                        <span className="text-xs text-gray-400">{row.totalItems} items</span>
+                        <span className="text-muted-strong">{row.store}</span>
+                        <span className="text-xs text-faint">{row.totalItems} items</span>
                       </div>
                     </td>
                   </tr>
@@ -506,7 +506,7 @@ export default function ShoppingListClient() {
               return (
                 <tr
                   key={`${row.event}|${row.store}|${row.item.productId}`}
-                  className="border-b border-cream-border hover:bg-gray-50/50 transition-colors"
+                  className="border-b border-cream-border hover:bg-surface-muted/50 transition-colors"
                 >
                   {row.showEvent && (
                     <td rowSpan={row.eventRowSpan} className="px-4 py-2.5 align-top border-r border-cream-border">
@@ -520,7 +520,7 @@ export default function ShoppingListClient() {
                     <td rowSpan={row.storeRowSpan} className="px-4 py-2.5 align-top border-r border-cream-border">
                       <div className="flex items-center gap-2 pt-0.5">
                         <CollapseBtn collapsed={false} onClick={() => toggleDesktopStore(row.event, row.store)} />
-                        <span className="text-gray-600">{row.store}</span>
+                        <span className="text-muted-strong">{row.store}</span>
                       </div>
                     </td>
                   )}
@@ -537,7 +537,7 @@ export default function ShoppingListClient() {
                       )}
                       <div className="flex items-baseline gap-1.5 min-w-0 flex-wrap">
                         <span className="text-foreground">{row.item.productName}</span>
-                        <span className="flex items-center gap-1.5 text-xs text-gray-400 tabular-nums">
+                        <span className="flex items-center gap-1.5 text-xs text-faint tabular-nums">
                           <CustomerBadge
                             orders={row.item.orders.map((o) => ({
                               customer: o.customer,
@@ -554,7 +554,7 @@ export default function ShoppingListClient() {
                   <td className="px-4 py-2.5 text-right whitespace-nowrap">
                     <span className="tabular-nums font-bold text-foreground">{row.item.totalUnits}</span>
                     {row.item.totalUnits < row.item.totalOriginal && (
-                      <span className="text-gray-400 font-normal tabular-nums" title="Partially bought">
+                      <span className="text-faint font-normal tabular-nums" title="Partially bought">
                         {" "}/ {row.item.totalOriginal}
                       </span>
                     )}
@@ -565,7 +565,7 @@ export default function ShoppingListClient() {
                         <button
                           onClick={() => setApplyingExcessItem(row.item)}
                           title="Apply excess"
-                          className="text-gray-400 hover:text-brand transition-colors"
+                          className="text-faint hover:text-brand transition-colors"
                         >
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
@@ -576,7 +576,7 @@ export default function ShoppingListClient() {
                       <button
                         onClick={() => setBuyingItem(row.item)}
                         title="Mark purchased"
-                        className="text-gray-400 hover:text-green-600 transition-colors"
+                        className="text-faint hover:text-green-600 transition-colors"
                       >
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" />
@@ -595,7 +595,7 @@ export default function ShoppingListClient() {
       {/* Grouped cards (mobile) */}
       <div className="md:hidden flex flex-col gap-2.5">
         {grouped.size === 0 && (
-          <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">No items</div>
+          <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-faint">No items</div>
         )}
         {[...grouped.entries()].map(([event, storeMap]) => {
           const allItems = [...storeMap.values()].flat()
@@ -603,19 +603,19 @@ export default function ShoppingListClient() {
           return (
             <div key={event} className="rounded-xl border border-cream-border bg-white overflow-hidden">
               <button type="button" onClick={() => toggleEvent(event)} className="w-full flex items-center gap-2.5 px-4 py-3 border-l-[3px] border-brand text-left">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`text-gray-400 transition-transform ${eventCollapsed ? "-rotate-90" : ""}`}><path d="m6 9 6 6 6-6" /></svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`text-faint transition-transform ${eventCollapsed ? "-rotate-90" : ""}`}><path d="m6 9 6 6 6-6" /></svg>
                 <span className="font-bold text-sm text-foreground">{event}</span>
-                <span className="ml-auto text-xs text-gray-400">{allItems.length} items</span>
+                <span className="ml-auto text-xs text-faint">{allItems.length} items</span>
               </button>
               {!eventCollapsed && [...storeMap.entries()].map(([store, storeItems]) => {
                 const storeKey = `${event}|${store}`
                 const storeCollapsed = collapsedStores.has(storeKey)
                 return (
                   <div key={storeKey}>
-                    <button type="button" onClick={() => toggleStore(event, store)} className="w-full flex items-center gap-2 px-4 py-2.5 bg-gray-50/60 border-t border-cream-border text-left">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`text-gray-400 transition-transform ${storeCollapsed ? "-rotate-90" : ""}`}><path d="m6 9 6 6 6-6" /></svg>
-                      <span className="text-xs font-bold text-gray-600">{store}</span>
-                      <span className="ml-auto text-[11px] text-gray-400">{storeItems.length}</span>
+                    <button type="button" onClick={() => toggleStore(event, store)} className="w-full flex items-center gap-2 px-4 py-2.5 bg-surface-muted/60 border-t border-cream-border text-left">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`text-faint transition-transform ${storeCollapsed ? "-rotate-90" : ""}`}><path d="m6 9 6 6 6-6" /></svg>
+                      <span className="text-xs font-bold text-muted-strong">{store}</span>
+                      <span className="ml-auto text-[11px] text-faint">{storeItems.length}</span>
                     </button>
                     {!storeCollapsed && storeItems.map((item) => (
                         <div key={item.productId} className="flex items-center gap-3 px-4 py-2.5 border-t border-cream-border">
@@ -632,7 +632,7 @@ export default function ShoppingListClient() {
                           <div className="flex-1 min-w-0">
                             <div className="text-xs text-foreground">{item.productName}</div>
                             {/* Same badge as desktop — tap to see who ordered. */}
-                            <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-gray-400 tabular-nums">
+                            <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-faint tabular-nums">
                               <CustomerBadge
                                 orders={item.orders.map((o) => ({
                                   customer: o.customer,
@@ -648,7 +648,7 @@ export default function ShoppingListClient() {
                           <div className="text-sm font-bold tabular-nums whitespace-nowrap text-foreground">
                             {item.totalUnits}
                             {item.totalUnits < item.totalOriginal && (
-                              <span className="text-gray-400 font-normal" title="Partially bought"> / {item.totalOriginal}</span>
+                              <span className="text-faint font-normal" title="Partially bought"> / {item.totalOriginal}</span>
                             )}
                           </div>
                           {(excessByItem[item.productName] ?? 0) > 0 && (
@@ -865,20 +865,20 @@ function ConfirmPurchasePanel({
           <h3 className="text-sm font-semibold text-foreground">
             Mark {totalQty} item{totalQty === 1 ? "" : "s"} purchased
           </h3>
-          <p className="text-xs text-gray-500 mt-0.5">Adjust quantities if needed, then add one receipt for all of them.</p>
+          <p className="text-xs text-muted mt-0.5">Adjust quantities if needed, then add one receipt for all of them.</p>
         </div>
 
         <div className="px-5 py-4 overflow-y-auto min-h-0 flex flex-col gap-4">
           {[...byEvent.entries()].map(([event, evItems]) => (
             <div key={event} className="flex flex-col gap-2">
-              <div className="text-xs font-semibold text-gray-500">{event}</div>
+              <div className="text-xs font-semibold text-muted">{event}</div>
               {evItems.map((it) => {
                 const k = selKey(it)
                 return (
                   <div key={k} className="flex items-center gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="text-sm text-foreground break-words">{it.productName}</div>
-                      {it.store && <div className="text-[11px] text-gray-400">{it.store}</div>}
+                      {it.store && <div className="text-[11px] text-faint">{it.store}</div>}
                     </div>
                     <input
                       type="number"
@@ -887,7 +887,7 @@ function ConfirmPurchasePanel({
                       onChange={(e) => setQtys((p) => ({ ...p, [k]: e.target.value }))}
                       className="w-20 shrink-0 border border-cream-border rounded-lg px-2 py-1.5 text-sm text-right bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
                     />
-                    <span className="text-[11px] text-gray-400 w-14 shrink-0">/ {it.totalUnits} left</span>
+                    <span className="text-[11px] text-faint w-14 shrink-0">/ {it.totalUnits} left</span>
                   </div>
                 )
               })}
@@ -897,7 +897,7 @@ function ConfirmPurchasePanel({
 
         <div className="px-5 py-4 border-t border-cream-border shrink-0 flex flex-col gap-3">
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-500">Receipt (optional)</span>
+            <span className="text-xs font-medium text-muted">Receipt (optional)</span>
             <input
               type="text"
               value={receipt}
@@ -917,7 +917,7 @@ function ConfirmPurchasePanel({
               type="button"
               onClick={onClose}
               disabled={submitting}
-              className="px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+              className="px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
             >
               Cancel
             </button>
@@ -1022,7 +1022,7 @@ function ConfirmOutOfStockPanel({
           <h3 className="text-sm font-semibold text-foreground">
             Mark {totalQty} item{totalQty === 1 ? "" : "s"} out of stock
           </h3>
-          <p className="text-xs text-gray-500 mt-0.5">Adjust quantities if needed. Affected pending orders are refunded if paid.</p>
+          <p className="text-xs text-muted mt-0.5">Adjust quantities if needed. Affected pending orders are refunded if paid.</p>
         </div>
 
         <div className="px-5 py-4 overflow-y-auto min-h-0 flex flex-col gap-3">
@@ -1032,7 +1032,7 @@ function ConfirmOutOfStockPanel({
               <div key={k} className="flex items-center gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="text-sm text-foreground break-words">{it.productName}</div>
-                  <div className="text-[11px] text-gray-400">{it.event}{it.store ? ` · ${it.store}` : ""}</div>
+                  <div className="text-[11px] text-faint">{it.event}{it.store ? ` · ${it.store}` : ""}</div>
                 </div>
                 <input
                   type="number"
@@ -1041,7 +1041,7 @@ function ConfirmOutOfStockPanel({
                   onChange={(e) => setQtys((p) => ({ ...p, [k]: e.target.value }))}
                   className="w-20 shrink-0 border border-cream-border rounded-lg px-2 py-1.5 text-sm text-right bg-white focus:outline-none focus:ring-2 focus:ring-red-300 focus:border-red-400 transition-colors"
                 />
-                <span className="text-[11px] text-gray-400 w-14 shrink-0">/ {it.totalUnits} left</span>
+                <span className="text-[11px] text-faint w-14 shrink-0">/ {it.totalUnits} left</span>
               </div>
             )
           })}
@@ -1059,7 +1059,7 @@ function ConfirmOutOfStockPanel({
               type="button"
               onClick={onClose}
               disabled={submitting}
-              className="px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+              className="px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
             >
               Cancel
             </button>
@@ -1151,11 +1151,11 @@ function BuyModal({
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="text-sm font-semibold text-foreground">{item.productName}</div>
-            <div className="text-xs text-gray-400 mt-0.5">
+            <div className="text-xs text-faint mt-0.5">
               {item.event}{item.store ? ` · ${item.store}` : ""}
             </div>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-brand transition-colors shrink-0">
+          <button onClick={onClose} className="text-faint hover:text-brand transition-colors shrink-0">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M18 6 6 18M6 6l12 12" />
             </svg>
@@ -1164,7 +1164,7 @@ function BuyModal({
 
         {/* Availability tabs */}
         <div className="flex flex-col gap-1.5">
-          <span className="text-xs font-medium text-gray-500">Item availability</span>
+          <span className="text-xs font-medium text-muted">Item availability</span>
           <div className="flex rounded-lg border border-cream-border overflow-hidden text-xs">
             {([
               ["buy", "In stock"],
@@ -1177,7 +1177,7 @@ function BuyModal({
                   key={m}
                   type="button"
                   onClick={() => { setMode(m); setSaveError(null) }}
-                  className={`flex-1 px-2 py-1.5 transition-colors ${active ? `${activeCls} font-medium` : "bg-white text-gray-600 hover:bg-cream"}`}
+                  className={`flex-1 px-2 py-1.5 transition-colors ${active ? `${activeCls} font-medium` : "bg-white text-muted-strong hover:bg-cream"}`}
                 >
                   {label}
                 </button>
@@ -1189,8 +1189,8 @@ function BuyModal({
         {/* Qty + Receipt inputs */}
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-gray-500">
-              {isOos ? "Units out of stock" : "Units bought"} <span className="text-gray-400">(remaining: {item.totalUnits})</span>
+            <label className="text-xs font-medium text-muted">
+              {isOos ? "Units out of stock" : "Units bought"} <span className="text-faint">(remaining: {item.totalUnits})</span>
             </label>
             <input
               type="number"
@@ -1205,8 +1205,8 @@ function BuyModal({
           </div>
           {!isOos && (
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-gray-500">
-                Receipt <span className="text-gray-400 font-normal">(optional)</span>
+              <label className="text-xs font-medium text-muted">
+                Receipt <span className="text-faint font-normal">(optional)</span>
               </label>
               <input
                 type="text"
@@ -1225,10 +1225,10 @@ function BuyModal({
           <div className="flex flex-col gap-2 text-xs">
             {preview.filled.length > 0 && (
               <div>
-                <div className="font-medium text-gray-500 mb-1">Will buy ({preview.filled.reduce((s, f) => s + f.allocated, 0)} units):</div>
+                <div className="font-medium text-muted mb-1">Will buy ({preview.filled.reduce((s, f) => s + f.allocated, 0)} units):</div>
                 <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto pr-0.5">
                   {preview.filled.map((f) => (
-                    <div key={f.order.id} className="flex items-center justify-between px-2 py-1 rounded-md bg-green-50">
+                    <div key={f.order.id} className="flex items-center justify-between px-2 py-1 rounded-lg bg-green-50">
                       <span className="text-green-800 truncate">{displayIg(f.order.customer)}</span>
                       <span className="text-green-700 font-medium ml-2 shrink-0 tabular-nums">
                         {f.allocated}×
@@ -1244,12 +1244,12 @@ function BuyModal({
 
             {preview.unfilled.length > 0 && (
               <div>
-                <div className="font-medium text-gray-500 mb-1">Stays in list ({preview.unfilled.reduce((s, o) => s + o.pending, 0)} units):</div>
+                <div className="font-medium text-muted mb-1">Stays in list ({preview.unfilled.reduce((s, o) => s + o.pending, 0)} units):</div>
                 <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto pr-0.5">
                   {preview.unfilled.map((o) => (
-                    <div key={o.id} className="flex items-center justify-between px-2 py-1 rounded-md bg-gray-50">
-                      <span className="text-gray-500 truncate">{displayIg(o.customer)}</span>
-                      <span className="text-gray-400 font-medium ml-2 shrink-0 tabular-nums">{o.pending}×</span>
+                    <div key={o.id} className="flex items-center justify-between px-2 py-1 rounded-lg bg-surface-muted">
+                      <span className="text-muted truncate">{displayIg(o.customer)}</span>
+                      <span className="text-faint font-medium ml-2 shrink-0 tabular-nums">{o.pending}×</span>
                     </div>
                   ))}
                 </div>
@@ -1257,7 +1257,7 @@ function BuyModal({
             )}
 
             {preview.excessUnits > 0 && (
-              <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-amber-50 border border-amber-200">
+              <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-amber-50 border border-amber-200">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-600 shrink-0">
                   <path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
                 </svg>
@@ -1272,10 +1272,10 @@ function BuyModal({
           <div className="flex flex-col gap-2 text-xs">
             {preview.filled.length > 0 && (
               <div>
-                <div className="font-medium text-gray-500 mb-1">Will cancel ({preview.filled.reduce((s, f) => s + f.allocated, 0)} units):</div>
+                <div className="font-medium text-muted mb-1">Will cancel ({preview.filled.reduce((s, f) => s + f.allocated, 0)} units):</div>
                 <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto pr-0.5">
                   {preview.filled.map((f) => (
-                    <div key={f.order.id} className="flex items-center justify-between gap-2 px-2 py-1 rounded-md bg-red-50">
+                    <div key={f.order.id} className="flex items-center justify-between gap-2 px-2 py-1 rounded-lg bg-red-50">
                       <span className="flex items-center gap-1.5 min-w-0">
                         <span
                           className={`inline-block w-2 h-2 rounded-full shrink-0 ${PAID_DOT[f.order.paidStatus]}`}
@@ -1284,7 +1284,7 @@ function BuyModal({
                         <span className="text-red-800 truncate">{displayIg(f.order.customer)}</span>
                       </span>
                       <span className="flex items-center gap-2 shrink-0">
-                        <span className="text-[10px] text-gray-500">{OOS_OUTCOME[f.order.paidStatus]}</span>
+                        <span className="text-[10px] text-muted">{OOS_OUTCOME[f.order.paidStatus]}</span>
                         <span className="text-red-700 font-medium tabular-nums">
                           {f.allocated}×
                           {f.allocated < f.order.pending && (
@@ -1300,19 +1300,19 @@ function BuyModal({
 
             {preview.unfilled.length > 0 && (
               <div>
-                <div className="font-medium text-gray-500 mb-1">Stays in list ({preview.unfilled.reduce((s, o) => s + o.pending, 0)} units):</div>
+                <div className="font-medium text-muted mb-1">Stays in list ({preview.unfilled.reduce((s, o) => s + o.pending, 0)} units):</div>
                 <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto pr-0.5">
                   {preview.unfilled.map((o) => (
-                    <div key={o.id} className="flex items-center justify-between px-2 py-1 rounded-md bg-gray-50">
-                      <span className="text-gray-500 truncate">{displayIg(o.customer)}</span>
-                      <span className="text-gray-400 font-medium ml-2 shrink-0 tabular-nums">{o.pending}×</span>
+                    <div key={o.id} className="flex items-center justify-between px-2 py-1 rounded-lg bg-surface-muted">
+                      <span className="text-muted truncate">{displayIg(o.customer)}</span>
+                      <span className="text-faint font-medium ml-2 shrink-0 tabular-nums">{o.pending}×</span>
                     </div>
                   ))}
                 </div>
               </div>
             )}
 
-            <p className="text-[11px] text-gray-400">
+            <p className="text-[11px] text-faint">
               These units are removed from each customer&rsquo;s order and invoice. Customers who already paid are refunded only the amount they&rsquo;ve overpaid (on the Refunds page); unpaid customers simply owe less.
             </p>
           </div>
@@ -1325,7 +1325,7 @@ function BuyModal({
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+            className="px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
           >
             Cancel
           </button>
@@ -1413,11 +1413,11 @@ function ApplyShoppingExcessModal({
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="text-sm font-semibold text-foreground">{item.productName}</div>
-            <div className="text-xs text-gray-400 mt-0.5">
+            <div className="text-xs text-faint mt-0.5">
               {item.event}{item.store ? ` · ${item.store}` : ""}
             </div>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-brand transition-colors shrink-0">
+          <button onClick={onClose} className="text-faint hover:text-brand transition-colors shrink-0">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M18 6 6 18M6 6l12 12" />
             </svg>
@@ -1427,8 +1427,8 @@ function ApplyShoppingExcessModal({
         {/* Qty + Receipt inputs */}
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-gray-500">
-              Units to apply <span className="text-gray-400">(available: {available}, needed: {item.totalUnits})</span>
+            <label className="text-xs font-medium text-muted">
+              Units to apply <span className="text-faint">(available: {available}, needed: {item.totalUnits})</span>
             </label>
             <input
               type="number"
@@ -1442,8 +1442,8 @@ function ApplyShoppingExcessModal({
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-gray-500">
-              Receipt <span className="text-gray-400 font-normal">(optional)</span>
+            <label className="text-xs font-medium text-muted">
+              Receipt <span className="text-faint font-normal">(optional)</span>
             </label>
             <input
               type="text"
@@ -1461,10 +1461,10 @@ function ApplyShoppingExcessModal({
           <div className="flex flex-col gap-2 text-xs">
             {preview.filled.length > 0 && (
               <div>
-                <div className="font-medium text-gray-500 mb-1">Will apply ({preview.filled.reduce((s, f) => s + f.allocated, 0)} units):</div>
+                <div className="font-medium text-muted mb-1">Will apply ({preview.filled.reduce((s, f) => s + f.allocated, 0)} units):</div>
                 <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto pr-0.5">
                   {preview.filled.map((f) => (
-                    <div key={f.order.id} className="flex items-center justify-between px-2 py-1 rounded-md bg-green-50">
+                    <div key={f.order.id} className="flex items-center justify-between px-2 py-1 rounded-lg bg-green-50">
                       <span className="text-green-800 truncate">{displayIg(f.order.customer)}</span>
                       <span className="text-green-700 font-medium ml-2 shrink-0 tabular-nums">
                         {f.allocated}×
@@ -1480,12 +1480,12 @@ function ApplyShoppingExcessModal({
 
             {preview.unfilled.length > 0 && (
               <div>
-                <div className="font-medium text-gray-500 mb-1">Stays in list ({preview.unfilled.reduce((s, o) => s + o.pending, 0)} units):</div>
+                <div className="font-medium text-muted mb-1">Stays in list ({preview.unfilled.reduce((s, o) => s + o.pending, 0)} units):</div>
                 <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto pr-0.5">
                   {preview.unfilled.map((o) => (
-                    <div key={o.id} className="flex items-center justify-between px-2 py-1 rounded-md bg-gray-50">
-                      <span className="text-gray-500 truncate">{displayIg(o.customer)}</span>
-                      <span className="text-gray-400 font-medium ml-2 shrink-0 tabular-nums">{o.pending}×</span>
+                    <div key={o.id} className="flex items-center justify-between px-2 py-1 rounded-lg bg-surface-muted">
+                      <span className="text-muted truncate">{displayIg(o.customer)}</span>
+                      <span className="text-faint font-medium ml-2 shrink-0 tabular-nums">{o.pending}×</span>
                     </div>
                   ))}
                 </div>
@@ -1501,7 +1501,7 @@ function ApplyShoppingExcessModal({
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+            className="px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
           >
             Cancel
           </button>
@@ -1509,7 +1509,7 @@ function ApplyShoppingExcessModal({
             type="button"
             onClick={handleSubmit}
             disabled={saving || quantity < 1}
-            className="px-4 py-1.5 rounded-lg text-white text-sm font-medium disabled:opacity-50 transition-colors bg-brand hover:bg-brand-hover"
+            className="px-4 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-50 transition-colors bg-brand hover:bg-brand-dark"
           >
             {saving ? "Saving…" : "Apply excess"}
           </button>

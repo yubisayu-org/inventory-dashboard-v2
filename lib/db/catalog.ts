@@ -99,6 +99,26 @@ export async function getProducts(): Promise<ProductRow[]> {
   }))
 }
 
+/** One product's full pricing row — the order-requests page's "Duplicate as
+ *  variant" action reads this to copy every pricing input onto a new
+ *  product, not just name/price, so the duplicate reproduces the same
+ *  price under whichever pricing method the source uses. */
+export async function getProduct(id: number): Promise<ProductRow | null> {
+  const [row] = await sql`
+    SELECT p.id, p.name, p.store, p.price, p.gram,
+           p.country_id, COALESCE(c.name, '') AS country_name,
+           COALESCE(c.currency, '') AS country_currency,
+           p.valas, p.kurs, p.tiered_kurs, p.cargo_per_kg, p.profit_pct,
+           p.pricing_method, p.flat_fee_mode,
+           p.operational_fee, p.packing_fee, p.cost, p.profit_fixed,
+           p.is_active, p.created_at, p.updated_at
+    FROM products p
+    LEFT JOIN countries c ON c.id = p.country_id
+    WHERE p.id = ${id}
+  `
+  return row ? mapProductRow(row) : null
+}
+
 // Shared row → ProductRow mapper for the paginated query below.
 function mapProductRow(r: Record<string, unknown>): ProductRow {
   return {
@@ -687,6 +707,21 @@ export async function replaceTierFeeBrackets(
 
 // ─── Countries ─────────────────────────────────────────────────────────────
 
+/** One country's kurs/cargoPerKg for a server-side price computation —
+ *  the single-row counterpart to getCountries()'s full list. Used by the
+ *  custom-request edit/preview-price paths, both of which need only one
+ *  country's rate, not the whole dropdown list. */
+export async function getCountryRate(
+  countryId: number,
+  db: DBExecutor = sql,
+): Promise<{ kurs: number; cargoPerKg: number } | null> {
+  const [row] = await db`SELECT kurs, cargo_per_kg FROM countries WHERE id = ${countryId}`
+  if (!row) return null
+  // kurs is NUMERIC(12,4) — postgres-js returns it as a string, so coerce,
+  // same as getCountries() above.
+  return { kurs: Number(row.kurs) || 0, cargoPerKg: (row.cargo_per_kg as number) ?? 0 }
+}
+
 export async function getCountries(): Promise<CountryRow[]> {
   const rows = await sql`
     SELECT id, name, currency, kurs, flat_kurs, cargo_per_kg, created_at, updated_at
@@ -743,7 +778,7 @@ export async function deleteCountry(id: number, db: DBExecutor = sql): Promise<v
 /** Shipping origins, default first. Used for event/customer ongkir UIs. */
 export async function getWarehouses(): Promise<WarehouseRow[]> {
   const rows = await sql`
-    SELECT id, code, name, is_default
+    SELECT id, code, name, is_default, biteship_area_id, biteship_area_name, postal_code
     FROM warehouses
     ORDER BY is_default DESC, code ASC
   `
@@ -752,7 +787,63 @@ export async function getWarehouses(): Promise<WarehouseRow[]> {
     code: r.code as string,
     name: r.name as string,
     isDefault: Boolean(r.is_default),
+    biteshipAreaId: (r.biteship_area_id as string) ?? null,
+    biteshipAreaName: (r.biteship_area_name as string) ?? null,
+    postalCode: (r.postal_code as string) ?? "",
   }))
+}
+
+/**
+ * Add a shipping origin.
+ *
+ * Deliberately does NOT touch is_default: warehouses_one_default is a unique
+ * index, so promoting a new warehouse would have to demote the old one, and
+ * silently moving the default origin changes which rates every unspecified
+ * lookup uses.
+ *
+ * Returns whether the new code has any jne_rates rows. It usually will not,
+ * and until it does — or a Biteship origin is set — every customer's ongkir
+ * from this warehouse resolves to 0, which is free shipping by omission.
+ */
+export async function createWarehouse(data: {
+  code: string
+  name: string
+}): Promise<{ id: number; hasRates: boolean }> {
+  const code = data.code.trim().toUpperCase()
+  const [existing] = await sql`SELECT id FROM warehouses WHERE upper(code) = ${code}`
+  if (existing) throw new Error(`A warehouse with code ${code} already exists`)
+
+  const [row] = await sql`
+    INSERT INTO warehouses (code, name) VALUES (${code}, ${data.name.trim()})
+    RETURNING id
+  `
+  const [rates] = await sql<{ n: string }[]>`
+    SELECT count(*) AS n FROM jne_rates WHERE upper(trim(origin_code)) = ${code}
+  `
+  return { id: row.id as number, hasRates: Number(rates.n) > 0 }
+}
+
+/**
+ * Set a warehouse's shipping origin.
+ *
+ * Nothing prices from a warehouse without one — rate lookups fall back to
+ * jne_rates until this is filled in, which is why it lives in Settings rather
+ * than being inferred.
+ */
+export async function setWarehouseOrigin(
+  warehouseId: number,
+  origin: { biteshipAreaId: string; biteshipAreaName: string; postalCode: string },
+): Promise<void> {
+  const rows = await sql`
+    UPDATE warehouses SET
+      biteship_area_id   = ${origin.biteshipAreaId},
+      biteship_area_name = ${origin.biteshipAreaName},
+      postal_code        = ${origin.postalCode},
+      updated_at         = NOW()
+    WHERE id = ${warehouseId}
+    RETURNING id
+  `
+  if (rows.length === 0) throw new Error("Warehouse not found")
 }
 
 // ─── Events ───────────────────────────────────────────────────────────────

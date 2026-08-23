@@ -25,11 +25,11 @@ const PAGE_SIZE = 25
 // py-2 so plain inputs match the SearchableSelect's height across the payment
 // forms (Amount/Account/Date/Remarks line up with Event/Customer).
 const INPUT_CLASS_TALL =
-  "w-full border border-cream-border rounded-md px-2 py-2 text-sm text-foreground bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+  "w-full border border-cream-border rounded-lg px-2 py-2 text-sm text-foreground bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
 // Native <input type="date"> renders taller than a text input on iOS Safari;
 // pin the height and drop the native chrome so it matches the Remarks box.
 const DATE_INPUT_CLASS = `${INPUT_CLASS_TALL} h-[38px] appearance-none`
-const LABEL = "text-xs text-gray-500 mb-1 block"
+const LABEL = "text-xs text-muted mb-1 block"
 // Fallback while options are still loading — the real list comes from
 // useSheetOptions().accounts (distinct values already in use, autocompleted
 // via SearchableSelect, same pattern as the Products page's Store field).
@@ -267,7 +267,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
           ? "bg-purple-50 text-purple-700 border-purple-200"
           : k === "refund"
             ? "bg-orange-50 text-orange-700 border-orange-200"
-            : "bg-gray-50 text-gray-500 border-cream-border"
+            : "bg-surface-muted text-muted border-cream-border"
         const label = k === "credit" ? "Credit" : k === "refund" ? "Refund" : "Deposit"
         return <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-medium border ${cls}`}>{label}</span>
       },
@@ -278,7 +278,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
       size: 120,
       filterFn: "textContains",
       cell: ({ row }) => (
-        <span className="text-gray-500">{row.original.account || "—"}</span>
+        <span className="text-muted">{row.original.account || "—"}</span>
       ),
     },
     {
@@ -303,7 +303,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
       size: 100,
       filterFn: "dateRange",
       cell: ({ row }) => (
-        <span className="text-gray-500 text-xs whitespace-nowrap">
+        <span className="text-muted text-xs whitespace-nowrap">
           {formatDate(row.original.payDate)}
         </span>
       ),
@@ -321,7 +321,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
       size: 110,
       enableColumnFilter: false,
       cell: ({ row }) => (
-        <span className="text-gray-400 text-xs whitespace-nowrap">{row.original.createdAt}</span>
+        <span className="text-faint text-xs whitespace-nowrap">{row.original.createdAt}</span>
       ),
     },
     {
@@ -343,7 +343,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
             type="button"
             onClick={() => setEditingRow(row.original)}
             title="Edit"
-            className="text-gray-400 hover:text-brand transition-colors"
+            className="text-faint hover:text-brand transition-colors"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
@@ -354,7 +354,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
             type="button"
             onClick={() => handleDeleteRow(row.original)}
             title="Delete"
-            className="text-gray-400 hover:text-red-500 transition-colors"
+            className="text-faint hover:text-red-500 transition-colors"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 6h18" />
@@ -372,8 +372,8 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
     <>
       <button
         onClick={() => { setAddOpen((o) => !o); setEditingRow(null) }}
-        className={`inline-flex items-center gap-1.5 h-[38px] px-3 text-sm rounded-lg border transition-colors ${
-          addOpen ? "bg-brand-light text-brand border-brand/30" : "bg-brand text-white border-transparent hover:bg-brand-hover"
+        className={`inline-flex items-center gap-1.5 h-[38px] px-4 text-sm rounded-lg border transition-colors ${
+          addOpen ? "bg-brand-light text-brand border-brand/30" : "bg-brand text-white border-transparent hover:bg-brand-dark"
         }`}
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -399,13 +399,13 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
           on one row. Sums honour the active filters but ignore the type tab. */}
       <div className="grid grid-cols-[53fr_47fr] gap-2 sm:gap-4">
         <div className="rounded-xl border border-cream-border border-l-4 border-l-brand bg-white px-3 py-3 sm:px-5 sm:py-4">
-          <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Deposit</div>
+          <div className="text-xs font-medium text-faint uppercase tracking-wide">Deposit</div>
           <div className="text-lg sm:text-2xl font-bold text-foreground mt-1 tabular-nums whitespace-nowrap">
             {depositSum !== null ? `Rp ${formatAmount(depositSum)}` : "—"}
           </div>
         </div>
         <div className="rounded-xl border border-cream-border border-l-4 border-l-orange-500 bg-white px-3 py-3 sm:px-5 sm:py-4">
-          <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Refund</div>
+          <div className="text-xs font-medium text-faint uppercase tracking-wide">Refund</div>
           <div className="text-lg sm:text-2xl font-bold text-foreground mt-1 tabular-nums whitespace-nowrap">
             {refundSum !== null ? `Rp ${formatAmount(refundSum)}` : "—"}
           </div>
@@ -420,8 +420,8 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
             <button
               key={key || "all"}
               onClick={() => handleKindFilterChange(key)}
-              className={`flex-1 shrink-0 flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
-                active ? "bg-brand text-white" : "text-gray-500 hover:text-foreground"
+              className={`flex-1 shrink-0 flex items-center justify-center gap-1 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+                active ? "bg-brand text-white" : "text-muted hover:text-foreground"
               }`}
             >
               {label}
@@ -491,7 +491,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
               type="button"
               onClick={() => setFilterOpen((o) => !o)}
               aria-label="Filters"
-              className="h-full border border-cream-border rounded-lg px-3 py-2 text-sm text-gray-600 bg-white flex items-center gap-1.5 hover:border-brand transition-colors"
+              className="h-full border border-cream-border rounded-lg px-3 py-2 text-sm text-muted-strong bg-white flex items-center gap-1.5 hover:border-brand hover:text-brand transition-colors"
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
@@ -500,36 +500,46 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
             </button>
             {filterOpen && (
               <div className="absolute right-0 top-full mt-1 z-30 w-52 rounded-lg border border-cream-border bg-white shadow-lg p-3 flex flex-col gap-3">
-                <label className="flex flex-col gap-1">
-                  <span className="text-xs font-medium text-gray-500">Status</span>
-                  <select
-                    value={checkedFilter}
-                    onChange={(e) => handleCheckedFilterChange(e.target.value as CheckedFilter)}
-                    className="w-full border border-cream-border rounded-lg px-2 py-2 text-sm text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
-                  >
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs font-medium text-muted">Status</span>
+                  <div className="flex flex-col gap-0.5">
                     {CHECKED_FILTER_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
+                      <button
+                        key={o.value}
+                        type="button"
+                        onClick={() => handleCheckedFilterChange(o.value as CheckedFilter)}
+                        className={`text-left px-3 py-1.5 rounded-lg text-xs transition-colors ${
+                          checkedFilter === o.value ? "bg-brand/10 text-brand font-medium" : "text-muted-strong hover:bg-surface-muted"
+                        }`}
+                      >
+                        {o.label}
+                      </button>
                     ))}
-                  </select>
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="text-xs font-medium text-gray-500">Type</span>
-                  <select
-                    value={kindFilter}
-                    onChange={(e) => handleKindFilterChange(e.target.value as KindFilter)}
-                    className="w-full border border-cream-border rounded-lg px-2 py-2 text-sm text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
-                  >
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs font-medium text-muted">Type</span>
+                  <div className="flex flex-col gap-0.5">
                     {KIND_FILTER_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
+                      <button
+                        key={o.value}
+                        type="button"
+                        onClick={() => handleKindFilterChange(o.value as KindFilter)}
+                        className={`text-left px-3 py-1.5 rounded-lg text-xs transition-colors ${
+                          kindFilter === o.value ? "bg-brand/10 text-brand font-medium" : "text-muted-strong hover:bg-surface-muted"
+                        }`}
+                      >
+                        {o.label}
+                      </button>
                     ))}
-                  </select>
-                </label>
+                  </div>
+                </div>
               </div>
             )}
           </div>
         </div>
         {rows.length === 0 ? (
-          <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-gray-400">
+          <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-faint">
             {fetchState.loading ? "Loading…" : globalFilter ? "No matches" : "No payments yet"}
           </div>
         ) : (
@@ -545,9 +555,9 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
         )}
         {totalCount > PAGE_SIZE && (
           <div className="flex items-center justify-between gap-3 pt-1">
-            <button type="button" disabled={pagination.pageIndex === 0} onClick={() => setPagination((p) => ({ ...p, pageIndex: p.pageIndex - 1 }))} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-gray-600 disabled:opacity-40">Prev</button>
-            <span className="text-xs text-gray-400">Page {pagination.pageIndex + 1} of {Math.max(1, Math.ceil(totalCount / PAGE_SIZE))}</span>
-            <button type="button" disabled={(pagination.pageIndex + 1) * PAGE_SIZE >= totalCount} onClick={() => setPagination((p) => ({ ...p, pageIndex: p.pageIndex + 1 }))} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-gray-600 disabled:opacity-40">Next</button>
+            <button type="button" disabled={pagination.pageIndex === 0} onClick={() => setPagination((p) => ({ ...p, pageIndex: p.pageIndex - 1 }))} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-muted-strong disabled:opacity-40">Prev</button>
+            <span className="text-xs text-faint">Page {pagination.pageIndex + 1} of {Math.max(1, Math.ceil(totalCount / PAGE_SIZE))}</span>
+            <button type="button" disabled={(pagination.pageIndex + 1) * PAGE_SIZE >= totalCount} onClick={() => setPagination((p) => ({ ...p, pageIndex: p.pageIndex + 1 }))} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-muted-strong disabled:opacity-40">Next</button>
           </div>
         )}
       </div>
@@ -632,9 +642,9 @@ function InlineRemarks({
       type="button"
       onClick={() => setEditing(true)}
       title="Click to edit remarks"
-      className="text-left text-sm text-gray-500 uppercase truncate block max-w-[220px] w-full hover:text-brand transition-colors"
+      className="text-left text-sm text-muted uppercase truncate block max-w-[220px] w-full hover:text-brand transition-colors"
     >
-      {row.remarks || <span className="text-gray-300 normal-case">Add remark…</span>}
+      {row.remarks || <span className="text-faint normal-case">Add remark…</span>}
     </button>
   )
 }
@@ -739,7 +749,7 @@ function EditPaymentModal({
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-t-2xl shadow-xl border-x border-t border-cream-border md:border w-full max-h-[90vh] overflow-y-auto md:max-w-md md:rounded-xl"
+        className="bg-white rounded-t-xl shadow-xl border-x border-t border-cream-border md:border w-full max-h-[90vh] overflow-y-auto md:max-w-md md:rounded-xl"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -784,7 +794,7 @@ function EditPaymentModal({
           </div>
           <div className="hidden">
             <input type="checkbox" checked={form.isChecked} onChange={(e) => setForm({ ...form, isChecked: e.target.checked })} disabled={isAdmin} id="edit-checked" className="accent-brand disabled:cursor-default" />
-            <label htmlFor="edit-checked" className="text-xs text-gray-500">Checked</label>
+            <label htmlFor="edit-checked" className="text-xs text-muted">Checked</label>
           </div>
           <div className="flex gap-3">
             <div className="flex-1 min-w-0">
@@ -805,13 +815,13 @@ function EditPaymentModal({
             type="button"
             onClick={handleDelete}
             aria-label="Delete"
-            className="inline-flex items-center justify-center h-[38px] border border-cream-border rounded-lg px-3 text-sm text-gray-400 hover:border-brand disabled:opacity-50 transition-colors"
+            className="inline-flex items-center justify-center h-[38px] border border-cream-border rounded-lg px-3 text-sm text-faint hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M10 11v6" /><path d="M14 11v6" />
             </svg>
           </button>
-          <button onClick={onClose} disabled={saving} className="ml-auto px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
+          <button onClick={onClose} disabled={saving} className="ml-auto px-4 py-2 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
             Cancel
           </button>
           <button
@@ -939,14 +949,14 @@ function AddPaymentForm({
             type="button"
             onClick={onClose}
             disabled={submitting}
-            className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+            className="px-4 py-2 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={submitting || !canSubmit}
-            className="px-4 py-2 text-sm font-medium rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+            className="px-4 py-2 text-sm font-medium rounded-lg bg-brand text-white hover:bg-brand-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
           >
             {submitting ? "Saving…" : "Add"}
           </button>
@@ -975,22 +985,22 @@ function PaymentCard({
   return (
     <div
       onClick={onEdit}
-      className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] flex flex-col gap-2 cursor-pointer active:bg-cream/40 transition-colors"
+      className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] flex flex-col gap-2 cursor-pointer active:bg-cream transition-colors"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-sm font-semibold text-foreground uppercase truncate">{displayIg(row.customer)}</div>
-          <div className="text-xs text-gray-500 mt-2 truncate uppercase">{row.remarks}</div>
+          <div className="text-xs text-muted mt-2 truncate uppercase">{row.remarks}</div>
         </div>
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); onToggleCheck() }}
           disabled={isAdmin}
           aria-label={row.isChecked ? "Tandai belum dicek" : "Tandai sudah dicek"}
-          className={`shrink-0 p-1 rounded-md transition-colors ${
+          className={`shrink-0 p-1 rounded-lg transition-colors ${
             row.isChecked
               ? "bg-green-100 text-green-700 active:bg-green-200"
-              : "text-gray-300 active:bg-cream"
+              : "text-faint active:bg-cream"
           } ${isAdmin ? "cursor-default" : "cursor-pointer"}`}
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -1000,7 +1010,7 @@ function PaymentCard({
       </div>
 
       <div className="flex items-center justify-between gap-3 border-t border-cream-border pt-2">
-        <div className="text-xs text-gray-400 uppercase truncate min-w-0">{row.event} · {formatDate(row.payDate)}{row.account ? ` · ${row.account}` : ""}</div>
+        <div className="text-xs text-faint uppercase truncate min-w-0">{row.event} · {formatDate(row.payDate)}{row.account ? ` · ${row.account}` : ""}</div>
         <span className="text-sm font-semibold tabular-nums text-foreground whitespace-nowrap shrink-0">Rp {formatAmount(row.amount)}</span>
       </div>
     </div>
@@ -1071,7 +1081,7 @@ function MobileAddPaymentSheet({
       <form
         onSubmit={handleSubmit}
         onClick={(e) => e.stopPropagation()}
-        className="w-full bg-white rounded-t-2xl p-5 pb-8 flex flex-col gap-3 max-h-[88vh] overflow-y-auto"
+        className="w-full bg-white rounded-t-xl p-5 pb-8 flex flex-col gap-3 max-h-[88vh] overflow-y-auto"
       >
         <div className="flex items-center justify-between -mx-5 px-5 border-b border-cream-border pb-3">
           <span className="text-base font-semibold text-foreground">Add Payment</span>
@@ -1122,7 +1132,7 @@ function MobileAddPaymentSheet({
         {error && <p className="text-xs text-red-500">{error}</p>}
 
         <div className="flex items-center justify-end gap-2 mt-1">
-          <button type="button" onClick={onClose} disabled={submitting} className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
+          <button type="button" onClick={onClose} disabled={submitting} className="px-4 py-2 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
             Cancel
           </button>
           <button type="submit" disabled={submitting || !canSubmit} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">

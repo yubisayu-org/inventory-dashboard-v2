@@ -7,6 +7,8 @@ export interface ReceivedReportData {
   event: string
   from: string | null // YYYY-MM-DD (inclusive); null = no date filter (all dates)
   to: string | null // YYYY-MM-DD (inclusive); equals `from` for a single day
+  /** Parcel the report was narrowed to, if any — a prefix, so "MNC" is valid. */
+  receipt?: string | null
   items: ReceivedReportItem[]
   totalUnits: number
 }
@@ -57,6 +59,7 @@ export async function generateReceivedReport({
   event,
   from,
   to,
+  receipt,
   items,
   totalUnits,
 }: ReceivedReportData): Promise<Blob> {
@@ -74,7 +77,9 @@ export async function generateReceivedReport({
     doc.setFontSize(16)
     doc.text("YUBISAYU", MARGIN, y + 4)
     doc.setFontSize(13)
-    doc.text(`Items Received · ${event}`, MARGIN, y + 11)
+    // The parcel belongs in the title when one was asked for: a report of one
+    // box and a report of the whole trip otherwise look identical on paper.
+    doc.text(`Items Received · ${event}${receipt ? ` · ${receipt.toUpperCase()}` : ""}`, MARGIN, y + 11)
 
     doc.setTextColor(80)
     doc.setFont("helvetica", "normal")

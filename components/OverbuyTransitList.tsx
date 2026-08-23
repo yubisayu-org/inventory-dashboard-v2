@@ -99,7 +99,7 @@ function CollapseBtn({ collapsed, onClick }: { collapsed: boolean; onClick: () =
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex items-center justify-center w-4 h-4 rounded border border-gray-300 bg-white text-gray-500 hover:text-brand hover:border-brand transition-colors text-xs font-bold shrink-0"
+      className="inline-flex items-center justify-center w-4 h-4 rounded border border-cream-border bg-white text-muted hover:text-brand hover:border-brand transition-colors text-xs font-bold shrink-0"
     >
       {collapsed ? "+" : "−"}
     </button>
@@ -111,7 +111,7 @@ function CollapseBtn({ collapsed, onClick }: { collapsed: boolean; onClick: () =
 // non-interactive version of that pattern rather than a full CustomerBadge.
 function EventBadge({ event }: { event: string }) {
   return (
-    <span className="inline-flex items-center gap-1 text-gray-400">
+    <span className="inline-flex items-center gap-1 text-faint">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
         <rect x="3" y="4" width="18" height="18" rx="2" />
         <line x1="16" y1="2" x2="16" y2="6" />
@@ -256,13 +256,13 @@ export default function OverbuyTransitList({
           and the click target are both md:hidden since desktop's table isn't gated on
           this — pointer-events-none there stops the button from doing anything but
           doesn't change how it looks. */}
-      <div className="px-4 py-2.5 border-b border-cream-border border-l-[3px] border-brand bg-gray-50/80 flex items-center gap-3">
+      <div className="px-4 py-2.5 border-b border-cream-border border-l-[3px] border-brand bg-cream flex items-center gap-3">
         <button
           type="button"
           onClick={() => setSectionCollapsed((c) => !c)}
           className="md:pointer-events-none flex items-center gap-2 min-w-0 text-left"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`md:hidden shrink-0 text-gray-400 transition-transform ${sectionCollapsed ? "-rotate-90" : ""}`}><path d="m6 9 6 6 6-6" /></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`md:hidden shrink-0 text-faint transition-transform ${sectionCollapsed ? "-rotate-90" : ""}`}><path d="m6 9 6 6 6-6" /></svg>
           <span className="font-bold text-sm text-foreground truncate">{title}</span>
         </button>
         <InfoTooltip text={subtitle} />
@@ -283,12 +283,12 @@ export default function OverbuyTransitList({
       <div className="hidden md:block overflow-x-auto">
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="border-b border-cream-border bg-gray-50/80">
-              <th className="text-left px-4 py-2.5 font-medium text-gray-500 w-44">Event</th>
-              <th className="text-left px-4 py-2.5 font-medium text-gray-500 w-36">Store</th>
-              <th className="text-left px-4 py-2.5 font-medium text-gray-500">Item</th>
-              <th className="text-left px-4 py-2.5 font-medium text-gray-500 w-32">Reason</th>
-              <th className="text-right px-4 py-2.5 font-medium text-gray-500 w-20">Qty</th>
+            <tr className="border-b border-cream-border bg-surface-muted/80">
+              <th className="text-left px-4 py-2.5 font-medium text-muted w-44">Event</th>
+              <th className="text-left px-4 py-2.5 font-medium text-muted w-36">Store</th>
+              <th className="text-left px-4 py-2.5 font-medium text-muted">Item</th>
+              <th className="text-left px-4 py-2.5 font-medium text-muted w-32">Reason</th>
+              <th className="text-right px-4 py-2.5 font-medium text-muted w-20">Qty</th>
               <th className="px-4 py-2.5 w-10" />
             </tr>
           </thead>
@@ -303,7 +303,7 @@ export default function OverbuyTransitList({
                       <div className="flex items-center gap-2">
                         <CollapseBtn collapsed onClick={() => toggleDesktopEvent(row.event)} />
                         <span className="font-medium text-foreground">{row.event}</span>
-                        <span className="text-xs text-gray-400">{row.totalItems} item{row.totalItems > 1 ? "s" : ""}</span>
+                        <span className="text-xs text-faint">{row.totalItems} item{row.totalItems > 1 ? "s" : ""}</span>
                       </div>
                     </td>
                   </tr>
@@ -321,11 +321,11 @@ export default function OverbuyTransitList({
                         </div>
                       </td>
                     )}
-                    <td colSpan={5} className="px-4 py-2.5 bg-gray-50/40">
+                    <td colSpan={5} className="px-4 py-2.5 bg-surface-muted/40">
                       <div className="flex items-center gap-2">
                         <CollapseBtn collapsed onClick={() => toggleDesktopStore(row.event, row.store)} />
-                        <span className="text-gray-600">{row.store}</span>
-                        <span className="text-xs text-gray-400">{row.totalItems} item{row.totalItems > 1 ? "s" : ""}</span>
+                        <span className="text-muted-strong">{row.store}</span>
+                        <span className="text-xs text-faint">{row.totalItems} item{row.totalItems > 1 ? "s" : ""}</span>
                       </div>
                     </td>
                   </tr>
@@ -334,7 +334,7 @@ export default function OverbuyTransitList({
 
               const it = row.item
               return (
-                <tr key={it.rowNumber} className="border-b border-cream-border last:border-0 hover:bg-gray-50/50 transition-colors">
+                <tr key={it.rowNumber} className="border-b border-cream-border last:border-0 hover:bg-surface-muted/50 transition-colors">
                   {row.showEvent && (
                     <td rowSpan={row.eventRowSpan} className="px-4 py-2.5 align-top border-r border-cream-border">
                       <div className="flex items-center gap-2 pt-0.5">
@@ -347,7 +347,7 @@ export default function OverbuyTransitList({
                     <td rowSpan={row.storeRowSpan} className="px-4 py-2.5 align-top border-r border-cream-border">
                       <div className="flex items-center gap-2 pt-0.5">
                         <CollapseBtn collapsed={false} onClick={() => toggleDesktopStore(row.event, row.store)} />
-                        <span className="text-gray-600">{row.store}</span>
+                        <span className="text-muted-strong">{row.store}</span>
                       </div>
                     </td>
                   )}
@@ -365,7 +365,7 @@ export default function OverbuyTransitList({
                       type="button"
                       onClick={() => setOpenRow(it.rowNumber)}
                       title={actionLabel}
-                      className="text-gray-400 hover:text-green-600 transition-colors"
+                      className="text-faint hover:text-green-600 transition-colors"
                     >
                       <StageIcon stage={stage} />
                     </button>
@@ -389,10 +389,10 @@ export default function OverbuyTransitList({
               {/* Same nested-level styling as the store sub-header on the regular
                   (has-a-customer) mobile cards: lighter background, smaller/gray text,
                   smaller chevron — this is the second-level group here too. */}
-              <button type="button" onClick={() => toggleStore(store)} className="w-full flex items-center gap-2 px-4 py-2.5 bg-gray-50/60 text-left">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`text-gray-400 transition-transform ${storeCollapsed ? "-rotate-90" : ""}`}><path d="m6 9 6 6 6-6" /></svg>
-                <span className="text-xs font-bold text-gray-600">{store}</span>
-                <span className="ml-auto text-[11px] text-gray-400">{storeItems.length}</span>
+              <button type="button" onClick={() => toggleStore(store)} className="w-full flex items-center gap-2 px-4 py-2.5 bg-surface-muted/60 text-left">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`text-faint transition-transform ${storeCollapsed ? "-rotate-90" : ""}`}><path d="m6 9 6 6 6-6" /></svg>
+                <span className="text-xs font-bold text-muted-strong">{store}</span>
+                <span className="ml-auto text-[11px] text-faint">{storeItems.length}</span>
               </button>
               {!storeCollapsed && storeItems.map((it) => (
                 <div key={it.rowNumber} className="flex items-center gap-3 px-4 py-2.5 border-t border-cream-border">
@@ -407,8 +407,8 @@ export default function OverbuyTransitList({
                     <div className="text-xs text-foreground">{it.items}</div>
                     <div className="mt-1 flex items-center gap-1 flex-wrap">
                       <EventBadge event={it.event} />
-                      <span className="text-xs text-gray-400">·</span>
-                      <span className="text-xs text-gray-400 uppercase">{REASON_LABEL[it.reason]}</span>
+                      <span className="text-xs text-faint">·</span>
+                      <span className="text-xs text-faint uppercase">{REASON_LABEL[it.reason]}</span>
                     </div>
                   </div>
                   <div className="text-sm font-bold tabular-nums whitespace-nowrap text-foreground">{fmt(it.pending)}</div>
@@ -483,7 +483,7 @@ function BulkMarkModal({
             <div key={it.rowNumber} className="flex items-center justify-between gap-3 text-sm">
               <div className="min-w-0">
                 <div className="text-foreground truncate">{it.items}</div>
-                <div className="text-xs text-gray-400">{it.event} · {it.store || "—"}</div>
+                <div className="text-xs text-faint">{it.event} · {it.store || "—"}</div>
               </div>
               <span className="font-bold tabular-nums text-foreground shrink-0">{fmt(it.pending)}</span>
             </div>
@@ -491,10 +491,10 @@ function BulkMarkModal({
         </div>
         {error && <p className="text-xs text-red-500">{error}</p>}
         <div className="flex justify-end gap-2">
-          <button type="button" onClick={onClose} disabled={saving} className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
+          <button type="button" onClick={onClose} disabled={saving} className="px-4 py-2 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
             Cancel
           </button>
-          <button type="button" onClick={onConfirm} disabled={saving} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-hover disabled:opacity-50 transition-colors">
+          <button type="button" onClick={onConfirm} disabled={saving} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-dark disabled:opacity-50 transition-colors">
             {saving ? "Saving…" : actionLabel}
           </button>
         </div>
@@ -551,9 +551,9 @@ function MarkStageModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="text-sm font-semibold text-foreground">{actionLabel}</div>
-        <p className="text-sm text-gray-600">{item.items} — {item.event}</p>
+        <p className="text-sm text-muted-strong">{item.items} — {item.event}</p>
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-gray-500">Quantity <span className="text-gray-400">(pending: {item.pending})</span></span>
+          <span className="text-xs font-medium text-muted">Quantity <span className="text-faint">(pending: {item.pending})</span></span>
           <input
             type="number"
             min={1}
@@ -566,7 +566,7 @@ function MarkStageModal({
         </label>
         {stage === "dispatch" && (
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-500">Dispatch tracking <span className="text-gray-400 font-normal">(optional)</span></span>
+            <span className="text-xs font-medium text-muted">Dispatch tracking <span className="text-faint font-normal">(optional)</span></span>
             <input
               type="text"
               value={receipt}
@@ -578,10 +578,10 @@ function MarkStageModal({
         )}
         {error && <p className="text-xs text-red-500">{error}</p>}
         <div className="flex justify-end gap-2">
-          <button type="button" onClick={onClose} disabled={saving} className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
+          <button type="button" onClick={onClose} disabled={saving} className="px-4 py-2 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
             Cancel
           </button>
-          <button type="button" onClick={handleSubmit} disabled={saving || quantity < 1} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-hover disabled:opacity-50 transition-colors">
+          <button type="button" onClick={handleSubmit} disabled={saving || quantity < 1} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-dark disabled:opacity-50 transition-colors">
             {saving ? "Saving…" : actionLabel}
           </button>
         </div>

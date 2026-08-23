@@ -1,5 +1,5 @@
 import sql from "../db-pool"
-import { normalizeId } from "./helpers"
+import { normalizeId, splitExtraOngkir } from "./helpers"
 import { lookupCustomerDetail } from "./customers"
 import { getMessageTemplates, getBusinessProfile, getProductDefaults } from "./settings"
 import { fillTemplate } from "../message-templates"
@@ -423,7 +423,23 @@ export async function getPublicInvoiceForCustomer(
     const showShipments =
       shipments.length > 0 && (status === "Completed" || status.includes("Shipped"))
 
-    return { eventId: eid, eta, status, shipments, showShipments, orders, totals, invoice }
+    // The price of sending early, on the same arithmetic the Ship screen bills
+    // from — so the number in her sheet and the number on your button cannot
+    // disagree. unit_hold is not read here: a held order is not offered the
+    // choice anyway, and this path deliberately reads as few columns as it can.
+    const splitExtra = splitExtraOngkir(
+      group.map((r) => ({
+        gram: Number(r.gram ?? 0),
+        unit: Number(r.unit),
+        toShip: Math.max(0, Number(r.unit_arrive ?? 0) - Number(r.unit_ship ?? 0)),
+      })),
+      Number(group[0]?.ongkir ?? 0),
+    )
+
+    return {
+      eventId: eid, eta, status, shipments, showShipments,
+      splitExtraOngkir: splitExtra, orders, totals, invoice,
+    }
   })
 
   return { customer, events }

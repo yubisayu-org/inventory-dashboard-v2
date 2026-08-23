@@ -42,6 +42,15 @@ DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres
 INVOICE_READER_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres
 ```
 
+`.env.local` (prod) additionally needs, for the public catalogue endpoints
+(`app/api/public/catalogue/*`) and catalogue-post media uploads:
+
+```bash
+CATALOGUE_PUBLIC_DATABASE_URL=  # scoped `catalogue_public` role — see supabase/migrations/059_catalogue_public_role.sql
+SUPABASE_URL=                   # project URL, used by lib/storage.ts for catalogue media uploads
+SUPABASE_SERVICE_ROLE_KEY=      # service-role key, used by lib/storage.ts for catalogue media uploads
+```
+
 ### One-time setup
 
 Requires Docker Desktop, the Supabase CLI, and `libpq` (for `pg_dump`/`psql`):

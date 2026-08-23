@@ -33,7 +33,7 @@ export function EventCard({
   return (
     <div className="rounded-xl border border-cream-border bg-white overflow-hidden">
       {/* Header */}
-      <div className="px-5 py-4 bg-brand">
+      <div className="px-4 py-2 bg-brand">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-1.5">
             <span className="text-sm font-semibold text-white">{displayIg(customer).toUpperCase()}</span>
@@ -81,7 +81,7 @@ export function EventCard({
       <div className="hidden md:block overflow-x-auto">
         <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
           <thead>
-            <tr className="text-left text-xs font-semibold text-brand border-b border-cream-border bg-cream">
+            <tr className="text-left text-xs font-semibold text-brand border-b border-cream-border bg-surface-muted/80">
               <th className="px-4 py-2 font-medium relative select-none" style={{ width: widths.order }}>
                 Order
                 <div onMouseDown={(e) => startResize("order", e)} className="absolute inset-y-0 right-0 w-1 cursor-col-resize hover:bg-brand/30 active:bg-brand/60" />
@@ -107,7 +107,7 @@ export function EventCard({
           </thead>
           <tbody>
             {[...orders].reverse().map((r, i) => (
-              <tr key={i} className="border-b border-cream-border/60 group">
+              <tr key={i} className="border-b border-cream-border group">
                 <td className="px-4 py-2">{r.productName || r.order}</td>
                 <td className="px-4 py-2 text-right">{r.unit}</td>
                 <td className="px-4 py-2 text-right">{r.price}</td>
@@ -119,7 +119,7 @@ export function EventCard({
                       type="button"
                       onClick={() => setRefundLine(r)}
                       title="Create refund for this line (money only — keeps the order)"
-                      className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all"
+                      className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-faint hover:text-red-500 transition-all"
                     >
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
@@ -130,7 +130,7 @@ export function EventCard({
                       type="button"
                       onClick={() => setCancelLine(r)}
                       title="Cancel this order (customer backed out) — removes the line, refunds if paid, returns stock to Inventory"
-                      className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all"
+                      className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-faint hover:text-red-500 transition-all"
                     >
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <circle cx="12" cy="12" r="10" />
@@ -141,7 +141,7 @@ export function EventCard({
                 </td>
               </tr>
             ))}
-            <tr className="font-semibold bg-cream/40">
+            <tr className="font-semibold bg-cream">
               <td className="px-4 py-2">Total</td>
               <td className="px-4 py-2 text-right">{totals.unit}</td>
               <td className="px-4 py-2"></td>
@@ -152,7 +152,7 @@ export function EventCard({
                   type="button"
                   onClick={() => setAddAdjOpen(true)}
                   title="Add adjustment for this invoice"
-                  className="text-gray-400 hover:text-brand transition-colors"
+                  className="text-faint hover:text-brand transition-colors"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <line x1="12" y1="5" x2="12" y2="19" />
@@ -171,17 +171,17 @@ export function EventCard({
           <div key={i} className="px-4 py-3 flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="text-sm text-foreground truncate">{r.productName || r.order}</div>
-              <div className="text-xs text-gray-500 tabular-nums mt-0.5">
+              <div className="text-xs text-muted tabular-nums mt-0.5">
                 {r.unit} × {r.price} = <span className="font-medium text-foreground">{r.subtotal}</span>
               </div>
-              <div className="text-xs text-gray-400 tabular-nums mt-0.5">Ready {r.unitArrive}</div>
+              <div className="text-xs text-faint tabular-nums mt-0.5">Ready {r.unitArrive}</div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <button
                 type="button"
                 onClick={() => setRefundLine(r)}
                 title="Create refund for this line (money only — keeps the order)"
-                className="text-gray-400 hover:text-red-500 transition-colors"
+                className="text-faint hover:text-red-500 transition-colors"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
@@ -192,7 +192,7 @@ export function EventCard({
                 type="button"
                 onClick={() => setCancelLine(r)}
                 title="Cancel this order (customer backed out) — removes the line, refunds if paid, returns stock to Inventory"
-                className="text-gray-400 hover:text-red-500 transition-colors"
+                className="text-faint hover:text-red-500 transition-colors"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="10" />
@@ -202,7 +202,7 @@ export function EventCard({
             </div>
           </div>
         ))}
-        <div className="px-4 py-3 flex items-center justify-between gap-3 bg-cream/40 font-semibold">
+        <div className="px-4 py-3 flex items-center justify-between gap-3 bg-cream font-semibold">
           <span className="text-sm text-foreground">Total</span>
           <div className="flex items-center gap-3">
             <span className="text-sm tabular-nums text-foreground">{totals.unit} units · {fmt(totals.subtotal)}</span>
@@ -210,7 +210,7 @@ export function EventCard({
               type="button"
               onClick={() => setAddAdjOpen(true)}
               title="Add adjustment for this invoice"
-              className="text-gray-400 hover:text-brand transition-colors"
+              className="text-faint hover:text-brand transition-colors"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="12" y1="5" x2="12" y2="19" />

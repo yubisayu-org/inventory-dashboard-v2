@@ -19,8 +19,8 @@ import { descriptionOptions, AmountSignHint } from "./shared"
 const PAGE_SIZE = 25
 
 const INPUT_CLASS =
-  "w-full border border-cream-border rounded-md px-2 py-1 text-sm text-foreground bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
-const LABEL = "text-xs text-gray-500 mb-1 block"
+  "w-full border border-cream-border rounded-lg px-2 py-1 text-sm text-foreground bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+const LABEL = "text-xs text-muted mb-1 block"
 
 type EditForm = {
   event: string
@@ -170,7 +170,7 @@ export default function AdjustmentsClient() {
       size: 110,
       filterFn: "dateRange",
       cell: ({ getValue }) => (
-        <span className="text-gray-400 text-xs">{getValue<string>()}</span>
+        <span className="text-faint text-xs">{getValue<string>()}</span>
       ),
     },
     {
@@ -193,7 +193,7 @@ export default function AdjustmentsClient() {
             type="button"
             onClick={() => setEditingRow(row.original)}
             title="Edit"
-            className="text-gray-400 hover:text-brand transition-colors"
+            className="text-faint hover:text-brand transition-colors"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
@@ -204,7 +204,7 @@ export default function AdjustmentsClient() {
             type="button"
             onClick={() => handleDeleteRow(row.original)}
             title="Delete"
-            className="text-gray-400 hover:text-red-500 transition-colors"
+            className="text-faint hover:text-red-500 transition-colors"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 6h18" />
@@ -220,12 +220,12 @@ export default function AdjustmentsClient() {
   const renderMobileCard = useCallback((row: AdjustmentRow) => (
     <div
       onClick={() => setEditingRow(row)}
-      className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] flex items-center justify-between gap-3 cursor-pointer active:bg-cream/40 transition-colors"
+      className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] flex items-center justify-between gap-3 cursor-pointer active:bg-cream transition-colors"
     >
       <div className="min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm font-semibold text-foreground">{row.event}</span>
-          <span className="text-xs text-gray-400 uppercase">{displayIg(row.customer)}</span>
+          <span className="text-xs text-faint uppercase">{displayIg(row.customer)}</span>
         </div>
       </div>
       <span className="text-sm font-semibold tabular-nums shrink-0 text-foreground">
@@ -274,8 +274,8 @@ export default function AdjustmentsClient() {
           <>
             <button
               onClick={() => { setAddOpen((o) => !o); setEditingRow(null) }}
-              className={`hidden md:inline-flex items-center gap-1.5 h-[38px] px-3 text-sm rounded-lg border transition-colors ${
-                addOpen ? "bg-brand-light text-brand border-brand/30" : "bg-brand text-white border-transparent hover:bg-brand-hover"
+              className={`hidden md:inline-flex items-center gap-1.5 h-[38px] px-4 text-sm rounded-lg border transition-colors ${
+                addOpen ? "bg-brand-light text-brand border-brand/30" : "bg-brand text-white border-transparent hover:bg-brand-dark"
               }`}
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -422,7 +422,7 @@ function EditAdjustmentModal({
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40 md:flex-row md:items-center md:justify-center md:px-4" onClick={onClose}>
       <div className="w-full max-h-[90vh] overflow-y-auto md:max-w-md" onClick={e => e.stopPropagation()}>
-      <div className="bg-white rounded-t-2xl md:rounded-xl border-x border-t border-cream-border md:border shadow-xl p-6 pb-8 md:pb-6" role="dialog" aria-modal="true">
+      <div className="bg-white rounded-t-xl md:rounded-xl border-x border-t border-cream-border md:border shadow-xl p-6 pb-8 md:pb-6" role="dialog" aria-modal="true">
         <div className="flex items-center justify-between mb-4 -mx-6 px-6 border-b border-cream-border pb-3 md:mx-0 md:px-0 md:border-b-0 md:pb-0">
           <h3 className="text-base md:text-sm font-semibold text-foreground">Edit Adjustment</h3>
         </div>
@@ -474,7 +474,7 @@ function EditAdjustmentModal({
             type="button"
             onClick={handleDelete}
             aria-label="Delete"
-            className="inline-flex items-center justify-center h-[38px] border border-cream-border rounded-lg px-3 text-sm text-gray-400 hover:border-brand disabled:opacity-50 transition-colors"
+            className="inline-flex items-center justify-center h-[38px] border border-cream-border rounded-lg px-3 text-sm text-faint hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M10 11v6" /><path d="M14 11v6" />
@@ -483,7 +483,7 @@ function EditAdjustmentModal({
           <button
             type="button"
             onClick={onClose}
-            className="ml-auto px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+            className="ml-auto px-4 py-2 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
           >
             Cancel
           </button>
@@ -560,7 +560,7 @@ function AddAdjustmentForm({
   }
 
   return (
-    <div className="rounded-t-2xl md:rounded-xl border-x border-t border-cream-border md:border bg-white p-4 pb-8 md:pb-4">
+    <div className="rounded-t-xl md:rounded-xl border-x border-t border-cream-border md:border bg-white p-4 pb-8 md:pb-4">
       <div className="flex items-center justify-between mb-3 -mx-4 px-4 border-b border-cream-border pb-3 md:mx-0 md:px-0 md:border-b-0 md:pb-0">
         <h3 className="text-base md:text-sm font-semibold text-foreground">Add Adjustment</h3>
       </div>
@@ -595,15 +595,15 @@ function AddAdjustmentForm({
             </div>
             <div className="min-w-0">
               <label className={LABEL}>Amount <span className="text-brand">*</span></label>
-              <input type="number" value={amount} onChange={(e) => { setAmount(e.target.value); setFeedback(null) }} placeholder="0" className="w-full border border-cream-border rounded-md px-2 py-2 text-sm text-foreground bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors" />
+              <input type="number" value={amount} onChange={(e) => { setAmount(e.target.value); setFeedback(null) }} placeholder="0" className="w-full border border-cream-border rounded-lg px-2 py-2 text-sm text-foreground bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors" />
             </div>
           </div>
         </div>
-        <p className="text-[11px] text-gray-400 leading-snug">
+        <p className="text-[11px] text-faint leading-snug">
           <strong>Positive</strong> = Biaya Lainnya (adds to total). <strong>Negative</strong> = Diskon (reduces total).
         </p>
         <div className="flex items-center justify-end gap-2">
-          <button type="button" onClick={onClose} disabled={submitting} className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
+          <button type="button" onClick={onClose} disabled={submitting} className="px-4 py-2 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
             Cancel
           </button>
           <button type="submit" disabled={submitting || !canSubmit} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">

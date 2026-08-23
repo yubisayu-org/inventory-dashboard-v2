@@ -16,6 +16,13 @@ export const ADMIN_ROUTES = [
   "/dashboard/custom-label",
   "/dashboard/customers",
   "/dashboard/excess-purchase", // Inventory (ready stock)
+  // Group Order, whole: an admin names, prices and records orders here. The
+  // count itself is still the owner's, guarded on the slot route rather than
+  // by hiding the page.
+  "/dashboard/shop",
+  // The catalogue an admin keeps day to day — posting, tagging, and deciding
+  // what the customer site shows.
+  "/dashboard/catalogue-posts",
 ] as const
 
 /** Where an admin lands after login and when redirected off a blocked route. */

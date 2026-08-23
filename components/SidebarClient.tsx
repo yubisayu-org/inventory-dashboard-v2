@@ -77,6 +77,16 @@ const NAV_SECTIONS: NavSection[] = [
           </svg>
         ),
       },
+      {
+        href: "/dashboard/catalogue-posts",
+        label: "Catalogue",        icon: (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <circle cx="9" cy="9" r="2" />
+            <path d="m21 15-3.5-3.5a2 2 0 0 0-2.83 0L5 21" />
+          </svg>
+        ),
+      },
     ],
   },
   {
@@ -84,6 +94,15 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       // TODO: re-enable Form Records once the page is ready
       // { href: "/dashboard/form-records", label: "Form Records", roles: ["admin", "owner"], icon: (...) }
+      {
+        href: "/dashboard/order-requests",
+        label: "Requests",        icon: (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 11l3 3L22 4" />
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+          </svg>
+        ),
+      },
       {
         href: "/dashboard/list-order",
         label: "Order",        icon: (
@@ -151,6 +170,16 @@ const NAV_SECTIONS: NavSection[] = [
   {
     section: "Procurement",
     items: [
+      {
+        href: "/dashboard/shop",
+        label: "Group Order", icon: (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <path d="M16 10a4 4 0 0 1-8 0" />
+          </svg>
+        ),
+      },
       {
         href: "/dashboard/shopping-list",
         label: "Shopping List",        icon: (
@@ -237,8 +266,42 @@ const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
+    section: "Insights",
+    items: [
+      {
+        href: "/dashboard/analytics",
+        label: "Analytics",
+        icon: (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="18" y1="20" x2="18" y2="10" />
+            <line x1="12" y1="20" x2="12" y2="4" />
+            <line x1="6" y1="20" x2="6" y2="14" />
+          </svg>
+        ),
+      },
+    ],
+  },
+  {
     section: "Settings",
     items: [
+      {
+        href: "/dashboard/announcements",
+        label: "Announcements",        icon: (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+            <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+          </svg>
+        ),
+      },
+      {
+        href: "/dashboard/catalogue-access",
+        label: "Access",        icon: (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </svg>
+        ),
+      },
       {
         href: "/dashboard/settings",
         label: "Settings",        icon: (
@@ -295,7 +358,7 @@ export default function SidebarClient({ user }: Props) {
         )}
         <button
           onClick={() => setCollapsed((c) => !c)}
-          className="ml-auto text-gray-400 hover:text-brand transition-colors p-1 rounded"
+          className="ml-auto text-faint hover:text-brand transition-colors p-1 rounded"
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
           <svg
@@ -326,7 +389,7 @@ export default function SidebarClient({ user }: Props) {
                   onClick={() => toggleSection(section.section!)}
                   className="w-full flex items-center justify-between px-2 mb-1 group"
                 >
-                  <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 group-hover:text-brand transition-colors select-none">
+                  <span className="text-[10px] font-semibold uppercase tracking-widest text-faint group-hover:text-brand transition-colors select-none">
                     {section.section}
                   </span>
                   <svg
@@ -338,7 +401,7 @@ export default function SidebarClient({ user }: Props) {
                     strokeWidth="2.5"
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    className={`text-gray-300 group-hover:text-brand transition-all duration-200 ${sectionCollapsed ? "-rotate-90" : ""}`}
+                    className={`text-faint group-hover:text-brand transition-all duration-200 ${sectionCollapsed ? "-rotate-90" : ""}`}
                   >
                     <path d="M6 9l6 6 6-6" />
                   </svg>
@@ -357,10 +420,10 @@ export default function SidebarClient({ user }: Props) {
                         href={link.href}
                         title={collapsed ? link.label : undefined}
                         className={`
-                          flex items-center gap-3 px-2 py-2 rounded-md text-sm transition-colors
+                          flex items-center gap-3 px-4 py-2 rounded-lg text-sm transition-colors
                           ${isActive
                             ? "bg-brand-light text-brand font-medium"
-                            : "text-gray-600 hover:bg-brand-light hover:text-brand"
+                            : "text-muted-strong hover:bg-brand-light hover:text-brand"
                           }
                           ${collapsed ? "justify-center" : ""}
                         `}
@@ -389,7 +452,7 @@ export default function SidebarClient({ user }: Props) {
           {!collapsed && (
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-foreground truncate">{user.name}</p>
-              <p className="text-xs text-gray-400 truncate">
+              <p className="text-xs text-faint truncate">
                 {user.role ? ROLE_LABELS[user.role] : "User"}
               </p>
             </div>
@@ -399,7 +462,7 @@ export default function SidebarClient({ user }: Props) {
           <form action={signOutAction} className="mt-2">
             <button
               type="submit"
-              className="flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs text-gray-500 hover:bg-brand-light hover:text-brand transition-colors"
+              className="flex items-center gap-2 w-full px-2 py-1.5 rounded-lg text-xs text-muted hover:bg-brand-light hover:text-brand transition-colors"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
@@ -415,7 +478,7 @@ export default function SidebarClient({ user }: Props) {
             <button
               type="submit"
               title="Sign out"
-              className="text-gray-400 hover:text-brand transition-colors p-1 rounded"
+              className="text-faint hover:text-brand transition-colors p-1 rounded"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />

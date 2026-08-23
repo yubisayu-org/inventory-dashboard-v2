@@ -162,7 +162,7 @@ function CopyShipmentMessageButton({ record }: { record: DisplayShipment }) {
       className={`p-1 transition-colors rounded disabled:opacity-50 ${
         status === "copied" ? "text-green-600"
         : status === "error" ? "text-red-500"
-        : "text-gray-400 hover:text-brand"
+        : "text-faint hover:text-brand"
       }`}
     >
       {label ? (
@@ -244,14 +244,14 @@ function LabelModal({
       >
         <div className="px-5 py-4 border-b border-cream-border shrink-0">
           <div className="text-sm font-semibold text-foreground">Label Pengiriman</div>
-          <div className="text-xs text-gray-500 mt-0.5">
+          <div className="text-xs text-muted mt-0.5">
             {displayIg(record.customer).toUpperCase()} · {record.event}
             <span className="ml-2 font-mono">#{record.shippingId}</span>
           </div>
         </div>
 
         {loading && (
-          <div className="flex-1 flex items-center justify-center py-16 text-sm text-gray-400">
+          <div className="flex-1 flex items-center justify-center py-16 text-sm text-faint">
             Membuat label…
           </div>
         )}
@@ -274,7 +274,7 @@ function LabelModal({
             <a
               href={pdfUrl}
               download={`label-${record.shippingId}.pdf`}
-              className="px-3 py-1.5 rounded-lg border border-cream-border text-gray-600 text-xs font-medium hover:border-brand hover:text-brand transition-colors"
+              className="px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-xs font-medium hover:border-brand hover:text-brand transition-colors"
             >
               Download PDF
             </a>
@@ -282,7 +282,7 @@ function LabelModal({
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 transition-colors"
+            className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 transition-colors"
           >
             Tutup
           </button>
@@ -350,7 +350,7 @@ function EditResiModal({
       >
         <div className="px-5 py-4 border-b border-cream-border">
           <div className="text-sm font-semibold text-foreground">Edit Nomor Resi</div>
-          <div className="text-xs text-gray-500 mt-0.5">
+          <div className="text-xs text-muted mt-0.5">
             {displayIg(record.customer).toUpperCase()} · <span className="font-mono">#{record.shippingId}</span>
           </div>
         </div>
@@ -374,7 +374,7 @@ function EditResiModal({
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="px-4 py-1.5 rounded-lg border border-cream-border text-gray-600 text-xs font-medium hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+            className="px-4 py-1.5 rounded-lg border border-cream-border text-muted-strong text-xs font-medium hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
           >
             Batal
           </button>
@@ -382,7 +382,7 @@ function EditResiModal({
             type="button"
             onClick={handleSave}
             disabled={saving}
-            className="px-4 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
+            className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
           >
             {saving ? "Menyimpan…" : "Simpan"}
           </button>
@@ -459,7 +459,7 @@ function EditTempAddressModal({
           <div className="text-sm font-semibold text-foreground">
             {record.tempAddress ? "Edit Alamat Sementara" : "Set Alamat Sementara"}
           </div>
-          <div className="text-xs text-gray-500 mt-0.5">
+          <div className="text-xs text-muted mt-0.5">
             {displayIg(record.customer).toUpperCase()} · <span className="font-mono">#{record.shippingId}</span>
           </div>
         </div>
@@ -474,7 +474,7 @@ function EditTempAddressModal({
             placeholder={"Nama Penerima\nAlamat lengkap\nNo. telepon"}
             className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-300 focus:border-purple-500 transition-colors disabled:opacity-50 resize-none"
           />
-          <p className="text-[11px] text-gray-400">
+          <p className="text-[11px] text-faint">
             Alamat utama customer tidak berubah. Kosongkan untuk pakai alamat utama lagi.
           </p>
           {error && <p className="text-xs text-red-500">{error}</p>}
@@ -495,7 +495,7 @@ function EditTempAddressModal({
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="px-4 py-1.5 rounded-lg border border-cream-border text-gray-600 text-xs font-medium hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+            className="px-4 py-1.5 rounded-lg border border-cream-border text-muted-strong text-xs font-medium hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
           >
             Batal
           </button>
@@ -503,7 +503,7 @@ function EditTempAddressModal({
             type="button"
             onClick={handleSave}
             disabled={saving}
-            className="px-4 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
+            className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
           >
             {saving ? "Menyimpan…" : "Simpan"}
           </button>
@@ -619,7 +619,7 @@ export default function ShipmentsClient() {
         filterFn: "textContains",
         size: 80,
         cell: ({ getValue }) => (
-          <span className="font-mono text-xs text-gray-500">{getValue<string>()}</span>
+          <span className="font-mono text-xs text-muted">{getValue<string>()}</span>
         ),
       },
       {
@@ -671,7 +671,7 @@ export default function ShipmentsClient() {
                   type="button"
                   onClick={(e) => { e.stopPropagation(); setEditTempRecord(r) }}
                   title="Set alamat sementara untuk shipment ini"
-                  className="p-0.5 rounded text-gray-300 hover:text-purple-600 transition-colors"
+                  className="p-0.5 rounded text-faint hover:text-purple-600 transition-colors"
                 >
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M20 10c0 7-8 12-8 12s-8-5-8-12a8 8 0 0 1 16 0z" />
@@ -690,7 +690,7 @@ export default function ShipmentsClient() {
         size: 160,
         cell: ({ getValue }) => {
           const v = getValue<string>()
-          return <span className={`line-clamp-2 ${v ? "" : "text-gray-400"}`}>{v || "—"}</span>
+          return <span className={`line-clamp-2 ${v ? "" : "text-faint"}`}>{v || "—"}</span>
         },
       },
       {
@@ -700,7 +700,7 @@ export default function ShipmentsClient() {
         size: 220,
         enableSorting: false,
         cell: ({ getValue }) => (
-          <span className="whitespace-pre-wrap font-sans text-xs text-gray-600 leading-relaxed max-w-[200px] line-clamp-2">
+          <span className="whitespace-pre-wrap font-sans text-xs text-muted-strong leading-relaxed max-w-[200px] line-clamp-2">
             {getValue<string>()}
           </span>
         ),
@@ -736,7 +736,7 @@ export default function ShipmentsClient() {
               Ya
             </span>
           ) : (
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-surface-sunken text-muted">
               Tidak
             </span>
           ),
@@ -755,7 +755,7 @@ export default function ShipmentsClient() {
               className="group flex items-center gap-1.5 text-left"
             >
               <span
-                className={`text-xs ${record.trackingNumber ? "text-foreground font-mono" : "text-gray-400 italic"}`}
+                className={`text-xs ${record.trackingNumber ? "text-foreground font-mono" : "text-faint italic"}`}
               >
                 {record.trackingNumber || "Belum diisi"}
               </span>
@@ -768,7 +768,7 @@ export default function ShipmentsClient() {
                 strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                className="text-gray-400 group-hover:text-brand transition-colors shrink-0"
+                className="text-faint group-hover:text-brand transition-colors shrink-0"
               >
                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
                 <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
@@ -787,7 +787,7 @@ export default function ShipmentsClient() {
         sortingFn: (a, b) => a.original.createdAtTs - b.original.createdAtTs,
         size: 160,
         cell: ({ getValue }) => (
-          <span className="text-xs text-gray-400 whitespace-nowrap">{getValue<string>()}</span>
+          <span className="text-xs text-faint whitespace-nowrap">{getValue<string>()}</span>
         ),
       },
       {
@@ -797,7 +797,7 @@ export default function ShipmentsClient() {
         sortingFn: (a, b) => a.original.updatedAtTs - b.original.updatedAtTs,
         size: 160,
         cell: ({ getValue }) => (
-          <span className="text-xs text-gray-400 whitespace-nowrap">{getValue<string>()}</span>
+          <span className="text-xs text-faint whitespace-nowrap">{getValue<string>()}</span>
         ),
       },
       {
@@ -813,7 +813,7 @@ export default function ShipmentsClient() {
               type="button"
               onClick={(e) => { e.stopPropagation(); setLabelRecord(row.original) }}
               title="Lihat label pengiriman"
-              className="p-1 text-gray-400 hover:text-brand transition-colors rounded"
+              className="p-1 text-faint hover:text-brand transition-colors rounded"
             >
               <svg
                 width="15"
@@ -843,13 +843,13 @@ export default function ShipmentsClient() {
         <div className="min-w-0">
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-sm font-semibold text-foreground">{r.event}</span>
-            <span className="text-xs text-gray-400 uppercase truncate">{displayIg(r.customer)}</span>
+            <span className="text-xs text-faint uppercase truncate">{displayIg(r.customer)}</span>
             {r.mergedCount > 1 && <MergedIcon count={r.mergedCount} />}
           </div>
         </div>
         <div className="flex items-center gap-1 shrink-0">
           <CopyShipmentMessageButton record={r} />
-          <button type="button" onClick={(e) => { e.stopPropagation(); setLabelRecord(r) }} title="Lihat label pengiriman" className="p-1 text-gray-400 hover:text-brand transition-colors rounded">
+          <button type="button" onClick={(e) => { e.stopPropagation(); setLabelRecord(r) }} title="Lihat label pengiriman" className="p-1 text-faint hover:text-brand transition-colors rounded">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
               <polyline points="7 10 12 15 17 10" />
@@ -858,7 +858,7 @@ export default function ShipmentsClient() {
           </button>
         </div>
       </div>
-      <div className="text-xs text-gray-500 tabular-nums">
+      <div className="text-xs text-muted tabular-nums">
         {fmt(r.weightEstimation)} KG · Rp {fmt(r.ongkirTotal)}
       </div>
       <button
@@ -867,15 +867,15 @@ export default function ShipmentsClient() {
         className="group flex items-center justify-between gap-1.5 text-left pt-2.5 border-t border-cream-border"
       >
         <span className="flex items-center gap-1.5 min-w-0">
-          <span className={`text-xs truncate ${r.trackingNumber ? "text-foreground font-mono" : "text-gray-400 italic"}`}>
+          <span className={`text-xs truncate ${r.trackingNumber ? "text-foreground font-mono" : "text-faint italic"}`}>
             {r.trackingNumber || "Resi belum diisi"}
           </span>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400 group-hover:text-brand transition-colors shrink-0">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-faint group-hover:text-brand transition-colors shrink-0">
             <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
             <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
           </svg>
         </span>
-        <span className="text-xs text-gray-400 font-mono shrink-0">{r.shippingId}</span>
+        <span className="text-xs text-faint font-mono shrink-0">{r.shippingId}</span>
       </button>
     </div>
   ), [])
@@ -899,7 +899,7 @@ export default function ShipmentsClient() {
           onClick={() => setWindowFilterOpen((o) => !o)}
           disabled={loading}
           aria-label="Filter time window"
-          className="inline-flex items-center h-[38px] px-3 rounded-lg border border-cream-border bg-white text-sm text-gray-600 active:border-brand active:text-brand disabled:opacity-50"
+          className="inline-flex items-center h-[38px] px-3 rounded-lg border border-cream-border bg-white text-sm text-muted-strong active:border-brand active:text-brand disabled:opacity-50"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
@@ -912,7 +912,7 @@ export default function ShipmentsClient() {
                 key={value}
                 type="button"
                 onClick={() => { setWindowDays(value); setWindowFilterOpen(false) }}
-                className={`text-left px-2.5 py-1.5 rounded-md text-sm transition-colors ${windowDays === value ? "bg-brand-light text-brand font-medium" : "text-gray-600 hover:bg-cream"}`}
+                className={`text-left px-4 py-2 rounded-lg text-sm transition-colors ${windowDays === value ? "bg-brand-light text-brand font-medium" : "text-muted-strong hover:bg-cream"}`}
               >
                 {label}
               </button>
@@ -928,7 +928,7 @@ export default function ShipmentsClient() {
       type="button"
       onClick={handlePrintPdf}
       disabled={printingPdf || selectedCount === 0}
-      className="shrink-0 inline-flex items-center gap-1.5 h-[38px] text-sm font-medium text-white bg-brand hover:bg-brand/90 disabled:opacity-50 transition-colors px-3 rounded-lg whitespace-nowrap"
+      className="shrink-0 inline-flex items-center gap-1.5 h-[38px] text-sm font-medium text-white bg-brand hover:bg-brand/90 disabled:opacity-50 transition-colors px-4 rounded-lg whitespace-nowrap"
     >
       <svg
         width="13"
@@ -983,7 +983,7 @@ export default function ShipmentsClient() {
         />
       )}
       {!loading && !error && data && data.length === 0 && windowDays !== "all" && (
-        <div className="text-center text-sm text-gray-400 -mt-1">
+        <div className="text-center text-sm text-faint -mt-1">
           Tidak ada shipment dalam rentang ini.{" "}
           <button
             type="button"

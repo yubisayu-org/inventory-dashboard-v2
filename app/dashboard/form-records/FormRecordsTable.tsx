@@ -70,7 +70,7 @@ function InlineTextCell({ value, onSave }: { value: string; onSave: (value: stri
       title="Click to edit"
       className="text-left w-full text-xs hover:text-brand transition-colors"
     >
-      {value || <span className="text-gray-300">—</span>}
+      {value || <span className="text-faint">—</span>}
     </button>
   )
 }
@@ -215,7 +215,7 @@ export default function FormRecordsTable({ role }: { role: Role | null }) {
       meta: { align: "right" },
       cell: ({ getValue }) => {
         const v = fmtNum(getValue<number | null>())
-        return <span className={v === "—" ? "text-gray-400" : "font-medium tabular-nums"}>{v}</span>
+        return <span className={v === "—" ? "text-faint" : "font-medium tabular-nums"}>{v}</span>
       },
     },
     {
@@ -225,7 +225,7 @@ export default function FormRecordsTable({ role }: { role: Role | null }) {
       enableColumnFilter: false,
       cell: ({ row }) => isOwner
         ? <InlineTextCell value={row.original.receipt} onSave={(v) => handleSaveReceipt(row.original, v)} />
-        : <span className={row.original.receipt ? "" : "text-gray-400"}>{row.original.receipt || "—"}</span>,
+        : <span className={row.original.receipt ? "" : "text-faint"}>{row.original.receipt || "—"}</span>,
     },
     {
       accessorKey: "dispatchReceipt",
@@ -234,7 +234,7 @@ export default function FormRecordsTable({ role }: { role: Role | null }) {
       enableColumnFilter: false,
       cell: ({ row }) => isOwner
         ? <InlineTextCell value={row.original.dispatchReceipt} onSave={(v) => handleSaveDispatchReceipt(row.original, v)} />
-        : <span className={row.original.dispatchReceipt ? "" : "text-gray-400"}>{row.original.dispatchReceipt || "—"}</span>,
+        : <span className={row.original.dispatchReceipt ? "" : "text-faint"}>{row.original.dispatchReceipt || "—"}</span>,
     },
     {
       accessorKey: "unitArrive",
@@ -244,7 +244,7 @@ export default function FormRecordsTable({ role }: { role: Role | null }) {
       meta: { align: "right" },
       cell: ({ getValue }) => {
         const v = fmtNum(getValue<number | null>())
-        return <span className={v === "—" ? "text-gray-400" : "font-medium tabular-nums"}>{v}</span>
+        return <span className={v === "—" ? "text-faint" : "font-medium tabular-nums"}>{v}</span>
       },
     },
     {
@@ -255,7 +255,7 @@ export default function FormRecordsTable({ role }: { role: Role | null }) {
       meta: { align: "right" },
       cell: ({ getValue }) => {
         const v = fmtNum(getValue<number | null>())
-        return <span className={v === "—" ? "text-gray-400" : "font-medium tabular-nums"}>{v}</span>
+        return <span className={v === "—" ? "text-faint" : "font-medium tabular-nums"}>{v}</span>
       },
     },
     {
@@ -266,7 +266,7 @@ export default function FormRecordsTable({ role }: { role: Role | null }) {
       meta: { align: "right" },
       cell: ({ getValue }) => {
         const v = fmtNum(getValue<number | null>())
-        return <span className={v === "—" ? "text-gray-400" : "font-medium tabular-nums"}>{v}</span>
+        return <span className={v === "—" ? "text-faint" : "font-medium tabular-nums"}>{v}</span>
       },
     },
     {
@@ -274,21 +274,21 @@ export default function FormRecordsTable({ role }: { role: Role | null }) {
       header: "Note",
       size: 160,
       enableColumnFilter: false,
-      cell: ({ getValue }) => <span className="text-gray-500 text-xs">{getValue<string>() || "—"}</span>,
+      cell: ({ getValue }) => <span className="text-muted text-xs">{getValue<string>() || "—"}</span>,
     },
     {
       accessorKey: "createdAt",
       header: "Created At",
       size: 110,
       filterFn: "dateRange",
-      cell: ({ getValue }) => <span className="text-gray-400 text-xs whitespace-nowrap">{getValue<string>() || "—"}</span>,
+      cell: ({ getValue }) => <span className="text-faint text-xs whitespace-nowrap">{getValue<string>() || "—"}</span>,
     },
     {
       accessorKey: "updatedAt",
       header: "Updated At",
       size: 110,
       enableColumnFilter: false,
-      cell: ({ getValue }) => <span className="text-gray-400 text-xs whitespace-nowrap">{getValue<string>() || "—"}</span>,
+      cell: ({ getValue }) => <span className="text-faint text-xs whitespace-nowrap">{getValue<string>() || "—"}</span>,
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
   ], [isOwner, handleSaveReceipt, handleSaveDispatchReceipt])
@@ -297,10 +297,10 @@ export default function FormRecordsTable({ role }: { role: Role | null }) {
     <div className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] flex flex-col gap-1.5">
       <div className="flex items-center justify-between gap-2">
         <span className="text-sm font-semibold text-foreground truncate">{displayIg(row.customer)}</span>
-        <span className="text-xs text-gray-400 shrink-0">{row.event}</span>
+        <span className="text-xs text-faint shrink-0">{row.event}</span>
       </div>
-      <div className="text-xs text-gray-600 truncate">{row.items}</div>
-      <div className="flex items-center justify-between gap-3 text-xs text-gray-500 tabular-nums">
+      <div className="text-xs text-muted-strong truncate">{row.items}</div>
+      <div className="flex items-center justify-between gap-3 text-xs text-muted tabular-nums">
         <span>Qty <span className="font-medium text-foreground">{row.unit}</span></span>
         <span>Buy <span className="font-medium text-foreground">{fmtNum(row.unitBuy)}</span></span>
         <span>Arrive <span className="font-medium text-foreground">{fmtNum(row.unitArrive)}</span></span>
@@ -312,7 +312,7 @@ export default function FormRecordsTable({ role }: { role: Role | null }) {
           <InlineTextCell value={row.dispatchReceipt} onSave={(v) => handleSaveDispatchReceipt(row, v)} />
         </div>
       ) : row.receipt || row.dispatchReceipt ? (
-        <div className="text-xs text-gray-500 pt-2.5 border-t border-cream-border mt-1 flex flex-col gap-0.5">
+        <div className="text-xs text-muted pt-2.5 border-t border-cream-border mt-1 flex flex-col gap-0.5">
           {row.receipt && <div>{row.receipt}</div>}
           {row.dispatchReceipt && <div>{row.dispatchReceipt}</div>}
         </div>

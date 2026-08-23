@@ -37,12 +37,12 @@ export default function SelectionActionBar({
   reserveFab?: boolean
 }) {
   return (
-    <div className={`fixed z-40 h-14 flex items-center justify-center gap-3 md:gap-2 rounded-2xl bg-white/90 backdrop-blur border border-cream-border text-foreground shadow-xl px-2 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden bottom-[calc(5rem+env(safe-area-inset-bottom))] md:bottom-4 md:left-1/2 md:right-auto md:-translate-x-1/2 ${reserveFab ? "left-4 right-20" : "left-1/2 -translate-x-1/2 max-w-[calc(100vw-2rem)]"}`}>
+    <div className={`fixed z-40 h-14 flex items-center justify-center gap-3 md:gap-2 rounded-xl bg-white/90 backdrop-blur border border-cream-border text-foreground shadow-xl px-2 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden bottom-[calc(5rem+env(safe-area-inset-bottom))] md:bottom-4 md:left-1/2 md:right-auto md:-translate-x-1/2 ${reserveFab ? "left-4 right-20" : "left-1/2 -translate-x-1/2 max-w-[calc(100vw-2rem)]"}`}>
       <div className="flex flex-col md:flex-row items-center justify-center gap-0.5 md:gap-2 px-2 shrink-0">
         <span className="w-7 h-7 rounded-full flex items-center justify-center bg-brand/10 text-brand font-bold text-xs tabular-nums">
           {count}
         </span>
-        <span className="text-[10px] md:text-xs font-medium text-gray-500 leading-none whitespace-nowrap">Selected</span>
+        <span className="text-[10px] md:text-xs font-medium text-muted leading-none whitespace-nowrap">Selected</span>
       </div>
       <div className="w-px h-8 bg-cream-border shrink-0" />
       {actions.map((a, i) => {
@@ -68,13 +68,13 @@ export default function SelectionActionBar({
         aria-label="Clear selection"
         className="flex flex-col md:flex-row items-center justify-center gap-0.5 md:gap-2 px-2 py-0.5 rounded-xl hover:bg-cream transition-colors shrink-0"
       >
-        <span className="w-7 h-7 rounded-full flex items-center justify-center bg-cream text-gray-500">
+        <span className="w-7 h-7 rounded-full flex items-center justify-center bg-cream text-muted">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="1 4 1 10 7 10" />
             <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
           </svg>
         </span>
-        <span className="text-[10px] md:text-xs font-medium text-gray-500 leading-none whitespace-nowrap">Clear</span>
+        <span className="text-[10px] md:text-xs font-medium text-muted leading-none whitespace-nowrap">Clear</span>
       </button>
     </div>
   )

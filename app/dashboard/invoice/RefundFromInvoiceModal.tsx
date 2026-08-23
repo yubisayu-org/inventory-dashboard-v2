@@ -110,11 +110,11 @@ export function RefundFromInvoiceModal({
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="text-sm font-semibold text-foreground">Create Refund</div>
-            <div className="text-xs text-gray-400 mt-0.5">
+            <div className="text-xs text-faint mt-0.5">
               {line.productName || (line.order ?? "").replace(/ x \d+$/, "")} × {line.unit}
             </div>
           </div>
-          <button type="button" onClick={onClose} className="text-gray-400 hover:text-brand transition-colors shrink-0">
+          <button type="button" onClick={onClose} className="text-faint hover:text-brand transition-colors shrink-0">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
           </button>
         </div>
@@ -125,7 +125,7 @@ export function RefundFromInvoiceModal({
               <circle cx="12" cy="12" r="10" /><path d="m9 12 2 2 4-4" />
             </svg>
             <p className="text-sm font-medium text-foreground">Refund created</p>
-            <p className="text-xs text-gray-400">Track it on the Refunds page</p>
+            <p className="text-xs text-faint">Track it on the Refunds page</p>
             <button type="button" onClick={onClose} className="mt-1 px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 transition-colors">
               Done
             </button>
@@ -134,7 +134,7 @@ export function RefundFromInvoiceModal({
           <>
             <div className="flex flex-col gap-3">
               <label className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-gray-500">Reason</span>
+                <span className="text-xs font-medium text-muted">Reason</span>
                 <SearchableSelect
                   value={reason}
                   onChange={(v) => setReason(v)}
@@ -145,8 +145,8 @@ export function RefundFromInvoiceModal({
                 />
               </label>
               <label className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-gray-500">
-                  Affected units <span className="text-gray-400 font-normal">(of {line.unit} ordered, {line.unitArrive} arrived)</span>
+                <span className="text-xs font-medium text-muted">
+                  Affected units <span className="text-faint font-normal">(of {line.unit} ordered, {line.unitArrive} arrived)</span>
                 </span>
                 <input
                   type="number"
@@ -159,7 +159,7 @@ export function RefundFromInvoiceModal({
                 />
               </label>
               <label className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-gray-500">Refund amount (Rp)</span>
+                <span className="text-xs font-medium text-muted">Refund amount (Rp)</span>
                 <input
                   type="number"
                   min="1"
@@ -168,12 +168,12 @@ export function RefundFromInvoiceModal({
                   disabled={saving}
                   className={INPUT_CLASS}
                 />
-                <span className="text-xs text-gray-400">
+                <span className="text-xs text-faint">
                   {Number(affectedUnits)} × Rp {fmt(unitPrice)}
                 </span>
               </label>
               <label className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-gray-500">Note <span className="text-gray-400 font-normal">(optional)</span></span>
+                <span className="text-xs font-medium text-muted">Note <span className="text-faint font-normal">(optional)</span></span>
                 <textarea
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
@@ -188,7 +188,7 @@ export function RefundFromInvoiceModal({
             {error && <p className="text-xs text-red-500">{error}</p>}
 
             <div className="flex justify-end gap-2">
-              <button type="button" onClick={onClose} disabled={saving} className="px-4 py-2 rounded-lg border border-cream-border text-gray-600 text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
+              <button type="button" onClick={onClose} disabled={saving} className="px-4 py-2 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
                 Cancel
               </button>
               <button type="submit" disabled={saving || Number(refundAmount) < 1} className="px-4 py-2 rounded-lg bg-red-500 text-white text-sm font-medium hover:bg-red-600 disabled:opacity-50 transition-colors">

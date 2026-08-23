@@ -1,13 +1,32 @@
 @import "tailwindcss";
 
+/* Paper rather than cream: the ground is warmer and greyer than the pink-cream
+   it replaces, which is what makes the maroon read as deliberate rather than as
+   the same hue family as its background. The brand itself is unchanged. */
 :root {
   --background: #ffffff;
-  --foreground: #1a1a1a;
+  --foreground: #221F1C;
   --brand: #7B1A1A;
   --brand-dark: #5C1212;
-  --brand-light: #f9f0f0;
-  --cream: #FDF5EE;
-  --cream-border: #EDE3D8;
+  --brand-light: #F6EDEB;
+  --cream: #F2EFE9;
+  --cream-border: #E2DED7;
+
+  /* Warm greys, replacing Tailwind's cool scale.
+     text-gray-500 and friends are blue-leaning — they were mixed for a white
+     or cool-grey page, and on paper they read as faintly cold. These sit in
+     the ground's own family, which is what makes the palette look chosen.
+     Shades map one-to-one onto what the app already used, so nothing shifts
+     in contrast: muted-strong ≈ gray-600, muted ≈ gray-500, faint ≈ gray-400. */
+  --muted-strong: #6F6960;
+  --muted: #8A847C;
+  --faint: #B5AFA6;
+  /* Tinted surfaces: a panel inside a white card, and a sunken well. */
+  --surface-muted: #FAF8F4;
+  --surface-sunken: #F0ECE5;
+  /* A rule that needs to read as an object rather than a hairline — sheet
+     grabbers, progress tracks. */
+  --divider: #D9D3C9;
 }
 
 @theme inline {
@@ -18,6 +37,12 @@
   --color-brand-light: var(--brand-light);
   --color-cream: var(--cream);
   --color-cream-border: var(--cream-border);
+  --color-muted-strong: var(--muted-strong);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-surface-muted: var(--surface-muted);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-divider: var(--divider);
   --font-sans: var(--font-mulish), -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
   --font-mono: var(--font-geist-mono);
 }
