@@ -84,14 +84,17 @@ test("pairing parks both parcels, so neither sits in Siap Kirim", async () => {
 })
 
 // A pair waiting on stock is not work — the badge has to be able to reach zero.
+//
+// Measured as a delta, not an absolute: the count is over every customer in
+// the database, so any other pairing sitting there would decide the number.
 test("the Gabung count is pairs that can go, not pairs that exist", async () => {
-  const { counts } = await getShipOrdersFiltered({})
-  assert.equal(counts.paired, 0, "B is still one unit short")
+  const before = (await getShipOrdersFiltered({})).counts.paired
+  assert.equal((await card(A))?.status, "paired", "the pairing exists")
 
   await sql`UPDATE orders SET unit_arrive = 2 WHERE event = ${B} AND customer = ${handle}`
   await reapplyHoldsForArrival(B, [handle])
-  const after = await getShipOrdersFiltered({})
-  assert.equal(after.counts.paired, 1)
+  const after = (await getShipOrdersFiltered({})).counts.paired
+  assert.equal(after, before + 1, "it counts only once the short partner lands")
 })
 
 // The same reason a hold has to be re-applied: the wish outlives the moment.
@@ -267,4 +270,64 @@ test("the whole plan is priced once, not per parcel", () => {
     -25000,
     "combining is a saving, and the same sum says so",
   )
+})
+
+// A remainder ships as its own box, not as a second copy of the first one.
+// The pairing is spent when the whole group has gone — which means checking
+// every event that shares the key, not the events in the box being sent.
+// Scoped to the box, the partner kept a key to a pairing that no longer
+// existed, and no later shipment could ever clear it.
+test("the last box of a pairing spends it, even when it carries one event", async () => {
+  const I = `${TAG}_I`
+  const J = `${TAG}_J`
+  const [p] = await sql<{ id: number; gram: number }[]>`
+    SELECT id, gram FROM products WHERE gram > 0 ORDER BY id LIMIT 1`
+  // I has fully landed; J is half here, so the first box leaves a remainder.
+  for (const [name, unit, arrive] of [[I, 2, 2], [J, 4, 2]] as const) {
+    const [w] = await sql<{ id: number }[]>`
+      INSERT INTO events (name, warehouse_id)
+      SELECT ${name}, id FROM warehouses ORDER BY id LIMIT 1
+      RETURNING warehouse_id AS id`
+    await sql`
+      INSERT INTO customer_warehouse_ongkir (customer_id, warehouse_id, ongkos_kirim)
+      VALUES (${customerId}, ${w.id}, ${RATE})
+      ON CONFLICT (customer_id, warehouse_id) DO UPDATE SET ongkos_kirim = ${RATE}`
+    await sql`
+      INSERT INTO orders (event, customer, product_id, unit_price, unit, unit_arrive)
+      VALUES (${name}, ${handle}, ${p.id}, 100000, ${unit}, ${arrive})`
+    await sql`
+      INSERT INTO payments (event, customer, amount, is_checked, kind)
+      VALUES (${name}, ${handle}, ${unit * 100000 + RATE * Math.ceil((p.gram * unit) / 1000)}, true, 'deposit')`
+  }
+  await setMergeGroup(customerId, [I, J])
+
+  const box = async (event: string) => {
+    const g = (await card(event))!
+    return {
+      event,
+      orders: g.orders.map((o) => ({
+        rowNumber: o.rowNumber, productId: o.productId, productName: o.productName,
+        toShip: Math.max(0, o.unitArrive - o.unitShip), unitShip: o.unitShip, gram: o.gram,
+      })),
+    }
+  }
+
+  await shipMergedCustomerOrders({
+    customer: handle, ongkirPerKg: RATE, groups: [await box(I), await box(J)],
+  })
+  const midway = await getShippingPrefs(customerId)
+  assert.ok(midway.find((x) => x.event === J)?.mergeKey, "J still owes two, so the pairing stands")
+  assert.ok(midway.find((x) => x.event === I)?.mergeKey, "and I stays paired to it")
+
+  // The rest of J turns up and goes on its own. I has nothing left to send,
+  // so this one box is the end of the pairing for both of them.
+  await sql`UPDATE orders SET unit_arrive = 4 WHERE event = ${J} AND customer = ${handle}`
+  await reapplyHoldsForArrival(J, [handle])
+  await shipMergedCustomerOrders({
+    customer: handle, ongkirPerKg: RATE, groups: [await box(J)],
+  })
+
+  const spent = await getShippingPrefs(customerId)
+  assert.equal(spent.find((x) => x.event === J)?.mergeKey, null, "the wish is spent")
+  assert.equal(spent.find((x) => x.event === I)?.mergeKey, null, "for the partner too, not just the box")
 })

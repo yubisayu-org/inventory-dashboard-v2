@@ -644,15 +644,29 @@ export async function shipMergedCustomerOrders(params: ShipMergedParams, actor?:
     // these to travel together, not to travel together once — so what is left
     // behind stays paired and comes back to the Gabung tab as stock lands,
     // rather than becoming two loose parcels she has to pair a second time.
+    //
+    // "The whole group" means every event sharing the merge key, not just the
+    // events in this box. A remainder ships as its own group, and scoping the
+    // check to that call left the partner holding a key to a pairing that no
+    // longer existed — a wish that could never be spent.
+    const paired = await tx<{ event: string }[]>`
+      SELECT p.event FROM customer_shipping_prefs p
+        JOIN customers c ON c.id = p.customer_id
+       WHERE lower(replace(c.instagram_id, '@', '')) = ${custKey}
+         AND p.merge_key IS NOT NULL
+         AND p.merge_key IN (
+           SELECT p2.merge_key FROM customer_shipping_prefs p2
+            WHERE p2.customer_id = p.customer_id AND p2.event = ANY(${events}))`
+    const scope = paired.length ? paired.map((r) => r.event) : events
     const [outstanding] = await tx<{ n: string }[]>`
       SELECT COALESCE(SUM(o.unit - COALESCE(o.unit_ship, 0)), 0) AS n
         FROM orders o
-       WHERE o.event = ANY(${events})
+       WHERE o.event = ANY(${scope})
          AND lower(replace(o.customer, '@', '')) = ${custKey}`
     if (Number(outstanding?.n ?? 0) <= 0) {
       await tx`
         UPDATE customer_shipping_prefs SET merge_key = NULL, updated_at = NOW()
-         WHERE event = ANY(${events})
+         WHERE event = ANY(${scope})
            AND customer_id IN (SELECT id FROM customers
                                 WHERE lower(replace(instagram_id, '@', '')) = ${custKey})`
     }
