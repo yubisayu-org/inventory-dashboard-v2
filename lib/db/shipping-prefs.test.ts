@@ -9,7 +9,8 @@ import {
   ineligibleReason,
   ShippingPrefError,
 } from "./shipping-prefs"
-import { reapplyHoldsForArrival } from "./fulfillment"
+import { reapplyHoldsForArrival, getShipOrdersFiltered } from "./fulfillment"
+import { normalizeId } from "./helpers"
 
 const TAG = `shiptest${process.hrtime.bigint()}`
 const PAID = `${TAG}_PAID`
@@ -190,4 +191,24 @@ test("an arrival for someone who never asked to hold is left alone", async () =>
   const [after] = await sql<{ h: string }[]>`
     SELECT COALESCE(SUM(unit_hold), 0) AS h FROM orders WHERE event = ${PAID} AND customer = ${handle}`
   assert.equal(Number(after.h), Number(before.h))
+})
+
+
+// ── the address has to reach the screen that prints the label ──
+test("an address she asked for arrives on the ship card", async () => {
+  await setTempAddress(customerId, PAID, "Jl. Melati 8, Bandung")
+  const { groups } = await getShipOrdersFiltered({ event: PAID })
+  const mine = groups.find((g) => normalizeId(g.customer) === normalizeId(handle))
+  assert.equal(mine?.requestedAddress, "Jl. Melati 8, Bandung")
+
+  await setTempAddress(customerId, PAID, "")
+  const after = await getShipOrdersFiltered({ event: PAID })
+  const cleared = after.groups.find((g) => normalizeId(g.customer) === normalizeId(handle))
+  assert.equal(cleared?.requestedAddress, null, "clearing it must fall back to her profile address")
+})
+
+test("an event she said nothing about carries no address", async () => {
+  const { groups } = await getShipOrdersFiltered({ event: OWING })
+  const mine = groups.find((g) => normalizeId(g.customer) === normalizeId(handle))
+  assert.equal(mine?.requestedAddress, null)
 })

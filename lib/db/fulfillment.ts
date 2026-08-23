@@ -30,6 +30,7 @@ function buildShipGroups(
   detailMap: Map<string, CustomerDetail>,
   paymentMap: Map<string, PaymentStatus>,
   ongkirMap: Map<string, number>,
+  addressMap: Map<string, string>,
 ): ShipCustomer[] {
   const groupMap = new Map<string, { customer: string; event: string; rows: Record<string, unknown>[] }>()
   for (const row of orderRows) {
@@ -104,6 +105,7 @@ function buildShipGroups(
       ongkirPerKg,
       status,
       paymentStatus,
+      requestedAddress: addressMap.get(`${customerKey}|${event}`) ?? null,
     }]
   })
 }
@@ -139,6 +141,34 @@ async function fetchCustomerDetails(customerIds: Set<string>): Promise<Map<strin
  * `${normalizedCustomer}|${event}`. Ship groups are per (customer, event), so
  * each gets the rate for the warehouse that fulfills its event.
  */
+/**
+ * The one-off delivery addresses customers have asked for on these events.
+ *
+ * Without this the Ship modal seeds itself from customers.data_diri and the
+ * label prints her usual address — while her own order card tells her the
+ * parcel was redirected. Neither side finds out until it is delivered to the
+ * wrong house, so the request has to reach the screen that prints the label.
+ */
+async function fetchRequestedAddresses(
+  customerIds: Set<string>,
+  eventNames: Set<string>,
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>()
+  if (customerIds.size === 0 || eventNames.size === 0) return map
+  const rows = await sql`
+    SELECT p.event,
+           lower(replace(c.instagram_id, '@', '')) AS norm_cust,
+           p.temp_address
+      FROM customer_shipping_prefs p
+      JOIN customers c ON c.id = p.customer_id
+     WHERE p.temp_address IS NOT NULL
+       AND p.event = ANY(${[...eventNames]})
+       AND lower(replace(c.instagram_id, '@', '')) = ANY(${[...customerIds]})
+  `
+  for (const r of rows) map.set(`${r.norm_cust}|${r.event}`, String(r.temp_address))
+  return map
+}
+
 async function fetchEventOngkir(
   customerIds: Set<string>,
   eventNames: Set<string>,
@@ -200,15 +230,16 @@ export async function getShipOrdersFiltered(opts: {
 
   // Fetch customer details, per-event ongkir, and payment status concurrently —
   // all keyed by normalized customer handle (ongkir/payment additionally by event).
-  const [detailMap, ongkirMap, paymentRows] = await Promise.all([
+  const [detailMap, ongkirMap, addressMap, paymentRows] = await Promise.all([
     fetchCustomerDetails(customerIds),
     fetchEventOngkir(customerIds, eventNames),
+    fetchRequestedAddresses(customerIds, eventNames),
     getPaymentStatus(event),
   ])
   const paymentMap = new Map<string, PaymentStatus>()
   for (const row of paymentRows) paymentMap.set(`${row.customer}|${row.event}`, row.status)
 
-  const allGroups = buildShipGroups(orderRows, detailMap, paymentMap, ongkirMap)
+  const allGroups = buildShipGroups(orderRows, detailMap, paymentMap, ongkirMap, addressMap)
 
   // Counts and the filtered list both derive from the same in-memory status,
   // so the tab badges can never drift from the rows actually shown.

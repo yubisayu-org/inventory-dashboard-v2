@@ -316,6 +316,12 @@ export interface ShipCustomer {
   ongkirPerKg: number
   status: ShipStatus
   paymentStatus: PaymentStatus
+  /**
+   * A one-off address the customer asked for on this event, from
+   * customer_shipping_prefs. Null when she has not asked for one, which is
+   * the usual case — then the label uses her profile address as before.
+   */
+  requestedAddress: string | null
 }
 
 export interface InvoiceResult {

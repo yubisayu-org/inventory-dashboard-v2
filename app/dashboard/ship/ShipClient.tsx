@@ -574,6 +574,14 @@ function CustomerCard({
                 (e.g. "Tiba Sebagian") — the "hold" status only wins once every
                 line has arrived, so without this a held unit on a partial event
                 would show no sign it's being held back. */}
+            {/* Visible on the card, not only inside the modal: a redirected
+                parcel that is only discoverable by opening the ship dialog is
+                one bulk print away from going to the wrong house. */}
+            {c.requestedAddress && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
+                Alamat lain diminta
+              </span>
+            )}
             {totalHold > 0 && c.status !== "hold" && (
               <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE.hold.cls}`}>
                 {STATUS_BADGE.hold.label}
@@ -831,9 +839,14 @@ function ShipConfirmModal({
   // customer's profile data_diri. Toggle on reveals an editable textarea pre-
   // filled with that same address so admin can tweak just the parts that
   // differ (receiver name, street) without retyping the whole block.
+  // A one-off address the customer asked for on this event beats both: the
+  // override starts on, filled with hers. Leaving it off would print her
+  // profile address on the label while her own order card says the parcel was
+  // redirected — and nobody finds out until it arrives at the wrong house.
   const profileAddress = c.customerDetail?.dataDiri ?? ""
-  const [useTempAddress, setUseTempAddress] = useState(false)
-  const [tempAddress, setTempAddress] = useState(profileAddress)
+  const requestedAddress = c.requestedAddress
+  const [useTempAddress, setUseTempAddress] = useState(Boolean(requestedAddress))
+  const [tempAddress, setTempAddress] = useState(requestedAddress ?? profileAddress)
   const [msgCopied, setMsgCopied] = useState(false)
   const toShipRows = c.orders.filter((o) => o.toShip > 0)
   const templates = useMessageTemplates()
@@ -952,7 +965,7 @@ function ShipConfirmModal({
                   Alamat pengiriman
                   {useTempAddress && (
                     <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-purple-100 text-purple-700">
-                      Sementara
+                      {requestedAddress && tempAddress === requestedAddress ? "Diminta customer" : "Sementara"}
                     </span>
                   )}
                 </div>
@@ -976,7 +989,9 @@ function ShipConfirmModal({
                     className="w-full border border-purple-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-300 focus:border-purple-500 transition-colors resize-none"
                   />
                   <p className="text-[11px] text-faint mt-1">
-                    Alamat ini hanya untuk pengiriman ini. Alamat utama customer tidak berubah.
+                    {requestedAddress && tempAddress === requestedAddress
+                      ? "Customer sendiri yang minta alamat ini untuk pesanan ini. Alamat utamanya tidak berubah."
+                      : "Alamat ini hanya untuk pengiriman ini. Alamat utama customer tidak berubah."}
                   </p>
                 </>
               ) : (
@@ -1112,6 +1127,7 @@ function MergeShipConfirmModal({
   // parts that differ. One address per box — merged shipments share it.
   const [useTempAddress, setUseTempAddress] = useState(false)
   const [tempAddress, setTempAddress] = useState("")
+  const [addressFromCustomer, setAddressFromCustomer] = useState(false)
 
   // Pull every shippable event for this customer, regardless of which tab the
   // cards live on, so partial + ready events can be combined freely.
@@ -1142,14 +1158,28 @@ function MergeShipConfirmModal({
   const customerDetail = allGroups?.[0]?.customerDetail ?? null
   const ongkirPerKg = allGroups?.[0]?.ongkirPerKg ?? 0
   const profileAddress = customerDetail?.dataDiri ?? ""
+  // One box, one address — so if any event in it was redirected, that is the
+  // address the box goes to. Two different requests in one box is a question
+  // for the customer, not something to resolve silently: both are shown.
+  const requestedAddresses = Array.from(
+    new Set(checkedGroups.map((g) => g.requestedAddress).filter((a): a is string => Boolean(a))),
+  )
+  const requestedAddress = requestedAddresses[0] ?? null
 
-  // Seed the temp-address textarea with the customer's profile address once
-  // the fetch completes. Only seeds when empty so admin's typing isn't blown
-  // away by a re-render.
+  // Seed the temp-address textarea once the fetch completes: what the customer
+  // asked for if she asked, her profile address otherwise. Only seeds when
+  // empty so admin's typing isn't blown away by a re-render.
   useEffect(() => {
-    if (profileAddress && !tempAddress) setTempAddress(profileAddress)
+    const seed = requestedAddress || profileAddress
+    if (seed && !tempAddress) {
+      setTempAddress(seed)
+      if (requestedAddress) {
+        setUseTempAddress(true)
+        setAddressFromCustomer(true)
+      }
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profileAddress])
+  }, [profileAddress, requestedAddress])
   const totalGram = checkedGroups.reduce((s, g) => s + g.orders.reduce((a, o) => a + o.gram * o.toShip, 0), 0)
   const combinedKg = Math.ceil(totalGram / 1000)
   const combinedOngkir = ongkirPerKg * combinedKg
@@ -1313,6 +1343,17 @@ function MergeShipConfirmModal({
                       <p className="text-[11px] text-faint mt-1">
                         Seluruh paket gabungan akan dikirim ke alamat ini. Alamat utama customer tidak berubah.
                       </p>
+                      {addressFromCustomer && (
+                        <p className="text-[11px] text-purple-700 mt-1">
+                          Diisi dari permintaan customer.
+                        </p>
+                      )}
+                      {requestedAddresses.length > 1 && (
+                        <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 mt-1">
+                          Customer minta dua alamat berbeda untuk event yang digabung. Satu kotak hanya bisa satu
+                          alamat — pastikan dulu ke dia, atau kirim terpisah.
+                        </p>
+                      )}
                     </>
                   ) : (
                     profileAddress ? (
