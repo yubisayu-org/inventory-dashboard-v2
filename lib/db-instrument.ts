@@ -90,11 +90,12 @@ function track(query: unknown, label: string): unknown {
 }
 
 /**
- * Wrap a postgres.js pool so every tagged-template query is timed.
+ * Wrap a postgres.js pool so every query is timed, however it was built.
  *
- * Only tagged-template calls are Queries. `sql(value)`, `sql(obj, ...keys)` and
- * friends return interpolation builders with no lifecycle, and are passed
- * straight through. Queries issued inside `sql.begin(tx => …)` use the driver's
+ * Tagged calls arrive through the apply trap; `sql.unsafe` and `sql.file`
+ * arrive through the get trap and are wrapped there. `sql(value)`,
+ * `sql(obj, ...keys)` and friends return interpolation builders with no
+ * lifecycle, and are passed straight through. Queries issued inside `sql.begin(tx => …)` use the driver's
  * own transaction handle, not this proxy, so they are counted only as the one
  * outer call — transactions here are writes, not the read paths under suspicion.
  */
@@ -108,7 +109,17 @@ export function instrument<T extends object>(sql: T, label: string): T {
     },
     get(target, prop, receiver) {
       const value = Reflect.get(target, prop, receiver)
-      return typeof value === "function" ? value.bind(target) : value
+      if (typeof value !== "function") return value
+      const bound = value.bind(target) as (...a: unknown[]) => unknown
+      // `unsafe` and `file` hand back a Query the same as a tagged call does,
+      // but they arrive through a property rather than the apply trap. Missing
+      // them is not a rounding error: pagination and column filters build their
+      // SQL as a string, so the busiest read paths reach the database ONLY this
+      // way — and their query time was being reported as application time.
+      if (prop === "unsafe" || prop === "file") {
+        return (...args: unknown[]) => track(bound(...args), label)
+      }
+      return bound
     },
   })
 }
