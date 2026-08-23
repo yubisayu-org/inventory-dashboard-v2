@@ -322,6 +322,12 @@ export interface ShipCustomer {
    * the usual case — then the label uses her profile address as before.
    */
   requestedAddress: string | null
+  /**
+   * True when that address sits in a different Biteship area than her profile
+   * — her standing ongkir was priced for the other one, so the cost may not
+   * match. Surfaced, never re-rated automatically.
+   */
+  requestedOtherArea: boolean
 }
 
 export interface InvoiceResult {

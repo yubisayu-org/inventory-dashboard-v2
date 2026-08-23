@@ -131,12 +131,12 @@ test("an unpaid event cannot be smuggled into a group with a paid one", async ()
 })
 
 test("a temporary address is stored, and emptying it clears it", async () => {
-  await setTempAddress(customerId, PAID, "  Jl. Kantor 12  ")
+  await setTempAddress(customerId, PAID, { address: "  Jl. Kantor 12  " })
   assert.equal(
     (await getShippingPrefs(customerId)).find((p) => p.event === PAID)?.tempAddress,
     "Jl. Kantor 12",
   )
-  await setTempAddress(customerId, PAID, "   ")
+  await setTempAddress(customerId, PAID, { address: "   " })
   assert.equal((await getShippingPrefs(customerId)).find((p) => p.event === PAID)?.tempAddress, null)
 })
 
@@ -196,12 +196,12 @@ test("an arrival for someone who never asked to hold is left alone", async () =>
 
 // ── the address has to reach the screen that prints the label ──
 test("an address she asked for arrives on the ship card", async () => {
-  await setTempAddress(customerId, PAID, "Jl. Melati 8, Bandung")
+  await setTempAddress(customerId, PAID, { address: "Jl. Melati 8, Bandung" })
   const { groups } = await getShipOrdersFiltered({ event: PAID })
   const mine = groups.find((g) => normalizeId(g.customer) === normalizeId(handle))
   assert.equal(mine?.requestedAddress, "Jl. Melati 8, Bandung")
 
-  await setTempAddress(customerId, PAID, "")
+  await setTempAddress(customerId, PAID, { address: "" })
   const after = await getShipOrdersFiltered({ event: PAID })
   const cleared = after.groups.find((g) => normalizeId(g.customer) === normalizeId(handle))
   assert.equal(cleared?.requestedAddress, null, "clearing it must fall back to her profile address")
@@ -211,4 +211,28 @@ test("an event she said nothing about carries no address", async () => {
   const { groups } = await getShipOrdersFiltered({ event: OWING })
   const mine = groups.find((g) => normalizeId(g.customer) === normalizeId(handle))
   assert.equal(mine?.requestedAddress, null)
+})
+
+
+// The area rides with the address, and clearing the address clears both — an
+// area with no street is not somewhere a courier can go.
+test("the chosen area is stored with the address and cleared with it", async () => {
+  await setTempAddress(customerId, PAID, {
+    address: "Jl. Melati 8",
+    areaId: "IDNP6IDNC144IDND885IDZ40132",
+    areaName: "Jawa Barat, Bandung, Coblong, 40132",
+  })
+  const saved = (await getShippingPrefs(customerId)).find((p) => p.event === PAID)
+  assert.equal(saved?.tempAreaId, "IDNP6IDNC144IDND885IDZ40132")
+  assert.equal(saved?.tempAreaName, "Jawa Barat, Bandung, Coblong, 40132")
+
+  const { groups } = await getShipOrdersFiltered({ event: PAID })
+  const card = groups.find((g) => normalizeId(g.customer) === normalizeId(handle))
+  assert.equal(card?.requestedAddress, "Jl. Melati 8\nJawa Barat, Bandung, Coblong, 40132")
+  assert.equal(card?.requestedOtherArea, true, "her profile has no area, so this one differs")
+
+  await setTempAddress(customerId, PAID, { address: "", areaId: "x", areaName: "y" })
+  const cleared = (await getShippingPrefs(customerId)).find((p) => p.event === PAID)
+  assert.equal(cleared?.tempAddress, null)
+  assert.equal(cleared?.tempAreaId, null, "an area with nowhere to deliver is not kept")
 })

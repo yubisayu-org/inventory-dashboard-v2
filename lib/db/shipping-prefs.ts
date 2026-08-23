@@ -15,6 +15,9 @@ export type ShippingPref = {
   mode: ShipMode
   mergeKey: string | null
   tempAddress: string | null
+  /** The Biteship area chosen alongside it, when there is one. */
+  tempAreaId: string | null
+  tempAreaName: string | null
 }
 
 /** Why an event cannot be chosen for, when it cannot. */
@@ -26,23 +29,34 @@ export function isShipMode(v: unknown): v is ShipMode {
   return typeof v === "string" && (MODES as string[]).includes(v)
 }
 
+type PrefRow = {
+  event: string
+  mode: ShipMode
+  merge_key: string | null
+  temp_address: string | null
+  temp_area_id: string | null
+  temp_area_name: string | null
+}
+
+const toPref = (r: PrefRow): ShippingPref => ({
+  event: r.event,
+  mode: r.mode,
+  mergeKey: r.merge_key,
+  tempAddress: r.temp_address,
+  tempAreaId: r.temp_area_id,
+  tempAreaName: r.temp_area_name,
+})
+
 export async function getShippingPrefs(
   customerId: number,
   db: postgres.Sql | DBExecutor = sql,
 ): Promise<ShippingPref[]> {
-  const rows = await db<
-    { event: string; mode: ShipMode; merge_key: string | null; temp_address: string | null }[]
-  >`
-    SELECT event, mode, merge_key, temp_address
+  const rows = await db<PrefRow[]>`
+    SELECT event, mode, merge_key, temp_address, temp_area_id, temp_area_name
       FROM customer_shipping_prefs
      WHERE customer_id = ${customerId}
   `
-  return rows.map((r) => ({
-    event: r.event,
-    mode: r.mode,
-    mergeKey: r.merge_key,
-    tempAddress: r.temp_address,
-  }))
+  return rows.map(toPref)
 }
 
 /**
@@ -238,22 +252,33 @@ export async function setMergeGroup(
   return key
 }
 
-/** A one-off receiving address for this parcel. Empty clears it. */
+/**
+ * A one-off receiving address for this parcel. An empty street clears the
+ * whole thing, area included.
+ *
+ * The area is optional but arrives with the address, not instead of it: an
+ * area alone is not somewhere a courier can deliver, and a street alone is
+ * the free-text destination the picker exists to prevent. Passing an area
+ * without a street therefore clears both, same as passing nothing.
+ */
 export async function setTempAddress(
   customerId: number,
   event: string,
-  address: string,
+  input: { address: string; areaId?: string | null; areaName?: string | null },
   db: DBExecutor = sql,
 ): Promise<void> {
   const reason = await ineligibleReason(customerId, event, db)
   if (reason) throw new ShippingPrefError(reason)
 
-  const value = address.trim() ? address.trim() : null
+  const value = input.address.trim() ? input.address.trim() : null
+  const areaId = value && input.areaId?.trim() ? input.areaId.trim() : null
+  const areaName = value && areaId && input.areaName?.trim() ? input.areaName.trim() : null
   await db`
-    INSERT INTO customer_shipping_prefs (customer_id, event, temp_address)
-    VALUES (${customerId}, ${event}, ${value})
+    INSERT INTO customer_shipping_prefs (customer_id, event, temp_address, temp_area_id, temp_area_name)
+    VALUES (${customerId}, ${event}, ${value}, ${areaId}, ${areaName})
     ON CONFLICT (customer_id, event)
-    DO UPDATE SET temp_address = ${value}, updated_at = NOW()
+    DO UPDATE SET temp_address = ${value}, temp_area_id = ${areaId},
+                  temp_area_name = ${areaName}, updated_at = NOW()
   `
 }
 
@@ -263,18 +288,11 @@ export async function shippingPrefsForCustomer(
   db: DBExecutor = sql,
 ): Promise<ShippingPref[]> {
   const key = normalizeId(instagramId)
-  const rows = await db<
-    { event: string; mode: ShipMode; merge_key: string | null; temp_address: string | null }[]
-  >`
-    SELECT sp.event, sp.mode, sp.merge_key, sp.temp_address
+  const rows = await db<PrefRow[]>`
+    SELECT sp.event, sp.mode, sp.merge_key, sp.temp_address, sp.temp_area_id, sp.temp_area_name
       FROM customer_shipping_prefs sp
       JOIN customers c ON c.id = sp.customer_id
      WHERE lower(replace(c.instagram_id, '@', '')) = ${key}
   `
-  return rows.map((r) => ({
-    event: r.event,
-    mode: r.mode,
-    mergeKey: r.merge_key,
-    tempAddress: r.temp_address,
-  }))
+  return rows.map(toPref)
 }

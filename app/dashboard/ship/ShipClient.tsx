@@ -993,6 +993,12 @@ function ShipConfirmModal({
                       ? "Customer sendiri yang minta alamat ini untuk pesanan ini. Alamat utamanya tidak berubah."
                       : "Alamat ini hanya untuk pengiriman ini. Alamat utama customer tidak berubah."}
                   </p>
+                  {c.requestedOtherArea && tempAddress === requestedAddress && (
+                    <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 mt-1">
+                      Area-nya beda dari alamat utama. Ongkir yang tertagih masih pakai tarif area lamanya —
+                      cek dulu kalau selisihnya besar.
+                    </p>
+                  )}
                 </>
               ) : (
                 profileAddress ? (

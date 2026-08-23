@@ -85,7 +85,12 @@ export async function POST(req: NextRequest) {
           { status: 400, headers: corsHeaders() },
         )
       }
-      await setTempAddress(customer.id, event, address)
+      // The area is whatever the picker handed back. Capped like the address:
+      // both are free-form as far as this endpoint is concerned, and a body
+      // that arrives with a novel-length "area" is not a picker result.
+      const areaId = String(body.areaId ?? "").slice(0, MAX_ADDRESS)
+      const areaName = String(body.areaName ?? "").slice(0, MAX_ADDRESS)
+      await setTempAddress(customer.id, event, { address, areaId, areaName })
     } else {
       return NextResponse.json({ error: "Unknown action" }, { status: 400, headers: corsHeaders() })
     }

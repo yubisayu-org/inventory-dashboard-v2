@@ -30,7 +30,7 @@ function buildShipGroups(
   detailMap: Map<string, CustomerDetail>,
   paymentMap: Map<string, PaymentStatus>,
   ongkirMap: Map<string, number>,
-  addressMap: Map<string, string>,
+  addressMap: Map<string, RequestedAddress>,
 ): ShipCustomer[] {
   const groupMap = new Map<string, { customer: string; event: string; rows: Record<string, unknown>[] }>()
   for (const row of orderRows) {
@@ -105,7 +105,8 @@ function buildShipGroups(
       ongkirPerKg,
       status,
       paymentStatus,
-      requestedAddress: addressMap.get(`${customerKey}|${event}`) ?? null,
+      requestedAddress: addressMap.get(`${customerKey}|${event}`)?.address ?? null,
+      requestedOtherArea: addressMap.get(`${customerKey}|${event}`)?.otherArea ?? false,
     }]
   })
 }
@@ -149,23 +150,36 @@ async function fetchCustomerDetails(customerIds: Set<string>): Promise<Map<strin
  * parcel was redirected. Neither side finds out until it is delivered to the
  * wrong house, so the request has to reach the screen that prints the label.
  */
+type RequestedAddress = { address: string; otherArea: boolean }
+
 async function fetchRequestedAddresses(
   customerIds: Set<string>,
   eventNames: Set<string>,
-): Promise<Map<string, string>> {
-  const map = new Map<string, string>()
+): Promise<Map<string, RequestedAddress>> {
+  const map = new Map<string, RequestedAddress>()
   if (customerIds.size === 0 || eventNames.size === 0) return map
   const rows = await sql`
     SELECT p.event,
            lower(replace(c.instagram_id, '@', '')) AS norm_cust,
-           p.temp_address
+           p.temp_address, p.temp_area_name,
+           -- Her standing ongkir was priced for her own area. A redirect to a
+           -- different one may cost differently, and that is a decision for a
+           -- person, so it is surfaced rather than re-rated.
+           (p.temp_area_id IS NOT NULL
+             AND p.temp_area_id IS DISTINCT FROM c.biteship_area_id) AS other_area
       FROM customer_shipping_prefs p
       JOIN customers c ON c.id = p.customer_id
      WHERE p.temp_address IS NOT NULL
        AND p.event = ANY(${[...eventNames]})
        AND lower(replace(c.instagram_id, '@', '')) = ANY(${[...customerIds]})
   `
-  for (const r of rows) map.set(`${r.norm_cust}|${r.event}`, String(r.temp_address))
+  for (const r of rows) {
+    // Street then area, the way a label reads.
+    const address = [String(r.temp_address), r.temp_area_name ? String(r.temp_area_name) : ""]
+      .filter(Boolean)
+      .join("\n")
+    map.set(`${r.norm_cust}|${r.event}`, { address, otherArea: Boolean(r.other_area) })
+  }
   return map
 }
 
