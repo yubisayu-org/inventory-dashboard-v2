@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { publicOrigin } from "@/lib/public-origin"
 import { signState } from "@/lib/catalogue-oauth-state"
 
 // Start of the customer sign-in flow. Deliberately NOT NextAuth: auth.ts
@@ -34,9 +35,11 @@ export async function GET(req: NextRequest) {
 
   const url = new URL("https://accounts.google.com/o/oauth2/v2/auth")
   url.searchParams.set("client_id", clientId)
-  // Derived from the request rather than an env var, matching auth.ts's
-  // trustHost: true — the app already trusts the platform proxy's host.
-  url.searchParams.set("redirect_uri", `${req.nextUrl.origin}/customer/callback`)
+  // The origin the BROWSER used, not the one this process was addressed on:
+  // behind Railway's proxy the latter is https://localhost:8080, and Google
+  // refuses a redirect_uri pointing there. Same trust reasoning as auth.ts's
+  // trustHost: true.
+  url.searchParams.set("redirect_uri", `${publicOrigin(req)}/customer/callback`)
   url.searchParams.set("response_type", "code")
   // openid alone: this flow needs a stable subject id and nothing else. No
   // profile, no email, no contacts.

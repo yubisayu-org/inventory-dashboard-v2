@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { publicOrigin } from "@/lib/public-origin"
 import { verifyState } from "@/lib/catalogue-oauth-state"
 import { redeemInvite, signInByGoogleSub } from "@/lib/db/catalogue-auth"
 import { putOneTimeCode } from "@/lib/catalogue-one-time-code"
@@ -62,7 +63,9 @@ export async function GET(req: NextRequest) {
         code,
         client_id: process.env.GOOGLE_CLIENT_ID!,
         client_secret: process.env.GOOGLE_CLIENT_SECRET!,
-        redirect_uri: `${req.nextUrl.origin}/customer/callback`,
+        // Byte-for-byte what /customer/login sent, or Google rejects the
+        // exchange even though it just accepted the redirect.
+        redirect_uri: `${publicOrigin(req)}/customer/callback`,
         grant_type: "authorization_code",
       }),
     })
