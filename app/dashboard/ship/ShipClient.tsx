@@ -965,7 +965,7 @@ function ShipConfirmModal({
                   Alamat pengiriman
                   {useTempAddress && (
                     <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-purple-100 text-purple-700">
-                      {requestedAddress && tempAddress === requestedAddress ? "Diminta customer" : "Sementara"}
+                      {requestedAddress && tempAddress === requestedAddress ? "Customer Request" : "Sementara"}
                     </span>
                   )}
                 </div>
