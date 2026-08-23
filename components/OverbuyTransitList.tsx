@@ -5,6 +5,7 @@ import type { ExcessTransitItem } from "@/lib/db"
 import { REASON_LABEL, REASON_CLASS } from "@/app/dashboard/excess-purchase/ExcessTable"
 import { fmt } from "@/lib/format"
 import InfoTooltip from "@/components/InfoTooltip"
+import { TRANSIT_COL } from "@/components/transit-columns"
 
 type Stage = "dispatch" | "arrive"
 
@@ -284,12 +285,12 @@ export default function OverbuyTransitList({
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="border-b border-cream-border bg-surface-muted/80">
-              <th className="text-left px-4 py-2.5 font-medium text-muted w-44">Event</th>
-              <th className="text-left px-4 py-2.5 font-medium text-muted w-36">Store</th>
+              <th className={`text-left px-4 py-2.5 font-medium text-muted ${TRANSIT_COL.group}`}>Event</th>
+              <th className={`text-left px-4 py-2.5 font-medium text-muted ${TRANSIT_COL.store}`}>Store</th>
               <th className="text-left px-4 py-2.5 font-medium text-muted">Item</th>
-              <th className="text-left px-4 py-2.5 font-medium text-muted w-32">Reason</th>
-              <th className="text-right px-4 py-2.5 font-medium text-muted w-20">Qty</th>
-              <th className="px-4 py-2.5 w-10" />
+              <th className={`text-left px-4 py-2.5 font-medium text-muted ${TRANSIT_COL.detail}`}>Reason</th>
+              <th className={`text-right px-4 py-2.5 font-medium text-muted ${TRANSIT_COL.qty}`}>Qty</th>
+              <th className={`px-4 py-2.5 ${TRANSIT_COL.action}`} />
             </tr>
           </thead>
           <tbody>

@@ -12,6 +12,7 @@ import EventSelect from "@/components/EventSelect"
 import SearchInput from "@/components/SearchInput"
 import SelectionActionBar from "@/components/SelectionActionBar"
 import OverbuyTransitList from "@/components/OverbuyTransitList"
+import { TRANSIT_COL } from "@/components/transit-columns"
 
 const INPUT_CLASS =
   "border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
@@ -329,11 +330,11 @@ export default function DispatchListClient() {
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="border-b border-cream-border bg-surface-muted/80">
-              <th className="text-left px-4 py-2.5 font-medium text-muted w-44">Event</th>
-              <th className="text-left px-4 py-2.5 font-medium text-muted w-36">Store</th>
+              <th className={`text-left px-4 py-2.5 font-medium text-muted ${TRANSIT_COL.group}`}>Event</th>
+              <th className={`text-left px-4 py-2.5 font-medium text-muted ${TRANSIT_COL.store}`}>Store</th>
               <th className="text-left px-4 py-2.5 font-medium text-muted">Product</th>
-              <th className="text-right px-4 py-2.5 font-medium text-muted w-20">Qty</th>
-              <th className="px-4 py-2.5 w-10" />
+              <th className={`text-right px-4 py-2.5 font-medium text-muted ${TRANSIT_COL.qty}`}>Qty</th>
+              <th className={`px-4 py-2.5 ${TRANSIT_COL.action}`} />
             </tr>
           </thead>
           <tbody>
