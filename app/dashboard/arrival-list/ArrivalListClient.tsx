@@ -11,7 +11,7 @@ import ArriveBulkModal from "./ArriveBulkModal"
 import EventSelect from "@/components/EventSelect"
 import SearchableSelect from "@/components/SearchableSelect"
 import SearchInput from "@/components/SearchInput"
-import { FALLBACK_ROUTES, routeOf, routeKeyOf, daysInTransit, transitStatus, type DispatchRoute, type TransitStatus } from "@/lib/dispatch-modes"
+import { FALLBACK_ROUTES, routeOf, daysInTransit, transitStatus, type DispatchRoute, type TransitStatus } from "@/lib/dispatch-modes"
 import SelectionActionBar from "@/components/SelectionActionBar"
 import OverbuyTransitList from "@/components/OverbuyTransitList"
 import { groupItems, buildRows, rowKey } from "@/lib/grouped-rows"
@@ -275,12 +275,17 @@ export default function ArrivalListClient() {
   const [receiveOpen, setReceiveOpen] = useState(false)
   const [notReceivedOpen, setNotReceivedOpen] = useState(false)
 
-  const fetchItems = useCallback((event?: string, silent = false) => {
+  const fetchItems = useCallback((event?: string, route?: string, silent = false) => {
     if (!silent) setLoading(true)
     setError("")
-    const url = event
-      ? `/api/sheets/arrival-list?event=${encodeURIComponent(event)}`
-      : "/api/sheets/arrival-list"
+    // The route goes to the server now. Filtering in the browser meant every
+    // tab downloaded every parcel still in transit and then showed a tenth of
+    // them; asking for one route fetches one route.
+    const params = new URLSearchParams()
+    if (event) params.set("event", event)
+    if (route && route !== "all") params.set("route", route)
+    const qs = params.toString()
+    const url = qs ? `/api/sheets/arrival-list?${qs}` : "/api/sheets/arrival-list"
     fetchJson<{ items: ArrivalListItem[]; excessPending?: ExcessTransitItem[] }>(url)
       .then((data) => {
         const items = data.items ?? []
@@ -298,14 +303,14 @@ export default function ArrivalListClient() {
   }, [])
 
   useEffect(() => {
-    fetchItems(selectedEvent || undefined)
-  }, [fetchItems, selectedEvent])
+    fetchItems(selectedEvent || undefined, route)
+  }, [fetchItems, selectedEvent, route])
 
   // Partial fills change multiple orders' pending qty in non-trivial ways.
   // Refetching is simpler and more correct than incremental local state updates.
   // Silent so the open modal isn't unmounted by the TableSkeleton fallback.
   function handleArrivedSuccess() {
-    fetchItems(selectedEvent || undefined, true)
+    fetchItems(selectedEvent || undefined, route, true)
   }
 
   // Resolve selected keys back to live items (off `items`, not `filteredItems`,
@@ -358,19 +363,6 @@ export default function ArrivalListClient() {
   }
 
   /** How many lines are waiting on each route, for the counts on the tabs. */
-  const routeCounts = useMemo(() => {
-    const counts: Record<string, number> = { all: 0, other: 0 }
-    for (const r of routes) counts[r.key] = 0
-    for (const item of items) {
-      counts.all += 1
-      const modes = new Set(item.orders.map((o) => routeKeyOf(o.dispatchReceipt, routes)))
-      // An item can span two parcels — half flown, half shipped — so it counts
-      // once against each route it is actually travelling on.
-      for (const m of modes) counts[m] = (counts[m] ?? 0) + 1
-    }
-    return counts
-  }, [items, routes])
-
   const filteredItems = useMemo<ArrivalRow[]>(() => {
     const q = search.trim().toLowerCase()
     const matchesSearch = (i: ArrivalRow) => !q
@@ -381,19 +373,18 @@ export default function ArrivalListClient() {
 
     if (route === "all") return items.filter(matchesSearch)
 
-    // Narrowed to one route, a row must describe THAT parcel and nothing else.
-    // Filtering which rows to show is not enough: an item split between two
-    // boxes would keep reporting its full quantity and every customer, so
-    // opening the air cargo would list seven units when only three flew — and
-    // the four still at sea would be hunted for on the bench.
     // One row per box, not per item: a route can hold several parcels, and a
-    // product may sit in two of them. Splitting here is what lets the table
-    // group by receipt below — and what makes each row's quantity, customers
-    // and order ids describe the box in front of you.
+    // product may sit in two of them. The server has already narrowed the
+    // quantities to this route — nine units of which five flew arrive here as
+    // five — and splitting per parcel is what lets the table group by receipt
+    // below.
     return items.reduce<ArrivalRow[]>((out, item) => {
       const byParcel = new Map<string, typeof item.orders>()
       for (const o of item.orders) {
-        if (routeKeyOf(o.dispatchReceipt, routes) !== route) continue
+        // No route check: the server returned this route's orders and nothing
+        // else. Re-testing here would use the browser's copy of the routes,
+        // which is FALLBACK_ROUTES until Settings loads — and that copy knows
+        // MNC but not MU, so it would drop parcels the server had rightly sent.
         const key = o.dispatchReceipt || "—"
         byParcel.set(key, [...(byParcel.get(key) ?? []), o])
       }
@@ -464,8 +455,8 @@ export default function ArrivalListClient() {
     const data = await res.json().catch(() => ({}))
     if (!res.ok) throw new Error(data.error ?? "Could not rename")
     clearSelection()
-    fetchItems(selectedEvent || undefined, true)
-  }, [fetchItems, selectedEvent])
+    fetchItems(selectedEvent || undefined, route, true)
+  }, [fetchItems, selectedEvent, route])
 
   // Desktop-only state (see above) — mobile's own render loop reads collapsedEvents/
   // collapsedStores directly, not through `rows`.
@@ -485,7 +476,7 @@ export default function ArrivalListClient() {
       <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-sm text-red-700 flex items-center justify-between gap-3">
         <span>{error}</span>
         <button
-          onClick={() => fetchItems(selectedEvent || undefined)}
+          onClick={() => fetchItems(selectedEvent || undefined, route)}
           className="text-xs px-3 py-1.5 rounded-lg border border-red-300 text-red-700 hover:bg-red-100 transition-colors shrink-0"
         >
           Retry
@@ -503,11 +494,11 @@ export default function ArrivalListClient() {
           are operated the same way. */}
       <div className="flex items-center gap-1 w-full rounded-xl border border-cream-border bg-white p-1 mb-3 overflow-x-auto">
         {routeTabs.map(({ key, label }) => {
-          const count = routeCounts[key] ?? 0
-          // "Other" catches an unrecognised prefix — a typo, usually. It stays
-          // out of the bar while empty rather than offering a tab that shows
-          // nothing.
-          if (key === "other" && count === 0) return null
+          // No count beside the label any more: the browser holds one route's
+          // parcels, so it has nothing to count the others with. "Other" is
+          // always offered — it is where an unrecognised code lands, and it
+          // cannot hide itself when empty without also hiding itself when the
+          // server simply has not been asked.
           const active = route === key
           return (
             <button
@@ -529,7 +520,6 @@ export default function ArrivalListClient() {
               }`}
             >
               {label}
-              <span className={`tabular-nums text-xs ${active ? "text-white/70" : "text-faint"}`}>{count}</span>
             </button>
           )
         })}
@@ -828,7 +818,7 @@ export default function ArrivalListClient() {
       <OverbuyTransitList
         items={excessPending}
         stage="arrive"
-        onMarked={() => fetchItems(selectedEvent || undefined, true)}
+        onMarked={() => fetchItems(selectedEvent || undefined, route, true)}
       />
 
       {arrivingItem && (
