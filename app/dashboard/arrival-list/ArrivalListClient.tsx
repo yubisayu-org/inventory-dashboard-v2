@@ -598,9 +598,6 @@ export default function ArrivalListClient() {
           // the date; the first is as good as another.
           parcelSentOn: orders[0]?.dispatchedAt ?? "",
           orders,
-          orderIds: orders.map((o) => o.id),
-          customers: Array.from(new Set(orders.map((o) => o.customer))),
-          customerCount: new Set(orders.map((o) => o.customer)).size,
           totalPending: orders.reduce((n, o) => n + o.pending, 0),
           totalBought: orders.reduce((n, o) => n + o.unitBuy, 0),
         }
