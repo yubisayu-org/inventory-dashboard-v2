@@ -332,6 +332,7 @@ export async function getPublicInvoiceForCustomer(
   const [orderRows, paymentRows, adjustmentRows, shipmentRows] = await Promise.all([
     db`
       SELECT o.event, o.customer, o.unit, o.unit_price, o.unit_arrive, o.unit_ship,
+             COALESCE(o.unit_hold, 0) AS unit_hold,
              p.name AS product_name, COALESCE(p.gram, 0) AS gram,
              COALESCE(e.eta, '') AS event_eta,
              -- Per-event ongkir: the rate from the event's warehouse. The
@@ -403,13 +404,26 @@ export async function getPublicInvoiceForCustomer(
   const events: PublicInvoiceEvent[] = order.map((eid) => {
     const group = groups[eid]
 
-    const orders: PublicInvoiceOrderLine[] = group.map((r) => ({
-      order: `${r.product_name} x ${r.unit}`,
-      unit: r.unit,
-      price: formatIdrNumber(r.unit_price),
-      subtotal: formatIdrNumber(r.unit_price * r.unit),
-      unitArrive: r.unit_arrive ?? 0,
-    }))
+    // The stages of one line, which the Shipping page shows as columns: what
+    // she ordered, what would go now, what she asked to keep back, what has
+    // already gone. Ready is derived rather than stored, and derived HERE
+    // rather than in the browser, so her screen and the Ship screen cannot
+    // disagree about what is sendable.
+    const orders: PublicInvoiceOrderLine[] = group.map((r) => {
+      const arrive = Number(r.unit_arrive ?? 0)
+      const ship = Number(r.unit_ship ?? 0)
+      const hold = Number(r.unit_hold ?? 0)
+      return {
+        order: `${r.product_name} x ${r.unit}`,
+        unit: r.unit,
+        price: formatIdrNumber(r.unit_price),
+        subtotal: formatIdrNumber(r.unit_price * r.unit),
+        unitArrive: arrive,
+        unitShip: ship,
+        unitHold: hold,
+        unitReady: Math.max(0, arrive - ship - hold),
+      }
+    })
 
     const { eta, totals, invoice } = computeEventCore(
       group,
@@ -425,13 +439,16 @@ export async function getPublicInvoiceForCustomer(
 
     // The price of sending early, on the same arithmetic the Ship screen bills
     // from — so the number in her sheet and the number on your button cannot
-    // disagree. unit_hold is not read here: a held order is not offered the
-    // choice anyway, and this path deliberately reads as few columns as it can.
+    // disagree. Held units are not sendable, so they are not part of the
+    // parcel this quotes for.
     const splitExtra = splitExtraOngkir(
       group.map((r) => ({
         gram: Number(r.gram ?? 0),
         unit: Number(r.unit),
-        toShip: Math.max(0, Number(r.unit_arrive ?? 0) - Number(r.unit_ship ?? 0)),
+        toShip: Math.max(
+          0,
+          Number(r.unit_arrive ?? 0) - Number(r.unit_ship ?? 0) - Number(r.unit_hold ?? 0),
+        ),
       })),
       Number(group[0]?.ongkir ?? 0),
     )

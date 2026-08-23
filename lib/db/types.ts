@@ -373,6 +373,12 @@ export interface PublicInvoiceOrderLine {
   price: string
   subtotal: string
   unitArrive: number
+  /** Already sent. */
+  unitShip: number
+  /** Deliberately kept back, at her own request. */
+  unitHold: number
+  /** Arrived, not held, not yet sent — what would go if she sent now. */
+  unitReady: number
 }
 
 export interface PublicInvoiceEvent {

@@ -64,3 +64,6 @@ next-env.d.ts
 
 # Baileys device credentials — a linked WhatsApp session. Never commit.
 .wa-session/
+
+# local DB backups — never commit
+backups/
