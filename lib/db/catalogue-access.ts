@@ -1,3 +1,4 @@
+import type postgres from "postgres"
 import sql from "../db-pool"
 import { normalizeId } from "./helpers"
 import { issueInvite } from "./catalogue-auth"
@@ -70,6 +71,87 @@ export async function listPendingAccessRequests(): Promise<AccessRequestRow[]> {
  * history across two accounts, and the whole point of the invite is to reach
  * the history they already have.
  */
+type CustomerRow = { id: number; instagram_id: string }
+
+/** Raised when a handle names nobody and the caller did not ask to create them. */
+export class NoCustomerError extends Error {
+  constructor(readonly handle: string) {
+    super("no_customer")
+    this.name = "NoCustomerError"
+  }
+}
+
+/**
+ * Resolve a normalized handle to its customer row, minting one when asked to.
+ *
+ * Shared by approval and by inviting someone directly, so the two cannot drift:
+ * both must match on the normalized handle rather than the stored spelling, and
+ * both must claim the requests that handle placed before it had a row. The
+ * public read path filters on customer_id, so skipping the claim signs the
+ * customer in to an empty history — and an outstanding offer, which
+ * approve/reject also match on customer_id, could never be accepted.
+ *
+ * Refusing throws rather than returning null: every caller runs inside a
+ * transaction, and throwing is what rolls back a row created moments earlier.
+ */
+async function resolveCustomer(
+  tx: postgres.TransactionSql,
+  handle: string,
+  opts: { create: boolean },
+): Promise<{ row: CustomerRow; created: boolean }> {
+  const [existing] = await tx<CustomerRow[]>`
+    SELECT id, instagram_id FROM customers
+     WHERE lower(replace(instagram_id, '@', '')) = ${handle}
+  `
+  if (!existing && !opts.create) throw new NoCustomerError(handle)
+
+  const [row] =
+    existing
+      ? [existing]
+      : await tx<CustomerRow[]>`
+          INSERT INTO customers (instagram_id) VALUES (${handle})
+          RETURNING id, instagram_id
+        `
+
+  await tx`
+    UPDATE catalogue_requests
+       SET customer_id = ${row.id}
+     WHERE customer_id IS NULL
+       AND lower(replace(customer_handle, '@', '')) = ${handle}
+  `
+  return { row, created: !existing }
+}
+
+/**
+ * Invite one person by handle, whether or not they have catalogue history.
+ *
+ * The admin list only carries customers who already ordered through the
+ * catalogue or already hold access, so without this the only route in for
+ * someone new was a request they raised themselves. `create` is the caller's
+ * second pass: the first refuses an unknown handle so a typo cannot quietly
+ * mint a customer, and the confirmed retry creates them.
+ */
+export async function inviteByHandle(
+  instagramId: string,
+  opts: { create: boolean },
+): Promise<{ customerId: number; instagramId: string; token: string; url: string; created: boolean }> {
+  const handle = normalizeId(instagramId)
+  if (!handle) throw new NoCustomerError("")
+
+  const { row, created } = await sql.begin((tx) => resolveCustomer(tx, handle, opts))
+
+  // Outside the transaction: issueInvite opens its own, and nesting them would
+  // deadlock on the same connection.
+  const token = await issueInvite(row.id)
+  return {
+    customerId: row.id,
+    instagramId: row.instagram_id,
+    token,
+    url: inviteUrl(token),
+    created,
+  }
+}
+
 export async function approveAccessRequest(
   requestId: number,
 ): Promise<{ customerId: number; instagramId: string; token: string; url: string }> {
@@ -81,35 +163,12 @@ export async function approveAccessRequest(
     if (!req) throw new Error("Access request not found")
     if (req.status !== "pending") throw new Error("Access request already handled")
 
-    const handle = normalizeId(req.instagram_id)
-    const [existing] = await tx<{ id: number; instagram_id: string }[]>`
-      SELECT id, instagram_id FROM customers
-       WHERE lower(replace(instagram_id, '@', '')) = ${handle}
-    `
-    const row =
-      existing ??
-      (
-        await tx<{ id: number; instagram_id: string }[]>`
-          INSERT INTO customers (instagram_id) VALUES (${handle})
-          RETURNING id, instagram_id
-        `
-      )[0]
+    const { row } = await resolveCustomer(tx, normalizeId(req.instagram_id), { create: true })
 
     await tx`
       UPDATE catalogue_access_requests
          SET status = 'approved', decided_at = NOW(), customer_id = ${row.id}
        WHERE id = ${requestId}
-    `
-
-    // Claim any request this handle placed before it had a customers row.
-    // The public read path filters on customer_id, so without this an invited
-    // customer signs in to an empty history — and an outstanding offer, which
-    // approve/reject also match on customer_id, could never be accepted.
-    await tx`
-      UPDATE catalogue_requests
-         SET customer_id = ${row.id}
-       WHERE customer_id IS NULL
-         AND lower(replace(customer_handle, '@', '')) = ${handle}
     `
     return row
   })

@@ -6,6 +6,7 @@ import {
   approveAccessRequest,
   rejectAccessRequest,
   bulkInviteExistingCustomers,
+  inviteByHandle,
   inviteUrl,
 } from "./catalogue-access"
 import { redeemInvite } from "./catalogue-auth"
@@ -159,4 +160,93 @@ test("an invite link points at the catalogue site, not the dashboard", () => {
 
 test("an invite token is escaped into the link", () => {
   assert.ok(inviteUrl("a b&c=d").endsWith("?invite=a%20b%26c%3Dd"))
+})
+
+// ── inviting one person by handle ───────────────────────────────────────────
+// The customers list only shows people with catalogue history, so before this
+// the only way in for a stranger was a request they raised themselves.
+
+test("inviting a handle that already has a customer issues without creating another", async () => {
+  const h = handle()
+  const [existing] = await sql<{ id: number }[]>`
+    INSERT INTO customers (instagram_id) VALUES (${h}) RETURNING id
+  `
+  const result = await inviteByHandle(h, { create: false })
+  assert.equal(result.created, false)
+  assert.equal(result.customerId, existing.id)
+
+  const [{ count }] = await sql<{ count: string }[]>`
+    SELECT COUNT(*) AS count FROM customers WHERE instagram_id = ${h}
+  `
+  assert.equal(Number(count), 1)
+})
+
+test("an unknown handle without create is refused, and no customer is left behind", async () => {
+  const h = handle()
+  await assert.rejects(
+    () => inviteByHandle(h, { create: false }),
+    (err: Error) => err.message === "no_customer",
+  )
+
+  const [{ count }] = await sql<{ count: string }[]>`
+    SELECT COUNT(*) AS count FROM customers WHERE instagram_id = ${h}
+  `
+  assert.equal(Number(count), 0, "a refused invite must not mint a row from a typo")
+})
+
+test("an unknown handle with create makes exactly one customer and a redeemable invite", async () => {
+  const h = handle()
+  const result = await inviteByHandle(h, { create: true })
+  assert.equal(result.created, true)
+  assert.equal(result.instagramId, h)
+
+  const [{ count }] = await sql<{ count: string }[]>`
+    SELECT COUNT(*) AS count FROM customers WHERE instagram_id = ${h}
+  `
+  assert.equal(Number(count), 1)
+  assert.deepEqual(await redeemInvite(result.token, `${TAG}_sub_by_handle_${n}`), {
+    customerId: result.customerId,
+  })
+})
+
+test("the @ and the capitals are noise — one customer, not two", async () => {
+  const h = handle()
+  const [existing] = await sql<{ id: number }[]>`
+    INSERT INTO customers (instagram_id) VALUES (${h}) RETURNING id
+  `
+  const result = await inviteByHandle(`@${h.toUpperCase()}`, { create: true })
+  assert.equal(result.customerId, existing.id, "must match the row that is already there")
+  assert.equal(result.created, false)
+})
+
+test("inviting again supersedes the link sent before it", async () => {
+  const h = handle()
+  const first = await inviteByHandle(h, { create: true })
+  const second = await inviteByHandle(h, { create: false })
+  assert.notEqual(first.token, second.token)
+
+  // redeemInvite reports a dead token, it does not throw for one.
+  assert.deepEqual(
+    await redeemInvite(first.token, `${TAG}_sub_super_${n}`),
+    { error: "expired" },
+    "the superseded link must stop working",
+  )
+  assert.deepEqual(await redeemInvite(second.token, `${TAG}_sub_super2_${n}`), {
+    customerId: second.customerId,
+  })
+})
+
+test("inviting by handle claims the requests that handle placed before it had a row", async () => {
+  const h = handle()
+  await sql`
+    INSERT INTO catalogue_requests (customer_handle, qty, description)
+    VALUES (${h}, 1, 'Ordered before she was invited')
+  `
+  const result = await inviteByHandle(h, { create: true })
+
+  const [{ count }] = await sql<{ count: string }[]>`
+    SELECT COUNT(*) AS count FROM catalogue_requests
+     WHERE customer_handle = ${h} AND customer_id = ${result.customerId}
+  `
+  assert.equal(Number(count), 1, "otherwise they sign in to an empty history")
 })
