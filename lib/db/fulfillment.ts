@@ -967,16 +967,12 @@ export interface ArrivalListItem {
   store: string
   totalPending: number   // remaining to arrive
   totalBought: number    // full quantity we bought (for partial-state display)
-  customerCount: number
-  customers: string[]
-  orderIds: number[]
+  // No customers[], orderIds[] or customerCount: every one of them was a
+  // re-statement of `orders`, which has to be sent anyway. Two were arrays that
+  // grew with the order count, and the screen rebuilt both from `orders` rather
+  // than reading them. The valas/kurs/currency trio went the same way — added
+  // for a cargo document that reads its figures elsewhere.
   orders: ArrivalListOrder[]
-  // Purchase cost in the product's foreign currency, for the cargo document.
-  // valas = unit price in that currency; currency = its code (from the product's
-  // country); kurs = IDR per unit of valas. 0 / "" when the product has none.
-  valas: number
-  kurs: number
-  currency: string
 }
 
 /**
@@ -994,14 +990,8 @@ export async function getArrivalList(event?: string): Promise<ArrivalListItem[]>
           o.product_id,
           p.name AS product_name,
           p.store,
-          p.valas,
-          p.kurs,
-          COALESCE(c.currency, '') AS currency,
           SUM(o.unit_dispatch - COALESCE(o.unit_arrive, 0))::int AS total_pending,
           SUM(o.unit_dispatch)::int AS total_bought,
-          COUNT(DISTINCT o.customer)::int AS customer_count,
-          ARRAY_AGG(DISTINCT o.customer ORDER BY o.customer) AS customers,
-          ARRAY_AGG(o.id ORDER BY o.id) AS order_ids,
           JSON_AGG(JSON_BUILD_OBJECT(
             'id', o.id,
             'customer', o.customer,
@@ -1013,11 +1003,10 @@ export async function getArrivalList(event?: string): Promise<ArrivalListItem[]>
           ) ORDER BY o.customer, o.id) AS orders
         FROM orders o
         JOIN products p ON p.id = o.product_id
-        LEFT JOIN countries c ON c.id = p.country_id
         WHERE o.unit_dispatch IS NOT NULL
           AND (o.unit_arrive IS NULL OR o.unit_arrive < o.unit_dispatch)
           AND o.event = ${event}
-        GROUP BY o.event, o.product_id, p.name, p.store, p.valas, p.kurs, c.currency
+        GROUP BY o.event, o.product_id, p.name, p.store
         HAVING SUM(o.unit_dispatch - COALESCE(o.unit_arrive, 0)) > 0
         ORDER BY p.name, p.store
       `
@@ -1027,14 +1016,8 @@ export async function getArrivalList(event?: string): Promise<ArrivalListItem[]>
           o.product_id,
           p.name AS product_name,
           p.store,
-          p.valas,
-          p.kurs,
-          COALESCE(c.currency, '') AS currency,
           SUM(o.unit_dispatch - COALESCE(o.unit_arrive, 0))::int AS total_pending,
           SUM(o.unit_dispatch)::int AS total_bought,
-          COUNT(DISTINCT o.customer)::int AS customer_count,
-          ARRAY_AGG(DISTINCT o.customer ORDER BY o.customer) AS customers,
-          ARRAY_AGG(o.id ORDER BY o.id) AS order_ids,
           JSON_AGG(JSON_BUILD_OBJECT(
             'id', o.id,
             'customer', o.customer,
@@ -1046,11 +1029,10 @@ export async function getArrivalList(event?: string): Promise<ArrivalListItem[]>
           ) ORDER BY o.customer, o.id) AS orders
         FROM orders o
         JOIN products p ON p.id = o.product_id
-        LEFT JOIN countries c ON c.id = p.country_id
         JOIN events e ON e.name = o.event
         WHERE o.unit_dispatch IS NOT NULL
           AND (o.unit_arrive IS NULL OR o.unit_arrive < o.unit_dispatch)
-        GROUP BY o.event, o.product_id, p.name, p.store, p.valas, p.kurs, c.currency
+        GROUP BY o.event, o.product_id, p.name, p.store
         HAVING SUM(o.unit_dispatch - COALESCE(o.unit_arrive, 0)) > 0
         -- Most recently created event first (matches the shopping list and
         -- dashboard); product name then store within each event. MAX() because
@@ -1065,14 +1047,7 @@ export async function getArrivalList(event?: string): Promise<ArrivalListItem[]>
     store: r.store as string,
     totalPending: r.total_pending as number,
     totalBought: r.total_bought as number,
-    customerCount: r.customer_count as number,
-    customers: r.customers as string[],
-    orderIds: r.order_ids as number[],
     orders: r.orders as ArrivalListOrder[],
-    valas: Number(r.valas) || 0,
-    // kurs is NUMERIC(12,4) — postgres-js returns it as a string, so coerce.
-    kurs: Number(r.kurs) || 0,
-    currency: (r.currency as string) ?? "",
   }))
 
   // Order each product's customers by allocation priority (paid → partial →

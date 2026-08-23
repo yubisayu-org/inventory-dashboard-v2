@@ -29,7 +29,10 @@ export interface DispatchListItem {
   totalUnits: number      // remaining to dispatch
   totalOriginal: number   // full bought qty (SUM(unit_buy), for partial-state display)
   customerCount: number
-  customers: string[]
+  // No customers[]: it restated `orders`, and nothing read it. orderIds and
+  // customerCount stay because the bulk-cancel panel genuinely uses them —
+  // cancelling names individual order rows, unlike receiving and buying, which
+  // send a product and a quantity and let the server allocate.
   orderIds: number[]
   orders: DispatchListOrder[]
 }
@@ -59,7 +62,6 @@ export async function getDispatchList(event?: string): Promise<DispatchListItem[
             SUM(o.unit_buy - COALESCE(o.unit_dispatch, 0))::int AS total_pending,
             prod_total.total_original,
             COUNT(DISTINCT o.customer)::int AS customer_count,
-            ARRAY_AGG(DISTINCT o.customer ORDER BY o.customer) AS customers,
             ARRAY_AGG(o.id ORDER BY o.id) AS order_ids,
             JSON_AGG(JSON_BUILD_OBJECT(
               'id', o.id,
@@ -93,7 +95,6 @@ export async function getDispatchList(event?: string): Promise<DispatchListItem[
             SUM(o.unit_buy - COALESCE(o.unit_dispatch, 0))::int AS total_pending,
             prod_total.total_original,
             COUNT(DISTINCT o.customer)::int AS customer_count,
-            ARRAY_AGG(DISTINCT o.customer ORDER BY o.customer) AS customers,
             ARRAY_AGG(o.id ORDER BY o.id) AS order_ids,
             JSON_AGG(JSON_BUILD_OBJECT(
               'id', o.id,
@@ -143,7 +144,6 @@ export async function getDispatchList(event?: string): Promise<DispatchListItem[
     totalUnits: r.total_pending as number,
     totalOriginal: r.total_original as number,
     customerCount: r.customer_count as number,
-    customers: r.customers as string[],
     orderIds: r.order_ids as number[],
     orders: (r.orders as Omit<DispatchListOrder, "paidStatus">[]).map((o) => ({
       ...o,
