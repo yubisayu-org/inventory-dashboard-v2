@@ -31,6 +31,8 @@ function buildShipGroups(
   paymentMap: Map<string, PaymentStatus>,
   ongkirMap: Map<string, number>,
   addressMap: Map<string, RequestedAddress>,
+  splitAsked: Set<string>,
+  splitBilled: Set<string>,
 ): ShipCustomer[] {
   const groupMap = new Map<string, { customer: string; event: string; rows: Record<string, unknown>[] }>()
   for (const row of orderRows) {
@@ -83,10 +85,13 @@ function buildShipGroups(
     const paymentClear = paymentStatus === "paid" || paymentStatus === "overpaid" || paymentStatus === "void"
     // "hold" wins over ready/shipped when any unit is parked — the customer
     // asked to wait, so we surface that even if some other units already went out.
+    // She asked for the arrived part to go early. That outranks "partial",
+    // which is a card you skip — this one is a card with work on it.
+    const askedSplit = splitAsked.has(`${customerKey}|${event}`) && totalToShip > 0
     const status: ShipStatus = !anyArrived
       ? "not_arrived"
       : !allArrived
-        ? "partial"
+        ? (totalHold > 0 ? "hold" : askedSplit ? "split_requested" : "partial")
         : totalHold > 0
           ? "hold"
           : totalToShip > 0
@@ -107,6 +112,9 @@ function buildShipGroups(
       paymentStatus,
       requestedAddress: addressMap.get(`${customerKey}|${event}`)?.address ?? null,
       requestedOtherArea: addressMap.get(`${customerKey}|${event}`)?.otherArea ?? false,
+      splitRequested: askedSplit,
+      splitExtraOngkir: askedSplit ? splitExtraOngkir(orders, ongkirPerKg) : 0,
+      splitCharged: splitBilled.has(`${customerKey}|${event}`),
     }]
   })
 }
@@ -151,6 +159,78 @@ async function fetchCustomerDetails(customerIds: Set<string>): Promise<Map<strin
  * wrong house, so the request has to reach the screen that prints the label.
  */
 type RequestedAddress = { address: string; otherArea: boolean }
+
+/**
+ * The description written on the adjustment that bills an early parcel.
+ *
+ * It doubles as the record that the fee has been charged: there is no boolean
+ * anywhere saying so, and the adjustment itself is the fact. Matching on it is
+ * how the Ship screen knows not to bill twice, so it must stay stable — and it
+ * is what the customer reads on her own invoice.
+ */
+export const SPLIT_ONGKIR_NOTE = "Ongkir kirim duluan"
+
+/** Who has asked for the arrived part to go early. */
+async function fetchSplitRequests(
+  customerIds: Set<string>,
+  eventNames: Set<string>,
+): Promise<Set<string>> {
+  const keys = new Set<string>()
+  if (customerIds.size === 0 || eventNames.size === 0) return keys
+  const rows = await sql`
+    SELECT p.event, lower(replace(c.instagram_id, '@', '')) AS norm_cust
+      FROM customer_shipping_prefs p
+      JOIN customers c ON c.id = p.customer_id
+     WHERE p.mode = 'split'
+       AND p.event = ANY(${[...eventNames]})
+       AND lower(replace(c.instagram_id, '@', '')) = ANY(${[...customerIds]})
+  `
+  for (const r of rows) keys.add(`${r.norm_cust}|${r.event}`)
+  return keys
+}
+
+/** Which of those have already had the extra delivery fee put on the invoice. */
+async function fetchSplitCharges(
+  customerIds: Set<string>,
+  eventNames: Set<string>,
+): Promise<Set<string>> {
+  const keys = new Set<string>()
+  if (customerIds.size === 0 || eventNames.size === 0) return keys
+  const rows = await sql`
+    SELECT event, lower(replace(customer, '@', '')) AS norm_cust
+      FROM adjustments
+     WHERE description = ${SPLIT_ONGKIR_NOTE}
+       AND event = ANY(${[...eventNames]})
+       AND lower(replace(customer, '@', '')) = ANY(${[...customerIds]})
+  `
+  for (const r of rows) keys.add(`${r.norm_cust}|${r.event}`)
+  return keys
+}
+
+/**
+ * What sending the arrived part early adds to the bill.
+ *
+ * Two parcels are weighed and rounded separately, one is not — so the extra is
+ * the difference between those two worlds, exactly as the merge discount is.
+ * Zero when the rounding absorbs it, which happens more often than it sounds:
+ * a 300g early parcel out of 1.2kg costs nothing extra to bill.
+ */
+export function splitExtraOngkir(
+  lines: { gram: number; unit: number; toShip: number }[],
+  ongkirPerKg: number,
+): number {
+  let nowGram = 0
+  let fullGram = 0
+  for (const l of lines) {
+    nowGram += l.gram * l.toShip
+    fullGram += l.gram * l.unit
+  }
+  const restGram = Math.max(0, fullGram - nowGram)
+  if (nowGram <= 0 || restGram <= 0) return 0
+  const apart = Math.ceil(nowGram / 1000) + Math.ceil(restGram / 1000)
+  const together = Math.ceil(fullGram / 1000)
+  return Math.max(0, ongkirPerKg * (apart - together))
+}
 
 async function fetchRequestedAddresses(
   customerIds: Set<string>,
@@ -244,21 +324,23 @@ export async function getShipOrdersFiltered(opts: {
 
   // Fetch customer details, per-event ongkir, and payment status concurrently —
   // all keyed by normalized customer handle (ongkir/payment additionally by event).
-  const [detailMap, ongkirMap, addressMap, paymentRows] = await Promise.all([
+  const [detailMap, ongkirMap, addressMap, splitAsked, splitBilled, paymentRows] = await Promise.all([
     fetchCustomerDetails(customerIds),
     fetchEventOngkir(customerIds, eventNames),
     fetchRequestedAddresses(customerIds, eventNames),
+    fetchSplitRequests(customerIds, eventNames),
+    fetchSplitCharges(customerIds, eventNames),
     getPaymentStatus(event),
   ])
   const paymentMap = new Map<string, PaymentStatus>()
   for (const row of paymentRows) paymentMap.set(`${row.customer}|${row.event}`, row.status)
 
-  const allGroups = buildShipGroups(orderRows, detailMap, paymentMap, ongkirMap, addressMap)
+  const allGroups = buildShipGroups(orderRows, detailMap, paymentMap, ongkirMap, addressMap, splitAsked, splitBilled)
 
   // Counts and the filtered list both derive from the same in-memory status,
   // so the tab badges can never drift from the rows actually shown.
   const counts: Record<ShipSegment, number> = {
-    all: 0, not_arrived: 0, partial: 0, ready: 0, ready_unpaid: 0, hold: 0, shipped: 0,
+    all: 0, not_arrived: 0, partial: 0, split_requested: 0, ready: 0, ready_unpaid: 0, hold: 0, shipped: 0,
   }
   const filteredGroups: ShipCustomer[] = []
   for (const g of allGroups) {
@@ -505,6 +587,79 @@ export async function reapplyHoldsForArrival(
   for (const row of rows) {
     await holdPackingList({ customer: row.instagram_id, event }, db)
   }
+}
+
+/**
+ * Put the cost of sending early on her invoice, once.
+ *
+ * The shop asked for this to happen before the parcel goes, not after: an
+ * extra delivery fee is easier to collect while she still wants the parcel
+ * than once she has it. So this is a billing step, and shipping stays blocked
+ * behind the ordinary payment gate until it clears.
+ *
+ * Refuses to bill twice — the adjustment is the record that it happened, so a
+ * second click finds it and stops. Refuses to bill nothing, which is a real
+ * case: when the rounding absorbs the split there is no extra cost, and an
+ * adjustment of zero on someone's invoice is a question she should not have
+ * to ask.
+ */
+export async function chargeSplitOngkir(
+  params: { customer: string; event: string },
+  actor?: string | null,
+): Promise<{ amount: number }> {
+  const { customer, event } = params
+  const custKey = normalizeId(customer)
+
+  return await sql.begin(async (tx) => {
+    await tx`SELECT set_config('app.actor', ${actor ?? ""}, true)`
+
+    const [already] = await tx<{ id: number }[]>`
+      SELECT id FROM adjustments
+       WHERE event = ${event} AND description = ${SPLIT_ONGKIR_NOTE}
+         AND lower(replace(customer, '@', '')) = ${custKey}
+       LIMIT 1`
+    if (already) throw new Error("Ongkir kirim duluan sudah ditagihkan untuk pesanan ini.")
+
+    const lines = await tx<{ gram: string; unit: number; to_ship: string }[]>`
+      SELECT COALESCE(p.gram, 0) AS gram, o.unit,
+             GREATEST(COALESCE(o.unit_arrive, 0) - COALESCE(o.unit_ship, 0) - COALESCE(o.unit_hold, 0), 0) AS to_ship
+        FROM orders o
+        JOIN products p ON p.id = o.product_id
+       WHERE o.event = ${event}
+         AND lower(replace(o.customer, '@', '')) = ${custKey}
+         AND o.unit > 0`
+    const [rate] = await tx<{ ongkir: string }[]>`
+      SELECT COALESCE(cwo.ongkos_kirim, 0) AS ongkir
+        FROM events ev
+        JOIN customer_warehouse_ongkir cwo ON cwo.warehouse_id = ev.warehouse_id
+        JOIN customers c ON c.id = cwo.customer_id
+       WHERE ev.name = ${event}
+         AND lower(replace(c.instagram_id, '@', '')) = ${custKey}`
+
+    const amount = splitExtraOngkir(
+      lines.map((l) => ({ gram: Number(l.gram), unit: l.unit, toShip: Number(l.to_ship) })),
+      Number(rate?.ongkir ?? 0),
+    )
+    if (amount <= 0) {
+      throw new Error("Tidak ada ongkir tambahan untuk pengiriman ini — bisa langsung dikirim.")
+    }
+
+    const normCust = normalizeCustomer(customer)
+    await tx`INSERT INTO customers (instagram_id) VALUES (${normCust}) ON CONFLICT (instagram_id) DO NOTHING`
+    await tx`
+      INSERT INTO adjustments (event, customer, description, amount)
+      VALUES (${event}, ${normCust}, ${SPLIT_ONGKIR_NOTE}, ${amount})`
+
+    await notifyCustomer(customer, {
+      title: `Extra delivery fee for ${event}`,
+      body: `You asked for the items that have arrived to be sent ahead of the rest. `
+        + `Sending in two parcels costs Rp ${amount.toLocaleString("id-ID")} more than one, `
+        + `and it has been added to your ${event} invoice. `
+        + `The early parcel goes out once that is settled.`,
+    }, tx)
+
+    return { amount }
+  })
 }
 
 // ─── Shipments ──────────────────────────────────────────────────────────────

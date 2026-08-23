@@ -25,6 +25,7 @@ const SEGMENTS: { id: Segment; label: string }[] = [
   { id: "all", label: "Semua" },
   { id: "not_arrived", label: "Belum Tiba" },
   { id: "partial", label: "Tiba Sebagian" },
+  { id: "split_requested", label: "Kirim Duluan" },
   { id: "ready_unpaid", label: "Belum Bayar" },
   { id: "ready", label: "Siap Kirim" },
   { id: "hold", label: "Tunda Kirim" },
@@ -58,6 +59,7 @@ const STATUS_BADGE: Record<ShipStatus, { label: string; cls: string }> = {
   ready: { label: "Siap Kirim", cls: "bg-brand/10 text-brand" },
   ready_unpaid: { label: "Belum Bayar", cls: "bg-orange-100 text-orange-700" },
   hold: { label: "Tunda Kirim", cls: "bg-purple-100 text-purple-700" },
+  split_requested: { label: "Kirim Duluan", cls: "bg-blue-100 text-blue-700" },
   shipped: { label: "Sudah Dikirim", cls: "bg-green-100 text-green-700" },
 }
 
@@ -75,7 +77,7 @@ export default function ShipClient() {
   const router = useRouter()
   const sheetOptions = useSheetOptions()
   const [groups, setGroups] = useState<ShipCustomer[]>([])
-  const [counts, setCounts] = useState<Record<Segment, number>>({ all: 0, not_arrived: 0, partial: 0, ready: 0, ready_unpaid: 0, hold: 0, shipped: 0 })
+  const [counts, setCounts] = useState<Record<Segment, number>>({ all: 0, not_arrived: 0, partial: 0, split_requested: 0, ready: 0, ready_unpaid: 0, hold: 0, shipped: 0 })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [segment, setSegment] = useState<Segment>("ready")
@@ -359,6 +361,7 @@ export default function ShipClient() {
                 isSelected={selected.has(key)}
                 onToggleSelect={c.totalToShip > 0 ? () => toggleSelect(key) : undefined}
                 onShipped={() => { setSegment("all"); refresh() }}
+                onRefresh={refresh}
                 onOpenInvoice={() => setInvoiceCustomer(c.customer)}
               />
             )
@@ -492,6 +495,7 @@ function CustomerCard({
   isSelected,
   onToggleSelect,
   onShipped,
+  onRefresh,
   onOpenInvoice,
 }: {
   customer: ShipCustomer
@@ -499,15 +503,42 @@ function CustomerCard({
   isSelected?: boolean
   onToggleSelect?: () => void
   onShipped: () => void
+  // Reloads without moving you: charging a fee is not a reason to lose your
+  // place in the tab you were working through, which onShipped would do.
+  onRefresh: () => void
   onOpenInvoice: () => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [holdBusy, setHoldBusy] = useState(false)
   const [holdError, setHoldError] = useState<string | null>(null)
+  const [splitBusy, setSplitBusy] = useState(false)
+  const [splitError, setSplitError] = useState<string | null>(null)
+  const paymentClear = ["paid", "overpaid", "void"].includes(c.paymentStatus)
   const { customerDetail } = c
   const { widths, startResize } = useResizableColumns({ items: 200, unit: 80, unitArrive: 80, unitShip: 80, toShip: 80 })
   const totalHold = c.orders.reduce((s, o) => s + o.unitHold, 0)
+
+  async function postSplitCharge() {
+    if (!confirm(
+      `Tagih ongkir tambahan Rp ${c.splitExtraOngkir.toLocaleString("id-ID")} ke ${displayIg(c.customer).toUpperCase()} · ${c.event}?`,
+    )) return
+    setSplitBusy(true)
+    setSplitError(null)
+    try {
+      const res = await fetch("/api/sheets/ship/split-charge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customer: c.customer, event: c.event }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "Failed")
+      onRefresh()
+    } catch (err) {
+      setSplitError(err instanceof Error ? err.message : "Failed")
+      setSplitBusy(false)
+    }
+  }
 
   async function postHoldAction(path: "hold" | "release", confirmMessage: string) {
     if (!confirm(confirmMessage)) return
@@ -596,6 +627,49 @@ function CustomerCard({
             so a hold on a "Tiba Sebagian" card is still releasable — otherwise a
             held unit whose siblings haven't arrived would be stranded with no
             checkbox, Ship, or Release control. */}
+        {/* An early parcel is billed before it is packed: the shop asked for the
+            extra delivery fee to be settled while the customer still wants the
+            parcel, rather than chased afterwards. Until then the Ship button is
+            the ordinary payment gate's problem, not this block's. */}
+        {c.splitRequested && (
+          <div className="px-5 py-2.5 border-b border-cream-border bg-blue-50/60 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
+            <span className="text-blue-800 font-medium">Customer Request — kirim yang sudah tiba duluan</span>
+            {c.splitExtraOngkir > 0 ? (
+              <span className="text-muted-strong">
+                Ongkir tambahan{" "}
+                <span className="tabular-nums font-semibold text-foreground">
+                  Rp {c.splitExtraOngkir.toLocaleString("id-ID")}
+                </span>
+              </span>
+            ) : (
+              <span className="text-muted-strong">Tidak ada ongkir tambahan — pembulatan berat menutupinya</span>
+            )}
+            <span className="flex-1" />
+            {c.splitExtraOngkir > 0 && !c.splitCharged && (
+              <button
+                type="button"
+                onClick={() => postSplitCharge()}
+                disabled={splitBusy}
+                className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              >
+                {splitBusy ? "…" : "Tagih ongkir tambahan"}
+              </button>
+            )}
+            {c.splitCharged && !paymentClear && (
+              <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-medium">
+                Sudah ditagih — menunggu pembayaran
+              </span>
+            )}
+            {c.splitCharged && paymentClear && (
+              <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">
+                Ongkir tambahan lunas — siap dikirim
+              </span>
+            )}
+          </div>
+        )}
+        {splitError && (
+          <div className="px-5 py-2 text-xs text-red-700 bg-red-50 border-b border-cream-border">{splitError}</div>
+        )}
         {(c.totalToShip > 0 || totalHold > 0) && (
           <div className="shrink-0 flex items-center gap-3">
             {c.totalToShip > 0 && (

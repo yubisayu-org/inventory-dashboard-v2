@@ -304,7 +304,17 @@ export interface RefundRow {
  *                   drops out of "ready" until released.
  *   shipped       — every line fully arrived AND nothing left to ship
  */
-export type ShipStatus = "not_arrived" | "partial" | "ready" | "ready_unpaid" | "hold" | "shipped"
+export type ShipStatus =
+  | "not_arrived"
+  | "partial"
+  // She asked for what has arrived to go early. Its own status rather than a
+  // marker on "partial", because it is a queue of work: the extra delivery fee
+  // has to be billed and paid before the parcel goes.
+  | "split_requested"
+  | "ready"
+  | "ready_unpaid"
+  | "hold"
+  | "shipped"
 
 export interface ShipCustomer {
   customer: string
@@ -328,6 +338,17 @@ export interface ShipCustomer {
    * match. Surfaced, never re-rated automatically.
    */
   requestedOtherArea: boolean
+  /** She asked for the arrived part to go early, and it has not gone yet. */
+  splitRequested: boolean
+  /**
+   * What sending early costs on top of what the invoice already charges:
+   * (ongkir on this parcel + ongkir on the rest) − ongkir on the whole event.
+   * The mirror image of the "Gabung ongkir" discount — same weights, same
+   * rounding, opposite sign.
+   */
+  splitExtraOngkir: number
+  /** Whether that fee has already been put on her invoice. */
+  splitCharged: boolean
 }
 
 export interface InvoiceResult {
