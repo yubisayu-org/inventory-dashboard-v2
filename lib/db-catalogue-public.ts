@@ -1,4 +1,5 @@
 import postgres from "postgres"
+import { instrument } from "./db-instrument"
 
 // Dedicated connection for the PUBLIC, no-login catalogue endpoints
 // (app/api/public/catalogue/*). Uses the `catalogue_public` role, which enforces
@@ -27,4 +28,4 @@ const catalogueSql = postgres(connectionString, {
   },
 })
 
-export default catalogueSql
+export default instrument(catalogueSql, "catalogue_public")

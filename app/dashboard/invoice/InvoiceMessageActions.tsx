@@ -16,10 +16,34 @@ function waLink(whatsapp: string | null | undefined, message: string): string {
   return num ? `https://wa.me/${num}?text=${text}` : `https://api.whatsapp.com/send?text=${text}`
 }
 
-export function InvoiceMessageActions({ event, whatsapp }: { event: InvoiceEvent; whatsapp?: string | null }) {
+export function InvoiceMessageActions({
+  event, whatsapp, customer,
+}: { event: InvoiceEvent; whatsapp?: string | null; customer?: string }) {
   const [open, setOpen] = useState(false)
+  const [sending, setSending] = useState(false)
+  const [sent, setSent] = useState(false)
   const { copied, copy } = useCopyFeedback()
   const { message } = event
+
+  const outstanding = event.invoice.sisaPelunasan
+
+  /* "Send invoice" does not transport anything — her invoice is already live
+     on the catalogue, rendered from this same data. What has been missing is
+     the moment someone says pay this, and that moment is an announcement. */
+  async function send() {
+    if (!customer || sending) return
+    setSending(true)
+    try {
+      const res = await fetch("/api/sheets/invoice/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event: event.eventId, customer, outstanding }),
+      })
+      if (res.ok) setSent(true)
+    } finally {
+      setSending(false)
+    }
+  }
 
   return (
     <div className="flex items-center gap-2">
@@ -30,6 +54,17 @@ export function InvoiceMessageActions({ event, whatsapp }: { event: InvoiceEvent
       >
         View message
       </button>
+      {customer && outstanding > 0 && (
+        <button
+          type="button"
+          onClick={send}
+          disabled={sending}
+          title="Tell her the invoice is ready to settle"
+          className="shrink-0 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
+        >
+          {sending ? "Sending…" : sent ? "Sent ✓" : "Send invoice"}
+        </button>
+      )}
       <button
         type="button"
         onClick={() => copy(message)}

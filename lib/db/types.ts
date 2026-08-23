@@ -373,6 +373,12 @@ export interface PublicInvoiceOrderLine {
   price: string
   subtotal: string
   unitArrive: number
+  /** Already sent. */
+  unitShip: number
+  /** Deliberately kept back, at her own request. */
+  unitHold: number
+  /** Arrived, not held, not yet sent — what would go if she sent now. */
+  unitReady: number
 }
 
 export interface PublicInvoiceEvent {
@@ -583,6 +589,10 @@ export interface PaymentRow {
   kind: PaymentKind
   createdAt: string
   updatedAt: string
+  /** When the shop said it could not confirm this payment. */
+  rejectedAt: string | null
+  /** Why, in words the customer reads. Empty unless rejectedAt is set. */
+  rejectReason: string
 }
 
 export interface AdjustmentRow {

@@ -17,6 +17,8 @@ function mapPaymentRow(r: Record<string, unknown>): PaymentRow {
     payDate: r.pay_date ? new Date(r.pay_date as string).toISOString().slice(0, 10) : "",
     remarks: (r.remarks as string) ?? "",
     kind: (r.kind as PaymentRow["kind"]) ?? "deposit",
+    rejectedAt: r.rejected_at ? tsToString(r.rejected_at as Date) : null,
+    rejectReason: (r.reject_reason as string) ?? "",
     createdAt: tsToString(r.created_at as Date | null),
     updatedAt: tsToString(r.updated_at as Date | null),
   }
@@ -25,7 +27,8 @@ function mapPaymentRow(r: Record<string, unknown>): PaymentRow {
 export async function getPaymentRows(): Promise<PaymentRow[]> {
   const rows = await sql`
     SELECT id, event, customer, amount, account, is_checked,
-           pay_date, remarks, kind, created_at, updated_at
+           pay_date, remarks, kind, created_at, updated_at,
+           rejected_at, reject_reason
     FROM payments ORDER BY id DESC
   `
   return rows.map(mapPaymentRow)
@@ -64,6 +67,8 @@ export async function getPaymentsPaginated(opts: {
   dateFrom?: string
   dateTo?: string
   isChecked?: boolean
+  /** true = only refused rows, false = only live ones, undefined = both. */
+  rejected?: boolean
   sortKey?: string
   sortDir?: "asc" | "desc"
   skipCount?: boolean
@@ -109,8 +114,16 @@ export async function getPaymentsPaginated(opts: {
   }
   if (typeof opts.isChecked === "boolean") {
     params.push(opts.isChecked)
-    conditions.push(`is_checked = $${params.length}`)
+    // "Unchecked" means still to decide. A refused payment has been decided,
+    // so it belongs in Rejected rather than ageing in the queue for ever.
+    conditions.push(
+      opts.isChecked
+        ? `is_checked = $${params.length}`
+        : `is_checked = $${params.length} AND rejected_at IS NULL`,
+    )
   }
+  if (opts.rejected === true) conditions.push("rejected_at IS NOT NULL")
+  if (opts.rejected === false) conditions.push("rejected_at IS NULL")
   // Inclusive date range on pay_date (a DATE column); either bound optional.
   if (opts.dateFrom) {
     params.push(opts.dateFrom)
@@ -145,7 +158,8 @@ export async function getPaymentsPaginated(opts: {
 
   const dataRows = await sql.unsafe(
     `SELECT id, event, customer, amount, account, is_checked,
-            pay_date, remarks, kind, created_at, updated_at
+            pay_date, remarks, kind, created_at, updated_at,
+            rejected_at, reject_reason
      FROM payments
      ${where}
      ORDER BY ${sortCol} ${sortDir}, id ${sortDir}

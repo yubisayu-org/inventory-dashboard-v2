@@ -1,4 +1,5 @@
 import postgres from "postgres"
+import { instrument } from "./db-instrument"
 
 // Dedicated connection for the PUBLIC, no-login invoice recap endpoint
 // (app/api/public/invoice). It uses the `invoice_reader` role — SELECT-only and
@@ -26,4 +27,4 @@ const publicSql = postgres(connectionString, {
   },
 })
 
-export default publicSql
+export default instrument(publicSql, "invoice_reader")

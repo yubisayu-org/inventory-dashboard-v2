@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireOwner } from "@/lib/api"
 import { getDispatchList, getExcessDispatchPending, getDuplicateFormRowsForEvent, bulkUpdateDispatch, cancelUndispatchedRemainder, withActor, fetchPaidStatusMap, PAID_PRIORITY_RANK, type PaidStatus } from "@/lib/db"
+import { withServerTiming } from "@/lib/server-timing"
 
 type ItemLine = { item: string; qty: number }
 type UpdatedRow = { rowNumber: number; customer: string; oldUnitDispatch: number; unitDispatch: number }
@@ -75,7 +76,7 @@ function distribute(
 // /api/sheets/shopping-list's GET (same getShoppingList -> getDispatchList
 // swap as the rest of this dispatch stage); the client (DispatchListClient)
 // polls this to render the list and to silently refresh after a dispatch.
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
   const roleError = requireOwner(session)
@@ -167,3 +168,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Failed to process" }, { status: 500 })
   }
 }
+
+// Timed: the response carries Server-Timing (total / db / dbmax / app).
+// See lib/server-timing.ts for how to read it.
+export const GET = withServerTiming(handleGET)

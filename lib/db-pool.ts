@@ -1,4 +1,5 @@
 import postgres from "postgres"
+import { instrument } from "./db-instrument"
 
 const connectionString = process.env.DATABASE_URL!
 
@@ -46,4 +47,7 @@ const sql = globalForDb.__dbPool ?? postgres(connectionString, {
 
 if (process.env.NODE_ENV !== "production") globalForDb.__dbPool = sql
 
-export default sql
+// Timed, not replaced: the proxy forwards every call and only stamps durations.
+// The raw pool stays in `globalForDb` so an HMR reload reuses the sockets, not
+// a proxy wrapped around a proxy.
+export default instrument(sql, "main")

@@ -45,6 +45,7 @@ export default function CatalogueAccessClient() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState("")
+  const [handle, setHandle] = useState("")
 
   const load = useCallback(async () => {
     try {
@@ -99,6 +100,54 @@ export default function CatalogueAccessClient() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "Failed")
       setLinks((prev) => [{ instagramId, url: data.url }, ...prev])
+      await load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed")
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  /**
+   * Invite whoever the handle names, catalogue history or not.
+   *
+   * Two posts on purpose. The first refuses an unknown handle (409
+   * no_customer); only after you confirm does the second create them. A typo
+   * would otherwise add a customer under a misspelled handle, which is exactly
+   * how the duplicate handles that migration 021 cleaned up got there.
+   */
+  async function inviteHandle() {
+    const typed = handle.trim().replace(/^@+/, "")
+    if (!typed) return
+
+    setBusy("handle")
+    setError("")
+    try {
+      const send = async (create: boolean) => {
+        const res = await fetch("/api/catalogue-access/invite", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ handle: typed, create }),
+        })
+        return { res, data: await res.json() }
+      }
+
+      let { res, data } = await send(false)
+
+      if (res.status === 409 && data.error === "no_customer") {
+        if (
+          !confirm(
+            `No customer matches @${typed}.\n\nCreate them and send a sign-in link?`,
+          )
+        ) {
+          return
+        }
+        ;({ res, data } = await send(true))
+      }
+      if (!res.ok) throw new Error(data.error ?? "Failed")
+
+      setLinks((prev) => [{ instagramId: data.instagramId, url: data.url }, ...prev])
+      setHandle("")
       await load()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed")
@@ -211,14 +260,6 @@ export default function CatalogueAccessClient() {
           <h2 className="text-sm font-semibold text-foreground">
             Access requests ({requests.length})
           </h2>
-          <button
-            type="button"
-            onClick={bulkInvite}
-            disabled={busy !== null}
-            className="ml-auto px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
-          >
-            {busy === "bulk" ? "Generating…" : "Invite all existing customers"}
-          </button>
         </div>
 
         {requests.length === 0 ? (
@@ -266,9 +307,50 @@ export default function CatalogueAccessClient() {
       </section>
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold text-foreground">
-          Catalogue customers ({customers.length})
-        </h2>
+        {/* Both controls act on THIS list, not on the requests above — which is
+            where the bulk button used to sit, reading as the only way to invite
+            anyone. */}
+        <div className="flex flex-wrap items-center gap-3">
+          <h2 className="text-sm font-semibold text-foreground">
+            Catalogue customers ({customers.length})
+          </h2>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            {/* The list below only holds people with catalogue history, so a
+                customer who has only ever ordered over WhatsApp has no row to
+                click. Naming the handle is how they get in. */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                inviteHandle()
+              }}
+              className="flex items-center gap-2"
+            >
+              <input
+                value={handle}
+                onChange={(e) => setHandle(e.target.value)}
+                placeholder="@handle"
+                aria-label="Instagram handle to invite"
+                disabled={busy !== null}
+                className="w-44 rounded-lg border border-cream-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand disabled:opacity-50"
+              />
+              <button
+                type="submit"
+                disabled={busy !== null || handle.trim() === ""}
+                className="px-3 py-2 rounded-lg border border-cream-border text-muted-strong text-sm font-medium hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+              >
+                {busy === "handle" ? "Sending…" : "Send link"}
+              </button>
+            </form>
+            <button
+              type="button"
+              onClick={bulkInvite}
+              disabled={busy !== null}
+              className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
+            >
+              {busy === "bulk" ? "Generating…" : "Invite all existing customers"}
+            </button>
+          </div>
+        </div>
         {customers.length === 0 ? (
           <div className="rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-faint">
             Nobody has catalogue orders or access yet.

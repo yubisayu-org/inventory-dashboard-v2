@@ -35,12 +35,15 @@ const LABEL = "text-xs text-muted mb-1 block"
 // via SearchableSelect, same pattern as the Products page's Store field).
 const FALLBACK_ACCOUNT_OPTIONS = ["BCA", "JAGO", "QRIS", "TRANSFER"]
 
-// Checked-status filter: "" = all, "true" = checked only, "false" = unchecked.
-type CheckedFilter = "" | "true" | "false"
+// Checked-status filter. "rejected" is its own answer rather than a flavour of
+// unchecked: a refused payment has been decided, and leaving it in the queue
+// makes work out of something already dealt with.
+type CheckedFilter = "" | "true" | "false" | "rejected"
 const CHECKED_FILTER_OPTIONS = [
   { value: "", label: "All status" },
   { value: "true", label: "Checked" },
   { value: "false", label: "Unchecked" },
+  { value: "rejected", label: "Rejected" },
 ]
 
 // Payment kind filter, driven by the type tabs. "" = all.
@@ -87,6 +90,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
   const [addOpen, setAddOpen] = useState(false)
   const [mobileAddOpen, setMobileAddOpen] = useState(false)
   const [editingRow, setEditingRow] = useState<PaymentRow | null>(null)
+  const [rejectingRow, setRejectingRow] = useState<PaymentRow | null>(null)
 
   // Server-side table state.
   const [sorting, setSorting] = useState<SortingState>([])
@@ -125,8 +129,10 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
       else if (cf.id === "account") f.account = v
       else if (cf.id === "remarks") f.remarks = v
     }
-    // Sent as ?isChecked=true|false; the API maps absent → all.
-    if (checkedFilter) f.isChecked = checkedFilter
+    // Sent as ?isChecked=true|false; the API maps absent → all. Rejected is a
+    // separate flag, because a refused row is unchecked AND refused.
+    if (checkedFilter === "rejected") f.rejected = "true"
+    else if (checkedFilter) f.isChecked = checkedFilter
     // Type is driven by the tabs, not a column filter.
     if (kindFilter) f.kind = kindFilter
     return f
@@ -193,6 +199,25 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
       setRows((prev) =>
         prev.map((r) => (r.rowNumber === row.rowNumber ? { ...r, isChecked: !newChecked } : r)),
       )
+    }
+  }
+
+  /* Undoing a refusal, for when the money turns up after all. The row goes
+     back to unchecked rather than straight to checked: it returns to the
+     queue as a claim, which is what it was before. */
+  async function handleUnreject(row: PaymentRow) {
+    if (isAdmin) return
+    setRows((prev) => prev.map((r) => (
+      r.rowNumber === row.rowNumber ? { ...r, rejectedAt: null, rejectReason: "" } : r
+    )))
+    try {
+      const res = await fetch(`/api/sheets/payments/${row.rowNumber}/reject`, { method: "DELETE" })
+      if (!res.ok) throw new Error("Failed")
+      refreshRef.current()
+    } catch {
+      setRows((prev) => prev.map((r) => (
+        r.rowNumber === row.rowNumber ? { ...r, rejectedAt: row.rejectedAt, rejectReason: row.rejectReason } : r
+      )))
     }
   }
 
@@ -288,13 +313,27 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
       enableSorting: false,
       size: 60,
       cell: ({ row }) => (
-        <input
-          type="checkbox"
-          checked={row.original.isChecked}
-          onChange={() => handleToggleCheck(row.original)}
-          disabled={isAdmin}
-          className={`accent-brand ${isAdmin ? "cursor-default" : "cursor-pointer"}`}
-        />
+        row.original.rejectedAt ? (
+          // A refused row has been decided. Offering a tick beside it invites
+          // the one action that would contradict the reason already sent.
+          <button
+            type="button"
+            title={`Rejected: ${row.original.rejectReason}. Click to undo.`}
+            onClick={() => handleUnreject(row.original)}
+            disabled={isAdmin}
+            className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-red-50 text-red-700 disabled:cursor-default"
+          >
+            ✕
+          </button>
+        ) : (
+          <input
+            type="checkbox"
+            checked={row.original.isChecked}
+            onChange={() => handleToggleCheck(row.original)}
+            disabled={isAdmin}
+            className={`accent-brand ${isAdmin ? "cursor-default" : "cursor-pointer"}`}
+          />
+        )
       ),
     },
     {
@@ -339,6 +378,19 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
       size: 80,
       cell: ({ row }) => (
         <div className="flex items-center justify-end gap-2">
+          {!row.original.isChecked && !row.original.rejectedAt && !isAdmin && (
+            <button
+              type="button"
+              onClick={() => setRejectingRow(row.original)}
+              title="Could not confirm this payment"
+              className="text-faint hover:text-red-500 transition-colors"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M15 9l-6 6M9 9l6 6" />
+              </svg>
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setEditingRow(row.original)}
@@ -581,6 +633,13 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
         />
       )}
 
+      {rejectingRow && (
+        <RejectPaymentModal
+          row={rejectingRow}
+          onClose={() => setRejectingRow(null)}
+          onDone={() => { setRejectingRow(null); refreshRef.current() }}
+        />
+      )}
       {editingRow && (
         <EditPaymentModal
           row={editingRow}
@@ -1140,6 +1199,116 @@ function MobileAddPaymentSheet({
           </button>
         </div>
       </form>
+    </div>
+  )
+}
+
+
+// ─── Rejecting a reported payment ────────────────────────────────────────────
+// She reads the reason on her invoice and in her inbox, so it has to say
+// something she can act on. Four cover nearly every case; the note is for the
+// fifth. Nothing is deleted — the row stays exactly as she sent it, next to
+// the reason it was refused.
+
+const REJECT_REASONS = [
+  "Nothing arrived in that account yet.",
+  "The amount does not match what arrived.",
+  "We cannot find that sender name.",
+  "That payment is already recorded.",
+]
+
+function RejectPaymentModal({
+  row, onClose, onDone,
+}: { row: PaymentRow; onClose: () => void; onDone: () => void }) {
+  const [reason, setReason] = useState(REJECT_REASONS[0])
+  const [note, setNote] = useState("")
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState("")
+  useModalDismiss(onClose)
+
+  async function submit() {
+    setSubmitting(true)
+    setError("")
+    try {
+      const res = await fetch(`/api/sheets/payments/${row.rowNumber}/reject`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: note.trim() ? `${reason} ${note.trim()}` : reason }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error ?? "Failed to reject payment")
+      }
+      onDone()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to reject payment")
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+      <div className="w-full max-w-md rounded-2xl bg-white border border-cream-border p-5 space-y-3">
+        <div>
+          <h3 className="text-base font-bold">Could not confirm</h3>
+          <p className="text-xs text-muted mt-0.5">
+            {row.customer} · {row.event} · Rp {Number(row.amount).toLocaleString("id-ID")}
+            {row.account ? ` · ${row.account}` : ""}
+            {row.remarks ? ` · ${row.remarks}` : ""}
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          {REJECT_REASONS.map((r) => (
+            <label
+              key={r}
+              className="flex items-start gap-2 text-sm px-3 py-2 rounded-lg border border-cream-border cursor-pointer hover:border-brand"
+            >
+              <input
+                type="radio"
+                name="reject-reason"
+                checked={reason === r}
+                onChange={() => setReason(r)}
+                className="mt-1 accent-brand"
+              />
+              <span>{r}</span>
+            </label>
+          ))}
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-muted mb-1">Anything to add</label>
+          <input
+            type="text"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Optional"
+            className="w-full px-3 py-2 rounded-lg border border-cream-border text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
+          />
+        </div>
+
+        <p className="text-xs text-muted">She gets this in her inbox and on the order.</p>
+        {error && <p className="text-xs text-red-500">{error}</p>}
+
+        <div className="flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={submitting}
+            className="px-4 py-2 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={submit}
+            disabled={submitting}
+            className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
+          >
+            {submitting ? "Sending…" : "Send reason"}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
