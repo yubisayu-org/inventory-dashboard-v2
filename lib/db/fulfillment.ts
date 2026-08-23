@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto"
 import sql from "../db-pool"
-import { normalizeId, normalizeCustomer, tsToString, splitExtraOngkir } from "./helpers"
+import { normalizeId, normalizeCustomer, tsToString, splitExtraOngkir, parcelPlanExtra } from "./helpers"
 import { allocateFifo } from "../fifo-fill"
 import type { DBExecutor } from "./actor"
 import type { ShipOrderLine, ShipCustomer, ShipStatus, ShipOrdersParams, ShipMergedParams, ShipMergedResult, ShippingRecord, CustomerDetail, ExcessTransitItem, ExcessReason } from "./types"
@@ -334,7 +334,7 @@ async function fetchEventOngkir(
   return map
 }
 
-export { splitExtraOngkir }
+export { splitExtraOngkir, parcelPlanExtra }
 
 export type ShipSegment = "all" | ShipStatus
 
@@ -619,7 +619,18 @@ export async function shipMergedCustomerOrders(params: ShipMergedParams, actor?:
       isPrimary = false
     }
 
-    if (discount > 0) {
+    // If the whole parcel plan was already priced and charged up front — which
+    // is what happens when she asks for an early box — then the saving is
+    // already inside that number. Crediting it again would pay her twice for
+    // the same rounding.
+    const [settled] = await tx<{ id: number }[]>`
+      SELECT id FROM adjustments
+       WHERE event = ANY(${events})
+         AND description = ${SPLIT_ONGKIR_NOTE}
+         AND lower(replace(customer, '@', '')) = ${custKey}
+       LIMIT 1`
+
+    if (discount > 0 && !settled) {
       const normCust = normalizeCustomer(customer)
       const others = groups.slice(1).map((g) => g.event).join(", ")
       await tx`INSERT INTO customers (instagram_id) VALUES (${normCust}) ON CONFLICT (instagram_id) DO NOTHING`
@@ -629,13 +640,22 @@ export async function shipMergedCustomerOrders(params: ShipMergedParams, actor?:
       `
     }
 
-    // The pairing has happened. Leaving the key behind would show her a card
-    // still promising a box that is already in the courier's van.
-    await tx`
-      UPDATE customer_shipping_prefs SET merge_key = NULL, updated_at = NOW()
-       WHERE event = ANY(${events})
-         AND customer_id IN (SELECT id FROM customers
-                              WHERE lower(replace(instagram_id, '@', '')) = ${custKey})`
+    // The pairing is spent only when the whole group has gone. She asked for
+    // these to travel together, not to travel together once — so what is left
+    // behind stays paired and comes back to the Gabung tab as stock lands,
+    // rather than becoming two loose parcels she has to pair a second time.
+    const [outstanding] = await tx<{ n: string }[]>`
+      SELECT COALESCE(SUM(o.unit - COALESCE(o.unit_ship, 0)), 0) AS n
+        FROM orders o
+       WHERE o.event = ANY(${events})
+         AND lower(replace(o.customer, '@', '')) = ${custKey}`
+    if (Number(outstanding?.n ?? 0) <= 0) {
+      await tx`
+        UPDATE customer_shipping_prefs SET merge_key = NULL, updated_at = NOW()
+         WHERE event = ANY(${events})
+           AND customer_id IN (SELECT id FROM customers
+                                WHERE lower(replace(instagram_id, '@', '')) = ${custKey})`
+    }
 
     const units = groups.reduce((n, g) => n + g.orders.reduce((m, o) => m + o.toShip, 0), 0)
     await notifyCustomer(customer, {
@@ -752,10 +772,14 @@ export async function reapplyHoldsForArrival(
  * to ask.
  */
 export async function chargeSplitOngkir(
-  params: { customer: string; event: string },
+  params: { customer: string; event: string; events?: string[] },
   actor?: string | null,
 ): Promise<{ amount: number }> {
   const { customer, event } = params
+  // A paired group is priced as one plan: one early box now, one remainder
+  // later, against what both invoices already bill. The adjustment lands on
+  // the first event, and covers the lot.
+  const events = params.events?.length ? params.events : [event]
   const custKey = normalizeId(customer)
 
   return await sql.begin(async (tx) => {
@@ -763,17 +787,20 @@ export async function chargeSplitOngkir(
 
     const [already] = await tx<{ id: number }[]>`
       SELECT id FROM adjustments
-       WHERE event = ${event} AND description = ${SPLIT_ONGKIR_NOTE}
+       WHERE event = ANY(${events}) AND description = ${SPLIT_ONGKIR_NOTE}
          AND lower(replace(customer, '@', '')) = ${custKey}
        LIMIT 1`
     if (already) throw new Error("Ongkir kirim duluan sudah ditagihkan untuk pesanan ini.")
 
-    const lines = await tx<{ gram: string; unit: number; to_ship: string }[]>`
-      SELECT COALESCE(p.gram, 0) AS gram, o.unit,
-             GREATEST(COALESCE(o.unit_arrive, 0) - COALESCE(o.unit_ship, 0) - COALESCE(o.unit_hold, 0), 0) AS to_ship
+    const rows = await tx<{ event: string; gram: string; unit: number; to_ship: string }[]>`
+      SELECT o.event, COALESCE(p.gram, 0) AS gram, o.unit,
+             -- What would travel once the parcel actually goes. unit_hold is
+             -- ignored on purpose: a pairing parks the parcel, and combining
+             -- unparks it, so holding is not a reason to price it smaller.
+             GREATEST(COALESCE(o.unit_arrive, 0) - COALESCE(o.unit_ship, 0), 0) AS to_ship
         FROM orders o
         JOIN products p ON p.id = o.product_id
-       WHERE o.event = ${event}
+       WHERE o.event = ANY(${events})
          AND lower(replace(o.customer, '@', '')) = ${custKey}
          AND o.unit > 0`
     const [rate] = await tx<{ ongkir: string }[]>`
@@ -784,8 +811,15 @@ export async function chargeSplitOngkir(
        WHERE ev.name = ${event}
          AND lower(replace(c.instagram_id, '@', '')) = ${custKey}`
 
-    const amount = splitExtraOngkir(
-      lines.map((l) => ({ gram: Number(l.gram), unit: l.unit, toShip: Number(l.to_ship) })),
+    const byEvent = new Map<string, { gram: number; unit: number; toShip: number }[]>()
+    for (const r of rows) {
+      const line = { gram: Number(r.gram), unit: r.unit, toShip: Number(r.to_ship) }
+      const list = byEvent.get(r.event)
+      if (list) list.push(line)
+      else byEvent.set(r.event, [line])
+    }
+    const amount = parcelPlanExtra(
+      [...byEvent.values()].map((lines) => ({ lines })),
       Number(rate?.ongkir ?? 0),
     )
     if (amount <= 0) {
@@ -799,11 +833,13 @@ export async function chargeSplitOngkir(
       VALUES (${event}, ${normCust}, ${SPLIT_ONGKIR_NOTE}, ${amount})`
 
     await notifyCustomer(customer, {
-      title: `Extra delivery fee for ${event}`,
+      title: `Extra delivery fee for ${events.join(" + ")}`,
       body: `You asked for the items that have arrived to be sent ahead of the rest. `
-        + `Sending in two parcels costs Rp ${amount.toLocaleString("id-ID")} more than one, `
-        + `and it has been added to your ${event} invoice. `
-        + `The early parcel goes out once that is settled.`,
+        + `Rp ${amount.toLocaleString("id-ID")} has been added to your ${event} invoice to cover it. `
+        + `The early parcel goes out once that is settled`
+        + (events.length > 1
+            ? `, and what is left still travels together in one box — with nothing more to pay.`
+            : `, and the rest follows with nothing more to pay.`),
     }, tx)
 
     return { amount }

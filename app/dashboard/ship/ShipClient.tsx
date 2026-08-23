@@ -6,7 +6,7 @@ import SelectionActionBar from "@/components/SelectionActionBar"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import type { ShipCustomer, ShipOrdersParams, ShipSegment, ShipStatus, ShipOrdersFiltered, PaymentStatus } from "@/lib/db"
-import { normalizeId } from "@/lib/db/helpers"
+import { normalizeId, parcelPlanExtra } from "@/lib/db/helpers"
 import { generateShippingLabel } from "@/lib/shipping-label"
 import { useModalDismiss } from "@/hooks/useModalDismiss"
 import { useResizableColumns } from "@/hooks/useResizableColumns"
@@ -1297,6 +1297,8 @@ function BundleCard({
   onOpenInvoice: () => void
 }) {
   const [merging, setMerging] = useState(false)
+  const [charging, setCharging] = useState(false)
+  const [chargeError, setChargeError] = useState<string | null>(null)
   const customer = b.members[0].customer
   const units = b.members.reduce((n, m) => n + unparkedToShip(m), 0)
   const combinedKg = Math.ceil(
@@ -1315,6 +1317,48 @@ function BundleCard({
     Math.ceil(b.members.reduce((g, m) => g + m.orders.reduce((a, o) => a + o.gram * o.unit, 0), 0) / 1000)
   const saving = Math.max(0, apart - together)
   const unpaid = b.members.filter((m) => !["paid", "overpaid", "void"].includes(m.paymentStatus))
+
+  // The whole plan, priced once: this box now, one remainder later, against
+  // what both invoices already bill. Positive means she owes the difference
+  // before it goes; negative is the saving combining gives her, and that one
+  // is applied at ship time as it always was.
+  const planExtra = parcelPlanExtra(
+    b.members.map((m) => ({
+      lines: m.orders.map((o) => ({
+        gram: o.gram,
+        unit: o.unit,
+        toShip: Math.max(0, o.unitArrive - o.unitShip),
+      })),
+    })),
+    ongkirPerKg,
+  )
+  const charged = b.members.some((m) => m.splitCharged)
+  const owesForEarly = planExtra > 0 && !charged
+
+  async function chargePlan() {
+    if (!confirm(
+      `Tagih ongkir tambahan Rp ${planExtra.toLocaleString("id-ID")} ke ${displayIg(customer).toUpperCase()} untuk ${b.members.map((m) => m.event).join(" + ")}?`,
+    )) return
+    setCharging(true)
+    setChargeError(null)
+    try {
+      const res = await fetch("/api/sheets/ship/split-charge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customer,
+          event: b.members[0].event,
+          events: b.members.map((m) => m.event),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "Failed")
+      onDone()
+    } catch (err) {
+      setChargeError(err instanceof Error ? err.message : "Failed")
+      setCharging(false)
+    }
+  }
 
   return (
     <div className="rounded-xl border border-cream-border bg-white overflow-hidden">
@@ -1342,6 +1386,42 @@ function BundleCard({
         <span className="text-xs text-faint">diminta customer</span>
       </div>
 
+      {planExtra > 0 && (
+        <div className="px-5 py-2.5 border-b border-cream-border bg-blue-50/60 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
+          <span className="text-blue-800 font-medium">Kotak duluan — sisanya tetap digabung</span>
+          <span className="text-muted-strong">
+            Ongkir tambahan{" "}
+            <span className="tabular-nums font-semibold text-foreground">
+              Rp {planExtra.toLocaleString("id-ID")}
+            </span>{" "}
+            untuk seluruh rencana
+          </span>
+          <span className="flex-1" />
+          {!charged && (
+            <button
+              type="button"
+              onClick={chargePlan}
+              disabled={charging}
+              className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            >
+              {charging ? "…" : "Tagih ongkir tambahan"}
+            </button>
+          )}
+          {charged && unpaid.length > 0 && (
+            <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-medium">
+              Sudah ditagih — menunggu pembayaran
+            </span>
+          )}
+          {charged && unpaid.length === 0 && (
+            <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">
+              Ongkir tambahan lunas
+            </span>
+          )}
+        </div>
+      )}
+      {chargeError && (
+        <div className="px-5 py-2 text-xs text-red-700 bg-red-50 border-b border-cream-border">{chargeError}</div>
+      )}
       {b.members.map((m) => {
         const arrived = m.orders.reduce((n, o) => n + Math.min(o.unitArrive, o.unit), 0)
         const ordered = m.orders.reduce((n, o) => n + o.unit, 0)
@@ -1377,8 +1457,11 @@ function BundleCard({
               ? <>{b.members.filter((m) => m.splitRequested).map((m) => m.event).join(", ")} minta kirim duluan, pasangannya tunggu lengkap</>
               : <>menunggu {b.waitingFor.join(", ")}</>}
         </span>
-        {b.ready && saving > 0 && (
+        {b.ready && saving > 0 && planExtra <= 0 && (
           <span className="text-xs font-medium text-green-700">hemat ongkir Rp {saving.toLocaleString("id-ID")}</span>
+        )}
+        {b.ready && planExtra > 0 && (
+          <span className="text-xs text-muted">sisanya menyusul dalam satu kotak, tanpa ongkir lagi</span>
         )}
         {unpaid.length > 0 && (
           <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 font-medium">
@@ -1389,7 +1472,7 @@ function BundleCard({
         <button
           type="button"
           onClick={() => setMerging(true)}
-          disabled={!b.ready || unpaid.length > 0 || units === 0}
+          disabled={!b.ready || unpaid.length > 0 || units === 0 || owesForEarly}
           className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           Gabung &amp; Kirim

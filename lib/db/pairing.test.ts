@@ -9,7 +9,7 @@ import {
   PairedShipmentError,
 } from "./fulfillment"
 import { setMergeGroup, setShippingMode, getShippingPrefs } from "./shipping-prefs"
-import { normalizeId } from "./helpers"
+import { normalizeId, parcelPlanExtra } from "./helpers"
 
 // Pairing parks both parcels, and combining is the door they leave by.
 
@@ -185,4 +185,86 @@ test("a hold survives the pairing that was on top of it", async () => {
   await setMergeGroup(customerId, [F])
 
   assert.equal(await heldUnits(E), 1, "she asked for this one to be held, separately")
+})
+
+
+// ── an early box, with the remainder still paired ────────────
+// She asked for these to travel together, not to travel together once. What
+// is left after an early box stays a pair, so it comes back as one parcel
+// instead of two loose ones she has to pair again.
+test("a partial merged shipment leaves the pairing standing", async () => {
+  const G = `${TAG}_G`
+  const H = `${TAG}_H`
+  const [p] = await sql<{ id: number; gram: number }[]>`
+    SELECT id, gram FROM products WHERE gram > 0 ORDER BY id LIMIT 1`
+  for (const name of [G, H]) {
+    const [w] = await sql<{ id: number }[]>`
+      INSERT INTO events (name, warehouse_id)
+      SELECT ${name}, id FROM warehouses ORDER BY id LIMIT 1
+      RETURNING warehouse_id AS id`
+    await sql`
+      INSERT INTO customer_warehouse_ongkir (customer_id, warehouse_id, ongkos_kirim)
+      VALUES (${customerId}, ${w.id}, ${RATE})
+      ON CONFLICT (customer_id, warehouse_id) DO UPDATE SET ongkos_kirim = ${RATE}`
+    // Four ordered, two here: an early box is possible and a remainder exists.
+    await sql`
+      INSERT INTO orders (event, customer, product_id, unit_price, unit, unit_arrive)
+      VALUES (${name}, ${handle}, ${p.id}, 100000, 4, 2)`
+    await sql`
+      INSERT INTO payments (event, customer, amount, is_checked, kind)
+      VALUES (${name}, ${handle}, ${400000 + RATE * Math.ceil((p.gram * 4) / 1000)}, true, 'deposit')`
+  }
+  await setShippingMode(customerId, G, "split")
+  await setShippingMode(customerId, H, "split")
+  await setMergeGroup(customerId, [G, H])
+
+  const early = async (event: string) => {
+    const { groups } = await getShipOrdersFiltered({ event })
+    const g = groups.find((x) => normalizeId(x.customer) === normalizeId(handle))!
+    return {
+      event,
+      orders: g.orders.map((o) => ({
+        rowNumber: o.rowNumber, productId: o.productId, productName: o.productName,
+        toShip: Math.max(0, o.unitArrive - o.unitShip), unitShip: o.unitShip, gram: o.gram,
+      })),
+    }
+  }
+  await shipMergedCustomerOrders({
+    customer: handle, ongkirPerKg: RATE, groups: [await early(G), await early(H)],
+  })
+
+  const prefs = await getShippingPrefs(customerId)
+  const keyG = prefs.find((x) => x.event === G)?.mergeKey
+  assert.ok(keyG, "half shipped is not the end of the pairing")
+  assert.equal(prefs.find((x) => x.event === H)?.mergeKey, keyG, "and the partner keeps the same key")
+
+  // The remainder arrives, and the pair comes back as one piece of work.
+  await sql`UPDATE orders SET unit_arrive = 4 WHERE event = ANY(${[G, H]}) AND customer = ${handle}`
+  for (const e of [G, H]) await reapplyHoldsForArrival(e, [handle])
+  const { counts } = await getShipOrdersFiltered({})
+  assert.ok(counts.paired >= 1, "back in the Gabung tab, together")
+})
+
+// One plan, one charge: the early box and the remainder are priced together,
+// so nothing is asked for again when the rest turns up.
+test("the whole plan is priced once, not per parcel", () => {
+  // Two events, 2 kg each ordered, half of each going early.
+  const lines = (unit: number, toShip: number) => [{ gram: 1000, unit, toShip }]
+  const plan = parcelPlanExtra([{ lines: lines(2, 1) }, { lines: lines(2, 1) }], 25000)
+  // invoiced 2 + 2 kg; reality 2 kg early + 2 kg remainder — the same.
+  assert.equal(plan, 0)
+
+  // Now one event only: 2 kg ordered, 1 kg early — two parcels against one.
+  assert.equal(parcelPlanExtra([{ lines: lines(2, 1) }], 25000), 0)
+  // 1.5 kg ordered (2 kg billed), 0.5 kg early: 1 + 1 against 2 — still level.
+  assert.equal(parcelPlanExtra([{ lines: [{ gram: 500, unit: 3, toShip: 1 }] }], 25000), 0)
+  // 1.2 kg + 1.4 kg in one box now, nothing left: 3 kg against 2 + 2.
+  assert.equal(
+    parcelPlanExtra(
+      [{ lines: [{ gram: 600, unit: 2, toShip: 2 }] }, { lines: [{ gram: 700, unit: 2, toShip: 2 }] }],
+      25000,
+    ),
+    -25000,
+    "combining is a saving, and the same sum says so",
+  )
 })

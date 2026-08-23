@@ -14,11 +14,17 @@ export async function POST(req: NextRequest) {
   if (roleError) return roleError
 
   try {
-    const { customer, event } = (await req.json()) as { customer?: string; event?: string }
+    const { customer, event, events } = (await req.json()) as {
+      customer?: string
+      event?: string
+      events?: string[]
+    }
     if (!customer || !event) {
       return NextResponse.json({ error: "customer and event are required" }, { status: 400 })
     }
-    const result = await chargeSplitOngkir({ customer, event }, session.user.email)
+    // A paired group is one plan and one charge; `events` names the whole
+    // group, and the adjustment lands on `event`.
+    const result = await chargeSplitOngkir({ customer, event, events }, session.user.email)
     return NextResponse.json(result)
   } catch (err) {
     // These refusals are the point of the endpoint, not failures of it: both
