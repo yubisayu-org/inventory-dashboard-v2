@@ -1,5 +1,10 @@
 -- A route can answer to more than one code.
 --
+-- Numbered 112, not 111: this and the access-request grant were written in
+-- parallel and both reached for 111. The CLI keys its ledger by version, so two
+-- files claiming one number means the second is recorded as applied without
+-- ever running. The grant was applied first and kept the number.
+--
 -- The sea forwarder books the same freight under MNC and MU, and until now a
 -- route held exactly one prefix, so the second series fell through to "Other"
 -- along with everything else nobody had claimed. That bucket is where the
