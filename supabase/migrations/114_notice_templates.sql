@@ -10,9 +10,6 @@
 -- outside the database, and it survives the move: a mangled row can change how
 -- a notice reads, never whether it goes.
 --
--- Numbered 114, not 113: 113 is being held for the 112 collision between
--- 112_catalogue_refunds and 112_dispatch_route_prefixes.
---
 -- Re-running is safe.
 
 CREATE TABLE IF NOT EXISTS notice_templates (

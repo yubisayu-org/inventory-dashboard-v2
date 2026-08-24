@@ -15,6 +15,13 @@
 -- typed — and the API masks it to the last four digits before it leaves the
 -- server, so a borrowed phone shows nothing she did not already know.
 --
+-- Numbered 113, not 112: this and 112_dispatch_route_prefixes were written in
+-- parallel and both landed on 112. The CLI keys its ledger by version, so two
+-- files claiming one number means the second is recorded as applied without
+-- ever running — the same trap 112_dispatch_route_prefixes had already dodged
+-- once at 111. Neither had reached any database when this moved, so nothing
+-- was applied under the old number and nothing needs backfilling.
+--
 -- Re-running is safe.
 
 GRANT SELECT (id, event, customer, reason, refund_amount, status, note,
