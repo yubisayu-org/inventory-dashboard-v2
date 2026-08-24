@@ -161,3 +161,54 @@ export function unknownTokens(text: string): string[] {
   const found = String(text ?? "").match(/\{[a-zA-Z]+\}/g) ?? []
   return [...new Set(found.filter((t) => !(NOTICE_TOKENS as readonly string[]).includes(t)))]
 }
+
+export const NOTICE_KEYS: NoticeKey[] = NOTICE_TEMPLATES.map((t) => t.key)
+
+/**
+ * Which placeholders actually resolve for a given notice.
+ *
+ * Every token in NOTICE_TOKENS is *accepted* anywhere — fillNotice does not
+ * care which template it is filling. This map is guidance for the settings
+ * screen: {refundAmount} in "Trip delayed" is not an error, it just fills
+ * with nothing, and the owner should be told that before they save it and
+ * not after a customer reads the gap.
+ */
+export const NOTICE_TOKENS_FOR: Record<NoticeKey, string[]> = {
+  inbox_invoice_due: ["{customer}", "{event}", "{total}", "{outstanding}"],
+  inbox_refund_offered: ["{customer}", "{event}", "{refundAmount}", "{cause}", "{itemsList}"],
+  inbox_payment_confirmed: ["{customer}", "{event}", "{total}"],
+  inbox_waiting_payment: ["{customer}", "{event}", "{total}", "{outstanding}"],
+  inbox_delayed: ["{customer}", "{event}"],
+  inbox_custom: [...NOTICE_TOKENS],
+}
+
+/** An owner's edit to one notice. Either field may be blank, meaning "keep ours". */
+export interface NoticeOverride {
+  title?: string
+  body?: string
+}
+
+/**
+ * House wording with the owner's edits laid over it.
+ *
+ * Blank means "keep ours", per field rather than per template — an owner who
+ * rewrote the body and left the title alone gets their body and our title,
+ * and an override row for a key we no longer ship is ignored rather than
+ * resurrected. inbox_custom is the one template whose default body is empty
+ * on purpose, so a blank body there is indistinguishable from the default and
+ * that is exactly right.
+ */
+export function applyNoticeOverrides(
+  overrides: Partial<Record<NoticeKey, NoticeOverride>> | null | undefined,
+): NoticeTemplate[] {
+  if (!overrides) return NOTICE_TEMPLATES
+  return NOTICE_TEMPLATES.map((t) => {
+    const edit = overrides[t.key]
+    if (!edit) return t
+    return {
+      ...t,
+      title: edit.title?.trim() ? edit.title : t.title,
+      body: edit.body?.trim() ? edit.body : t.body,
+    }
+  })
+}
