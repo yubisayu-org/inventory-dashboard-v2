@@ -17,7 +17,23 @@ const connectionString = process.env.CATALOGUE_PUBLIC_DATABASE_URL!
 const isLocalDb = /@(localhost|127\.0\.0\.1|\[::1\])[:/]/.test(connectionString)
 
 const catalogueSql = postgres(connectionString, {
-  max: 3,
+  // Bumped 3 → 12. Three was set when this pool served a couple of read-only
+  // endpoints; it now serves fifteen — every customer-facing route on the
+  // catalogue, for every customer at once. The page's own boot fans out
+  // several of them in parallel, and each authenticated one spends a
+  // connection resolving the session BEFORE it spends one on the query.
+  //
+  // Past three concurrent queries the rest queue, and a queue wait is not
+  // covered by connect_timeout or statement_timeout — those bound reaching the
+  // database and running a query, not waiting for a slot. So the request
+  // simply hangs, the catalogue's own 12s abort fires first, and it surfaces
+  // as an AbortError on the caller with nothing logged here at all.
+  //
+  // lib/db-pool.ts carries the same scar: 5 → 10 → 20 after a 2026-08-12 burst
+  // "queued past Railway's proxy timeout, requests never even erroring — just
+  // queued waiting for a free connection". Same disease, and this pool was
+  // left at three while the customer site grew on top of it.
+  max: 12,
   idle_timeout: 300,
   max_lifetime: 60 * 30,
   connect_timeout: 10,

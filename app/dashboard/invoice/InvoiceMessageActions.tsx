@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import type { InvoiceEvent } from "@/lib/db"
 import { useCopyFeedback } from "@/hooks/useCopyFeedback"
 import { useModalDismiss } from "@/hooks/useModalDismiss"
@@ -8,8 +8,11 @@ import {
   NOTICE_TEMPLATES,
   NOTICE_TOKENS,
   REFUND_CAUSES,
+  applyNoticeOverrides,
   fillNotice,
   unknownTokens,
+  type NoticeKey,
+  type NoticeOverride,
   type NoticeTemplate,
   type NoticeTokens,
   type RefundCause,
@@ -155,6 +158,12 @@ function idr(n: number): string {
 function TellHerModal({
   event, customer, onClose,
 }: { event: InvoiceEvent; customer: string; onClose: () => void }) {
+  // The house wording, plus whatever the owner rewrote in Settings. It starts
+  // as the code defaults and is replaced once the fetch lands, so the modal is
+  // usable the instant it opens and never blocks on a settings read. A reason
+  // already picked keeps its identity across the swap — only its wording
+  // changes, and only if the field is still untouched.
+  const [wordings, setWordings] = useState<NoticeTemplate[]>(NOTICE_TEMPLATES)
   const [reason, setReason] = useState<NoticeTemplate>(NOTICE_TEMPLATES[0])
   const [cause, setCause] = useState<RefundCause>(REFUND_CAUSES[0])
   const [title, setTitle] = useState(NOTICE_TEMPLATES[0].title)
@@ -166,6 +175,29 @@ function TellHerModal({
   const [sent, setSent] = useState(false)
   const [error, setError] = useState("")
   useModalDismiss(onClose)
+  useEffect(() => {
+    let live = true
+    fetch("/api/sheets/notice-templates", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data: { overrides?: Partial<Record<NoticeKey, NoticeOverride>> }) => {
+        if (!live) return
+        const next = applyNoticeOverrides(data.overrides)
+        setWordings(next)
+        // Only adopt the edited wording where nothing has been typed over it
+        // yet — an owner mid-sentence must not have it swapped underneath.
+        setReason((current) => {
+          const match = next.find((t) => t.key === current.key)
+          if (!match) return current
+          setTitle((t) => (t === current.title ? match.title : t))
+          setBody((b) => (b === current.body ? match.body : b))
+          return match
+        })
+      })
+      // A settings read that fails leaves the house wording in place, which is
+      // what this modal has always sent.
+      .catch(() => {})
+    return () => { live = false }
+  }, [])
 
   const isRefund = Boolean(reason.isRefund)
   const needsItems = isRefund && Boolean(cause.needsItems)
@@ -271,7 +303,7 @@ function TellHerModal({
 
         <div className="p-5 grid gap-5 md:grid-cols-[15rem_minmax(0,1fr)]">
           <div className="grid gap-1.5 content-start">
-            {NOTICE_TEMPLATES.map((t) => (
+            {wordings.map((t) => (
               <label
                 key={t.key}
                 className={`flex items-start gap-2 text-sm px-3 py-2 rounded-lg border cursor-pointer transition-colors ${

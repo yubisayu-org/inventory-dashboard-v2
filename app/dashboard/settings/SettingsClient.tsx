@@ -10,6 +10,17 @@ import {
   findMissingTokens,
   type TemplateKey,
 } from "@/lib/message-templates"
+import {
+  NOTICE_TEMPLATES,
+  NOTICE_TOKENS,
+  NOTICE_TOKENS_FOR,
+  fillNotice,
+  unknownTokens,
+  type NoticeKey,
+  type NoticeOverride,
+  type NoticeTemplate,
+  type NoticeTokens,
+} from "@/lib/notice-templates"
 import { DEFAULT_BUSINESS_PROFILE, type BusinessProfile } from "@/lib/business-profile"
 import { DEFAULT_PRODUCT_DEFAULTS, type ProductDefaults } from "@/lib/product-defaults"
 import {
@@ -158,6 +169,9 @@ export default function SettingsClient() {
         {TEMPLATE_KEYS.map((key) => (
           <TemplateSection key={key} templateKey={key} initialBody={templates[key]} />
         ))}
+        {/* Its own box, last: everything above is copied by hand into a chat,
+            this is sent from the invoice screen into her catalogue inbox. */}
+        <InboxNoticesSection />
       </div>
       <div className={tab === "whatsapp" ? "" : "hidden"}>
         <WhatsAppSection />
@@ -1041,6 +1055,232 @@ function TemplateSection({ templateKey, initialBody }: { templateKey: TemplateKe
           <pre className="text-xs whitespace-pre-wrap font-sans text-foreground">{preview}</pre>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ─── Inbox notices ───────────────────────────────────────────────────────────
+//
+// A box of its own, below the WhatsApp templates and deliberately not mixed in
+// with them: these are not copied by hand into a chat, they are sent from the
+// invoice screen and land in the customer's own inbox on the catalogue. Same
+// idea, different destination, and the tokens are a different set.
+
+const NOTICE_SAMPLE: NoticeTokens = {
+  "{customer}": "@fandrianr",
+  "{event}": "LSJP202601",
+  "{total}": "Rp 3.890.000",
+  "{outstanding}": "Rp 1.900.000",
+  "{refundAmount}": "Rp 240.000",
+  "{itemsList}": "Muji Gel Pen 0.38 × 2",
+  "{cause}": "We could not buy Muji Gel Pen 0.38 × 2 from LSJP202601.",
+}
+
+function InboxNoticesSection() {
+  const [overrides, setOverrides] = useState<Partial<Record<NoticeKey, NoticeOverride>> | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch("/api/sheets/notice-templates", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data: { overrides?: Partial<Record<NoticeKey, NoticeOverride>>; error?: string }) => {
+        if (data.error) setLoadError(data.error)
+        else setOverrides(data.overrides ?? {})
+      })
+      .catch(() => setLoadError("Failed to load inbox notices"))
+  }, [])
+
+  return (
+    <div className="bg-white border border-cream-border rounded-xl p-4 flex flex-col gap-4">
+      <div>
+        <h2 className="text-sm font-semibold text-foreground">Inbox notices</h2>
+        <p className="text-xs text-muted mt-1">
+          What she reads in her catalogue inbox when you tell her something from the invoice
+          screen. Edit the wording here; the amounts and the order number fill themselves in.
+          Leave a field blank to go back to ours.
+        </p>
+      </div>
+
+      {loadError && <p className="text-xs text-red-600">{loadError}</p>}
+      {!loadError && !overrides && <p className="text-xs text-muted">Loading…</p>}
+
+      {overrides && (
+        <div className="flex flex-col gap-4">
+          {NOTICE_TEMPLATES.map((t) => (
+            <NoticeTemplateRow key={t.key} template={t} initial={overrides[t.key]} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function NoticeTemplateRow({
+  template, initial,
+}: { template: NoticeTemplate; initial?: NoticeOverride }) {
+  const [title, setTitle] = useState(initial?.title?.trim() ? initial.title : template.title)
+  const [body, setBody] = useState(initial?.body?.trim() ? initial.body : template.body)
+  const [open, setOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!saved) return
+    const t = setTimeout(() => setSaved(false), 2000)
+    return () => clearTimeout(t)
+  }, [saved])
+
+  const bad = unknownTokens(`${title} ${body}`)
+  // Not an error — fillNotice resolves it to nothing — but a hole in a
+  // sentence she reads, so it is worth seeing before it is saved.
+  const known = NOTICE_TOKENS_FOR[template.key]
+  const inert = NOTICE_TOKENS.filter((t) => !known.includes(t) && `${title} ${body}`.includes(t))
+  const edited = title !== template.title || body !== template.body
+
+  async function handleSave() {
+    if (!title.trim()) {
+      setError("A notice needs a title")
+      return
+    }
+    if (bad.length > 0) {
+      setError(`${bad.join(", ")} is not a placeholder we know`)
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await fetch("/api/sheets/notice-templates", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: template.key, title, body }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "Failed to save")
+      setSaved(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function handleReset() {
+    setTitle(template.title)
+    setBody(template.body)
+    setError(null)
+  }
+
+  return (
+    <div className="border border-cream-border rounded-lg">
+      <div className="flex items-center justify-between gap-2 px-3 py-2 flex-wrap">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className="flex items-center gap-2 text-sm font-medium text-foreground min-w-0"
+        >
+          <svg
+            width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+            className={`shrink-0 text-muted transition-transform ${open ? "rotate-180" : ""}`}
+          >
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+          <span className="truncate">{template.label}</span>
+          {template.isRefund && (
+            <span className="shrink-0 text-[10px] uppercase tracking-wide text-amber-700 bg-amber-100 rounded px-1 py-0.5">
+              Creates a refund
+            </span>
+          )}
+          {edited && !open && <span className="shrink-0 text-[10px] text-muted">Edited</span>}
+        </button>
+        <div className="flex items-center gap-3">
+          {saved && <span className="text-xs text-green-600">Saved</span>}
+          <button
+            type="button"
+            onClick={handleReset}
+            title="Reset to default"
+            aria-label="Reset to default"
+            className="inline-flex items-center justify-center h-[30px] w-[30px] rounded-lg border border-cream-border text-muted hover:border-brand hover:text-brand transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="1 4 1 10 7 10" />
+              <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="text-xs font-medium px-3 py-1.5 rounded-lg bg-brand text-white hover:bg-brand-light transition-colors disabled:opacity-50"
+          >
+            {saving ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+
+      {open && (
+        <div className="px-3 pb-3 flex flex-col gap-3">
+          <p className="text-xs text-muted">
+            Placeholders:{" "}
+            {known.map((t) => (
+              <code
+                key={t}
+                className={`mx-0.5 px-1 py-0.5 rounded ${
+                  `${title} ${body}`.includes(t) ? "bg-cream text-muted-strong" : "bg-cream text-faint"
+                }`}
+              >
+                {t}
+              </code>
+            ))}
+            {inert.length > 0 && (
+              <>
+                {" "}· Fills with nothing here:{" "}
+                {inert.map((t) => (
+                  <code key={t} className="mx-0.5 px-1 py-0.5 rounded bg-amber-100 text-amber-700">
+                    {t}
+                  </code>
+                ))}
+              </>
+            )}
+          </p>
+
+          {error && <p className="text-xs text-red-600">{error}</p>}
+
+          <div className="grid md:grid-cols-2 gap-3">
+            <div className="flex flex-col gap-2">
+              <label className="text-[10px] uppercase tracking-wide text-faint" htmlFor={`notice-title-${template.key}`}>
+                Title
+              </label>
+              <input
+                id={`notice-title-${template.key}`}
+                value={title}
+                onChange={(e) => { setTitle(e.target.value); setError(null) }}
+                className={`${fieldInputCls} font-mono`}
+                spellCheck={false}
+              />
+              <label className="text-[10px] uppercase tracking-wide text-faint" htmlFor={`notice-body-${template.key}`}>
+                Message
+              </label>
+              <textarea
+                id={`notice-body-${template.key}`}
+                value={body}
+                onChange={(e) => { setBody(e.target.value); setError(null) }}
+                className={`${textareaCls} min-h-[140px]`}
+                spellCheck={false}
+              />
+            </div>
+            <div className="border border-cream-border rounded-lg px-3 py-2 bg-cream overflow-auto">
+              <p className="text-[10px] uppercase tracking-wide text-faint mb-1">Preview</p>
+              <p className="text-xs font-semibold text-foreground mb-1">{fillNotice(title, NOTICE_SAMPLE)}</p>
+              <pre className="text-xs whitespace-pre-wrap font-sans text-foreground">
+                {fillNotice(body, NOTICE_SAMPLE)}
+              </pre>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

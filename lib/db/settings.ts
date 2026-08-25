@@ -1,6 +1,7 @@
 import sql from "../db-pool"
 import type { DBExecutor } from "./actor"
 import { DEFAULT_TEMPLATES, TEMPLATE_KEYS, type TemplateKey } from "../message-templates"
+import { NOTICE_KEYS, type NoticeKey, type NoticeOverride } from "../notice-templates"
 import { DEFAULT_BUSINESS_PROFILE, type BusinessProfile } from "../business-profile"
 import { DEFAULT_PRODUCT_DEFAULTS, type ProductDefaults } from "../product-defaults"
 import { toPricingMethod } from "../pricing"
@@ -30,6 +31,49 @@ export async function updateMessageTemplate(
   await db`
     INSERT INTO message_templates (key, body, updated_at) VALUES (${key}, ${body}, NOW())
     ON CONFLICT (key) DO UPDATE SET body = EXCLUDED.body, updated_at = NOW()
+  `
+}
+
+// ─── Inbox notice templates ──────────────────────────────────────────────────
+//
+// The owner's edits to the wording of an inbox notice. Only the edits live
+// here; the house wording stays in lib/notice-templates.ts and fills anything
+// this table does not answer for — see applyNoticeOverrides.
+//
+// A missing table is treated as "no edits" rather than an error. This wording
+// is on the path where the shop tells someone about money, and a settings
+// table that has not reached this environment yet must not be the reason the
+// telling fails.
+
+export async function getNoticeTemplates(): Promise<Partial<Record<NoticeKey, NoticeOverride>>> {
+  let rows: { key: string; title: string; body: string }[]
+  try {
+    rows = await sql`SELECT key, title, body FROM notice_templates`
+  } catch (err) {
+    console.error("Failed to read notice_templates; falling back to house wording:", err)
+    return {}
+  }
+  const known = new Set<string>(NOTICE_KEYS)
+  const result: Partial<Record<NoticeKey, NoticeOverride>> = {}
+  for (const row of rows) {
+    if (!known.has(row.key)) continue
+    result[row.key as NoticeKey] = { title: row.title ?? "", body: row.body ?? "" }
+  }
+  return result
+}
+
+export async function updateNoticeTemplate(
+  key: NoticeKey,
+  input: NoticeOverride,
+  db: DBExecutor = sql,
+): Promise<void> {
+  const title = String(input.title ?? "")
+  const body = String(input.body ?? "")
+  await db`
+    INSERT INTO notice_templates (key, title, body, updated_at)
+    VALUES (${key}, ${title}, ${body}, NOW())
+    ON CONFLICT (key) DO UPDATE
+      SET title = EXCLUDED.title, body = EXCLUDED.body, updated_at = NOW()
   `
 }
 
