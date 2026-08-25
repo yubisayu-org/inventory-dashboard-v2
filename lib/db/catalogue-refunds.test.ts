@@ -50,7 +50,15 @@ test("a refund reads back with its cause and its amount", async () => {
   assert.equal(row.note, "Laneige Water Sleeping Mask × 1")
 })
 
+/** Put the row back to undecided. Tests that move it should not depend on
+ *  which test ran before them, and the lock below makes that dependency real
+ *  rather than merely untidy. */
+async function reopen() {
+  await sql`UPDATE refunds SET status = 'pending' WHERE id = ${mine}`
+}
+
 test("keeping it on her account asks for nothing and stores nothing", async () => {
+  await reopen()
   await chooseRefundCredit(mine, handle)
   const [row] = await getCustomerRefunds(handle)
   assert.equal(row.status, "applied_to_next_order")
@@ -58,7 +66,8 @@ test("keeping it on her account asks for nothing and stores nothing", async () =
   assert.equal(row.accountMask, "")
 })
 
-test("she can change her mind, and the details land on the refund", async () => {
+test("choosing her bank stores the details on the refund", async () => {
+  await reopen()
   await chooseRefundBank(mine, handle, {
     bank: "Bank Central Asia", accountNumber: "4419051991", accountHolder: "Fandrian R",
   })
@@ -79,6 +88,7 @@ test("she can change her mind, and the details land on the refund", async () => 
 })
 
 test("an account number that is not one is refused", async () => {
+  await reopen()
   const ok = { bank: "BCA", accountHolder: "Fandrian R" }
   await assert.rejects(() => chooseRefundBank(mine, handle, { ...ok, accountNumber: "12345" }), /tidak valid/)
   await assert.rejects(() => chooseRefundBank(mine, handle, { ...ok, accountNumber: "abcdefgh" }), /tidak valid/)
@@ -94,6 +104,7 @@ test("an account number that is not one is refused", async () => {
 
 // Spaces and dashes are how people write account numbers down.
 test("a number written with spaces is stored as digits", async () => {
+  await reopen()
   await chooseRefundBank(mine, handle, {
     bank: "Bank Jago", accountNumber: "1033 8271-9370", accountHolder: "Fandrian R",
   })
@@ -120,6 +131,27 @@ test("another customer's refund is not hers to move", async () => {
   // And it never appears on her page either.
   const hers = await getCustomerRefunds(handle)
   assert.ok(!hers.some((r) => r.id === theirs))
+})
+
+// The shop transfers by hand and marks the row afterwards, sometimes much
+// later. In that window an edit rewrites the record of where money that has
+// ALREADY LEFT was sent, and nothing is left to reconcile the statement
+// against. She asks the shop instead, which can still change it.
+test("once she has chosen, it is no longer hers to change", async () => {
+  for (const chosen of ["ready_to_refund", "applied_to_next_order"]) {
+    await sql`UPDATE refunds SET status = ${chosen} WHERE id = ${mine}`
+    await assert.rejects(() => chooseRefundCredit(mine, handle), /Hubungi kami/, chosen)
+    await assert.rejects(
+      () => chooseRefundBank(mine, handle, {
+        bank: "BCA", accountNumber: "4419051991", accountHolder: "X",
+      }),
+      /Hubungi kami/,
+      chosen,
+    )
+    // And nothing moved.
+    const [row] = await sql<{ status: string }[]>`SELECT status FROM refunds WHERE id = ${mine}`
+    assert.equal(row.status, chosen)
+  }
 })
 
 // A transfer that has already gone is not a choice any more.
