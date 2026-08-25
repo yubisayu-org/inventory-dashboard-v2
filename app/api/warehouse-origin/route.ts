@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireOwner } from "@/lib/api"
-import { getWarehouses, setWarehouseOrigin, createWarehouse } from "@/lib/db"
+import { getWarehouses, setWarehouseOrigin, createWarehouse, updateWarehouse } from "@/lib/db"
 
 export async function GET() {
   const { session, error: authError } = await requireSession()
@@ -60,6 +60,35 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, ...created })
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to create"
+      return NextResponse.json({ error: message }, { status: 409 })
+    }
+  }
+
+  if (body.action === "update") {
+    const id = Number(body.warehouseId)
+    const code = String(body.code ?? "").trim()
+    const name = String(body.name ?? "").trim()
+    if (!Number.isInteger(id) || id < 1) {
+      return NextResponse.json({ error: "warehouseId must be a positive integer" }, { status: 400 })
+    }
+    if (!/^[A-Za-z0-9_-]{2,20}$/.test(code)) {
+      return NextResponse.json(
+        { error: "Code must be 2-20 letters, digits, hyphen or underscore" },
+        { status: 400 },
+      )
+    }
+    if (!name) {
+      return NextResponse.json({ error: "Name is required" }, { status: 400 })
+    }
+    try {
+      // The rate count comes back so the screen can say whether the new code
+      // still has anything to price from. The FK cascades, so it normally
+      // does — but a code typed to match nothing would silently zero every
+      // ongkir from this warehouse, and that should be said out loud.
+      const result = await updateWarehouse(id, { code, name })
+      return NextResponse.json({ ok: true, ...result })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to update"
       return NextResponse.json({ error: message }, { status: 409 })
     }
   }

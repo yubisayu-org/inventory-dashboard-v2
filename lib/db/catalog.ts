@@ -824,6 +824,50 @@ export async function createWarehouse(data: {
 }
 
 /**
+ * Rename a warehouse, or change its code.
+ *
+ * The code is worth changing carefully: jne_rates.origin_code is a foreign key
+ * onto warehouses(code) ON UPDATE CASCADE, so a rename carries every rate row
+ * with it rather than orphaning them. That cascade is the reason this is safe
+ * to expose at all — without it, renaming CIMAHI would strand 7,000 rates and
+ * price every parcel from there at zero.
+ *
+ * is_default is untouched here for the same reason createWarehouse leaves it
+ * alone: which warehouse is default decides what an unspecified lookup uses,
+ * and that is not a side effect of fixing a typo in a name.
+ *
+ * Returns the rate count under the new code, so the screen can say plainly
+ * whether anything can still be priced from here.
+ */
+export async function updateWarehouse(
+  id: number,
+  data: { code: string; name: string },
+): Promise<{ hasRates: boolean; rateCount: number }> {
+  const code = data.code.trim().toUpperCase()
+  const name = data.name.trim()
+  if (!code) throw new Error("Code is required")
+  if (!name) throw new Error("Name is required")
+
+  const [clash] = await sql`
+    SELECT id FROM warehouses WHERE upper(code) = ${code} AND id <> ${id}
+  `
+  if (clash) throw new Error(`A warehouse with code ${code} already exists`)
+
+  const rows = await sql`
+    UPDATE warehouses SET code = ${code}, name = ${name}, updated_at = NOW()
+    WHERE id = ${id}
+    RETURNING id
+  `
+  if (rows.length === 0) throw new Error("Warehouse not found")
+
+  const [rates] = await sql<{ n: string }[]>`
+    SELECT count(*) AS n FROM jne_rates WHERE upper(trim(origin_code)) = ${code}
+  `
+  const rateCount = Number(rates.n)
+  return { hasRates: rateCount > 0, rateCount }
+}
+
+/**
  * Set a warehouse's shipping origin.
  *
  * Nothing prices from a warehouse without one — rate lookups fall back to

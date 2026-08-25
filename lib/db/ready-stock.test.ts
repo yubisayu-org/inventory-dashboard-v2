@@ -7,6 +7,7 @@ const TAG = `stocktest${process.hrtime.bigint()}`
 const EVENT = `${TAG}_EVENT`
 const NAMED = `${TAG} Matched Item`
 const UNNAMED = `${TAG} typed by hand`
+const SHIPPING = `${TAG} Still Shipping`
 
 after(async () => {
   await sql`DELETE FROM excess_purchase WHERE items LIKE ${`${TAG}%`}`
@@ -21,14 +22,18 @@ async function seed() {
     SELECT ${EVENT}, id FROM warehouses ORDER BY id LIMIT 1`
   await sql`
     INSERT INTO products (name, store, price)
-    VALUES (${NAMED}, 'test', 100000)`
-  // Fully arrived, partly arrived, and one whose text matches no product.
+    VALUES (${NAMED}, 'test', 100000), (${SHIPPING}, 'test', 100000)`
+  // Fully arrived, partly arrived, wholly still shipping, and one whose text
+  // matches no product.
   await sql`
     INSERT INTO excess_purchase (event, items, unit_buy, unit_arrive)
     VALUES (${EVENT}, ${NAMED}, 3, 3)`
   await sql`
     INSERT INTO excess_purchase (event, items, unit_buy, unit_arrive)
     VALUES (${EVENT}, ${NAMED}, 5, 2)`
+  await sql`
+    INSERT INTO excess_purchase (event, items, unit_buy, unit_arrive)
+    VALUES (${EVENT}, ${SHIPPING}, 6, 0)`
   await sql`
     INSERT INTO excess_purchase (event, items, unit_buy, unit_arrive)
     VALUES (${EVENT}, ${UNNAMED}, 4, 4)`
@@ -44,14 +49,24 @@ test("matched stock is listed with its product price", async () => {
   assert.ok(rows.every((r) => r.productId > 0), "a request needs a product to attach to")
 })
 
-// unit_arrive is what landed; the rest of unit_buy is still shipping. Both are
-// shown so a customer deciding whether to wait knows the rest exists.
-test("ready and in-transit quantities are split, not summed", async () => {
+// unit_arrive is what landed; the rest of unit_buy is still shipping and is
+// not offered at all. A partly-arrived row is offered at what is in hand, not
+// at what was bought — quoting the whole would sell units that are on a boat.
+test("only what has landed is offered, and only as much as has landed", async () => {
   const rows = mine(await listReadyStock())
-  const full = rows.find((r) => r.readyQty + r.transitQty === 3)
-  const partial = rows.find((r) => r.readyQty + r.transitQty === 5)
-  assert.deepEqual({ ready: full?.readyQty, transit: full?.transitQty }, { ready: 3, transit: 0 })
-  assert.deepEqual({ ready: partial?.readyQty, transit: partial?.transitQty }, { ready: 2, transit: 3 })
+  assert.deepEqual(rows.map((r) => r.readyQty).sort(), [2, 3])
+})
+
+test("a row still wholly in transit is not on the shelf", async () => {
+  const rows = mine(await listReadyStock())
+  assert.ok(!rows.some((r) => r.name === SHIPPING))
+})
+
+test("the payload carries no in-transit figure at all", async () => {
+  // Not merely undrawn — absent. The page cannot leak what it was never sent.
+  const [row] = mine(await listReadyStock())
+  assert.ok(row)
+  assert.ok(!("transitQty" in row))
 })
 
 // An unpriced item invites an order the shop cannot quote, so it is hidden —
@@ -69,5 +84,5 @@ test("a row with nothing left is not offered", async () => {
     INSERT INTO excess_purchase (event, items, unit_buy, unit_arrive)
     VALUES (${EVENT}, ${NAMED}, 0, 0)`
   const rows = mine(await listReadyStock())
-  assert.ok(rows.every((r) => r.readyQty + r.transitQty > 0))
+  assert.ok(rows.every((r) => r.readyQty > 0))
 })

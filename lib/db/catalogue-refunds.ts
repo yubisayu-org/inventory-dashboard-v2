@@ -44,8 +44,21 @@ function maskAccount(number: string): string {
   return `${"•".repeat(Math.max(2, digits.length - 4))}${digits.slice(-4)}`
 }
 
-/** The states a customer may still move a refund out of. */
-const OPEN_STATUSES = ["pending", "awaiting_bank_info", "ready_to_refund", "applied_to_next_order"]
+/**
+ * The states a customer may still move a refund out of — before she has
+ * chosen, and no later.
+ *
+ * ready_to_refund and applied_to_next_order used to be here, so she could
+ * switch or re-type her account. They are gone because the shop transfers by
+ * hand and marks the row afterwards, sometimes much later: in that window the
+ * money has already left for the account the row named, and an edit rewrites
+ * the record of where it went. The row then disagrees with the bank statement
+ * and there is nothing left to reconcile it against.
+ *
+ * A customer who mistyped asks the shop, which can still change it. That is
+ * one message instead of a record that quietly stopped being true.
+ */
+const OPEN_STATUSES = ["pending", "awaiting_bank_info"]
 
 export async function getCustomerRefunds(
   handle: string,
@@ -106,6 +119,11 @@ async function openRefundOf(
   // Said plainly, because both are things she can see on her own card and
   // neither is something she can undo by trying again.
   if (row.status === "refunded") throw new Error("Dana sudah dikirim")
+  // Said apart from the closed case, because it is not the same news: this one
+  // is still hers, it is just no longer hers to change on her own.
+  if (row.status === "ready_to_refund" || row.status === "applied_to_next_order") {
+    throw new Error("Pilihan sudah dicatat. Hubungi kami kalau perlu diubah.")
+  }
   if (!OPEN_STATUSES.includes(row.status)) throw new Error("Pengembalian ini sudah ditutup")
   return row
 }

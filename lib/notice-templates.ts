@@ -114,7 +114,10 @@ export const REFUND_CAUSES: RefundCause[] = [
     key: "overpayment",
     label: "She paid more than the total",
     fixed: true,
-    line: "Your invoice for {event} came down after you had already paid.",
+    // Says what happened, not why: this cause covers both a discount applied
+    // after she paid and a transfer typed wrong, and the shop's own row is
+    // usually generated from paid > invoiced, which cannot tell them apart.
+    line: "You paid more than your order for {event} came to.",
   },
   {
     key: "shipping_loss",

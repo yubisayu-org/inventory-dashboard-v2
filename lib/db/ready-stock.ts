@@ -21,10 +21,8 @@ export type ReadyStockItem = {
   /** The product this row's text matched, so a request can attach to it. */
   productId: number
   price: number
-  /** In hand, orderable today. */
+  /** In hand, orderable today. The only quantity a customer is shown. */
   readyQty: number
-  /** Bought and on its way. */
-  transitQty: number
   /**
    * A photo for the gallery, from the newest visible catalogue post carrying
    * this product. products has no image of its own, and excess_purchase
@@ -43,12 +41,16 @@ const MATCHED = `
 `
 
 /**
- * What a customer can see: every row that matched a product and still has
- * units, priced.
+ * What a customer can see: every row that matched a product, priced, with
+ * units actually in hand.
  *
- * unit_arrive is what has landed; the rest of unit_buy is still shipping. Both
- * are shown, labelled, rather than hiding what is coming — a customer deciding
- * whether to wait needs to know it exists.
+ * unit_arrive is what has landed; the rest of unit_buy is still shipping and
+ * is not offered. A shelf that lists things on a boat asks her to decide
+ * whether to wait, and the honest answer to "when" is one the shop does not
+ * have — so the page only shows what could go out today.
+ *
+ * Filtered here rather than in the page: units on a boat are not something the
+ * browser needs a copy of in order to not draw them.
  */
 export async function listReadyStock(
   db: postgres.Sql | DBExecutor = sql,
@@ -89,6 +91,7 @@ export async function listReadyStock(
          LIMIT 1
       ) media ON true
      WHERE e.unit_buy > 0
+       AND COALESCE(e.unit_arrive, 0) > 0
      ORDER BY e.created_at DESC, e.id DESC
   `
   return rows.map((r) => {
@@ -99,7 +102,6 @@ export async function listReadyStock(
       productId: r.product_id,
       price: Math.round(Number(r.price)),
       readyQty: arrived,
-      transitQty: r.unit_buy - arrived,
       mediaUrl: r.media_url,
     }
   })
