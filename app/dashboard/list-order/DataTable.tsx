@@ -1408,8 +1408,8 @@ function AddOrderForm({ options, onOrderAdded, onCancel }: {
           bar as the receiving list's route tabs, so it is operated the same way. */}
       <div className="flex items-center gap-1 rounded-xl border border-cream-border bg-cream p-1">
         {([
-          { key: "byCustomer", label: "One customer, many items" },
-          { key: "byItem", label: "One item, many customers" },
+          { key: "byCustomer", label: "Per customer" },
+          { key: "byItem", label: "Per item" },
         ] as const).map(({ key, label }) => (
           <button
             key={key}
