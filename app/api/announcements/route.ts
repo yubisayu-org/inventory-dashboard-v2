@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { requireSession, requireOwner } from "@/lib/api"
 import {
   listAnnouncements,
   createAnnouncement,
@@ -6,8 +7,17 @@ import {
   deleteAnnouncement,
 } from "@/lib/db/announcements"
 
-// Staff CRUD. Guarded by the dashboard middleware, like every other
-// /api route that is not under /api/public.
+// Staff CRUD, owner-only — /dashboard/announcements is not in ADMIN_ROUTES.
+//
+// Guarded here, not by middleware. The middleware matcher is /dashboard/:path*,
+// which never sees a path beginning /api, so this route answered anyone who
+// asked — including POST, PATCH and DELETE. The comment that used to sit here
+// said the opposite, which is presumably why nobody looked.
+async function denyUnlessOwner(): Promise<NextResponse | null> {
+  const { session, error } = await requireSession()
+  if (error) return error
+  return requireOwner(session)
+}
 
 const MAX_TITLE = 120
 const MAX_BODY = 4000
@@ -23,6 +33,9 @@ function validate(body: Record<string, unknown>): { title: string; body: string 
 }
 
 export async function GET() {
+  const denied = await denyUnlessOwner()
+  if (denied) return denied
+
   try {
     return NextResponse.json({ announcements: await listAnnouncements() })
   } catch (err) {
@@ -32,6 +45,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = await denyUnlessOwner()
+  if (denied) return denied
+
   try {
     const parsed = validate((await req.json()) as Record<string, unknown>)
     if (typeof parsed === "string") return NextResponse.json({ error: parsed }, { status: 400 })
@@ -43,6 +59,9 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const denied = await denyUnlessOwner()
+  if (denied) return denied
+
   try {
     const body = (await req.json()) as Record<string, unknown>
     const id = Number(body.id)
@@ -60,6 +79,9 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  const denied = await denyUnlessOwner()
+  if (denied) return denied
+
   try {
     const id = Number(new URL(req.url).searchParams.get("id"))
     if (!Number.isInteger(id) || id < 1) {

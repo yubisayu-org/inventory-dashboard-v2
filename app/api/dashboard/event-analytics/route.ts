@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { requireSession, requireOwner } from "@/lib/api"
 import sql from "@/lib/db-pool"
 
 export interface EventTopItem {
@@ -13,6 +14,15 @@ export interface EventAnalytics {
 }
 
 export async function GET(req: NextRequest) {
+  // Owner-only: its one consumer is the Dashboard, which admins cannot open,
+  // and it reports units sold and revenue per trip. Nothing guarded it before —
+  // /api is outside the middleware matcher — so anyone who could guess an event
+  // code could read what that trip earned.
+  const { session, error: authError } = await requireSession()
+  if (authError) return authError
+  const ownerError = requireOwner(session)
+  if (ownerError) return ownerError
+
   const event = req.nextUrl.searchParams.get("event")
   if (!event) return NextResponse.json({ error: "event required" }, { status: 400 })
 
