@@ -7,6 +7,7 @@ import { usePaginatedFetch, type PageData } from "@/hooks/usePaginatedFetch"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import CopyInvoiceButton from "@/components/CopyInvoiceButton"
 import { fmt, displayIg } from "@/lib/format"
+import { rowsFromForm, type OrderFormMode } from "@/lib/order-rows"
 import { useCopyFeedback } from "@/hooks/useCopyFeedback"
 import DataGrid, {
   type ColumnDef,
@@ -1321,7 +1322,7 @@ function ReturnToExcessControl({ row, onDone }: { row: FormRow; onDone: () => vo
 // ---------------------------------------------------------------------------
 
 let _addLineId = 0
-function newAddLine() { return { id: _addLineId++, productId: "", unit: "", note: "" } }
+function newAddLine() { return { id: _addLineId++, productId: "", customer: "", unit: "", note: "" } }
 
 function AddOrderForm({ options, onOrderAdded, onCancel }: {
   options: SheetOptions | null
@@ -1329,8 +1330,13 @@ function AddOrderForm({ options, onOrderAdded, onCancel }: {
   onCancel?: () => void
 }) {
   const [event, setEvent] = useState("")
+  // The side that does NOT repeat: the customer when entering one person's
+  // several items, the item when entering one item's several customers.
+  const [mode, setMode] = useState<OrderFormMode>("byCustomer")
   const [customer, setCustomer] = useState("")
+  const [fixedItem, setFixedItem] = useState("")
   const [lines, setLines] = useState([newAddLine()])
+  const byItem = mode === "byItem"
   const [submitting, setSubmitting] = useState(false)
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null)
 
@@ -1348,15 +1354,17 @@ function AddOrderForm({ options, onOrderAdded, onCancel }: {
     [options],
   )
 
-  function updateLine(id: number, field: "productId" | "unit" | "note", value: string) {
+  function updateLine(id: number, field: "productId" | "customer" | "unit" | "note", value: string) {
     setLines((prev) => prev.map((l) => l.id === id ? { ...l, [field]: value } : l))
     setFeedback(null)
   }
   function addLine() { setLines((prev) => [...prev, newAddLine()]) }
   function removeLine(id: number) { setLines((prev) => prev.filter((l) => l.id !== id)) }
 
-  const canSubmit = Boolean(event) && Boolean(customer) &&
-    lines.length > 0 && lines.every((l) => l.productId && l.unit && Number(l.unit) > 0)
+  // Whichever side repeats is the one every line must have.
+  const canSubmit = Boolean(event) && Boolean(byItem ? fixedItem : customer) &&
+    lines.length > 0 &&
+    lines.every((l) => (byItem ? l.customer : l.productId) && l.unit && Number(l.unit) > 0)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -1367,17 +1375,18 @@ function AddOrderForm({ options, onOrderAdded, onCancel }: {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          rows: lines.map((l) => {
-            const pid = Number(l.productId)
-            const product = options?.items.find((it) => it.id === pid)
-            return { event, customer, productId: pid, unitPrice: product?.price ?? 0, unit: Number(l.unit), note: l.note }
+          rows: rowsFromForm({
+            mode, event,
+            fixed: byItem ? fixedItem : customer,
+            lines,
+            priceOf: (id) => options?.items.find((it) => it.id === id)?.price ?? 0,
           }),
         }),
       })
       if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? "Failed to save") }
       const count = lines.length
       setFeedback({ type: "success", message: `${count} order${count === 1 ? "" : "s"} added` })
-      setEvent(""); setCustomer(""); setLines([newAddLine()])
+      setEvent(""); setCustomer(""); setFixedItem(""); setLines([newAddLine()])
       onOrderAdded()
     } catch (err) {
       setFeedback({ type: "error", message: err instanceof Error ? err.message : "Failed to save" })
@@ -1394,41 +1403,100 @@ function AddOrderForm({ options, onOrderAdded, onCancel }: {
         <span className="text-base md:text-sm font-semibold text-foreground">Add Order</span>
       </div>
 
+      {/* Which way round the order is entered. The two are transposes: the side
+          named here is fixed, the other repeats down the lines. Same segmented
+          bar as the receiving list's route tabs, so it is operated the same way. */}
+      <div className="flex items-center gap-1 rounded-xl border border-cream-border bg-cream p-1">
+        {([
+          { key: "byCustomer", label: "One customer, many items" },
+          { key: "byItem", label: "One item, many customers" },
+        ] as const).map(({ key, label }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => {
+              if (mode === key) return
+              // The fixed side of the old mode becomes a line field in the new
+              // one and vice versa, so nothing carried over would mean what it
+              // used to. Clearing beats silently re-labelling.
+              setMode(key)
+              setCustomer("")
+              setFixedItem("")
+              setLines([newAddLine()])
+              setFeedback(null)
+            }}
+            className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              mode === key ? "bg-brand text-white" : "text-muted hover:text-foreground"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
           <label className={LABEL}>Event <span className="text-brand">*</span></label>
           <EventSelect value={event} onChange={(v) => { setEvent(v); setFeedback(null) }} events={options?.activeEvents ?? []} placeholder="Select event…" />
         </div>
         <div>
-          <label className={LABEL}>Customer <span className="text-brand">*</span></label>
-          <SearchableSelect
-            value={customer}
-            onChange={(v) => { setCustomer(v); setFeedback(null) }}
-            options={customerOptions}
-            placeholder="Search or type new customer..."
-            allowNewValue
-            searchMeta
-          />
+          <label className={LABEL}>
+            {byItem ? "Item" : "Customer"} <span className="text-brand">*</span>
+          </label>
+          {byItem ? (
+            <SearchableSelect
+              value={fixedItem}
+              onChange={(v) => { setFixedItem(v); setFeedback(null) }}
+              options={itemOptions}
+              placeholder="Search item..."
+            />
+          ) : (
+            <SearchableSelect
+              value={customer}
+              onChange={(v) => { setCustomer(v); setFeedback(null) }}
+              options={customerOptions}
+              placeholder="Search or type new customer..."
+              allowNewValue
+              searchMeta
+            />
+          )}
         </div>
       </div>
 
       <div>
         <div className="flex items-center justify-between mb-2">
-          <span className={LABEL + " mb-0"}>Items <span className="text-brand">*</span></span>
-          <button type="button" onClick={addLine} className="text-xs text-brand hover:underline">+ Add item</button>
+          <span className={LABEL + " mb-0"}>
+            {byItem ? "Customers" : "Items"} <span className="text-brand">*</span>
+          </span>
+          <button type="button" onClick={addLine} className="text-xs text-brand hover:underline">
+            + Add {byItem ? "customer" : "item"}
+          </button>
         </div>
         <div className="space-y-3">
           {lines.map((line, idx) => (
             <div key={line.id} className="rounded-lg border border-cream-border p-3 relative">
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto_auto]">
                 <div>
-                  <label className={LABEL}>Item {lines.length > 1 ? idx + 1 : ""}</label>
-                  <SearchableSelect
-                    value={line.productId}
-                    onChange={(v) => updateLine(line.id, "productId", v)}
-                    options={itemOptions}
-                    placeholder="Search item..."
-                  />
+                  <label className={LABEL}>
+                    {byItem ? "Customer" : "Item"} {lines.length > 1 ? idx + 1 : ""}
+                  </label>
+                  {byItem ? (
+                    <SearchableSelect
+                      value={line.customer}
+                      onChange={(v) => updateLine(line.id, "customer", v)}
+                      options={customerOptions}
+                      placeholder="Search or type new customer..."
+                      allowNewValue
+                      searchMeta
+                    />
+                  ) : (
+                    <SearchableSelect
+                      value={line.productId}
+                      onChange={(v) => updateLine(line.id, "productId", v)}
+                      options={itemOptions}
+                      placeholder="Search item..."
+                    />
+                  )}
                 </div>
                 <div className="grid grid-cols-2 gap-3 sm:contents">
                   <div className="w-full sm:w-24">
