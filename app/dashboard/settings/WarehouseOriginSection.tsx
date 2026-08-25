@@ -41,6 +41,12 @@ export default function WarehouseOriginSection() {
   const [newName, setNewName] = useState("")
   const [addWarning, setAddWarning] = useState("")
 
+  // Renaming the selected warehouse. Separate state from the add form so
+  // opening one does not half-fill the other.
+  const [editing, setEditing] = useState(false)
+  const [editCode, setEditCode] = useState("")
+  const [editName, setEditName] = useState("")
+
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Bumps per search so a slower earlier response cannot overwrite a newer one.
   const seq = useRef(0)
@@ -124,6 +130,43 @@ export default function WarehouseOriginSection() {
       setAreas([])
       await load()
       setTimeout(() => setSaved(false), 2500)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function saveWarehouse() {
+    if (!selected) return
+    setError("")
+    setAddWarning("")
+    setSaving(true)
+    try {
+      const res = await fetch("/api/warehouse-origin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "update",
+          warehouseId: selected.id,
+          code: editCode.trim(),
+          name: editName.trim(),
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? "Failed to save")
+      await load()
+      setEditing(false)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2500)
+      if (!data.hasRates) {
+        // The FK cascades, so a rename normally keeps its rates. A code that
+        // matches none means every ongkir from here prices at zero.
+        setAddWarning(
+          `No JNE rates exist for origin "${editCode.trim().toUpperCase()}". ` +
+            "Shipping from this warehouse will price at zero until they do.",
+        )
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save")
     } finally {
@@ -242,6 +285,7 @@ export default function WarehouseOriginSection() {
           setChosen(null)
           setQuery("")
           setAreas([])
+          setEditing(false)
         }}
       >
         {warehouses.map((w) => (
@@ -251,6 +295,62 @@ export default function WarehouseOriginSection() {
           </option>
         ))}
       </select>
+
+      {selected && !editing && (
+        <button
+          type="button"
+          onClick={() => {
+            setEditing(true)
+            setEditCode(selected.code)
+            setEditName(selected.name)
+            setError("")
+            setAddWarning("")
+          }}
+          className="self-start text-xs font-medium text-brand hover:underline"
+        >
+          Rename this warehouse
+        </button>
+      )}
+
+      {selected && editing && (
+        <div className="rounded-lg border border-cream-border bg-cream p-3 flex flex-col gap-2">
+          <label className="text-xs text-muted" htmlFor="wh-edit-code">
+            Code — the JNE rate rows follow a rename, so nothing is orphaned
+          </label>
+          <input
+            id="wh-edit-code"
+            className={inputCls}
+            value={editCode}
+            onChange={(e) => setEditCode(e.target.value)}
+            maxLength={20}
+          />
+          <label className="text-xs text-muted" htmlFor="wh-edit-name">Name</label>
+          <input
+            id="wh-edit-name"
+            className={inputCls}
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+            maxLength={80}
+          />
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={saveWarehouse}
+              disabled={saving || !editCode.trim() || !editName.trim()}
+              className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
+            >
+              {saving ? "Saving…" : "Save warehouse"}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setEditing(false); setError("") }}
+              className="px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-xs font-medium hover:border-brand hover:text-brand transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {selected && (
         <p className="text-xs text-muted">
