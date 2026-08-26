@@ -44,7 +44,8 @@ const mine = <T extends { name: string }>(rows: T[]) => rows.filter((r) => r.nam
 test("matched stock is listed with its product price", async () => {
   await seed()
   const rows = mine(await listReadyStock())
-  assert.equal(rows.length, 2, "the unmatched row must not be offered")
+  // Two purchase rows of NAMED, one product: one tile.
+  assert.equal(rows.length, 1, "one tile per product, and the unmatched row is not offered")
   assert.ok(rows.every((r) => r.price === 100000))
   assert.ok(rows.every((r) => r.productId > 0), "a request needs a product to attach to")
 })
@@ -52,9 +53,28 @@ test("matched stock is listed with its product price", async () => {
 // unit_arrive is what landed; the rest of unit_buy is still shipping and is
 // not offered at all. A partly-arrived row is offered at what is in hand, not
 // at what was bought — quoting the whole would sell units that are on a boat.
-test("only what has landed is offered, and only as much as has landed", async () => {
+// The shop buys the same thing on several trips. She is buying the thing, so
+// the number she needs is how many there are — not one tile per purchase.
+test("several purchases of one product are one tile, summed", async () => {
   const rows = mine(await listReadyStock())
-  assert.deepEqual(rows.map((r) => r.readyQty).sort(), [2, 3])
+  const named = rows.filter((r) => r.name === NAMED)
+  assert.equal(named.length, 1, "3 arrived + 2 arrived is one shelf entry")
+  assert.equal(named[0].readyQty, 5)
+})
+
+test("only what has landed counts towards it", async () => {
+  // The second row bought 5 and landed 2, so 3 of those are still shipping.
+  const [row] = mine(await listReadyStock()).filter((r) => r.name === NAMED)
+  assert.equal(row.readyQty, 5, "3 + 2, never 3 + 5")
+})
+
+test("a purchase row that arrived more than it bought cannot inflate the shelf", async () => {
+  await sql`
+    INSERT INTO excess_purchase (event, items, unit_buy, unit_arrive)
+    VALUES (${EVENT}, ${NAMED}, 1, 99)`
+  const [row] = mine(await listReadyStock()).filter((r) => r.name === NAMED)
+  assert.equal(row.readyQty, 6, "the typo contributes its unit_buy, not its unit_arrive")
+  await sql`DELETE FROM excess_purchase WHERE items = ${NAMED} AND unit_arrive = 99`
 })
 
 test("a row still wholly in transit is not on the shelf", async () => {
@@ -67,6 +87,8 @@ test("the payload carries no in-transit figure at all", async () => {
   const [row] = mine(await listReadyStock())
   assert.ok(row)
   assert.ok(!("transitQty" in row))
+  // Nor a purchase-row id: a tile is a product now, and several rows back it.
+  assert.ok(!("id" in row))
 })
 
 // An unpriced item invites an order the shop cannot quote, so it is hidden —
