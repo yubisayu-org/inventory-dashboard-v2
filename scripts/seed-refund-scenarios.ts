@@ -14,7 +14,11 @@
  */
 import sql from "@/lib/db-pool"
 
-const TAG = "SEEDRF"
+// Lower case on purpose: handles are canonically bare and lower case in this
+// system (migration 021), and refunds.customer is a foreign key onto
+// customers.instagram_id while createRefund normalizes what it is given. A
+// seeded capital would break that join in a way real data never does.
+const TAG = "seedrf"
 const CLEAN = process.argv.includes("--clean")
 
 const EVENT_A = `${TAG}-TRIP-A`
@@ -22,6 +26,10 @@ const EVENT_B = `${TAG}-TRIP-B`
 
 type Person = {
   handle: string
+  /** Units on the order. One unless a partial mark is the point. */
+  units?: number
+  /** Its own product, so a mark on it does not touch everyone else. */
+  ownProduct?: boolean
   /** What they ordered, in rupiah. */
   ordered: number
   /** What they transferred. */
@@ -78,17 +86,30 @@ const PEOPLE: Person[] = [
   { handle: `${TAG}_void`,   ordered:   500_000, paid:   500_000, why: "refund cancelled",
     refunds: [{ reason: "other", amount: 20_000, status: "cancelled", note: "raised by mistake" }] },
 
+  // ── To mark by hand, and watch a refund appear ──────────────────────────
+  // Three paid units, so marking one sold out shows a PARTIAL refund rather
+  // than a line vanishing whole — which is what actually happens, and the case
+  // most likely to be got wrong.
+  { handle: `${TAG}_markme`, ordered: 100_000, units: 3, paid: 300_000, ownProduct: true,
+    why: "3 paid units on their own product — mark sold out to see a refund" },
+
   // ── Owes on another trip, and is owed on this one (for the credit prompt) ─
   { handle: `${TAG}_owing`,  ordered:   200_000, paid:   260_000, why: "owed 60.000 here, owes 300.000 on trip B" },
 ]
 
 async function clean() {
-  await sql`DELETE FROM payments  WHERE event LIKE ${`${TAG}%`}`
-  await sql`DELETE FROM refunds   WHERE event LIKE ${`${TAG}%`}`
-  await sql`DELETE FROM orders    WHERE event LIKE ${`${TAG}%`}`
-  await sql`DELETE FROM events    WHERE name  LIKE ${`${TAG}%`}`
-  await sql`DELETE FROM customers WHERE instagram_id LIKE ${`${TAG}%`}`
-  console.log("Removed every SEEDRF row.")
+  // ILIKE, not LIKE: an earlier run seeded these handles in capitals, and a
+  // case-sensitive delete would leave them behind to collide with the
+  // lower-case ones on the unique index.
+  await sql`DELETE FROM announcements WHERE customer_id IN (
+    SELECT id FROM customers WHERE instagram_id ILIKE ${`${TAG}%`})`
+  await sql`DELETE FROM payments  WHERE event ILIKE ${`${TAG}%`}`
+  await sql`DELETE FROM refunds   WHERE event ILIKE ${`${TAG}%`}`
+  await sql`DELETE FROM excess_purchase WHERE event ILIKE ${`${TAG}%`}`
+  await sql`DELETE FROM orders    WHERE event ILIKE ${`${TAG}%`}`
+  await sql`DELETE FROM events    WHERE name  ILIKE ${`${TAG}%`}`
+  await sql`DELETE FROM customers WHERE instagram_id ILIKE ${`${TAG}%`}`
+  console.log("Removed every seeded row.")
 }
 
 async function main() {
@@ -103,9 +124,13 @@ async function main() {
 
   // A zero-gram product keeps the invoice arithmetic exactly the order total —
   // no ongkir term to reason about while clicking around.
-  const [product] = await sql<{ id: number }[]>`
-    SELECT id FROM products WHERE COALESCE(gram, 0) = 0 ORDER BY id LIMIT 1`
-  if (!product) throw new Error("No zero-gram product to seed against")
+  const products = await sql<{ id: number }[]>`
+    SELECT id FROM products WHERE COALESCE(gram, 0) = 0 ORDER BY id LIMIT 2`
+  if (products.length === 0) throw new Error("No zero-gram product to seed against")
+  const product = products[0]
+  // A second product for anyone who is going to be marked, so the mark does not
+  // reduce every other seeded order for the same item.
+  const soloProduct = products[1] ?? products[0]
 
   for (const name of [EVENT_A, EVENT_B]) {
     await sql`INSERT INTO events (name, warehouse_id) SELECT ${name}, id FROM warehouses ORDER BY id LIMIT 1`
@@ -116,7 +141,7 @@ async function main() {
     await sql`INSERT INTO customers (instagram_id) VALUES (${p.handle}) ON CONFLICT DO NOTHING`
     await sql`
       INSERT INTO orders (event, customer, product_id, unit_price, unit)
-      VALUES (${event}, ${p.handle}, ${product.id}, ${p.ordered}, 1)`
+      VALUES (${event}, ${p.handle}, ${p.ownProduct ? soloProduct.id : product.id}, ${p.ordered}, ${p.units ?? 1})`
     if (p.paid > 0) {
       await sql`
         INSERT INTO payments (event, customer, amount, is_checked, kind)
