@@ -71,12 +71,14 @@ const ACTIVE_TABS: { key: TabKey; label: string }[] = [
  * task. Put it there and you learn to skim the one list that must not be
  * skimmed. Here it is an observation until you say otherwise.
  */
-function ToCheckPanel({ rows, error, promoting, onPromote, onRetry }: {
+function ToCheckPanel({ rows, error, promoting, onPromote, onRetry, search, onSearchChange }: {
   rows: OverpaymentToCheck[] | null
   error: string
   promoting: string
   onPromote: (row: OverpaymentToCheck) => void
   onRetry: () => void
+  search: string
+  onSearchChange: (value: string) => void
 }) {
   const columns = useMemo<ColumnDef<OverpaymentToCheck, unknown>[]>(() => [
     {
@@ -216,6 +218,8 @@ function ToCheckPanel({ rows, error, promoting, onPromote, onRetry }: {
       columns={columns}
       pageSize={25}
       searchPlaceholder="Search customer or event…"
+      searchValue={search}
+      onSearchChange={onSearchChange}
       fullWidthSearch
       tightToolbar
       boldUppercaseHeader
@@ -287,6 +291,10 @@ export default function RefundsClient() {
   const [mobileCreating, setMobileCreating] = useState(false)
   const [editRow, setEditRow] = useState<RefundRow | null>(null)
   const [eventFilter, setEventFilter] = useState("")
+  // Owned here rather than by each grid: the tabs swap the data underneath and
+  // remount the table, which would drop whatever was typed. Looking for one
+  // customer usually means looking for them on more than one tab.
+  const [search, setSearch] = useState("")
 
   const reasonOptions = useMemo(() => toReasonOptions(dbReasons), [dbReasons])
 
@@ -564,6 +572,8 @@ export default function RefundsClient() {
           promoting={promoting}
           onPromote={promote}
           onRetry={fetchToCheck}
+          search={search}
+          onSearchChange={setSearch}
         />
       ) : (
       <div className="mt-3">
@@ -573,6 +583,8 @@ export default function RefundsClient() {
           columns={columns}
           pageSize={25}
           searchPlaceholder="Search customer or event…"
+          searchValue={search}
+          onSearchChange={setSearch}
           fullWidthSearch
           tightToolbar
           boldUppercaseHeader
