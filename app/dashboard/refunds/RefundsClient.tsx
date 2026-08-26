@@ -98,7 +98,7 @@ function ToCheckPanel({ rows, error, promoting, onPromote, onRetry }: {
 
   return (
     <div className="mt-3 rounded-xl border border-cream-border bg-white overflow-hidden">
-      <div className="hidden sm:grid grid-cols-[1fr_110px_110px_120px_auto] gap-3 px-4 py-2 bg-surface-muted border-b border-cream-border text-[11px] font-bold uppercase tracking-wide text-faint">
+      <div className="hidden sm:grid grid-cols-[1fr_110px_110px_120px_auto] items-center gap-3 px-4 py-2 bg-surface-muted border-b border-cream-border text-[11px] font-bold uppercase tracking-wide text-faint">
         <span>Customer · trip</span>
         <span className="text-right">Paid</span>
         <span className="text-right">Invoiced</span>
@@ -108,7 +108,7 @@ function ToCheckPanel({ rows, error, promoting, onPromote, onRetry }: {
             two grids then split the leftover differently, sliding every header
             right of where its column actually sits. A copy of the real thing
             cannot drift out of agreement the way a hard-coded width would. */}
-        <span aria-hidden className="invisible px-3 py-1.5 text-xs font-bold whitespace-nowrap">Create refund</span>
+        <span aria-hidden className="invisible px-3 text-xs font-bold whitespace-nowrap">Create refund</span>
       </div>
 
       {/* Every row listed, largest first. No threshold: a small gap is still
