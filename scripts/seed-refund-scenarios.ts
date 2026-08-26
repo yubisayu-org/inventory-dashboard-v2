@@ -50,6 +50,22 @@ const PEOPLE: Person[] = [
   { handle: `${TAG}_indah`,  ordered:   275_000, paid:   283_000, why: "8.000 rounding" },
   { handle: `${TAG}_putri`,  ordered:   150_000, paid:   151_500, why: "1.500 rounding" },
 
+  // ── A pending refund for every reason the picker offers ─────────────────
+  // Six presets plus the free-text one that has crept in, each with the note a
+  // real one would carry, so the Pending tab shows what every reason looks like.
+  { handle: `${TAG}_lisa`,   ordered:   640_000, paid:   640_000, why: "pending · unavailable",
+    refunds: [{ reason: "unavailable", amount: 180_000, status: "pending", note: "Muji Boston Bag 38L Greige · 1 unit · sold out at the store" }] },
+  { handle: `${TAG}_tika`,   ordered:   925_000, paid:   925_000, why: "pending · shipping_loss",
+    refunds: [{ reason: "shipping_loss", amount: 310_000, status: "pending", note: "MNC-29786 · 2 units never arrived" }] },
+  { handle: `${TAG}_fitri`,  ordered:   480_000, paid:   480_000, why: "pending · damaged",
+    refunds: [{ reason: "damaged", amount: 95_000, status: "pending", note: "arrived with a torn seam" }] },
+  { handle: `${TAG}_wulan`,  ordered:   355_000, paid:   355_000, why: "pending · goodwill",
+    refunds: [{ reason: "goodwill", amount: 25_000, status: "pending", note: "late by three weeks, offered a discount" }] },
+  { handle: `${TAG}_ayu`,    ordered:   720_000, paid:   720_000, why: "pending · other",
+    refunds: [{ reason: "other", amount: 40_000, status: "pending", note: "ongkir charged twice on the same parcel" }] },
+  { handle: `${TAG}_maya`,   ordered:   210_000, paid:   210_000, why: "pending · wrong item (free-text reason)",
+    refunds: [{ reason: "Wrong item", amount: 210_000, status: "pending", note: "sent Shoulder Bag 9L, ordered Boston Bag 38L" }] },
+
   // ── One refund in every status, so every tab has rows ───────────────────
   { handle: `${TAG}_bank`,   ordered:   500_000, paid:   500_000, why: "refund awaiting bank info",
     refunds: [{ reason: "damaged", amount: 75_000, status: "awaiting_bank_info", note: "arrived dented" }] },

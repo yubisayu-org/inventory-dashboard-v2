@@ -5,7 +5,6 @@ import TableSkeleton from "@/components/TableSkeleton"
 import DataGrid, { type ColumnDef } from "@/components/DataGrid"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import type { InvoiceEvent, InvoiceResult, RefundRow, RefundReason, RefundStatus, OverpaymentToCheck } from "@/lib/db"
-import { SMALL_OVERPAYMENT_IDR } from "@/lib/db/refund-residual"
 import { REFUND_REASONS } from "@/lib/db/types"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import { fetchJson } from "@/lib/api-fetch"
@@ -55,8 +54,8 @@ const TO_CHECK = "to_check" as const
 type TabKey = RefundStatus | typeof TO_CHECK
 
 const ACTIVE_TABS: { key: TabKey; label: string }[] = [
-  { key: "pending", label: "Pending" },
   { key: TO_CHECK, label: "To check" },
+  { key: "pending", label: "Pending" },
   { key: "awaiting_bank_info", label: "Bank Info" },
   { key: "ready_to_refund", label: "Transfer" },
   { key: "refunded", label: "Done" },
@@ -96,10 +95,6 @@ function ToCheckPanel({ rows, error, promoting, onPromote, onRetry }: {
     )
   }
 
-  const big = rows.filter((r) => r.uncovered >= SMALL_OVERPAYMENT_IDR)
-  const small = rows.filter((r) => r.uncovered < SMALL_OVERPAYMENT_IDR)
-  const smallTotal = small.reduce((n, r) => n + r.uncovered, 0)
-
   return (
     <div className="mt-3 rounded-xl border border-cream-border bg-white overflow-hidden">
       <div className="hidden sm:grid grid-cols-[1fr_110px_110px_120px_auto] gap-3 px-4 py-2 bg-surface-muted border-b border-cream-border text-[11px] font-bold uppercase tracking-wide text-faint">
@@ -110,27 +105,12 @@ function ToCheckPanel({ rows, error, promoting, onPromote, onRetry }: {
         <span />
       </div>
 
-      {big.map((r) => (
+      {/* Every row listed, largest first. No threshold: a small gap is still
+          money owed, and hiding it behind a disclosure makes it easy to forget
+          the one thing this tab exists to remember. */}
+      {rows.map((r) => (
         <ToCheckRow key={`${r.event}|${r.customer}`} row={r} promoting={promoting} onPromote={onPromote} />
       ))}
-
-      {small.length > 0 && (
-        /* Collapsed, never dropped: twenty-three rounding differences must not
-           bury the three that matter, and each is still one click from a refund. */
-        <details className="border-t border-divider bg-surface-muted">
-          <summary className="cursor-pointer px-4 py-2.5 text-sm text-muted-strong flex items-center gap-2 flex-wrap">
-            <span className="text-xs rounded-full px-2 py-0.5 bg-surface-sunken border border-cream-border">
-              {small.length} under {formatRp(SMALL_OVERPAYMENT_IDR)}
-            </span>
-            <span className="text-xs">{formatRp(smallTotal)} in total</span>
-          </summary>
-          <div className="bg-white">
-            {small.map((r) => (
-              <ToCheckRow key={`${r.event}|${r.customer}`} row={r} promoting={promoting} onPromote={onPromote} />
-            ))}
-          </div>
-        </details>
-      )}
     </div>
   )
 }

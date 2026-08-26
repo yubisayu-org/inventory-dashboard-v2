@@ -1,6 +1,6 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { uncovered, residualExcluding, SMALL_OVERPAYMENT_IDR } from "./refund-residual"
+import { uncovered, residualExcluding } from "./refund-residual"
 
 test("nothing is uncovered when the invoice was paid exactly", () => {
   assert.equal(uncovered(500_000, 500_000, []), 0)
@@ -39,6 +39,3 @@ test("excluding a row that is not there changes nothing", () => {
   assert.equal(residualExcluding(550_000, 300_000, refunds, 99), 50_000)
 })
 
-test("the small-amount threshold is ten thousand rupiah", () => {
-  assert.equal(SMALL_OVERPAYMENT_IDR, 10_000)
-})

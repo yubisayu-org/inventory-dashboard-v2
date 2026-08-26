@@ -10,8 +10,6 @@
  * argues.
  */
 
-/** Below this, an overpayment is collapsed in the To-check list rather than listed. */
-export const SMALL_OVERPAYMENT_IDR = 10_000
 
 /**
  * What is owed and unrefunded.
