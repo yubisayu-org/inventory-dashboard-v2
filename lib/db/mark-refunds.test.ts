@@ -4,6 +4,7 @@ import sql from "../db-pool"
 import { refundForReduction } from "./mark-refunds"
 import { getRefunds } from "./finance"
 import { markProductOutOfStock } from "./shopping-list"
+import { recordNotReceived } from "./fulfillment"
 
 const TAG = `marktest${process.hrtime.bigint()}`
 const EVENT = `${TAG}_EV`
@@ -86,4 +87,47 @@ test("marking sold out refunds the customer who paid", async () => {
   const rows = await getRefunds({ event: EV })
   assert.equal(rows.length, 1)
   assert.equal(rows[0].reason, "unavailable")
+})
+
+test("a missing parcel refunds the customer who paid, as shipping_loss", async () => {
+  const EV = `${TAG}_MISS`
+  const who = `${TAG}_miss_paid`
+  await sql`INSERT INTO events (name, warehouse_id) SELECT ${EV}, id FROM warehouses ORDER BY id LIMIT 1`
+  await sql`INSERT INTO customers (instagram_id) VALUES (${who})`
+  await sql`
+    INSERT INTO orders (event, customer, product_id, unit_price, unit, unit_buy, unit_dispatch)
+    VALUES (${EV}, ${who}, ${productId}, 100000, 2, 2, 2)`
+  await sql`
+    INSERT INTO payments (event, customer, amount, is_checked, kind)
+    VALUES (${EV}, ${who}, 200000, true, 'deposit')`
+
+  const [prod] = await sql<{ name: string }[]>`SELECT name FROM products WHERE id = ${productId}`
+  const result = await recordNotReceived(
+    { event: EV, productId, productName: prod.name, qty: 1, mode: "missing" }, "tester")
+
+  assert.equal(result.refunds.length, 1)
+  assert.equal(result.refunds[0].amount, 100000)
+  const rows = await getRefunds({ event: EV })
+  assert.equal(rows[0].reason, "shipping_loss")
+})
+
+test("a customer cancellation creates no refund here", async () => {
+  // Their own doing, and the cancellation flow already handles it.
+  const EV = `${TAG}_CANC`
+  const who = `${TAG}_canc_paid`
+  await sql`INSERT INTO events (name, warehouse_id) SELECT ${EV}, id FROM warehouses ORDER BY id LIMIT 1`
+  await sql`INSERT INTO customers (instagram_id) VALUES (${who})`
+  await sql`
+    INSERT INTO orders (event, customer, product_id, unit_price, unit, unit_buy, unit_dispatch)
+    VALUES (${EV}, ${who}, ${productId}, 100000, 2, 2, 2)`
+  await sql`
+    INSERT INTO payments (event, customer, amount, is_checked, kind)
+    VALUES (${EV}, ${who}, 200000, true, 'deposit')`
+
+  const [prod] = await sql<{ name: string }[]>`SELECT name FROM products WHERE id = ${productId}`
+  const result = await recordNotReceived(
+    { event: EV, productId, productName: prod.name, qty: 1, mode: "cancelled" }, "tester")
+
+  assert.equal(result.refunds.length, 0)
+  assert.equal((await getRefunds({ event: EV })).length, 0)
 })

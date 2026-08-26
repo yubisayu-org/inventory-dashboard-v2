@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto"
+import { refundForReduction, type MarkReduction } from "./mark-refunds"
 import sql from "../db-pool"
 import { normalizeId, normalizeCustomer, tsToString, splitExtraOngkir, parcelPlanExtra } from "./helpers"
 import { allocateFifo } from "../fifo-fill"
@@ -1260,6 +1261,8 @@ export async function markProductArrived(data: {
 export interface NotReceivedResult {
   cancelledUnits: number
   excessUnits: number
+  /** Empty for a customer cancellation, and for anyone who had not paid. */
+  refunds: { customer: string; amount: number; refundId: number }[]
 }
 
 /**
@@ -1291,11 +1294,12 @@ export async function recordNotReceived(
     if (data.receivedItem === data.productName) throw new Error("Received item must differ from the expected item")
   }
 
-  type Row = { id: number; customer: string; unitBuy: number; unitShip: number; pending: number }
+  type Row = { id: number; customer: string; unitBuy: number; unitShip: number; unitPrice: number; pending: number }
   const orders = (await sql`
     SELECT id, customer,
            COALESCE(unit_buy, 0)::int  AS "unitBuy",
            COALESCE(unit_ship, 0)::int AS "unitShip",
+           COALESCE(unit_price, 0)::int AS "unitPrice",
            -- Cap at the ordered unit count: a manual over-dispatch (unit_dispatch > unit)
            -- must never let us cancel/refund more units than the customer ordered.
            LEAST(unit_dispatch - COALESCE(unit_arrive, 0), unit)::int AS pending
@@ -1318,11 +1322,13 @@ export async function recordNotReceived(
 
   let cancelledUnits = 0
   let inHandUnits = 0
+  const reductions: MarkReduction[] = []
   await sql.begin(async (tx) => {
     await tx`SELECT set_config('app.actor', ${actor ?? ""}, true)`
     for (const { item: o, allocated } of allocations) {
       cancelledUnits += allocated
       inHandUnits += Math.min(allocated, Math.max(0, o.unitBuy - o.unitShip))
+      reductions.push({ customer: o.customer, unitsRemoved: allocated, unitPrice: o.unitPrice })
       await reduceOrderRefundOnly({ orderId: o.id, qty: allocated }, tx)
     }
     if (data.mode === "broken" || data.mode === "missing") {
@@ -1345,8 +1351,23 @@ export async function recordNotReceived(
     }
   })
 
+  // A cancellation is the customer's own doing and has its own flow — it
+  // creates no refund here. The other three each carry the reason somebody
+  // knew at the moment they marked it.
+  const REASON_FOR: Record<typeof data.mode, string | null> = {
+    missing: "shipping_loss",
+    broken: "damaged",
+    wrong: "wrong_item",
+    cancelled: null,
+  }
+  const reason = REASON_FOR[data.mode]
+  // After the commit: what is owed depends on the invoice as it now stands.
+  const refunds = reason
+    ? await refundForReduction(data.event, reason, data.productName, reductions, actor)
+    : []
+
   const excessUnits = data.mode === "cancelled" ? inHandUnits : data.qty
-  return { cancelledUnits, excessUnits }
+  return { cancelledUnits, excessUnits, refunds }
 }
 
 
