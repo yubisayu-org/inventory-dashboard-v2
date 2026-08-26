@@ -72,7 +72,7 @@ const PEOPLE: Person[] = [
   { handle: `${TAG}_ayu`,    ordered:   720_000, paid:   720_000, why: "pending · other",
     refunds: [{ reason: "other", amount: 40_000, status: "pending", note: "ongkir charged twice on the same parcel" }] },
   { handle: `${TAG}_maya`,   ordered:   210_000, paid:   210_000, why: "pending · wrong item (free-text reason)",
-    refunds: [{ reason: "Wrong item", amount: 210_000, status: "pending", note: "sent Shoulder Bag 9L, ordered Boston Bag 38L" }] },
+    refunds: [{ reason: "wrong_item", amount: 210_000, status: "pending", note: "sent Shoulder Bag 9L, ordered Boston Bag 38L" }] },
 
   // ── One refund in every status, so every tab has rows ───────────────────
   { handle: `${TAG}_bank`,   ordered:   500_000, paid:   500_000, why: "refund awaiting bank info",
