@@ -522,7 +522,7 @@ Expected: PASS, 6 tests
 
 - [ ] **Step 5: Export from the db barrel**
 
-In `lib/db.ts` (or `lib/db/index.ts` — check which the project uses with `grep -rn "from \"@/lib/db\"" app | head -1`), re-export:
+In `lib/db.ts`, re-export:
 
 ```ts
 export { listOverpaymentsToCheck, createRefundFromOverpayment, type OverpaymentToCheck } from "./db/overpayments"
@@ -562,7 +562,7 @@ There is no route-test harness in this project — every existing route is cover
 ```ts
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { listOverpaymentsToCheck, createRefundFromOverpayment, withActor } from "@/lib/db"
+import { listOverpaymentsToCheck, createRefundFromOverpayment } from "@/lib/db"
 
 // Money a customer is owed that no refund covers. Read by the Refunds page's
 // "To check" tab and counted on the Dashboard, which must agree with it.
@@ -600,8 +600,11 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const made = await withActor(session.user.email,
-      () => createRefundFromOverpayment(event, customer, session.user.email))
+    // Not wrapped in withActor: it opens a transaction, and
+    // createRefundFromOverpayment opens its own. Nesting them deadlocks on the
+    // same connection — the same trap issueInvite documents. It takes the actor
+    // directly and sets app.actor inside its own transaction.
+    const made = await createRefundFromOverpayment(event, customer, session.user.email)
     return NextResponse.json(made)
   } catch (err) {
     // "Nothing is uncovered" is the caller acting on a stale list, not a fault.
@@ -612,18 +615,12 @@ export async function POST(req: NextRequest) {
 }
 ```
 
-- [ ] **Step 2: Check `withActor`'s shape before trusting the call above**
-
-Run: `grep -n "export async function withActor" -A 8 lib/db/actor.ts`
-
-If it takes `(actor, fn(tx))` and passes a transaction, `createRefundFromOverpayment` already opens its own transaction — call it directly instead and drop `withActor`, passing `session.user.email` as the actor argument it already accepts.
-
-- [ ] **Step 3: Typecheck**
+- [ ] **Step 2: Typecheck**
 
 Run: `npx tsc --noEmit`
 Expected: no output.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
 git add app/api/sheets/overpayments/route.ts
@@ -788,4 +785,6 @@ bury the three that matter."
 
 **Types.** `uncovered(totalPaid, invoiceTotal, liveRefundAmounts)` and `residualExcluding(...)` are used with those exact names in Tasks 2, 3 and 5. `OverpaymentToCheck` has the same six fields in Tasks 3, 4 and 6. `listOverpaymentsToCheck` takes an optional `DBExecutor` so `createRefundFromOverpayment` can call it inside its own transaction.
 
-**Known soft spots, flagged rather than hidden.** Task 4 Step 2 and Task 5 Step 1 both say to read the surrounding code before writing, because `withActor`'s shape and the Dashboard subquery's aliases are not reproduced here and guessing them would be wrong.
+**Known soft spot, flagged rather than hidden.** Task 5 Step 1 says to read the surrounding subquery before writing, because the Dashboard's aliases for paid and invoiced are in scope there and are not reproduced here; guessing them would be wrong.
+
+`withActor` was checked while writing this: it is `withActor(actor, fn(tx))` and opens its own transaction, so Task 4 calls `createRefundFromOverpayment` directly. Nesting the two would deadlock on one connection, which `issueInvite` already documents.
