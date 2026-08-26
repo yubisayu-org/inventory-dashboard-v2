@@ -4,7 +4,8 @@ import { displayIg } from "@/lib/format"
 import TableSkeleton from "@/components/TableSkeleton"
 import DataGrid, { type ColumnDef } from "@/components/DataGrid"
 import { useCallback, useEffect, useMemo, useState } from "react"
-import type { InvoiceEvent, InvoiceResult, RefundRow, RefundReason, RefundStatus, OverpaymentToCheck } from "@/lib/db"
+import type { InvoiceEvent, InvoiceResult, RefundRow, RefundReason, RefundStatus, OverpaymentToCheck, OutstandingTrip } from "@/lib/db"
+import { normalizeId } from "@/lib/db/helpers"
 import { REFUND_REASONS } from "@/lib/db/types"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import { fetchJson } from "@/lib/api-fetch"
@@ -182,6 +183,8 @@ function reviewMessage(row: RefundRow): string | null {
 
 // ─── Main component ──────────────────────────────────────────────────────────
 
+const CREDIT_PANEL_ID = "refund-credit-panel"
+
 export default function RefundsClient() {
   const options = useSheetOptions()
   const [rows, setRows] = useState<RefundRow[]>([])
@@ -228,6 +231,25 @@ export default function RefundsClient() {
   useEffect(() => {
     if (tab === TO_CHECK && toCheck === null) fetchToCheck()
   }, [tab, toCheck, fetchToCheck])
+
+  // Every customer's debts on other trips, keyed by normalized handle. One call
+  // for the page: a refund is per trip, so a row cannot see that the same person
+  // still owes on another one, and nobody thinks to look.
+  const [owesElsewhere, setOwesElsewhere] = useState<Record<string, OutstandingTrip[]>>({})
+
+  useEffect(() => {
+    // Silent on failure — the chip is a hint. Losing it must not break the page.
+    fetchJson<{ byCustomer: Record<string, OutstandingTrip[]> }>("/api/sheets/refunds/outstanding")
+      .then((data) => setOwesElsewhere(data.byCustomer ?? {}))
+      .catch(() => {})
+  }, [])
+
+  /** That customer's other trips with money still owed on them. */
+  const outstandingFor = useCallback(
+    (customer: string, event: string): OutstandingTrip[] =>
+      (owesElsewhere[normalizeId(customer)] ?? []).filter((t) => t.event !== event),
+    [owesElsewhere],
+  )
 
   /** Promote one row to a refund. The server recomputes the amount. */
   async function promote(row: OverpaymentToCheck) {
@@ -283,6 +305,8 @@ export default function RefundsClient() {
       cell: ({ row }) => {
         const r = row.original
         const msg = reviewMessage(r)
+        const owes = outstandingFor(r.customer, r.event)
+        const owesTotal = owes.reduce((sum, t) => sum + t.amount, 0)
         return (
           <div className="flex items-center gap-1.5 font-medium text-foreground">
             {displayIg(r.customer)}
@@ -292,6 +316,14 @@ export default function RefundsClient() {
                   <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
                   <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
                 </svg>
+              </span>
+            )}
+            {owes.length > 0 && (
+              <span
+                title={`Owes elsewhere — ${owes.map((t) => `${formatRp(t.amount)} on ${t.event}`).join(", ")}`}
+                className="shrink-0 rounded px-1 py-px text-[10px] font-semibold uppercase tracking-wide bg-purple-100 text-purple-700 tabular-nums"
+              >
+                owes {formatRp(owesTotal)}
               </span>
             )}
           </div>
@@ -343,7 +375,7 @@ export default function RefundsClient() {
       header: "Updated",
       enableColumnFilter: false,
     },
-  ], [])
+  ], [outstandingFor])
 
   const renderMobileCard = useCallback((r: RefundRow) => {
     const msg = reviewMessage(r)
@@ -751,6 +783,19 @@ function RefundDetailModal({
 
   const isReadOnly = row.status === "refunded" || row.status === "cancelled" || row.status === "applied_to_next_order"
 
+  // The same customer's other trips that still owe money. Refunds are per trip,
+  // so nothing on this one says the person you are about to pay is already
+  // behind on another — and marks now create refunds without anyone asking.
+  const owedElsewhere = useMemo(
+    () =>
+      customerEvents
+        .filter((ev) => ev.eventId !== row.event && ev.invoice.sisaPelunasan > 0)
+        .map((ev) => ({ event: ev.eventId, amount: ev.invoice.sisaPelunasan }))
+        .sort((a, b) => b.amount - a.amount),
+    [customerEvents, row.event],
+  )
+
+
   async function patch(body: object) {
     setSaving(true)
     setError(null)
@@ -1019,6 +1064,40 @@ function RefundDetailModal({
           </div>
         </div>
 
+        {/* Outstanding elsewhere — the credit offer, one click from taken. Only
+            where a credit can still be applied; a settled refund is history. */}
+        {!isReadOnly && owedElsewhere.length > 0 && (
+          <div className="shrink-0 flex flex-wrap items-center gap-x-2 gap-y-1.5 px-6 py-2.5 border-b border-purple-200 bg-purple-50">
+            <span className="text-xs text-purple-800">
+              <span className="font-semibold">Outstanding elsewhere</span> ·{" "}
+              {owedElsewhere.map((t, i) => (
+                <span key={t.event}>
+                  {i > 0 && ", "}
+                  <span className="font-bold tabular-nums">{formatRp(t.amount)}</span> on {t.event}
+                </span>
+              ))}
+            </span>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => {
+                const top = owedElsewhere[0]
+                setCreditTarget(top.event)
+                setCreditAmount(String(Math.min(row.refundAmount, top.amount) || row.refundAmount))
+                setShowCredit(true)
+                // The panel this fills sits below the fold. Without this the
+                // click reads as having done nothing at all.
+                requestAnimationFrame(() =>
+                  document.getElementById(CREDIT_PANEL_ID)?.scrollIntoView({ behavior: "smooth", block: "center" }),
+                )
+              }}
+              className="ml-auto shrink-0 px-2.5 py-1 rounded-md text-xs font-medium bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 transition-colors"
+            >
+              Apply {formatRp(Math.min(row.refundAmount, owedElsewhere[0].amount))} to {owedElsewhere[0].event}
+            </button>
+          </div>
+        )}
+
         {/* Invoice — one line, expandable. Was a 6-row block eating the modal.
             Hidden on mobile: the open-invoice icon in the header covers it there. */}
         <div className="hidden md:block shrink-0 border-b border-cream-border">
@@ -1253,7 +1332,7 @@ function RefundDetailModal({
 
           {/* Apply as credit — pick which of the customer's other orders to credit */}
           {!isReadOnly && (
-            <div className="flex flex-col gap-2 p-3 rounded-lg bg-surface-muted border border-cream-border">
+            <div id={CREDIT_PANEL_ID} className="flex flex-col gap-2 p-3 rounded-lg bg-surface-muted border border-cream-border">
               <div className="flex items-center justify-between gap-2">
                 <div className="text-xs font-medium text-muted-strong">Apply as credit</div>
                 <button
