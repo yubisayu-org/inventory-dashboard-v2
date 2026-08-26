@@ -103,7 +103,12 @@ function ToCheckPanel({ rows, error, promoting, onPromote, onRetry }: {
         <span className="text-right">Paid</span>
         <span className="text-right">Invoiced</span>
         <span className="text-right">Uncovered</span>
-        <span />
+        {/* The button, invisible. The last track is auto-sized, so an empty
+            cell here measures zero while the rows' measures a button — and the
+            two grids then split the leftover differently, sliding every header
+            right of where its column actually sits. A copy of the real thing
+            cannot drift out of agreement the way a hard-coded width would. */}
+        <span aria-hidden className="invisible px-3 py-1.5 text-xs font-bold whitespace-nowrap">Create refund</span>
       </div>
 
       {/* Every row listed, largest first. No threshold: a small gap is still
