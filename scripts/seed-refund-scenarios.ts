@@ -1,0 +1,131 @@
+/**
+ * Realistic refunds to click through on the local dev DB.
+ *
+ * Every case the Refunds page can show, so each tab and each button has
+ * something real behind it: an uncovered overpayment, one a mark has partly
+ * covered, one fully covered (which must NOT appear), a handful of small
+ * roundings that should collapse, and a refund sitting in every status.
+ *
+ *   npx tsx --env-file-if-exists=.env.development.local scripts/seed-refund-scenarios.ts
+ *   npx tsx --env-file-if-exists=.env.development.local scripts/seed-refund-scenarios.ts --clean
+ *
+ * Everything is tagged SEEDRF so --clean removes exactly what this made and
+ * nothing else. Local only — it refuses to run against a remote database.
+ */
+import sql from "@/lib/db-pool"
+
+const TAG = "SEEDRF"
+const CLEAN = process.argv.includes("--clean")
+
+const EVENT_A = `${TAG}-TRIP-A`
+const EVENT_B = `${TAG}-TRIP-B`
+
+type Person = {
+  handle: string
+  /** What they ordered, in rupiah. */
+  ordered: number
+  /** What they transferred. */
+  paid: number
+  /** Refunds already on the books for them. */
+  refunds?: { reason: string; amount: number; status: string; note?: string }[]
+  event?: string
+  why: string
+}
+
+const PEOPLE: Person[] = [
+  // ── To check: uncovered, listed individually ────────────────────────────
+  { handle: `${TAG}_nadya`,  ordered: 1_198_000, paid: 1_240_000, why: "overpaid 42.000, nothing refunded" },
+  { handle: `${TAG}_qkooy`,  ordered:   300_000, paid:   550_000, why: "owed 250.000, a mark covered 200.000",
+    refunds: [{ reason: "unavailable", amount: 200_000, status: "pending", note: "Muji Boston Bag 38L · sold out" }] },
+  { handle: `${TAG}_rina`,   ordered:   855_000, paid:   870_000, why: "overpaid 15.000, nothing refunded" },
+
+  // ── Fully covered: must NOT appear in To check ──────────────────────────
+  { handle: `${TAG}_sari`,   ordered:   400_000, paid:   430_000, why: "overpaid 30.000, already refunded in full",
+    refunds: [{ reason: "overpayment", amount: 30_000, status: "pending" }] },
+
+  // ── To check: small, should collapse behind one line ────────────────────
+  { handle: `${TAG}_melia`,  ordered:   452_500, paid:   455_000, why: "2.500 rounding" },
+  { handle: `${TAG}_dwi`,    ordered:   310_000, paid:   312_000, why: "2.000 rounding" },
+  { handle: `${TAG}_yuni`,   ordered:   196_200, paid:   198_000, why: "1.800 rounding" },
+  { handle: `${TAG}_indah`,  ordered:   275_000, paid:   283_000, why: "8.000 rounding" },
+  { handle: `${TAG}_putri`,  ordered:   150_000, paid:   151_500, why: "1.500 rounding" },
+
+  // ── One refund in every status, so every tab has rows ───────────────────
+  { handle: `${TAG}_bank`,   ordered:   500_000, paid:   500_000, why: "refund awaiting bank info",
+    refunds: [{ reason: "damaged", amount: 75_000, status: "awaiting_bank_info", note: "arrived dented" }] },
+  { handle: `${TAG}_ready`,  ordered:   500_000, paid:   500_000, why: "refund ready to transfer",
+    refunds: [{ reason: "shipping_loss", amount: 120_000, status: "ready_to_refund", note: "lost in transit" }] },
+  { handle: `${TAG}_done`,   ordered:   500_000, paid:   500_000, why: "refund already sent",
+    refunds: [{ reason: "unavailable", amount: 60_000, status: "refunded", note: "sold out" }] },
+  { handle: `${TAG}_credit`, ordered:   500_000, paid:   500_000, why: "refund applied as credit",
+    refunds: [{ reason: "overpayment", amount: 45_000, status: "applied_to_next_order" }] },
+  { handle: `${TAG}_void`,   ordered:   500_000, paid:   500_000, why: "refund cancelled",
+    refunds: [{ reason: "other", amount: 20_000, status: "cancelled", note: "raised by mistake" }] },
+
+  // ── Owes on another trip, and is owed on this one (for the credit prompt) ─
+  { handle: `${TAG}_owing`,  ordered:   200_000, paid:   260_000, why: "owed 60.000 here, owes 300.000 on trip B" },
+]
+
+async function clean() {
+  await sql`DELETE FROM payments  WHERE event LIKE ${`${TAG}%`}`
+  await sql`DELETE FROM refunds   WHERE event LIKE ${`${TAG}%`}`
+  await sql`DELETE FROM orders    WHERE event LIKE ${`${TAG}%`}`
+  await sql`DELETE FROM events    WHERE name  LIKE ${`${TAG}%`}`
+  await sql`DELETE FROM customers WHERE instagram_id LIKE ${`${TAG}%`}`
+  console.log("Removed every SEEDRF row.")
+}
+
+async function main() {
+  const url = process.env.DATABASE_URL ?? ""
+  if (!/@(localhost|127\.0\.0\.1|\[::1\])[:/]/.test(url)) {
+    console.error("Refusing to run: DATABASE_URL is not a local database.")
+    process.exit(1)
+  }
+
+  await clean()
+  if (CLEAN) { await sql.end(); return }
+
+  // A zero-gram product keeps the invoice arithmetic exactly the order total —
+  // no ongkir term to reason about while clicking around.
+  const [product] = await sql<{ id: number }[]>`
+    SELECT id FROM products WHERE COALESCE(gram, 0) = 0 ORDER BY id LIMIT 1`
+  if (!product) throw new Error("No zero-gram product to seed against")
+
+  for (const name of [EVENT_A, EVENT_B]) {
+    await sql`INSERT INTO events (name, warehouse_id) SELECT ${name}, id FROM warehouses ORDER BY id LIMIT 1`
+  }
+
+  for (const p of PEOPLE) {
+    const event = p.event ?? EVENT_A
+    await sql`INSERT INTO customers (instagram_id) VALUES (${p.handle}) ON CONFLICT DO NOTHING`
+    await sql`
+      INSERT INTO orders (event, customer, product_id, unit_price, unit)
+      VALUES (${event}, ${p.handle}, ${product.id}, ${p.ordered}, 1)`
+    if (p.paid > 0) {
+      await sql`
+        INSERT INTO payments (event, customer, amount, is_checked, kind)
+        VALUES (${event}, ${p.handle}, ${p.paid}, true, 'deposit')`
+    }
+    for (const r of p.refunds ?? []) {
+      await sql`
+        INSERT INTO refunds (event, customer, reason, refund_amount, status, note)
+        VALUES (${event}, ${p.handle}, ${r.reason}, ${r.amount}, ${r.status}, ${r.note ?? ""})`
+    }
+    console.log(`  ${p.handle.padEnd(18)} ${p.why}`)
+  }
+
+  // The one who owes elsewhere: an unpaid order on trip B.
+  await sql`
+    INSERT INTO orders (event, customer, product_id, unit_price, unit)
+    VALUES (${EVENT_B}, ${`${TAG}_owing`}, ${product.id}, 300000, 1)`
+
+  console.log(`\nSeeded ${PEOPLE.length} customers across ${EVENT_A} and ${EVENT_B}.`)
+  console.log("Remove with --clean.")
+  await sql.end()
+}
+
+main().catch(async (err) => {
+  console.error("Seed failed:", err)
+  await sql.end()
+  process.exit(1)
+})

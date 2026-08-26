@@ -107,3 +107,38 @@ test("creating a refund when nothing is uncovered is refused", async () => {
   await assert.rejects(() => createRefundFromOverpayment(EVENT, HANDLE, "tester"))
   await sql`DELETE FROM refunds WHERE event = ${EVENT}`
 })
+
+test("a refund covers its customer when the handle was stored with capitals", async () => {
+  // getPaymentStatus emits the normalized handle; refunds.customer holds the
+  // stored spelling, which the FK ties to customers.instagram_id. Keying the
+  // join on the raw value matches nothing whenever that spelling is not already
+  // lower case — and the failure is silent and points the wrong way: a covered
+  // overpayment looks uncovered, and the same money gets refunded twice.
+  const CAPS = `${TAG}_Mixed_Case`
+  const CAPS_EVENT = `${TAG}_EV2`
+  await sql`INSERT INTO customers (instagram_id) VALUES (${CAPS})`
+  await sql`INSERT INTO events (name, warehouse_id) SELECT ${CAPS_EVENT}, id FROM warehouses ORDER BY id LIMIT 1`
+  await sql`
+    INSERT INTO orders (event, customer, product_id, unit_price, unit)
+    VALUES (${CAPS_EVENT}, ${CAPS}, ${productId}, 100000, 1)`
+  await sql`
+    INSERT INTO payments (event, customer, amount, is_checked, kind)
+    VALUES (${CAPS_EVENT}, ${CAPS}, 130000, true, 'deposit')`
+
+  const before = await listOverpaymentsToCheck()
+  assert.ok(before.find((r) => r.event === CAPS_EVENT), "30_000 uncovered to begin with")
+
+  await sql`
+    INSERT INTO refunds (event, customer, reason, refund_amount, status)
+    VALUES (${CAPS_EVENT}, ${CAPS}, 'overpayment', 30000, 'pending')`
+
+  const after = await listOverpaymentsToCheck()
+  assert.equal(after.find((r) => r.event === CAPS_EVENT), undefined,
+    "the refund covers it despite the capitals")
+
+  await sql`DELETE FROM refunds WHERE event = ${CAPS_EVENT}`
+  await sql`DELETE FROM payments WHERE event = ${CAPS_EVENT}`
+  await sql`DELETE FROM orders WHERE event = ${CAPS_EVENT}`
+  await sql`DELETE FROM events WHERE name = ${CAPS_EVENT}`
+  await sql`DELETE FROM customers WHERE instagram_id = ${CAPS}`
+})

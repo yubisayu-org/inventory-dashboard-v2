@@ -872,7 +872,8 @@ export async function materializeOverpaymentRefunds(): Promise<RefundRow[]> {
       UPDATE refunds r
       SET refund_amount = GREATEST(0, (l.total_paid - l.invoice_total) - COALESCE((
             SELECT SUM(o.refund_amount) FROM refunds o
-             WHERE o.event = r.event AND o.customer = r.customer
+             WHERE o.event = r.event
+               AND lower(replace(o.customer, '@', '')) = lower(replace(r.customer, '@', ''))
                AND o.status <> 'cancelled' AND o.id <> r.id
           ), 0)),
           note = 'Auto-detected: paid Rp ' || l.total_paid || ' of Rp ' || l.invoice_total,
@@ -885,7 +886,8 @@ export async function materializeOverpaymentRefunds(): Promise<RefundRow[]> {
         AND (l.total_paid - l.invoice_total) > 0
         AND GREATEST(0, (l.total_paid - l.invoice_total) - COALESCE((
               SELECT SUM(o.refund_amount) FROM refunds o
-               WHERE o.event = r.event AND o.customer = r.customer
+               WHERE o.event = r.event
+                 AND lower(replace(o.customer, '@', '')) = lower(replace(r.customer, '@', ''))
                  AND o.status <> 'cancelled' AND o.id <> r.id
             ), 0)) <> r.refund_amount
       RETURNING r.id

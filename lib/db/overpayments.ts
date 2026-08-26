@@ -1,6 +1,7 @@
 import sql from "../db-pool"
 import type { DBExecutor } from "./actor"
 import { getPaymentStatus } from "./finance"
+import { normalizeId } from "./helpers"
 import { uncovered } from "./refund-residual"
 
 /**
@@ -21,16 +22,25 @@ export type OverpaymentToCheck = {
   uncovered: number
 }
 
-/** Live refund totals per (event, customer). */
+/**
+ * Live refund totals per (event, customer), keyed on the NORMALIZED handle.
+ *
+ * getPaymentStatus emits the normalized handle; refunds.customer holds whatever
+ * was typed — "@Qkooy" and "qkooy" are the same person and the same debt.
+ * Keying on the raw value matches nothing, and the failure is silent and points
+ * the wrong way: every covered overpayment looks uncovered.
+ */
 async function refundedByPair(db: DBExecutor): Promise<Map<string, number>> {
-  const rows = await db<{ event: string; customer: string; total: string }[]>`
-    SELECT event, customer, SUM(refund_amount) AS total
+  const rows = await db<{ event: string; cust_key: string; total: string }[]>`
+    SELECT event,
+           lower(replace(customer, '@', '')) AS cust_key,
+           SUM(refund_amount) AS total
       FROM refunds
      WHERE status <> 'cancelled'
-     GROUP BY event, customer
+     GROUP BY event, lower(replace(customer, '@', ''))
   `
   const m = new Map<string, number>()
-  for (const r of rows) m.set(`${r.event}|${r.customer}`, Number(r.total))
+  for (const r of rows) m.set(`${r.event}|${r.cust_key}`, Number(r.total))
   return m
 }
 
@@ -41,7 +51,7 @@ export async function listOverpaymentsToCheck(
 
   const out: OverpaymentToCheck[] = []
   for (const s of statuses) {
-    const refundedSoFar = refunded.get(`${s.event}|${s.customer}`) ?? 0
+    const refundedSoFar = refunded.get(`${s.event}|${normalizeId(s.customer)}`) ?? 0
     const gap = uncovered(s.totalPaid, s.invoiceTotal, [refundedSoFar])
     if (gap <= 0) continue
     out.push({
@@ -72,7 +82,8 @@ export async function createRefundFromOverpayment(
     await tx`SELECT set_config('app.actor', ${actor ?? ""}, true)`
 
     const rows = await listOverpaymentsToCheck(tx)
-    const row = rows.find((r) => r.event === event && r.customer === customer)
+    const want = normalizeId(customer)
+    const row = rows.find((r) => r.event === event && normalizeId(r.customer) === want)
     if (!row) throw new Error("Nothing is uncovered for this customer on this trip")
 
     const [made] = await tx<{ id: number }[]>`

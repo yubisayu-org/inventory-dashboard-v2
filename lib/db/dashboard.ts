@@ -116,7 +116,8 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
             + COALESCE(adj.total_adj, 0)
           ) > COALESCE((
             SELECT SUM(r.refund_amount) FROM refunds r
-             WHERE r.event = oa.event AND r.customer = oa.customer
+             WHERE r.event = oa.event
+               AND lower(replace(r.customer, '@', '')) = lower(replace(oa.customer, '@', ''))
                AND r.status <> 'cancelled'
           ), 0)
         )::int AS overpayment_candidates
