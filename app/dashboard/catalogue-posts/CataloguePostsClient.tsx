@@ -173,80 +173,91 @@ export default function CataloguePostsClient() {
       {error && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
       )}
-      <div className="flex items-center gap-2">
+      {/* One row on a desktop, three on a phone. The fixed widths here add up
+          to about 550px before the search field gets anything, so on a phone
+          they used to run off the side and Highlights and Add Post sat past
+          the edge. Search and the trip filter each take a full row — trip
+          codes are long enough to read, not just tap — and the controls share
+          the third. */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <input
           value={listQuery}
           onChange={(e) => setListQuery(e.target.value)}
           placeholder="Cari judul atau nama produk…"
-          className="flex-1 h-10 border border-cream-border rounded-lg px-3 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+          className="w-full sm:flex-1 h-10 border border-cream-border rounded-lg px-3 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
         />
-        <div className="w-56 shrink-0">
+        <div className="w-full sm:w-56 shrink-0">
           <EventSelect value={defaultEvent} onChange={setDefaultEvent} events={options?.activeEvents ?? []} placeholder="Default trip…" clearable />
         </div>
-        <button
-          onClick={() => setBulkOpen(true)}
-          disabled={selectedPostIds.size === 0}
-          aria-label="Bulk actions"
-          title="Bulk actions"
-          className={`relative h-10 w-10 flex items-center justify-center rounded-lg border border-cream-border shrink-0 ${
-            selectedPostIds.size > 0 ? "bg-brand text-white" : "bg-white text-faint"
-          }`}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="m3 17 2 2 4-4" /><path d="m3 7 2 2 4-4" /><path d="M13 6h8" /><path d="M13 12h8" /><path d="M13 18h8" />
-          </svg>
-          {selectedPostIds.size > 0 && (
-            <span className="absolute -top-1.5 -right-1.5 min-w-4 h-4 px-1 rounded-full bg-white text-brand text-[10px] font-bold flex items-center justify-center border border-brand">
-              {selectedPostIds.size}
-            </span>
-          )}
-        </button>
-        <button
-          onClick={() => setHighlightsOpen(true)}
-          aria-label="Highlights"
-          title="Highlights"
-          className="h-10 w-10 flex items-center justify-center rounded-lg border border-cream-border bg-white text-faint shrink-0"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z" />
-          </svg>
-        </button>
-        <div className="flex items-center h-10 rounded-lg border border-cream-border overflow-hidden shrink-0">
+        {/* sm:contents dissolves this wrapper on a desktop, so its children
+            rejoin the row above exactly as they did before — one layout, not a
+            phone copy to keep in step with it. */}
+        <div className="flex items-center gap-2 w-full sm:contents">
           <button
-            onClick={() => setViewMode("list")}
-            aria-label="Tampilan list"
-            title="List"
-            className={`h-full px-4 flex items-center ${viewMode === "list" ? "bg-brand text-white" : "bg-white text-faint"}`}
+            onClick={() => setBulkOpen(true)}
+            disabled={selectedPostIds.size === 0}
+            aria-label="Bulk actions"
+            title="Bulk actions"
+            className={`relative h-10 w-10 flex items-center justify-center rounded-lg border border-cream-border shrink-0 ${
+              selectedPostIds.size > 0 ? "bg-brand text-white" : "bg-white text-faint"
+            }`}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" />
-              <line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" />
+              <path d="m3 17 2 2 4-4" /><path d="m3 7 2 2 4-4" /><path d="M13 6h8" /><path d="M13 12h8" /><path d="M13 18h8" />
             </svg>
+            {selectedPostIds.size > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 min-w-4 h-4 px-1 rounded-full bg-white text-brand text-[10px] font-bold flex items-center justify-center border border-brand">
+                {selectedPostIds.size}
+              </span>
+            )}
           </button>
           <button
-            onClick={() => setViewMode("gallery")}
-            aria-label="Tampilan gallery"
-            title="Gallery"
-            className={`h-full px-4 flex items-center border-l border-cream-border ${viewMode === "gallery" ? "bg-brand text-white" : "bg-white text-faint"}`}
+            onClick={() => setHighlightsOpen(true)}
+            aria-label="Highlights"
+            title="Highlights"
+            className="h-10 w-10 flex items-center justify-center rounded-lg border border-cream-border bg-white text-faint shrink-0"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
-              <rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
+              <path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z" />
             </svg>
+          </button>
+          <div className="flex items-center h-10 rounded-lg border border-cream-border overflow-hidden shrink-0">
+            <button
+              onClick={() => setViewMode("list")}
+              aria-label="Tampilan list"
+              title="List"
+              className={`h-full px-4 flex items-center ${viewMode === "list" ? "bg-brand text-white" : "bg-white text-faint"}`}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" />
+                <line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" />
+              </svg>
+            </button>
+            <button
+              onClick={() => setViewMode("gallery")}
+              aria-label="Tampilan gallery"
+              title="Gallery"
+              className={`h-full px-4 flex items-center border-l border-cream-border ${viewMode === "gallery" ? "bg-brand text-white" : "bg-white text-faint"}`}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
+                <rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
+              </svg>
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => setAddOpen((o) => !o)}
+            className={`inline-flex items-center justify-center gap-1.5 h-10 px-4 text-sm rounded-lg border flex-1 sm:flex-none shrink-0 transition-colors ${
+              addOpen ? "bg-brand-light text-brand border-brand/30" : "bg-brand text-white border-transparent hover:bg-brand-dark"
+            }`}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            Add Post
           </button>
         </div>
-        <button
-          type="button"
-          onClick={() => setAddOpen((o) => !o)}
-          className={`inline-flex items-center gap-1.5 h-10 px-4 text-sm rounded-lg border shrink-0 transition-colors ${
-            addOpen ? "bg-brand-light text-brand border-brand/30" : "bg-brand text-white border-transparent hover:bg-brand-dark"
-          }`}
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-          Add Post
-        </button>
       </div>
       {addOpen && (
         <UploadForm options={options} onCreated={reload} onCancel={() => setAddOpen(false)} />
