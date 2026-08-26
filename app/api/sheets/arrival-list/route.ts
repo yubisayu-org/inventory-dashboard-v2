@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireOwner } from "@/lib/api"
+import { snapshotReductions, refundForReduction } from "@/lib/db/mark-refunds"
 import { getArrivalList, getExcessArrivalPending, markProductArrived, recordWrongProduct, recordBrokenArrival, recordMissingArrival, recordCustomerCancellation, recordNotReceived, renameDispatchReceipt, withActor } from "@/lib/db"
 import { withServerTiming } from "@/lib/server-timing"
 
@@ -59,7 +60,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Wrong-product path: supplier sent a different SKU. Log it to ready stock
-    // and zero the chosen customer orders (refunds auto-materialize if paid).
+    // and zero the chosen customer orders, refunding whoever had paid for them.
     if (body.action === "wrong_product") {
       const { event, expectedItem, receivedItem, qty } = body
       if (!event || !expectedItem || !receivedItem || typeof qty !== "number" || qty < 1) {
@@ -77,15 +78,20 @@ export async function POST(req: NextRequest) {
       const cancelOrderIds = Array.isArray(body.cancelOrderIds)
         ? body.cancelOrderIds.filter((n: unknown) => Number.isInteger(n)) as number[]
         : []
+      // Before the units are zeroed, and priced after — same rule the quantity
+      // flow follows: what is owed depends on the invoice as it then stands.
+      const reductions = await snapshotReductions(cancelOrderIds)
       const result = await withActor(session.user.email, (tx) =>
         recordWrongProduct({ event, expectedItem, receivedItem, qty, cancelOrderIds }, tx),
       )
-      return NextResponse.json({ success: true, ...result })
+      const refunds = await refundForReduction(
+        event, "wrong_item", expectedItem, reductions, session.user.email)
+      return NextResponse.json({ success: true, ...result, refunds })
     }
 
     // Broken path: the expected item arrived damaged. Log the broken units to
     // inventory flagged 'broken' (tracked but never assignable to orders) and
-    // cancel the chosen customer orders (refunds auto-materialize if paid).
+    // cancel the chosen customer orders, refunding whoever had paid for them.
     if (body.action === "broken") {
       const { event, productName, qty } = body
       if (!event || !productName || typeof qty !== "number" || qty < 1) {
@@ -97,14 +103,17 @@ export async function POST(req: NextRequest) {
       const cancelOrderIds = Array.isArray(body.cancelOrderIds)
         ? body.cancelOrderIds.filter((n: unknown) => Number.isInteger(n)) as number[]
         : []
+      const reductions = await snapshotReductions(cancelOrderIds)
       const result = await withActor(session.user.email, (tx) =>
         recordBrokenArrival({ event, productName, qty, cancelOrderIds }, tx),
       )
-      return NextResponse.json({ success: true, ...result })
+      const refunds = await refundForReduction(
+        event, "damaged", productName, reductions, session.user.email)
+      return NextResponse.json({ success: true, ...result, refunds })
     }
 
     // Missing path: the expected item never arrived. Like broken, cancel the
-    // chosen customer orders (refunds auto-materialize if paid) — but nothing is
+    // chosen customer orders and refund whoever had paid — but nothing is
     // logged to inventory, since there are no physical units.
     if (body.action === "missing") {
       const { event } = body
@@ -117,10 +126,14 @@ export async function POST(req: NextRequest) {
           { status: 400 },
         )
       }
+      const reductions = await snapshotReductions(cancelOrderIds)
       const result = await withActor(session.user.email, (tx) =>
         recordMissingArrival({ cancelOrderIds }, tx),
       )
-      return NextResponse.json({ success: true, ...result })
+      // The item never arrived, so its own name is the best label available.
+      const refunds = await refundForReduction(
+        event, "shipping_loss", String(body.productName ?? "").trim(), reductions, session.user.email)
+      return NextResponse.json({ success: true, ...result, refunds })
     }
 
     // Customer-cancelled path: the item is correct and already bought, but the

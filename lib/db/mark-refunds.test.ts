@@ -1,10 +1,11 @@
 import { test, before, after } from "node:test"
 import assert from "node:assert/strict"
 import sql from "../db-pool"
-import { refundForReduction } from "./mark-refunds"
+import { refundForReduction, snapshotReductions } from "./mark-refunds"
 import { getRefunds } from "./finance"
 import { markProductOutOfStock } from "./shopping-list"
 import { recordNotReceived } from "./fulfillment"
+import { recordBrokenArrival } from "./orders"
 
 const TAG = `marktest${process.hrtime.bigint()}`
 const EVENT = `${TAG}_EV`
@@ -130,4 +131,44 @@ test("a customer cancellation creates no refund here", async () => {
 
   assert.equal(result.refunds.length, 0)
   assert.equal((await getRefunds({ event: EV })).length, 0)
+})
+
+test("the pick-which-customer flow refunds too, not only the quantity one", async () => {
+  // The Arrival List has two ways to mark the same thing: one takes a quantity
+  // and allocates it, the other lets staff choose whose orders go. Only the
+  // first created refunds, so a mark made the second way reduced the order,
+  // told nobody, and left the money to surface as an unexplained overpayment.
+  const who = `${TAG}_picked`
+  await sql`INSERT INTO customers (instagram_id) VALUES (${who})`
+  const [order] = await sql<{ id: number }[]>`
+    INSERT INTO orders (event, customer, product_id, unit_price, unit)
+    VALUES (${EVENT}, ${who}, ${productId}, 250000, 2) RETURNING id`
+  await sql`
+    INSERT INTO payments (event, customer, amount, is_checked, kind)
+    VALUES (${EVENT}, ${who}, 500000, true, 'deposit')`
+
+  // Exactly the order the route follows: read what is about to go, cancel it,
+  // then price the refund against the invoice as it then stands.
+  const reductions = await snapshotReductions([order.id])
+  assert.deepEqual(reductions, [{ customer: who, unitsRemoved: 2, unitPrice: 250000 }])
+
+  await recordBrokenArrival({ event: EVENT, productName: "Anything", qty: 2, cancelOrderIds: [order.id] })
+  const refunds = await refundForReduction(EVENT, "damaged", "Anything", reductions, null)
+
+  assert.equal(refunds.length, 1)
+  assert.equal(refunds[0].amount, 500000)
+  const rows = await getRefunds()
+  const mine = rows.find((r) => r.customer === who)
+  assert.equal(mine?.reason, "damaged")
+})
+
+test("a snapshot taken after the units are gone finds nothing to refund", async () => {
+  // Which is why it is taken first. Guards the ordering, not the arithmetic.
+  const who = `${TAG}_late`
+  await sql`INSERT INTO customers (instagram_id) VALUES (${who})`
+  const [order] = await sql<{ id: number }[]>`
+    INSERT INTO orders (event, customer, product_id, unit_price, unit)
+    VALUES (${EVENT}, ${who}, ${productId}, 90000, 1) RETURNING id`
+  await recordBrokenArrival({ event: EVENT, productName: "Anything", qty: 1, cancelOrderIds: [order.id] })
+  assert.deepEqual(await snapshotReductions([order.id]), [])
 })

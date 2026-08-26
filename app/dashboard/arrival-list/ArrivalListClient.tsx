@@ -1156,8 +1156,8 @@ function ArriveModal({
       } else if (mode === "broken") {
         if (quantityArrived < 1) { setSaveError("Enter how many units arrived broken."); return }
         // Broken on arrival: log the broken units to Inventory (flagged broken,
-        // never assignable to orders) and cancel the chosen customer orders
-        // (refunds auto-materialize if paid).
+        // never assignable to orders) and cancel the chosen customer orders,
+        // refunding whoever had paid for them.
         const res = await fetch("/api/sheets/arrival-list", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1180,6 +1180,9 @@ function ArriveModal({
           body: JSON.stringify({
             action: "missing",
             event: item.event,
+            // Nothing is logged to Inventory for a missing item, but the refund
+            // note still has to say what went astray.
+            productName: item.productName,
             cancelOrderIds: [...cancelIds],
           }),
         })
@@ -1190,7 +1193,8 @@ function ArriveModal({
         // Customer backed out after we already bought their item — it's
         // correct, sellable stock, not broken or missing. Log the
         // already-bought units to Inventory as ready stock and cancel the
-        // chosen orders (refunds auto-materialize if paid).
+        // chosen orders. No refund is raised here: a cancellation is the
+        // customer's own doing and has its own flow.
         const res = await fetch("/api/sheets/arrival-list", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
