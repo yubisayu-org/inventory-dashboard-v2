@@ -750,16 +750,14 @@ function DuplicateVariantModal({ row, onClose, onDone }: {
         {!product && !loadError && <p className="text-xs text-muted">Loading…</p>}
         {product && (
           <>
-            <div className="grid grid-cols-2 gap-3">
-              <label className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-muted">Store</span>
-                <div className={`${INPUT_CLS} bg-surface-muted text-muted`}>{product.store || "—"}</div>
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-muted">Price</span>
-                <div className={`${INPUT_CLS} bg-surface-muted text-muted tabular-nums`}>Rp {fmt(product.price)}</div>
-              </label>
-            </div>
+            {/* The store is copied to the variant but not shown: which shop a
+                product is sourced from is not staff's to know, and here it is
+                inherited rather than chosen, so there is nothing to decide by
+                seeing it. It still travels in the create payload below. */}
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-muted">Price</span>
+              <div className={`${INPUT_CLS} bg-surface-muted text-muted tabular-nums`}>Rp {fmt(product.price)}</div>
+            </label>
             <label className="flex flex-col gap-1">
               <span className="text-xs font-medium text-muted">New product name</span>
               <input value={name} onChange={(e) => setName(e.target.value)} className={INPUT_CLS} />

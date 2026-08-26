@@ -1164,12 +1164,9 @@ function DuplicateVariantFields({ dv, activeEvents, onClose }: {
   return (
     <div className="flex flex-col gap-2">
       <label className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-        New product name — price · store · weight copied from {product.name}
+        New product name — price · weight copied from {product.name}
       </label>
       <div className="flex flex-col md:flex-row md:items-center gap-2">
-        <div className="w-full md:w-28 h-10 shrink-0 px-2 rounded-lg border border-cream-border bg-surface-muted text-muted text-sm flex items-center truncate" title="Store (copied)">
-          {product.store || "—"}
-        </div>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
