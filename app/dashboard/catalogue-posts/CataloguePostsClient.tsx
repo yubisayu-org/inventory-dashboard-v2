@@ -367,16 +367,11 @@ export default function CataloguePostsClient() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <select
-                  value={post.highlightId ?? ""}
-                  onChange={(e) => assignHighlight(post, e.target.value ? Number(e.target.value) : null)}
-                  className="text-xs border border-cream-border rounded-lg px-1.5 py-1"
-                >
-                  <option value="">No highlight</option>
-                  {highlights.map((h) => (
-                    <option key={h.id} value={h.id}>{h.name}{h.visible ? "" : " (hidden)"}</option>
-                  ))}
-                </select>
+                <HighlightPicker
+                  highlights={highlights}
+                  value={post.highlightId}
+                  onChange={(id) => assignHighlight(post, id)}
+                />
                 <button
                   onClick={() => setEditingProductsPost(post)}
                   aria-label="Edit title & products"
@@ -512,6 +507,119 @@ export default function CataloguePostsClient() {
 // Just a display now — title and product tags are one screen
 // (EditProductsModal), reached only through the pencil link below. Two
 // separate clickable things opening the same modal was redundant.
+/**
+ * Which highlight a post belongs to, as a star rather than a dropdown.
+ *
+ * A post sits in at most one highlight (migration 080: nullable FK, no join
+ * table), so this is a one-of-many choice and not a toggle — which is why the
+ * star opens a list instead of flipping a flag. A filled star means the post is
+ * in one, and the name is in the tooltip, so which one can be read without
+ * opening anything.
+ *
+ * It replaces a text select that sat among three icon buttons and was the only
+ * control on the row wide enough to push the title into an ellipsis.
+ */
+function HighlightPicker({ highlights, value, onChange }: {
+  highlights: CatalogueHighlight[]
+  value: number | null
+  onChange: (highlightId: number | null) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const current = highlights.find((h) => h.id === value) ?? null
+
+  useEffect(() => {
+    if (!open) return
+    function onOutsideClick(e: MouseEvent) {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    function onEscape(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false)
+    }
+    document.addEventListener("mousedown", onOutsideClick)
+    document.addEventListener("keydown", onEscape)
+    return () => {
+      document.removeEventListener("mousedown", onOutsideClick)
+      document.removeEventListener("keydown", onEscape)
+    }
+  }, [open])
+
+  const label = current ? `Highlight: ${current.name}` : "No highlight"
+
+  return (
+    <div className="relative" ref={rootRef}>
+      {/* p-1.5 with a 16px icon, exactly as the pencil, eye and send buttons
+          beside it — the point of the star is that the row becomes four
+          controls of one size rather than three and a text select. */}
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-label={label}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title={label}
+        className={`p-1.5 rounded-lg border transition-colors ${
+          current
+            ? "border-brand/30 bg-brand-light text-brand"
+            : "border-cream-border bg-white text-faint hover:text-brand"
+        }`}
+      >
+        <svg
+          width="16" height="16" viewBox="0 0 24 24"
+          fill={current ? "currentColor" : "none"}
+          stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+        >
+          <path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z" />
+        </svg>
+      </button>
+
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 top-full mt-1 z-30 min-w-44 max-h-64 overflow-y-auto rounded-lg border border-cream-border bg-white shadow-lg py-1"
+        >
+          <HighlightOption selected={value === null} onClick={() => { onChange(null); setOpen(false) }}>
+            No highlight
+          </HighlightOption>
+          {highlights.map((h) => (
+            <HighlightOption
+              key={h.id}
+              selected={value === h.id}
+              onClick={() => { onChange(h.id); setOpen(false) }}
+            >
+              {h.name}{h.visible ? "" : " (hidden)"}
+            </HighlightOption>
+          ))}
+          {highlights.length === 0 && (
+            <p className="px-3 py-2 text-xs text-faint">No highlights yet — make one from the toolbar.</p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function HighlightOption({ selected, onClick, children }: {
+  selected: boolean
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitemradio"
+      aria-checked={selected}
+      onClick={onClick}
+      className={`w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors ${
+        selected ? "text-brand font-medium" : "text-foreground hover:bg-surface-muted"
+      }`}
+    >
+      <span className="w-3 shrink-0">{selected ? "✓" : ""}</span>
+      <span className="min-w-0 truncate">{children}</span>
+    </button>
+  )
+}
+
 function PostTitleLabel({ label, muted }: { label: string; muted: boolean }) {
   return (
     <p className={`text-sm truncate ${muted ? "text-amber-600" : "text-foreground"}`}>
