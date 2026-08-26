@@ -66,11 +66,10 @@ should say so.
 already exists on the Arrival List and the invoice line and is not what this
 design is about.
 
-> **Assumption to confirm.** "Customer cancel should not be in the reason inside
-> the receiving list" is read as *the cancelled mark creates no refund and adds
-> no reason*, leaving the existing cancellation flow untouched. If it meant the
-> `cancelled` mode should leave the Receiving List altogether, that is a
-> different change and is not in this spec.
+> **Parked, decided later.** Whether the `cancelled` mode should leave the
+> Receiving List altogether is a separate question, deliberately not settled
+> here. This spec assumes it stays and simply produces no refund, so nothing
+> below depends on the answer either way.
 
 ### A reduction only owes a refund if it was paid for
 
