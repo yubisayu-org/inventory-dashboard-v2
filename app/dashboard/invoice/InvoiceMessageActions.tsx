@@ -54,10 +54,10 @@ export function InvoiceMessageActions({
         <button
           type="button"
           onClick={() => setTelling(true)}
-          title="Send her a notice on the catalogue"
+          title="Send a notice on the catalogue"
           className="shrink-0 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 transition-colors"
         >
-          Tell her…
+          Tell them…
         </button>
       )}
       <button
@@ -320,9 +320,9 @@ function TellHerModal({
       <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white border border-cream-border">
         <div className="px-5 py-3 border-b border-cream-border flex items-center justify-between gap-3">
           <div>
-            <h3 className="text-base font-bold">What to tell her</h3>
+            <h3 className="text-base font-bold">What to tell them</h3>
             <p className="text-xs text-muted">
-              {customer} · {event.eventId} · goes to her inbox on the catalogue
+              {customer} · {event.eventId} · goes to their inbox on the catalogue
             </p>
           </div>
           <button type="button" onClick={onClose} className="text-faint hover:text-brand text-xl leading-none">
@@ -371,7 +371,7 @@ function TellHerModal({
                   </select>
                   <p className="text-[11px] text-faint mt-1">
                     Saved on the refund as <span className="font-mono">reason: &apos;{cause.key}&apos;</span>, so
-                    her card says the same thing weeks later.
+                    their card says the same thing weeks later.
                   </p>
                 </div>
 
@@ -476,7 +476,7 @@ function TellHerModal({
 
             {bad.length > 0 && (
               <p className="text-xs text-amber-700 bg-amber-50 rounded px-2 py-1 mt-2">
-                {bad.join(", ")} is not a placeholder we know — she would read it exactly as written.
+                {bad.join(", ")} is not a placeholder we know — they would read it exactly as written.
               </p>
             )}
             {error && <p className="text-xs text-red-500 mt-2">{error}</p>}
@@ -488,14 +488,14 @@ function TellHerModal({
             {sent
               ? isRefund
                 ? `Sent — and a refund of ${idr(refundAmount)} created with reason '${cause.key}'.`
-                : "Sent. She has it now."
+                : "Sent. They have it now."
               : emptyText
                 ? "A title and a message are both required."
                 : noMoney
                   ? needsItems
                     ? "Choose which lines it is about."
                     : "Fill in how much is coming back."
-                  : `She reads: “${fillNotice(title, values)}”`}
+                  : `They read: “${fillNotice(title, values)}”`}
           </span>
           <div className="flex gap-2">
             <button

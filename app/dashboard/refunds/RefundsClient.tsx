@@ -1472,7 +1472,7 @@ function RefundDetailModal({
               {isCreditPromised(row) && (
                 <div className="text-xs text-purple-800 font-medium">
                   {displayIg(row.customer)} asked to keep this as credit. Nothing has moved yet — it waits here until
-                  one of her orders can take it.
+                  one of their orders can take it.
                 </div>
               )}
               <div className="text-xs text-purple-700">

@@ -1095,7 +1095,7 @@ function InboxNoticesSection() {
       <div>
         <h2 className="text-sm font-semibold text-foreground">Inbox notices</h2>
         <p className="text-xs text-muted mt-1">
-          What she reads in her catalogue inbox when you tell her something from the invoice
+          What they read in their catalogue inbox when you tell them something from the invoice
           screen. Edit the wording here; the amounts and the order number fill themselves in.
           Leave a field blank to go back to ours.
         </p>
