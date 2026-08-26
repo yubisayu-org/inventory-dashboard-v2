@@ -111,9 +111,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, ...result })
     }
 
-    // Missing path: the expected item never arrived. Like broken, cancel the
-    // chosen customer orders and refund whoever had paid — but nothing is
-    // logged to inventory, since there are no physical units.
+    // Missing path: the expected item never arrived. Like broken: take the
+    // marked quantity off the chosen orders, refund whoever had paid, and log
+    // the units flagged "missing" — unassignable, but a record of the loss.
     if (body.action === "missing") {
       const { event } = body
       const cancelOrderIds = Array.isArray(body.cancelOrderIds)

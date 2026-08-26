@@ -1368,11 +1368,11 @@ function ArriveModal({
                 {mode === "broken"
                   ? "Broken units are logged to Inventory (flagged “broken”, not sellable). "
                   : mode === "missing"
-                  ? "The item never arrived, so nothing is logged to Inventory. "
+                  ? "Missing units are logged to Inventory (flagged “missing”, not sellable) so the loss is on the record. "
                   : mode === "cancelled"
                   ? `The units already bought for checked orders (${item.orders.filter((o) => cancelIds.has(o.id)).reduce((s, o) => s + o.unitBuy, 0)} total) are logged to Inventory as ready stock, assignable to the next customer who wants this item. `
                   : ""}
-                Checked orders are removed from the invoice and refunded if paid; unchecked orders stay pending.
+                Only the quantity above comes off, taken from the checked orders — unpaid ones first, so paid customers keep theirs. Whoever loses units is refunded if they had paid. Unchecked orders stay pending.
               </p>
               {mode === "cancelled" && (
                 <div className="flex flex-col gap-1">
