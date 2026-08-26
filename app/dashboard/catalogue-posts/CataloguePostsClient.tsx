@@ -176,29 +176,27 @@ export default function CataloguePostsClient() {
       {/* One row on a desktop, three on a phone. The fixed widths here add up
           to about 550px before the search field gets anything, so on a phone
           they used to run off the side and Highlights and Add Post sat past
-          the edge. Search and the trip filter each take a full row — trip
-          codes are long enough to read, not just tap — and the controls share
-          the third. */}
+          the edge. Two rows now: search with the controls that act on the list
+          it shows, then the trip filter with the ones that act on a trip.
+          sm:order-* restores the original left-to-right sequence above sm, so
+          the desktop toolbar is exactly as it was. */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <input
-          value={listQuery}
-          onChange={(e) => setListQuery(e.target.value)}
-          placeholder="Cari judul atau nama produk…"
-          className="w-full sm:flex-1 h-10 border border-cream-border rounded-lg px-3 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
-        />
-        <div className="w-full sm:w-56 shrink-0">
-          <EventSelect value={defaultEvent} onChange={setDefaultEvent} events={options?.activeEvents ?? []} placeholder="Default trip…" clearable />
-        </div>
-        {/* sm:contents dissolves this wrapper on a desktop, so its children
-            rejoin the row above exactly as they did before — one layout, not a
-            phone copy to keep in step with it. */}
+        {/* Row one: search and the controls that act on the list it shows.
+            sm:contents dissolves each group on a desktop so every child rejoins
+            one row — one layout that bends, not a phone copy kept in step. */}
         <div className="flex items-center gap-2 w-full sm:contents">
+          <input
+            value={listQuery}
+            onChange={(e) => setListQuery(e.target.value)}
+            placeholder="Cari judul atau nama produk…"
+            className="flex-1 sm:order-1 h-10 border border-cream-border rounded-lg px-3 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+          />
           <button
             onClick={() => setBulkOpen(true)}
             disabled={selectedPostIds.size === 0}
             aria-label="Bulk actions"
             title="Bulk actions"
-            className={`relative h-10 w-10 flex items-center justify-center rounded-lg border border-cream-border shrink-0 ${
+            className={`relative h-10 w-10 sm:order-3 flex items-center justify-center rounded-lg border border-cream-border shrink-0 ${
               selectedPostIds.size > 0 ? "bg-brand text-white" : "bg-white text-faint"
             }`}
           >
@@ -211,17 +209,7 @@ export default function CataloguePostsClient() {
               </span>
             )}
           </button>
-          <button
-            onClick={() => setHighlightsOpen(true)}
-            aria-label="Highlights"
-            title="Highlights"
-            className="h-10 w-10 flex items-center justify-center rounded-lg border border-cream-border bg-white text-faint shrink-0"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z" />
-            </svg>
-          </button>
-          <div className="flex items-center h-10 rounded-lg border border-cream-border overflow-hidden shrink-0">
+          <div className="flex items-center h-10 sm:order-5 rounded-lg border border-cream-border overflow-hidden shrink-0">
             <button
               onClick={() => setViewMode("list")}
               aria-label="Tampilan list"
@@ -245,10 +233,26 @@ export default function CataloguePostsClient() {
               </svg>
             </button>
           </div>
+        </div>
+        {/* Row two: the trip filter and the things that act on a trip. */}
+        <div className="flex items-center gap-2 w-full sm:contents">
+          <div className="flex-1 min-w-0 sm:flex-none sm:w-56 sm:shrink-0 sm:order-2">
+            <EventSelect value={defaultEvent} onChange={setDefaultEvent} events={options?.activeEvents ?? []} placeholder="Default trip…" clearable />
+          </div>
+          <button
+            onClick={() => setHighlightsOpen(true)}
+            aria-label="Highlights"
+            title="Highlights"
+            className="h-10 w-10 sm:order-4 flex items-center justify-center rounded-lg border border-cream-border bg-white text-faint shrink-0"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z" />
+            </svg>
+          </button>
           <button
             type="button"
             onClick={() => setAddOpen((o) => !o)}
-            className={`inline-flex items-center justify-center gap-1.5 h-10 px-4 text-sm rounded-lg border flex-1 sm:flex-none shrink-0 transition-colors ${
+            className={`inline-flex items-center justify-center gap-1.5 h-10 px-4 text-sm rounded-lg border flex-1 sm:flex-none sm:shrink-0 sm:order-6 transition-colors ${
               addOpen ? "bg-brand-light text-brand border-brand/30" : "bg-brand text-white border-transparent hover:bg-brand-dark"
             }`}
           >
