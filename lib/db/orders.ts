@@ -1372,3 +1372,44 @@ export async function deleteExcessRow(rowNumber: number, db: DBExecutor = sql): 
   await db`DELETE FROM excess_purchase WHERE id = ${rowNumber}`
 }
 
+
+/**
+ * A copy of a product under a new name, for a variant of something already
+ * ordered — the same bag in navy, the same shirt in L.
+ *
+ * The copy is made here rather than in the browser because a product row is
+ * where this shop's margins live: cost, profit, the supplier it came from. The
+ * old path fetched all of that to the client and posted it back unchanged,
+ * which is why only an owner could do it — staff cannot be handed the pricing
+ * to copy it. Nothing about the source leaves the server now; a caller says
+ * which product and what to call the new one.
+ *
+ * Every column is carried over except the name, so the variant prices exactly
+ * as its source does. Copying the stored price rather than recomputing it is
+ * deliberate: same inputs, same answer, and no chance of the two drifting if a
+ * rate moves between the two calls.
+ */
+export async function duplicateProductAsVariant(
+  fromProductId: number,
+  name: string,
+  db: DBExecutor = sql,
+): Promise<{ id: number; price: number }> {
+  const wanted = name.trim()
+  if (!wanted) throw new Error("A name is required")
+
+  const [row] = (await db`
+    INSERT INTO products (
+      name, store, price, gram, country_id, valas, kurs, cargo_per_kg,
+      profit_pct, operational_fee, packing_fee, cost, profit_fixed,
+      is_active, pricing_method, tiered_kurs, flat_fee_mode
+    )
+    SELECT ${wanted}, store, price, gram, country_id, valas, kurs, cargo_per_kg,
+           profit_pct, operational_fee, packing_fee, cost, profit_fixed,
+           is_active, pricing_method, tiered_kurs, flat_fee_mode
+      FROM products WHERE id = ${fromProductId}
+    RETURNING id, price
+  `) as unknown as { id: number; price: number }[]
+
+  if (!row) throw new Error("The product this order is on no longer exists")
+  return row
+}

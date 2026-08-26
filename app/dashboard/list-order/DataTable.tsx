@@ -655,13 +655,15 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
 // ---------------------------------------------------------------------------
 // DuplicateVariantModal — same feature as order-requests' "Duplicate as
 // variant": a size/colour note on this row's product ("Navy, size L") isn't
-// its own sellable SKU until it has its own product row. Fetches the row's
-// matched product's FULL pricing row and re-POSTs every field unchanged
-// except name, then reassigns this order row onto the new product via the
-// same stage:"1" PUT EditOrderModal's own item-change already uses — so the
-// duplicate reproduces the same price under whichever pricing method the
-// source uses (computeProductPrice recomputes it — see lib/pricing-server.ts),
-// and this order line moves onto it in one step.
+// its own sellable SKU until it has its own product row.
+//
+// The copy is made server-side, by id. This screen once fetched the source
+// product's whole pricing row — store, cost, profit — and posted every field
+// back unchanged, which meant only an owner could use the button at all: staff
+// cannot be handed the margins in order to copy them. Nothing about the source
+// reaches this component now; it sends which product and what to call the copy,
+// and the server carries the rest across. Then the order line moves onto the
+// new product with the same stage:"1" PUT EditOrderModal's item-change uses.
 // ---------------------------------------------------------------------------
 
 function DuplicateVariantModal({ row, onClose, onDone }: {
@@ -669,53 +671,26 @@ function DuplicateVariantModal({ row, onClose, onDone }: {
   onClose: () => void
   onDone: () => void
 }) {
-  const [product, setProduct] = useState<ProductRow | null>(null)
-  const [loadError, setLoadError] = useState("")
-  const [name, setName] = useState("")
+  // The table already shows the product's name, so the suggestion costs no
+  // request — and the name is the only thing about the product this screen has
+  // any business knowing.
+  const [name, setName] = useState(
+    row.note.trim() ? `${row.items} — ${row.note.trim()}` : row.items,
+  )
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState("")
 
-  useEffect(() => {
-    fetch(`/api/sheets/products/${row.productId}`, { cache: "no-store" })
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.error) throw new Error(data.error)
-        const p: ProductRow = data.product
-        setProduct(p)
-        setName(row.note.trim() ? `${p.name} — ${row.note.trim()}` : p.name)
-      })
-      .catch((err) => setLoadError(err instanceof Error ? err.message : "Failed to load product"))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [row.productId])
-
   async function submit() {
-    if (!product) return
     if (!name.trim()) { setError("Name is required"); return }
     setSubmitting(true); setError("")
     try {
-      const productRes = await fetch("/api/sheets/products", {
+      const productRes = await fetch("/api/sheets/products/variant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: name.trim(),
-          store: product.store,
-          pricingMethod: product.pricingMethod,
-          flatFeeMode: product.flatFeeMode,
-          countryId: product.countryId,
-          valas: product.valas,
-          gram: product.gram,
-          kurs: product.kurs,
-          cargoPerKg: product.cargoPerKg,
-          profitPct: product.profitPct,
-          operationalFee: product.operationalFee,
-          packingFee: product.packingFee,
-          cost: product.cost,
-          profitFixed: product.profitFixed,
-          price: product.price,
-        }),
+        body: JSON.stringify({ fromProductId: row.productId, name: name.trim() }),
       })
       const productData = await productRes.json()
-      if (!productRes.ok) throw new Error(productData.error ?? "Failed to create product")
+      if (!productRes.ok) throw new Error(productData.error ?? "Failed to create variant")
 
       const applyRes = await fetch(`/api/sheets/duplicate-form/${row.rowNumber}`, {
         method: "PUT",
@@ -725,10 +700,9 @@ function DuplicateVariantModal({ row, onClose, onDone }: {
           event: row.event,
           customer: row.customer,
           productId: productData.id,
-          // The duplicate's price is the source product's price, unchanged —
-          // computeProductPrice recomputes it from the same inputs. The POST
-          // response only carries {success, id}, not the priced row.
-          unitPrice: product.price,
+          // The copy's price, as the server priced it — the same figure the
+          // source carries, since every pricing input came across with it.
+          unitPrice: productData.price,
           unit: row.unit,
           note: row.note,
         }),
@@ -746,28 +720,24 @@ function DuplicateVariantModal({ row, onClose, onDone }: {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
       <div className="bg-white rounded-xl p-5 w-full max-w-md flex flex-col gap-3" onClick={(e) => e.stopPropagation()}>
         <h3 className="text-sm font-semibold text-foreground">Duplicate as variant</h3>
-        {loadError && <p className="text-xs text-red-500">{loadError}</p>}
-        {!product && !loadError && <p className="text-xs text-muted">Loading…</p>}
-        {product && (
-          <>
-            {/* The store is copied to the variant but not shown: which shop a
-                product is sourced from is not staff's to know, and here it is
-                inherited rather than chosen, so there is nothing to decide by
-                seeing it. It still travels in the create payload below. */}
-            <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-muted">Price</span>
-              <div className={`${INPUT_CLS} bg-surface-muted text-muted tabular-nums`}>Rp {fmt(product.price)}</div>
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-muted">New product name</span>
-              <input value={name} onChange={(e) => setName(e.target.value)} className={INPUT_CLS} />
-            </label>
-          </>
-        )}
+        {/* Store, cost and margin are carried across by the server and never
+            shown: which shop a product came from is not staff's to know, and
+            here every one of them is inherited rather than chosen, so there is
+            nothing to decide by seeing them. The price is this order line's
+            own, which the variant keeps — the customer is paying it either
+            way, so it is the one figure worth confirming before saving. */}
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-muted">Price</span>
+          <div className={`${INPUT_CLS} bg-surface-muted text-muted tabular-nums`}>Rp {fmt(row.unitPrice)}</div>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-muted">New product name</span>
+          <input value={name} onChange={(e) => setName(e.target.value)} className={INPUT_CLS} />
+        </label>
         {error && <p className="text-xs text-red-500">{error}</p>}
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm">Cancel</button>
-          <button onClick={submit} disabled={submitting || !product} className="px-4 py-2 rounded-lg bg-brand text-white text-sm disabled:opacity-50">
+          <button onClick={submit} disabled={submitting} className="px-4 py-2 rounded-lg bg-brand text-white text-sm disabled:opacity-50">
             {submitting ? "Saving…" : "Create & apply"}
           </button>
         </div>
