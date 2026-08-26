@@ -1001,7 +1001,14 @@ function UploadForm({ options, onCreated, onCancel }: {
               <span className="flex-1 min-w-0 truncate">{job.file.name}</span>
               {job.status === "done" && <span className="text-green-600">✓</span>}
               {job.status === "uploading" && <span className="text-faint">Mengirim…</span>}
-              {job.status === "failed" && <span className="text-red-500" title={job.error}>Gagal</span>}
+              {/* The reason inline, not in a tooltip: an upload that failed is
+                  read once, often on a phone, where there is nothing to hover.
+                  Matches the send list above, which already said it out loud. */}
+              {job.status === "failed" && (
+                <span className="text-red-500 min-w-0 truncate" title={job.error}>
+                  Gagal{job.error ? ` — ${job.error}` : ""}
+                </span>
+              )}
               {job.status === "queued" && (
                 <button type="button" onClick={() => removeFile(job.id)} className="text-faint hover:text-foreground">
                   &times;
