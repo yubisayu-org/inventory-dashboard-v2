@@ -77,6 +77,116 @@ function ToCheckPanel({ rows, error, promoting, onPromote, onRetry }: {
   onPromote: (row: OverpaymentToCheck) => void
   onRetry: () => void
 }) {
+  const columns = useMemo<ColumnDef<OverpaymentToCheck, unknown>[]>(() => [
+    {
+      accessorKey: "customer",
+      header: "Customer",
+      size: 180,
+      filterFn: "textContains",
+      cell: ({ getValue }) => (
+        <span className="font-medium text-foreground">{displayIg(getValue<string>())}</span>
+      ),
+    },
+    {
+      accessorKey: "event",
+      header: "Event",
+      size: 130,
+      filterFn: "textContains",
+      cell: ({ getValue }) => <span className="text-muted-strong">{getValue<string>()}</span>,
+    },
+    // Paid and invoiced sit beside the gap so a small difference can be
+    // recognised as rounding without opening the invoice.
+    {
+      accessorKey: "totalPaid",
+      header: "Paid",
+      size: 130,
+      filterFn: "numeric",
+      meta: { align: "right" },
+      cell: ({ getValue }) => (
+        <span className="tabular-nums text-muted">{formatRp(getValue<number>())}</span>
+      ),
+    },
+    {
+      accessorKey: "invoiceTotal",
+      header: "Invoiced",
+      size: 130,
+      filterFn: "numeric",
+      meta: { align: "right" },
+      cell: ({ getValue }) => (
+        <span className="tabular-nums text-muted">{formatRp(getValue<number>())}</span>
+      ),
+    },
+    {
+      accessorKey: "uncovered",
+      header: "Uncovered",
+      size: 140,
+      filterFn: "numeric",
+      meta: { align: "right" },
+      cell: ({ row }) => (
+        <div className="flex flex-col items-end">
+          <span className="tabular-nums font-semibold text-brand">{formatRp(row.original.uncovered)}</span>
+          {/* What a mark has already covered, where the gap is only what is
+              left of it — otherwise the figure reads as the whole overpayment. */}
+          {row.original.refundedSoFar > 0 && (
+            <span className="text-[11px] text-faint tabular-nums">
+              after {formatRp(row.original.refundedSoFar)} refunded
+            </span>
+          )}
+        </div>
+      ),
+    },
+    {
+      id: "action",
+      header: "",
+      size: 140,
+      enableSorting: false,
+      enableColumnFilter: false,
+      meta: { align: "right" },
+      cell: ({ row }) => {
+        const r = row.original
+        const busy = promoting === `${r.event}|${r.customer}`
+        return (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onPromote(r) }}
+            disabled={busy}
+            className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-bold disabled:opacity-50 whitespace-nowrap"
+          >
+            {busy ? "Creating…" : "Create refund"}
+          </button>
+        )
+      },
+    },
+  ], [promoting, onPromote])
+
+  const renderMobileCard = useCallback((r: OverpaymentToCheck) => {
+    const busy = promoting === `${r.event}|${r.customer}`
+    return (
+      <div className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-sm font-semibold text-foreground">{r.event}</span>
+            <span className="text-xs text-faint uppercase truncate">{displayIg(r.customer)}</span>
+          </div>
+          <div className="mt-0.5 text-xs text-muted tabular-nums">
+            paid {formatRp(r.totalPaid)} of {formatRp(r.invoiceTotal)}
+          </div>
+        </div>
+        <div className="shrink-0 flex flex-col items-end gap-1.5">
+          <span className="text-sm font-semibold tabular-nums text-brand">{formatRp(r.uncovered)}</span>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onPromote(r) }}
+            disabled={busy}
+            className="px-2.5 py-1 rounded-lg bg-brand text-white text-[11px] font-bold disabled:opacity-50 whitespace-nowrap"
+          >
+            {busy ? "Creating…" : "Create refund"}
+          </button>
+        </div>
+      </div>
+    )
+  }, [promoting, onPromote])
+
   if (error) {
     return (
       <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 flex items-center justify-between gap-3">
@@ -96,62 +206,25 @@ function ToCheckPanel({ rows, error, promoting, onPromote, onRetry }: {
     )
   }
 
+  // The same mt-3 the pending grid sits in, so switching tabs does not nudge
+  // the table up or down.
   return (
-    <div className="mt-3 rounded-xl border border-cream-border bg-white overflow-hidden">
-      <div className="hidden sm:grid grid-cols-[1fr_110px_110px_120px_auto] items-center gap-3 px-4 py-2 bg-surface-muted border-b border-cream-border text-[11px] font-bold uppercase tracking-wide text-faint">
-        <span>Customer · trip</span>
-        <span className="text-right">Paid</span>
-        <span className="text-right">Invoiced</span>
-        <span className="text-right">Uncovered</span>
-        {/* The button, invisible. The last track is auto-sized, so an empty
-            cell here measures zero while the rows' measures a button — and the
-            two grids then split the leftover differently, sliding every header
-            right of where its column actually sits. A copy of the real thing
-            cannot drift out of agreement the way a hard-coded width would. */}
-        <span aria-hidden className="invisible px-3 text-xs font-bold whitespace-nowrap">Create refund</span>
-      </div>
-
-      {/* Every row listed, largest first. No threshold: a small gap is still
-          money owed, and hiding it behind a disclosure makes it easy to forget
-          the one thing this tab exists to remember. */}
-      {rows.map((r) => (
-        <ToCheckRow key={`${r.event}|${r.customer}`} row={r} promoting={promoting} onPromote={onPromote} />
-      ))}
-    </div>
-  )
-}
-
-function ToCheckRow({ row, promoting, onPromote }: {
-  row: OverpaymentToCheck
-  promoting: string
-  onPromote: (row: OverpaymentToCheck) => void
-}) {
-  const key = `${row.event}|${row.customer}`
-  const busy = promoting === key
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-[1fr_110px_110px_120px_auto] gap-2 sm:gap-3 px-4 py-2.5 border-b border-cream-border last:border-b-0 items-center">
-      <div className="min-w-0">
-        <div className="text-sm font-bold truncate">{displayIg(row.customer)}</div>
-        <div className="text-xs text-muted truncate">
-          {row.event}
-          {row.refundedSoFar > 0 && ` · ${formatRp(row.refundedSoFar)} already refunded`}
-        </div>
-      </div>
-      {/* Paid and invoiced sit beside the gap so a small difference can be
-          recognised as rounding without opening the invoice. */}
-      <div className="hidden sm:block text-right text-sm tabular-nums text-muted">{formatRp(row.totalPaid)}</div>
-      <div className="hidden sm:block text-right text-sm tabular-nums text-muted">{formatRp(row.invoiceTotal)}</div>
-      <div className="text-right text-sm tabular-nums font-medium text-brand">{formatRp(row.uncovered)}</div>
-      <div className="flex sm:justify-end">
-        <button
-          type="button"
-          onClick={() => onPromote(row)}
-          disabled={busy}
-          className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-bold disabled:opacity-50 whitespace-nowrap"
-        >
-          {busy ? "Creating…" : "Create refund"}
-        </button>
-      </div>
+    <div className="mt-3">
+    <DataGrid
+      data={rows}
+      columns={columns}
+      pageSize={25}
+      searchPlaceholder="Search customer or event…"
+      fullWidthSearch
+      tightToolbar
+      boldUppercaseHeader
+      hideRowCount
+      getRowId={(r) => `${r.event}|${r.customer}`}
+      renderMobileCard={renderMobileCard}
+      paginationVariant="simple"
+      // Largest first, because that is the order they get worked.
+      initialSorting={[{ id: "uncovered", desc: true }]}
+    />
     </div>
   )
 }
