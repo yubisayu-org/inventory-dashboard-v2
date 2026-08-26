@@ -42,8 +42,8 @@ const TEMPLATE_LABELS: Record<TemplateKey, string> = {
   invoice: "Invoice message",
   invoice_dp: "Invoice message — DP reminder",
   shipment: "Shipment confirmation",
-  refund_specific: "Refund message — items unavailable",
-  refund_generic: "Refund message — generic",
+  refund_specific: "Refund message — with the item list",
+  refund_generic: "Refund message — no item list",
 }
 
 // Sample data so the preview pane renders something readable while editing —

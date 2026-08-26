@@ -21,8 +21,10 @@ export const REQUIRED_TOKENS: Record<TemplateKey, string[]> = {
     "{dpPercent}", "{dpAmount}", "{dpShortfall}", "{bankAccountHolder}", "{bankAccountLines}", "{publicSiteUrl}",
   ],
   shipment: ["{event}", "{handle}", "{dataDiri}", "{items}", "{publicSiteUrl}"],
-  refund_specific: ["{customer}", "{event}", "{itemsList}", "{refundAmount}"],
-  refund_generic: ["{customer}", "{event}", "{refundAmount}"],
+  // {cause} carries the reason and, where there is one, the item list inside
+  // it — so the body no longer requires {itemsList} of its own.
+  refund_specific: ["{customer}", "{event}", "{cause}", "{refundAmount}"],
+  refund_generic: ["{customer}", "{event}", "{cause}", "{refundAmount}"],
 }
 
 // Tokens allowed but not mandatory — currently the invoice/invoice_dp fee
@@ -31,8 +33,8 @@ export const OPTIONAL_TOKENS: Record<TemplateKey, string[]> = {
   invoice: ["{biayaLainnyaBlock}"],
   invoice_dp: ["{biayaLainnyaBlock}", "{sisaPelunasan}"],
   shipment: [],
-  refund_specific: [],
-  refund_generic: [],
+  refund_specific: ["{itemsList}", "{receivedItem}"],
+  refund_generic: ["{itemsList}", "{receivedItem}"],
 }
 
 export const DEFAULT_TEMPLATES: Record<TemplateKey, string> = {
@@ -105,8 +107,13 @@ export const DEFAULT_TEMPLATES: Record<TemplateKey, string> = {
   refund_specific: [
     "Halo {customer} 👋",
     "",
-    "Kami ingin menginformasikan bahwa barang berikut tidak tersedia dari event *{event}*:",
-    "{itemsList}",
+    "Mengenai pesanan Anda di event *{event}*:",
+    "",
+    // The reason, written by the reason — the same one the inbox card gives.
+    // This used to say "tidak tersedia" whatever had happened, so a damaged
+    // parcel and a lost one both reached the customer as an item being out of
+    // stock. The trip is named once, above, so the sentences need not repeat it.
+    "{cause}",
     "",
     "Sehingga perlu dilakukan pengembalian dana sebesar *{refundAmount}*.",
     "",
@@ -121,7 +128,11 @@ export const DEFAULT_TEMPLATES: Record<TemplateKey, string> = {
   refund_generic: [
     "Halo {customer} 👋",
     "",
-    "Kami ingin menginformasikan bahwa ada barang yang tidak tersedia dari event *{event}* sehingga perlu dilakukan pengembalian dana sebesar *{refundAmount}*.",
+    "Mengenai pesanan Anda di event *{event}*:",
+    "",
+    "{cause}",
+    "",
+    "Sehingga perlu dilakukan pengembalian dana sebesar *{refundAmount}*.",
     "",
     "Mohon balas pesan ini dengan informasi berikut:",
     "- Nama Bank:",

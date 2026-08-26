@@ -15,6 +15,7 @@ import SearchableSelect from "@/components/SearchableSelect"
 import { InvoiceDetailDrawer } from "@/app/dashboard/invoice/InvoiceDetailDrawer"
 import { useMessageTemplates } from "@/hooks/useMessageTemplates"
 import { fillTemplate, DEFAULT_TEMPLATES } from "@/lib/message-templates"
+import { causeLineFor, fillNotice, REFUND_CAUSES } from "@/lib/notice-templates"
 
 const INPUT_CLASS =
   "border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
@@ -1026,19 +1027,53 @@ function RefundDetailModal({
     .filter((o) => o.unit === 0)
     .map((o) => o.productName)
   const templates = useMessageTemplates()
-  const waMessageText =
-    unavailableItems.length > 0
-      ? fillTemplate(templates?.refund_specific ?? DEFAULT_TEMPLATES.refund_specific, {
-          customer: row.customer,
-          event: row.event,
-          itemsList: unavailableItems.map((n) => `- ${n}`).join("\n"),
-          refundAmount: formatRp(row.refundAmount),
-        })
-      : fillTemplate(templates?.refund_generic ?? DEFAULT_TEMPLATES.refund_generic, {
-          customer: row.customer,
-          event: row.event,
-          refundAmount: formatRp(row.refundAmount),
-        })
+
+  // A mark writes what it removed onto the refund, quantities and all, which is
+  // better than anything this screen can reconstruct: a line reduced 3 → 2
+  // keeps no record of the original, so orders alone can only see what went to
+  // zero.
+  const itemsList = row.note?.trim()
+    ? row.note.trim()
+    : unavailableItems.map((n) => `- ${n}`).join("\n")
+
+  // What arrived instead, where a wrong delivery was marked on this trip.
+  const [receivedMap, setReceivedMap] = useState<Record<string, string>>({})
+  const wantsReceived = REFUND_CAUSES.find((c) => c.key === row.reason)?.needsReceived === true
+  useEffect(() => {
+    if (!wantsReceived) return
+    let live = true
+    fetch(`/api/sheets/wrong-deliveries?event=${encodeURIComponent(row.event)}`)
+      .then((r) => r.json())
+      .then((d: { received?: Record<string, string> }) => { if (live) setReceivedMap(d.received ?? {}) })
+      // Silent: the wording drops to the sentence that does not name it.
+      .catch(() => {})
+    return () => { live = false }
+  }, [wantsReceived, row.event])
+  const receivedItem = [...new Set(Object.values(receivedMap))].join(", ")
+
+  // The reason, said out loud — the same one the inbox card gives, in the
+  // language this channel speaks. Before this, every refund reached WhatsApp as
+  // an item being out of stock, whatever had actually happened.
+  const cause = REFUND_CAUSES.find((c) => c.key === row.reason)
+  const causeText = cause
+    ? fillNotice(causeLineFor(cause, { items: itemsList, receivedItem }, "whatsapp"), {
+        "{event}": row.event,
+        "{itemsList}": itemsList,
+        "{receivedItem}": receivedItem,
+      })
+    : `Ada pengembalian dana untuk pesanan Anda pada event *${row.event}*.`
+
+  const waVars = {
+    customer: row.customer,
+    event: row.event,
+    itemsList,
+    receivedItem,
+    cause: causeText,
+    refundAmount: formatRp(row.refundAmount),
+  }
+  const waMessageText = itemsList
+    ? fillTemplate(templates?.refund_specific ?? DEFAULT_TEMPLATES.refund_specific, waVars)
+    : fillTemplate(templates?.refund_generic ?? DEFAULT_TEMPLATES.refund_generic, waVars)
   const waMessage = encodeURIComponent(waMessageText)
 
   async function handleCopyMessage() {
