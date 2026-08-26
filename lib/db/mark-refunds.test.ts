@@ -3,6 +3,7 @@ import assert from "node:assert/strict"
 import sql from "../db-pool"
 import { refundForReduction } from "./mark-refunds"
 import { getRefunds } from "./finance"
+import { markProductOutOfStock } from "./shopping-list"
 
 const TAG = `marktest${process.hrtime.bigint()}`
 const EVENT = `${TAG}_EV`
@@ -61,4 +62,28 @@ test("the customer is told, in the same breath", async () => {
     SELECT count(*) AS n FROM announcements
      WHERE customer_id IN (SELECT id FROM customers WHERE instagram_id = ${PAID})`
   assert.ok(Number(rows[0].n) >= 1, "a refund nobody is told about is a promise nobody made")
+})
+
+test("marking sold out refunds the customer who paid", async () => {
+  const EV = `${TAG}_SOLD`
+  const who = `${TAG}_sold_paid`
+  await sql`INSERT INTO events (name, warehouse_id) SELECT ${EV}, id FROM warehouses ORDER BY id LIMIT 1`
+  await sql`INSERT INTO customers (instagram_id) VALUES (${who})`
+  await sql`
+    INSERT INTO orders (event, customer, product_id, unit_price, unit)
+    VALUES (${EV}, ${who}, ${productId}, 100000, 2)`
+  await sql`
+    INSERT INTO payments (event, customer, amount, is_checked, kind)
+    VALUES (${EV}, ${who}, 200000, true, 'deposit')`
+
+  const result = await markProductOutOfStock(
+    { event: EV, productId, quantityOutOfStock: 1 }, "tester")
+
+  assert.equal(result.reducedUnits, 1)
+  assert.equal(result.refunds.length, 1)
+  assert.equal(result.refunds[0].amount, 100000)
+
+  const rows = await getRefunds({ event: EV })
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].reason, "unavailable")
 })
