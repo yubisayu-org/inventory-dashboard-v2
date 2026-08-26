@@ -1144,6 +1144,7 @@ function ArriveModal({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "wrong_product",
+            productId: item.productId,
             event: item.event,
             expectedItem: item.productName,
             receivedItem,
@@ -1164,6 +1165,7 @@ function ArriveModal({
           body: JSON.stringify({
             action: "broken",
             event: item.event,
+            productId: item.productId,
             productName: item.productName,
             qty: quantityArrived,
             cancelOrderIds: [...cancelIds],
@@ -1180,9 +1182,13 @@ function ArriveModal({
           body: JSON.stringify({
             action: "missing",
             event: item.event,
+            productId: item.productId,
             // Nothing is logged to Inventory for a missing item, but the refund
             // note still has to say what went astray.
             productName: item.productName,
+            // The figure the modal shows: what is still owed on the orders that
+            // were checked, and nothing beyond them.
+            qty: item.orders.filter((o) => cancelIds.has(o.id)).reduce((sum, o) => sum + o.pending, 0),
             cancelOrderIds: [...cancelIds],
           }),
         })

@@ -1285,6 +1285,16 @@ export async function recordNotReceived(
     qty: number
     mode: "wrong" | "broken" | "missing" | "cancelled"
     receivedItem?: string
+    /**
+     * Only consider these orders.
+     *
+     * The Arrival List can either name a quantity and let it fall where
+     * priority says, or let staff pick whose orders it comes off. Both mean the
+     * same thing to the books — this many units leave — so both run through
+     * here. Picking narrows the candidates; it never changes the rule that only
+     * the marked quantity goes.
+     */
+    orderIds?: number[]
   },
   actor?: string | null,
 ): Promise<NotReceivedResult> {
@@ -1308,6 +1318,7 @@ export async function recordNotReceived(
       AND product_id = ${data.productId}
       AND unit_dispatch IS NOT NULL
       AND (unit_arrive IS NULL OR unit_arrive < unit_dispatch)
+      AND (${data.orderIds ?? null}::int[] IS NULL OR id = ANY(${data.orderIds ?? []}))
     ORDER BY id ASC
   `) as unknown as Row[]
 

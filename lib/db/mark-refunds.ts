@@ -1,6 +1,5 @@
-import sql from "../db-pool"
 import { getPaymentStatus } from "./finance"
-import { withActor, type DBExecutor } from "./actor"
+import { withActor } from "./actor"
 import { sendInvoiceNotice } from "./notices"
 import { normalizeId } from "./helpers"
 import { owed } from "./refund-owed"
@@ -11,28 +10,6 @@ export type MarkReduction = {
   customer: string
   unitsRemoved: number
   unitPrice: number
-}
-
-/**
- * What a set of order lines is about to lose, read before it loses it.
- *
- * The marks that cancel whole lines zero `unit` outright, so afterwards there
- * is nothing left to say how much went. Snapshot first, cancel, then price the
- * refund against the invoice as it then stands.
- */
-export async function snapshotReductions(
-  orderIds: number[],
-  db: DBExecutor = sql,
-): Promise<MarkReduction[]> {
-  if (orderIds.length === 0) return []
-  const rows = (await db`
-    SELECT customer,
-           COALESCE(unit, 0)::int       AS units,
-           COALESCE(unit_price, 0)::int AS price
-      FROM orders
-     WHERE id = ANY(${orderIds}) AND COALESCE(unit, 0) > 0`) as unknown as
-    { customer: string; units: number; price: number }[]
-  return rows.map((r) => ({ customer: r.customer, unitsRemoved: r.units, unitPrice: r.price }))
 }
 
 /**
