@@ -103,17 +103,22 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
           + COALESCE(adj.total_adj, 0)
           - COALESCE(pa.total_paid, 0) > 0
         )::int AS outstanding_count,
+        -- Counts what the To-check list shows, so the tile and the tab can
+        -- never disagree. Asking "is there an overpayment row" instead would
+        -- count every customer a mark had already refunded, for ever: a refund
+        -- does not move the invoice, so the overpayment stays visible in the
+        -- arithmetic until the money actually leaves. Mirrors uncovered() in
+        -- lib/db/refund-residual.ts.
         COUNT(*) FILTER (WHERE
-          COALESCE(pa.total_paid, 0) > (
+          COALESCE(pa.total_paid, 0) - (
             oa.subtotal
             + COALESCE(cwo.ongkos_kirim, 0) * CEIL(oa.total_gram::numeric / 1000)
             + COALESCE(adj.total_adj, 0)
-          )
-          AND NOT EXISTS (
-            SELECT 1 FROM refunds r
-            WHERE r.event = oa.event AND r.customer = oa.customer
-              AND r.reason = 'overpayment' AND r.status != 'cancelled'
-          )
+          ) > COALESCE((
+            SELECT SUM(r.refund_amount) FROM refunds r
+             WHERE r.event = oa.event AND r.customer = oa.customer
+               AND r.status <> 'cancelled'
+          ), 0)
         )::int AS overpayment_candidates
       FROM order_aggregates oa
       LEFT JOIN customers c ON c.instagram_id = oa.customer
