@@ -512,9 +512,10 @@ export default function CataloguePostsClient() {
  *
  * A post sits in at most one highlight (migration 080: nullable FK, no join
  * table), so this is a one-of-many choice and not a toggle — which is why the
- * star opens a list instead of flipping a flag. A filled star means the post is
- * in one, and the name is in the tooltip, so which one can be read without
- * opening anything.
+ * star opens a list instead of flipping a flag. A brand-coloured star means the
+ * post is in one and the name is in the tooltip, so which one can be read
+ * without opening anything; a grey star struck through means it is in none,
+ * the same way the eye says Hidden.
  *
  * It replaces a text select that sat among three icon buttons and was the only
  * control on the row wide enough to push the title into an ellipsis.
@@ -548,9 +549,11 @@ function HighlightPicker({ highlights, value, onChange }: {
 
   return (
     <div className="relative" ref={rootRef}>
-      {/* p-1.5 with a 16px icon, exactly as the pencil, eye and send buttons
-          beside it — the point of the star is that the row becomes four
-          controls of one size rather than three and a text select. */}
+      {/* Styled exactly as the Kirim ulang button beside it: one border, one
+          background, and only the icon's colour carrying the state — brand
+          when the post is in a highlight, muted and struck through when it is
+          not. The star is never filled, so the row reads as four controls of
+          one weight rather than one shouting. */}
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -558,18 +561,18 @@ function HighlightPicker({ highlights, value, onChange }: {
         aria-haspopup="menu"
         aria-expanded={open}
         title={label}
-        className={`p-1.5 rounded-lg border transition-colors ${
-          current
-            ? "border-brand/30 bg-brand-light text-brand"
-            : "border-cream-border bg-white text-faint hover:text-brand"
+        className={`p-1.5 rounded-lg border border-cream-border bg-white/90 backdrop-blur-sm shadow-sm transition-colors ${
+          current ? "text-brand" : "text-muted"
         }`}
       >
         <svg
-          width="16" height="16" viewBox="0 0 24 24"
-          fill={current ? "currentColor" : "none"}
+          width="16" height="16" viewBox="0 0 24 24" fill="none"
           stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
         >
           <path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z" />
+          {/* The same struck-through line the Hidden eye uses — a state that is
+              off is said the same way wherever it appears on this row. */}
+          {!current && <line x1="3" y1="21" x2="21" y2="3" />}
         </svg>
       </button>
 
