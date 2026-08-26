@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import type { CataloguePost, CatalogueHighlight } from "@/lib/db"
 import EventSelect from "@/components/EventSelect"
+import SearchInput from "@/components/SearchInput"
 import ComposerProductStep from "./ComposerProductStep"
 
 export default function CataloguePostsClient() {
@@ -173,11 +174,16 @@ export default function CataloguePostsClient() {
       {error && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
       )}
-      {/* One row on a desktop, three on a phone. The fixed widths here add up
-          to about 550px before the search field gets anything, so on a phone
-          they used to run off the side and Highlights and Add Post sat past
-          the edge. Two rows now: search with the controls that act on the list
-          it shows, then the trip filter with the ones that act on a trip.
+      {/* One row on a desktop, two on a phone. The fixed widths here come to
+          about 550px before the search field is given anything, so on a phone
+          the row used to run off the side and Highlights and Add Post sat past
+          the edge.
+      
+          The two rows are columns as well: search over the trip filter, the
+          bulk tick over Highlights, the view toggle over Add Post. That is why
+          the toggle and Add Post are both w-24 below sm — the toggle is two
+          48px halves, and matching it is what makes the grid read as one.
+      
           sm:order-* restores the original left-to-right sequence above sm, so
           the desktop toolbar is exactly as it was. */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -185,11 +191,14 @@ export default function CataloguePostsClient() {
             sm:contents dissolves each group on a desktop so every child rejoins
             one row — one layout that bends, not a phone copy kept in step. */}
         <div className="flex items-center gap-2 w-full sm:contents">
-          <input
+          {/* The shared search box, as on every other list screen: magnifier on
+              the left, a clear button once there is something to clear. This was
+              the one page still using a bare input. */}
+          <SearchInput
             value={listQuery}
-            onChange={(e) => setListQuery(e.target.value)}
+            onChange={setListQuery}
             placeholder="Cari judul atau nama produk…"
-            className="flex-1 sm:order-1 h-10 border border-cream-border rounded-lg px-3 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+            className="flex-1 min-w-0 sm:order-1"
           />
           <button
             onClick={() => setBulkOpen(true)}
@@ -209,7 +218,7 @@ export default function CataloguePostsClient() {
               </span>
             )}
           </button>
-          <div className="flex items-center h-10 sm:order-5 rounded-lg border border-cream-border overflow-hidden shrink-0">
+          <div className="flex items-center h-10 w-24 sm:w-auto sm:order-5 rounded-lg border border-cream-border overflow-hidden shrink-0">
             <button
               onClick={() => setViewMode("list")}
               aria-label="Tampilan list"
@@ -252,14 +261,15 @@ export default function CataloguePostsClient() {
           <button
             type="button"
             onClick={() => setAddOpen((o) => !o)}
-            className={`inline-flex items-center justify-center gap-1.5 h-10 px-4 text-sm rounded-lg border shrink-0 sm:order-6 transition-colors ${
+            className={`inline-flex items-center justify-center gap-1.5 h-10 px-4 text-sm rounded-lg border w-24 sm:w-auto shrink-0 sm:order-6 transition-colors ${
               addOpen ? "bg-brand-light text-brand border-brand/30" : "bg-brand text-white border-transparent hover:bg-brand-dark"
             }`}
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
               <path d="M12 5v14M5 12h14" />
             </svg>
-            Add Post
+            <span className="sm:hidden">Add</span>
+            <span className="hidden sm:inline">Add Post</span>
           </button>
         </div>
       </div>
