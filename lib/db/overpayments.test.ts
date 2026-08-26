@@ -2,6 +2,7 @@ import { test, before, after } from "node:test"
 import assert from "node:assert/strict"
 import sql from "../db-pool"
 import { materializeOverpaymentRefunds, getRefunds } from "./finance"
+import { listOverpaymentsToCheck, createRefundFromOverpayment } from "./overpayments"
 
 const TAG = `optest${process.hrtime.bigint()}`
 const EVENT = `${TAG}_EV`
@@ -61,4 +62,48 @@ test("a reconciled row holds only what other refunds do not", async () => {
   const [other] = await sql<{ refund_amount: number }[]>`
     SELECT refund_amount FROM refunds WHERE id = ${mark.id}`
   assert.equal(other.refund_amount, 200000, "a mark's row is never rewritten")
+})
+
+test("an uncovered overpayment appears in the list", async () => {
+  // The reconcile test above added a negative-price line to stand in for a
+  // mark's reduction. Remove it so the gap is the plain 50_000 again.
+  await sql`DELETE FROM orders WHERE event = ${EVENT} AND unit_price < 0`
+  await sql`DELETE FROM refunds WHERE event = ${EVENT}`
+  const rows = await listOverpaymentsToCheck()
+  const mine = rows.find((r) => r.event === EVENT && r.customer === HANDLE)
+  assert.ok(mine, "the pair must be listed")
+  assert.equal(mine.uncovered, 50000)
+  assert.equal(mine.totalPaid, 550000)
+})
+
+test("a refund covering it removes it from the list", async () => {
+  await sql`
+    INSERT INTO refunds (event, customer, reason, refund_amount, status)
+    VALUES (${EVENT}, ${HANDLE}, 'overpayment', 50000, 'pending')`
+  const rows = await listOverpaymentsToCheck()
+  assert.equal(rows.find((r) => r.event === EVENT && r.customer === HANDLE), undefined)
+  await sql`DELETE FROM refunds WHERE event = ${EVENT}`
+})
+
+test("creating a refund from a row clears it and lands in Pending", async () => {
+  const made = await createRefundFromOverpayment(EVENT, HANDLE, "tester")
+  assert.equal(made.amount, 50000)
+
+  const [row] = await sql<{ reason: string; status: string; refund_amount: number }[]>`
+    SELECT reason, status, refund_amount FROM refunds WHERE id = ${made.id}`
+  assert.equal(row.reason, "overpayment")
+  assert.equal(row.status, "pending")
+  assert.equal(row.refund_amount, 50000)
+
+  const rows = await listOverpaymentsToCheck()
+  assert.equal(rows.find((r) => r.event === EVENT && r.customer === HANDLE), undefined)
+  await sql`DELETE FROM refunds WHERE event = ${EVENT}`
+})
+
+test("creating a refund when nothing is uncovered is refused", async () => {
+  await sql`
+    INSERT INTO refunds (event, customer, reason, refund_amount, status)
+    VALUES (${EVENT}, ${HANDLE}, 'overpayment', 50000, 'pending')`
+  await assert.rejects(() => createRefundFromOverpayment(EVENT, HANDLE, "tester"))
+  await sql`DELETE FROM refunds WHERE event = ${EVENT}`
 })
