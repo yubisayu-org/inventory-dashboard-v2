@@ -700,8 +700,10 @@ function EditProductsModal({ post, defaultEvent, activeEvents, onClose }: {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ postId: post.id, event }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? "Failed to start")
+      // A body is not guaranteed: a route that throws answers 500 with nothing
+      // in it, and parsing that reports a JSON error instead of the failure.
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? `Failed to start (${res.status})`)
       setDraft({ sendId: data.sendId, isNew: data.isNew })
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start")
