@@ -1374,7 +1374,7 @@ export async function recordNotReceived(
   const reason = REASON_FOR[data.mode]
   // After the commit: what is owed depends on the invoice as it now stands.
   const refunds = reason
-    ? await refundForReduction(data.event, reason, data.productName, reductions, actor)
+    ? await refundForReduction(data.event, reason, data.productName, reductions, actor, data.receivedItem)
     : []
 
   const excessUnits = data.mode === "cancelled" ? inHandUnits : data.qty

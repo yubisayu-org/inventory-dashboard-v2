@@ -8,6 +8,7 @@ import {
   NOTICE_TEMPLATES,
   NOTICE_TOKENS,
   REFUND_CAUSES,
+  causeLineFor,
   applyNoticeOverrides,
   fillNotice,
   unknownTokens,
@@ -204,11 +205,33 @@ function TellHerModal({
   const needsAmount = isRefund && !cause.needsItems && !cause.fixed
   const overpaid = Math.max(0, -event.invoice.sisaPelunasan)
 
+  // What the Arrival List recorded as arriving instead, per item she ordered.
+  // Fetched only when the wording would use it: every other cause is unchanged
+  // by it, and most refunds are not wrong deliveries.
+  const [received, setReceived] = useState<Record<string, string>>({})
+  const wantsReceived = cause.needsReceived === true
+  useEffect(() => {
+    if (!wantsReceived) return
+    let live = true
+    fetch(`/api/sheets/wrong-deliveries?event=${encodeURIComponent(event.eventId)}`)
+      .then((r) => r.json())
+      .then((d: { received?: Record<string, string> }) => { if (live) setReceived(d.received ?? {}) })
+      // Silent: without it the wording simply drops to the sentence that does
+      // not name the substitute, which is what it always used to send.
+      .catch(() => {})
+    return () => { live = false }
+  }, [wantsReceived, event.eventId])
+
   const chosen = event.orders.filter((o) => (missing[o.orderId] ?? 0) > 0)
   const itemsList = chosen
     .map((o) => `${o.productName} × ${missing[o.orderId]}`)
     .join(", ")
   const itemsTotal = chosen.reduce((n, o) => n + o.rawUnitPrice * (missing[o.orderId] ?? 0), 0)
+  // Named once each: two lines of the same wrong delivery is still one thing
+  // that turned up.
+  const receivedList = [...new Set(
+    chosen.map((o) => received[o.productName]).filter((n): n is string => Boolean(n)),
+  )].join(", ")
 
   // Where the figure comes from depends on the cause: ticked lines, the
   // invoice's own overpayment, or a number typed. Never all three.
@@ -221,9 +244,15 @@ function TellHerModal({
     "{outstanding}": idr(Math.max(0, event.invoice.sisaPelunasan)),
     "{refundAmount}": idr(refundAmount),
     "{itemsList}": itemsList || "the item",
-    "{cause}": fillNotice(cause.line, {
+    "{receivedItem}": receivedList,
+    // Where the Arrival List recorded a substitute, say what it was. Where it
+    // did not — a refund raised for something never marked — causeLineFor drops
+    // to the wording that does not need it, rather than sending her a sentence
+    // with "{receivedItem}" printed in the middle.
+    "{cause}": fillNotice(causeLineFor(cause, { items: itemsList, receivedItem: receivedList }), {
       "{event}": event.eventId,
       "{itemsList}": itemsList || "the item",
+      "{receivedItem}": receivedList,
     }),
   }
 

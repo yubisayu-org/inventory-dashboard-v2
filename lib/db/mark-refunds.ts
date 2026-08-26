@@ -3,7 +3,7 @@ import { withActor } from "./actor"
 import { sendInvoiceNotice } from "./notices"
 import { normalizeId } from "./helpers"
 import { owed } from "./refund-owed"
-import { fillNotice, NOTICE_TEMPLATES, REFUND_CAUSES } from "../notice-templates"
+import { causeLineFor, fillNotice, NOTICE_TEMPLATES, REFUND_CAUSES } from "../notice-templates"
 
 /** One customer's share of a mark: how many of their units went, and at what price. */
 export type MarkReduction = {
@@ -31,6 +31,8 @@ export async function refundForReduction(
   itemsLabel: string,
   reductions: MarkReduction[],
   actor?: string | null,
+  /** What turned up instead, where a mark knows — a wrong delivery names it. */
+  receivedItem?: string,
 ): Promise<{ customer: string; amount: number; refundId: number }[]> {
   if (reductions.length === 0) return []
 
@@ -56,9 +58,10 @@ export async function refundForReduction(
       "{event}": event,
       "{refundAmount}": `Rp ${new Intl.NumberFormat("id-ID").format(amount)}`,
       "{itemsList}": items,
+      "{receivedItem}": receivedItem ?? "",
       "{cause}": "",
     }
-    const causeLine = cause ? fillNotice(cause.line, tokens) : ""
+    const causeLine = cause ? fillNotice(causeLineFor(cause, { items, receivedItem }), tokens) : ""
 
     // withActor opens the transaction and stamps app.actor; sendInvoiceNotice
     // writes the refund and the notice inside it. Same shape the invoice

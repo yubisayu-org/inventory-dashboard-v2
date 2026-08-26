@@ -1109,6 +1109,28 @@ export async function appendExcessPurchase(
   `
 }
 
+/**
+ * What turned up instead, per item she ordered, for one trip.
+ *
+ * A wrong delivery is recorded the moment it is marked: excess_purchase keeps
+ * the SKU that arrived under `items` and the one she ordered under
+ * `expected_item`. A refund raised by hand afterwards can therefore say what
+ * came, instead of asking whoever is writing it to remember.
+ *
+ * Latest wins where the same item went wrong twice — that is the delivery
+ * anyone is still talking about.
+ */
+export async function getWrongDeliveries(event: string): Promise<Record<string, string>> {
+  const rows = (await sql`
+    SELECT DISTINCT ON (expected_item) expected_item, items
+      FROM excess_purchase
+     WHERE event = ${event} AND reason = 'wrong_product'
+       AND COALESCE(expected_item, '') <> ''
+     ORDER BY expected_item, id DESC
+  `) as unknown as { expected_item: string; items: string }[]
+  return Object.fromEntries(rows.map((r) => [r.expected_item, r.items]))
+}
+
 /** Item name → total remaining sellable-excess units (every reason except
  *  broken/missing — same scope as the Inventory page's "Apply All"), for the
  *  Shopping List's "Apply Excess" button (shown per item when this map has a

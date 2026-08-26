@@ -95,6 +95,25 @@ export interface RefundCause {
   needsItems?: boolean
   /** The invoice already knows the figure; do not ask for one. */
   fixed?: boolean
+  /** Names what turned up instead, so it needs {receivedItem} to say it. */
+  needsReceived?: boolean
+  /** Wording for when nobody recorded what turned up. */
+  lineWithout?: string
+}
+
+/**
+ * The sentence to send: the one that names the substitute only when there is a
+ * substitute to name. A template quietly missing a value would reach her with
+ * "{receivedItem}" printed in it, or — worse — refuse to send at all, and a
+ * notice that fails to send is the one outcome this file exists to prevent.
+ */
+export function causeLineFor(
+  cause: RefundCause,
+  have: { items?: string; receivedItem?: string } = {},
+): string {
+  const missing = (cause.needsReceived && !have.receivedItem?.trim())
+    || (cause.needsItems && !have.items?.trim())
+  return missing ? (cause.lineWithout ?? cause.line) : cause.line
 }
 
 export const REFUND_CAUSES: RefundCause[] = [
@@ -114,9 +133,18 @@ export const REFUND_CAUSES: RefundCause[] = [
     key: "wrong_item",
     label: "The wrong thing arrived",
     needsItems: true,
-    // Says what she is owed for, not what turned up instead: the substitute is
-    // the shop's problem, and naming it invites a question she cannot answer.
-    line: "{itemsList} was not what arrived, so we are not sending it.",
+    needsReceived: true,
+    // Naming the substitute used to be withheld on the grounds that it invited
+    // a question she could not answer. She can answer it now, because we ask
+    // it: the refund stands unless she says she would rather have what came.
+    // Somebody has the thing in their hands either way, so she may as well be
+    // the one to decide where it goes.
+    line: "{itemsList} was not what arrived — {receivedItem} came instead, so we are not sending it. "
+      + "If you would rather keep what came, message us and we will sort it out.",
+    // What arrives when nobody recorded the substitute: a refund raised by hand
+    // knows the reason but not the item, and a sentence with a hole in it is
+    // worse than a shorter sentence.
+    lineWithout: "{itemsList} was not what arrived, so we are not sending it.",
   },
   {
     key: "overpayment",
@@ -130,7 +158,12 @@ export const REFUND_CAUSES: RefundCause[] = [
   {
     key: "shipping_loss",
     label: "The parcel was lost",
-    line: "Your parcel from {event} was lost on its way to you.",
+    needsItems: true,
+    // Which of her things went astray, not just that something did: a trip can
+    // carry several parcels for one customer, and "your parcel from {event}"
+    // leaves her counting what is still coming.
+    line: "{itemsList} was lost on its way to you from {event}.",
+    lineWithout: "Your parcel from {event} was lost on its way to you.",
   },
   {
     key: "goodwill",
@@ -147,6 +180,7 @@ export const NOTICE_TOKENS = [
   "{outstanding}",
   "{refundAmount}",
   "{itemsList}",
+  "{receivedItem}",
   "{cause}",
 ] as const
 
@@ -186,7 +220,7 @@ export const NOTICE_KEYS: NoticeKey[] = NOTICE_TEMPLATES.map((t) => t.key)
  */
 export const NOTICE_TOKENS_FOR: Record<NoticeKey, string[]> = {
   inbox_invoice_due: ["{customer}", "{event}", "{total}", "{outstanding}"],
-  inbox_refund_offered: ["{customer}", "{event}", "{refundAmount}", "{cause}", "{itemsList}"],
+  inbox_refund_offered: ["{customer}", "{event}", "{refundAmount}", "{cause}", "{itemsList}", "{receivedItem}"],
   inbox_payment_confirmed: ["{customer}", "{event}", "{total}"],
   inbox_waiting_payment: ["{customer}", "{event}", "{total}", "{outstanding}"],
   inbox_delayed: ["{customer}", "{event}"],
