@@ -111,6 +111,14 @@ export const REFUND_CAUSES: RefundCause[] = [
     line: "{itemsList} arrived damaged, so we are not sending it.",
   },
   {
+    key: "wrong_item",
+    label: "The wrong thing arrived",
+    needsItems: true,
+    // Says what she is owed for, not what turned up instead: the substitute is
+    // the shop's problem, and naming it invites a question she cannot answer.
+    line: "{itemsList} was not what arrived, so we are not sending it.",
+  },
+  {
     key: "overpayment",
     label: "She paid more than the total",
     fixed: true,

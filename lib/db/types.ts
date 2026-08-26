@@ -257,7 +257,7 @@ export interface WarehouseRow {
 // the apply-as-credit flow, the one-active-overpayment unique index), but any other
 // reason is just a label. REFUND_REASONS are the suggested presets in the picker.
 export type RefundReason = string
-export const REFUND_REASONS: RefundReason[] = ["overpayment", "unavailable", "shipping_loss", "damaged", "goodwill", "other"]
+export const REFUND_REASONS: RefundReason[] = ["overpayment", "unavailable", "shipping_loss", "damaged", "wrong_item", "goodwill", "other"]
 export type RefundStatus = "pending" | "awaiting_bank_info" | "ready_to_refund" | "refunded" | "applied_to_next_order" | "cancelled"
 
 export interface RefundRow {
