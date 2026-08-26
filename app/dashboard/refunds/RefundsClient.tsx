@@ -4,7 +4,8 @@ import { displayIg } from "@/lib/format"
 import TableSkeleton from "@/components/TableSkeleton"
 import DataGrid, { type ColumnDef } from "@/components/DataGrid"
 import { useCallback, useEffect, useMemo, useState } from "react"
-import type { InvoiceEvent, InvoiceResult, RefundRow, RefundReason, RefundStatus } from "@/lib/db"
+import type { InvoiceEvent, InvoiceResult, RefundRow, RefundReason, RefundStatus, OverpaymentToCheck } from "@/lib/db"
+import { SMALL_OVERPAYMENT_IDR } from "@/lib/db/refund-residual"
 import { REFUND_REASONS } from "@/lib/db/types"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import { fetchJson } from "@/lib/api-fetch"
@@ -49,12 +50,125 @@ const STATUS_COLORS: Record<RefundStatus, string> = {
   cancelled: "bg-surface-muted text-muted border-cream-border",
 }
 
-const ACTIVE_TABS: { key: RefundStatus | "active"; label: string }[] = [
+/** Not a refund status — a list of money owed that nobody has decided about. */
+const TO_CHECK = "to_check" as const
+type TabKey = RefundStatus | typeof TO_CHECK
+
+const ACTIVE_TABS: { key: TabKey; label: string }[] = [
   { key: "pending", label: "Pending" },
+  { key: TO_CHECK, label: "To check" },
   { key: "awaiting_bank_info", label: "Bank Info" },
   { key: "ready_to_refund", label: "Transfer" },
   { key: "refunded", label: "Done" },
 ]
+
+/**
+ * Money a customer is owed that no refund covers yet.
+ *
+ * Deliberately not the Pending grid. Pending is a to-do list — every row in it
+ * is money you have decided to send — and a Rp 2.000 shipping rounding is not a
+ * task. Put it there and you learn to skim the one list that must not be
+ * skimmed. Here it is an observation until you say otherwise.
+ */
+function ToCheckPanel({ rows, error, promoting, onPromote, onRetry }: {
+  rows: OverpaymentToCheck[] | null
+  error: string
+  promoting: string
+  onPromote: (row: OverpaymentToCheck) => void
+  onRetry: () => void
+}) {
+  if (error) {
+    return (
+      <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 flex items-center justify-between gap-3">
+        <span>{error}</span>
+        <button onClick={onRetry} className="text-xs px-3 py-1.5 rounded-lg border border-red-300 text-red-700 hover:bg-red-100 shrink-0">
+          Retry
+        </button>
+      </div>
+    )
+  }
+  if (rows === null) return <div className="mt-3"><TableSkeleton /></div>
+  if (rows.length === 0) {
+    return (
+      <div className="mt-3 rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-faint">
+        No overpayments to check.
+      </div>
+    )
+  }
+
+  const big = rows.filter((r) => r.uncovered >= SMALL_OVERPAYMENT_IDR)
+  const small = rows.filter((r) => r.uncovered < SMALL_OVERPAYMENT_IDR)
+  const smallTotal = small.reduce((n, r) => n + r.uncovered, 0)
+
+  return (
+    <div className="mt-3 rounded-xl border border-cream-border bg-white overflow-hidden">
+      <div className="hidden sm:grid grid-cols-[1fr_110px_110px_120px_auto] gap-3 px-4 py-2 bg-surface-muted border-b border-cream-border text-[11px] font-bold uppercase tracking-wide text-faint">
+        <span>Customer · trip</span>
+        <span className="text-right">Paid</span>
+        <span className="text-right">Invoiced</span>
+        <span className="text-right">Uncovered</span>
+        <span />
+      </div>
+
+      {big.map((r) => (
+        <ToCheckRow key={`${r.event}|${r.customer}`} row={r} promoting={promoting} onPromote={onPromote} />
+      ))}
+
+      {small.length > 0 && (
+        /* Collapsed, never dropped: twenty-three rounding differences must not
+           bury the three that matter, and each is still one click from a refund. */
+        <details className="border-t border-divider bg-surface-muted">
+          <summary className="cursor-pointer px-4 py-2.5 text-sm text-muted-strong flex items-center gap-2 flex-wrap">
+            <span className="text-xs rounded-full px-2 py-0.5 bg-surface-sunken border border-cream-border">
+              {small.length} under {formatRp(SMALL_OVERPAYMENT_IDR)}
+            </span>
+            <span className="text-xs">{formatRp(smallTotal)} in total</span>
+          </summary>
+          <div className="bg-white">
+            {small.map((r) => (
+              <ToCheckRow key={`${r.event}|${r.customer}`} row={r} promoting={promoting} onPromote={onPromote} />
+            ))}
+          </div>
+        </details>
+      )}
+    </div>
+  )
+}
+
+function ToCheckRow({ row, promoting, onPromote }: {
+  row: OverpaymentToCheck
+  promoting: string
+  onPromote: (row: OverpaymentToCheck) => void
+}) {
+  const key = `${row.event}|${row.customer}`
+  const busy = promoting === key
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-[1fr_110px_110px_120px_auto] gap-2 sm:gap-3 px-4 py-2.5 border-b border-cream-border last:border-b-0 items-center">
+      <div className="min-w-0">
+        <div className="text-sm font-bold truncate">{displayIg(row.customer)}</div>
+        <div className="text-xs text-muted truncate">
+          {row.event}
+          {row.refundedSoFar > 0 && ` · ${formatRp(row.refundedSoFar)} already refunded`}
+        </div>
+      </div>
+      {/* Paid and invoiced sit beside the gap so a small difference can be
+          recognised as rounding without opening the invoice. */}
+      <div className="hidden sm:block text-right text-sm tabular-nums text-muted">{formatRp(row.totalPaid)}</div>
+      <div className="hidden sm:block text-right text-sm tabular-nums text-muted">{formatRp(row.invoiceTotal)}</div>
+      <div className="text-right text-sm tabular-nums font-medium text-brand">{formatRp(row.uncovered)}</div>
+      <div className="flex sm:justify-end">
+        <button
+          type="button"
+          onClick={() => onPromote(row)}
+          disabled={busy}
+          className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-bold disabled:opacity-50 whitespace-nowrap"
+        >
+          {busy ? "Creating…" : "Create refund"}
+        </button>
+      </div>
+    </div>
+  )
+}
 
 function formatRp(n: number) {
   return `Rp ${new Intl.NumberFormat("id-ID").format(n)}`
@@ -94,7 +208,10 @@ export default function RefundsClient() {
   const [dbReasons, setDbReasons] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
-  const [tab, setTab] = useState<RefundStatus>("pending")
+  const [tab, setTab] = useState<TabKey>("pending")
+  const [toCheck, setToCheck] = useState<OverpaymentToCheck[] | null>(null)
+  const [toCheckError, setToCheckError] = useState("")
+  const [promoting, setPromoting] = useState("")
   const [creating, setCreating] = useState(false)
   const [mobileCreating, setMobileCreating] = useState(false)
   const [editRow, setEditRow] = useState<RefundRow | null>(null)
@@ -118,6 +235,43 @@ export default function RefundsClient() {
   }, [])
 
   useEffect(() => { fetchRows() }, [fetchRows])
+
+  // Fetched on first sight of the tab rather than with the page: it is a second
+  // pass over every invoice, and most visits never open it.
+  const fetchToCheck = useCallback(() => {
+    setToCheckError("")
+    fetchJson<{ rows: OverpaymentToCheck[] }>("/api/sheets/overpayments")
+      .then((data) => setToCheck(data.rows ?? []))
+      .catch((err) => setToCheckError(err instanceof Error ? err.message : "Failed to load"))
+  }, [])
+
+  useEffect(() => {
+    if (tab === TO_CHECK && toCheck === null) fetchToCheck()
+  }, [tab, toCheck, fetchToCheck])
+
+  /** Promote one row to a refund. The server recomputes the amount. */
+  async function promote(row: OverpaymentToCheck) {
+    const key = `${row.event}|${row.customer}`
+    setPromoting(key)
+    setToCheckError("")
+    try {
+      const res = await fetch("/api/sheets/overpayments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event: row.event, customer: row.customer }),
+      })
+      // A route that dies returns no body; parsing it reports a JSON error
+      // instead of the failure.
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? `Failed to create refund (${res.status})`)
+      setToCheck((prev) => (prev ?? []).filter((r) => `${r.event}|${r.customer}` !== key))
+      fetchRows()
+    } catch (err) {
+      setToCheckError(err instanceof Error ? err.message : "Failed to create refund")
+    } finally {
+      setPromoting("")
+    }
+  }
 
   const doneStatuses: RefundStatus[] = ["refunded", "applied_to_next_order", "cancelled"]
 
@@ -263,12 +417,15 @@ export default function RefundsClient() {
       {/* Tabs */}
       <div className="flex items-center gap-1 w-full rounded-xl border border-cream-border bg-white p-1 overflow-x-auto">
         {ACTIVE_TABS.map(({ key, label }) => {
-          const count = key === "refunded" ? counts.done : counts[key as RefundStatus]
-          const active = tab === key || (key === "refunded" && doneStatuses.includes(tab))
+          const count = key === TO_CHECK
+            ? toCheck?.length
+            : key === "refunded" ? counts.done : counts[key as RefundStatus]
+          const active = tab === key
+            || (key === "refunded" && tab !== TO_CHECK && doneStatuses.includes(tab as RefundStatus))
           return (
             <button
               key={key}
-              onClick={() => setTab(key === "refunded" ? "refunded" : key as RefundStatus)}
+              onClick={() => setTab(key)}
               className={`flex-1 shrink-0 flex items-center justify-center gap-1 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
                 active
                   ? "bg-brand text-white"
@@ -286,6 +443,15 @@ export default function RefundsClient() {
         })}
       </div>
 
+      {tab === TO_CHECK ? (
+        <ToCheckPanel
+          rows={toCheck}
+          error={toCheckError}
+          promoting={promoting}
+          onPromote={promote}
+          onRetry={fetchToCheck}
+        />
+      ) : (
       <div className="mt-3">
         <DataGrid
           key={tab}
@@ -344,6 +510,7 @@ export default function RefundsClient() {
           }
         />
       </div>
+      )}
 
       {/* Mobile add FAB */}
       <button
