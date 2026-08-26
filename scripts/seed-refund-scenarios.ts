@@ -37,6 +37,12 @@ type Person = {
   /** Refunds already on the books for them. */
   refunds?: { reason: string; amount: number; status: string; note?: string }[]
   event?: string
+  /**
+   * Dispatched but not yet arrived, so the Arrival List can see them and its
+   * missing / broken / wrong marks have something to act on. The receipt's
+   * prefix decides which route tab they appear under.
+   */
+  dispatchReceipt?: string
   why: string
 }
 
@@ -93,6 +99,23 @@ const PEOPLE: Person[] = [
   { handle: `${TAG}_markme`, ordered: 100_000, units: 3, paid: 300_000, ownProduct: true,
     why: "3 paid units on their own product — mark sold out to see a refund" },
 
+  // ── To mark on the Arrival List, one per mode ───────────────────────────
+  // Dispatched, unarrived, fully paid, each on its own product: the mark has
+  // something to reduce, a refund is genuinely owed for it, and marking one
+  // does not disturb the others. One receipt per route so all three tabs
+  // have a parcel.
+  { handle: `${TAG}_missing`, ordered: 250_000, units: 2, paid: 500_000, ownProduct: true,
+    dispatchReceipt: "MNC-77201", why: "2 paid units at sea — mark missing" },
+  { handle: `${TAG}_broken`,  ordered: 180_000, units: 2, paid: 360_000, ownProduct: true,
+    dispatchReceipt: "CJI-44508", why: "2 paid units by air — mark broken" },
+  { handle: `${TAG}_wrong`,   ordered: 320_000, units: 1, paid: 320_000, ownProduct: true,
+    dispatchReceipt: "HC-91330",  why: "1 paid unit — mark wrong delivery" },
+  // Dispatched but NOT paid: marking this must create no refund. The rule most
+  // likely to be got wrong — reducing an unpaid order lowers what is owed, it
+  // does not owe anything back.
+  { handle: `${TAG}_unpaid`,  ordered: 400_000, units: 1, paid: 0, ownProduct: true,
+    dispatchReceipt: "MU-19953", why: "dispatched, unpaid — a mark must refund nothing" },
+
   // ── Owes on another trip, and is owed on this one (for the credit prompt) ─
   { handle: `${TAG}_owing`,  ordered:   200_000, paid:   260_000, why: "owed 60.000 here, owes 300.000 on trip B" },
 ]
@@ -107,9 +130,20 @@ async function clean() {
   await sql`DELETE FROM refunds   WHERE event ILIKE ${`${TAG}%`}`
   await sql`DELETE FROM excess_purchase WHERE event ILIKE ${`${TAG}%`}`
   await sql`DELETE FROM orders    WHERE event ILIKE ${`${TAG}%`}`
+  // After the orders that reference them.
+  await sql`DELETE FROM products  WHERE name  ILIKE ${`${TAG}%`}`
   await sql`DELETE FROM events    WHERE name  ILIKE ${`${TAG}%`}`
   await sql`DELETE FROM customers WHERE instagram_id ILIKE ${`${TAG}%`}`
   console.log("Removed every seeded row.")
+}
+
+/** A zero-gram SEEDRF product, so the invoice equals the order total. */
+async function seedProduct(suffix: string): Promise<number> {
+  const [row] = await sql<{ id: number }[]>`
+    INSERT INTO products (name, store, gram, price)
+    VALUES (${`${TAG} ${suffix}`}, ${TAG}, 0, 0)
+    RETURNING id`
+  return row.id
 }
 
 async function main() {
@@ -122,15 +156,15 @@ async function main() {
   await clean()
   if (CLEAN) { await sql.end(); return }
 
-  // A zero-gram product keeps the invoice arithmetic exactly the order total —
-  // no ongkir term to reason about while clicking around.
-  const products = await sql<{ id: number }[]>`
-    SELECT id FROM products WHERE COALESCE(gram, 0) = 0 ORDER BY id LIMIT 2`
-  if (products.length === 0) throw new Error("No zero-gram product to seed against")
-  const product = products[0]
-  // A second product for anyone who is going to be marked, so the mark does not
+  // Our own products rather than borrowed ones: zero gram, so the invoice is
+  // exactly the order total with no ongkir term to reason about, and named
+  // SEEDRF so --clean takes them with everything else. Borrowing whatever
+  // zero-gram rows happened to exist meant a mark could reduce a real order.
+  const shared = await seedProduct("shared")
+  // Anyone who is going to be marked gets their own, so one mark does not
   // reduce every other seeded order for the same item.
-  const soloProduct = products[1] ?? products[0]
+  const solo = new Map<string, number>()
+  for (const p of PEOPLE) if (p.ownProduct) solo.set(p.handle, await seedProduct(p.handle))
 
   for (const name of [EVENT_A, EVENT_B]) {
     await sql`INSERT INTO events (name, warehouse_id) SELECT ${name}, id FROM warehouses ORDER BY id LIMIT 1`
@@ -139,9 +173,19 @@ async function main() {
   for (const p of PEOPLE) {
     const event = p.event ?? EVENT_A
     await sql`INSERT INTO customers (instagram_id) VALUES (${p.handle}) ON CONFLICT DO NOTHING`
+    const productId = p.ownProduct ? solo.get(p.handle)! : shared
+    const units = p.units ?? 1
     await sql`
-      INSERT INTO orders (event, customer, product_id, unit_price, unit)
-      VALUES (${event}, ${p.handle}, ${p.ownProduct ? soloProduct.id : product.id}, ${p.ordered}, ${p.units ?? 1})`
+      INSERT INTO orders (event, customer, product_id, unit_price, unit,
+                          unit_buy, unit_dispatch, dispatch_receipt, dispatched_at)
+      VALUES (${event}, ${p.handle}, ${productId}, ${p.ordered}, ${units},
+              -- Dispatched stock was bought first. Without unit_buy the
+              -- Shopping List would still offer to buy what is already in
+              -- transit.
+              ${p.dispatchReceipt ? units : null},
+              ${p.dispatchReceipt ? units : null},
+              ${p.dispatchReceipt ?? ""},
+              ${p.dispatchReceipt ? sql`now()` : null})`
     if (p.paid > 0) {
       await sql`
         INSERT INTO payments (event, customer, amount, is_checked, kind)
@@ -158,7 +202,7 @@ async function main() {
   // The one who owes elsewhere: an unpaid order on trip B.
   await sql`
     INSERT INTO orders (event, customer, product_id, unit_price, unit)
-    VALUES (${EVENT_B}, ${`${TAG}_owing`}, ${product.id}, 300000, 1)`
+    VALUES (${EVENT_B}, ${`${TAG}_owing`}, ${shared}, 300000, 1)`
 
   console.log(`\nSeeded ${PEOPLE.length} customers across ${EVENT_A} and ${EVENT_B}.`)
   console.log("Remove with --clean.")
