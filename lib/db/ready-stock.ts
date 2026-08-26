@@ -16,7 +16,7 @@ import type { DBExecutor } from "./actor"
 // which is what tells the shop those rows exist.
 
 export type ReadyStockItem = {
-  id: number
+  /** The product, not a purchase row: several rows can stock one product. */
   name: string
   /** The product this row's text matched, so a request can attach to it. */
   productId: number
@@ -41,8 +41,14 @@ const MATCHED = `
 `
 
 /**
- * What a customer can see: every row that matched a product, priced, with
- * units actually in hand.
+ * What a customer can see: every PRODUCT that matched, priced, with units
+ * actually in hand.
+ *
+ * One product per tile, not one purchase per tile. The shop buys the same
+ * thing on several trips, and excess_purchase keeps a row for each — which
+ * showed the customer "Mini Fan Beige" three times, at 5, 1 and 1, as though
+ * they were three different things she had to choose between. She is buying a
+ * fan, so the number she needs is how many fans there are.
  *
  * unit_arrive is what has landed; the rest of unit_buy is still shipping and
  * is not offered. A shelf that lists things on a boat asks her to decide
@@ -57,12 +63,10 @@ export async function listReadyStock(
 ): Promise<ReadyStockItem[]> {
   const rows = await db<
     {
-      id: number
       items: string
       product_id: number
       price: string
-      unit_buy: number
-      unit_arrive: number | null
+      ready: string
       media_url: string | null
     }[]
   >`
@@ -71,7 +75,10 @@ export async function listReadyStock(
         FROM products
        GROUP BY name
     )
-    SELECT e.id, e.items, pp.product_id, pp.price, e.unit_buy, e.unit_arrive,
+    SELECT e.items, pp.product_id, pp.price,
+           -- LEAST, because unit_arrive above unit_buy is a typo, not stock.
+           SUM(LEAST(COALESCE(e.unit_arrive, 0), e.unit_buy)) AS ready,
+           MAX(e.created_at) AS newest,
            media.media_url
       FROM excess_purchase e
       JOIN product_price pp ON pp.name = e.items
@@ -92,19 +99,20 @@ export async function listReadyStock(
       ) media ON true
      WHERE e.unit_buy > 0
        AND COALESCE(e.unit_arrive, 0) > 0
-     ORDER BY e.created_at DESC, e.id DESC
+     -- product_id decides the tile; items and price come along because
+     -- product_price makes them a function of it, and media_url is one row
+     -- per product from the LATERAL above.
+     GROUP BY pp.product_id, e.items, pp.price, media.media_url
+     -- Newest arrival first, so a restock moves back to the top of the shelf.
+     ORDER BY newest DESC, pp.product_id DESC
   `
-  return rows.map((r) => {
-    const arrived = Math.min(r.unit_arrive ?? 0, r.unit_buy)
-    return {
-      id: r.id,
-      name: r.items,
-      productId: r.product_id,
-      price: Math.round(Number(r.price)),
-      readyQty: arrived,
-      mediaUrl: r.media_url,
-    }
-  })
+  return rows.map((r) => ({
+    name: r.items,
+    productId: r.product_id,
+    price: Math.round(Number(r.price)),
+    readyQty: Number(r.ready),
+    mediaUrl: r.media_url,
+  }))
 }
 
 /**

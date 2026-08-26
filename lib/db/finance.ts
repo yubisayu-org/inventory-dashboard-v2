@@ -793,24 +793,17 @@ export async function undoRefundCredit(refundId: number, actor?: string | null):
 }
 
 /**
- * Keeps auto-detected overpayment refunds in step with the live numbers on every
- * /refunds load. In one transaction it:
- *   - inserts a fresh pending refund for each (event, customer) pair now overpaid
- *     that has no active overpayment refund yet;
- *   - reconciles the amount of every still-open overpayment refund (pending /
- *     awaiting_bank_info / ready_to_refund) when a later payment or adjustment
- *     changed what's actually owed back — so "Ready to Refund" never shows a
- *     stale figure;
- *   - cancels a still-open overpayment refund whose overpayment has been fully
- *     absorbed (live ≤ 0), dropping it off the pipeline.
- * A `refunded` (Done), `cancelled`, or `applied_to_next_order` refund is frozen,
- * and only `reason = 'overpayment'` rows are touched — hand-entered refunds keep
- * their human-set amounts.
+ * Keep existing overpayment refunds honest. Creates nothing.
  *
- * Idempotent — safe to call on every refunds page load. Mirrors the invoice
- * math in getInvoiceForCustomer.
+ * It used to insert, and wrote 224 of 232 live refunds — rows that were right
+ * about the money and silent about the cause, and that nobody had asked for.
+ * What it used to write is now the To-check list, where a person decides.
  *
- * Returns the rows that were just inserted (empty array if nothing to do).
+ * Reconcile and cancel stay: those rows exist and must not drift. Both are
+ * scoped to `reason = 'overpayment'` and to pristine rows, so a refund created
+ * by a mark or by hand is never rewritten or retired here.
+ *
+ * Returns an empty array. The signature is unchanged so callers need not be.
  */
 // Fixed key for the advisory lock that serializes concurrent materialize runs.
 const OVERPAYMENT_MATERIALIZE_LOCK = 778899
@@ -871,9 +864,18 @@ export async function materializeOverpaymentRefunds(): Promise<RefundRow[]> {
     -- money against a refund it is theirs to manage, so this background pass
     -- never rewrites it (see the NOT EXISTS guard). Data-modifying CTEs run even
     -- when the primary query doesn't reference them.
+    -- Settled to what the OTHER live refunds leave uncovered, not to the whole
+    -- overpayment. A mark's refund and this row would otherwise each claim the
+    -- same money — 200,000 and 250,000 against a 250,000 debt. Mirrors
+    -- residualExcluding in lib/db/refund-residual.ts; the two must agree.
     reconciled AS (
       UPDATE refunds r
-      SET refund_amount = (l.total_paid - l.invoice_total),
+      SET refund_amount = GREATEST(0, (l.total_paid - l.invoice_total) - COALESCE((
+            SELECT SUM(o.refund_amount) FROM refunds o
+             WHERE o.event = r.event
+               AND lower(replace(o.customer, '@', '')) = lower(replace(r.customer, '@', ''))
+               AND o.status <> 'cancelled' AND o.id <> r.id
+          ), 0)),
           note = 'Auto-detected: paid Rp ' || l.total_paid || ' of Rp ' || l.invoice_total,
           updated_at = NOW()
       FROM live l
@@ -882,7 +884,12 @@ export async function materializeOverpaymentRefunds(): Promise<RefundRow[]> {
         AND r.status IN ('pending', 'awaiting_bank_info', 'ready_to_refund')
         AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.refund_id = r.id)
         AND (l.total_paid - l.invoice_total) > 0
-        AND (l.total_paid - l.invoice_total) <> r.refund_amount
+        AND GREATEST(0, (l.total_paid - l.invoice_total) - COALESCE((
+              SELECT SUM(o.refund_amount) FROM refunds o
+               WHERE o.event = r.event
+                 AND lower(replace(o.customer, '@', '')) = lower(replace(r.customer, '@', ''))
+                 AND o.status <> 'cancelled' AND o.id <> r.id
+            ), 0)) <> r.refund_amount
       RETURNING r.id
     ),
     -- Overpayment fully absorbed (live ≤ 0) → nothing left to refund, so drop it
@@ -904,20 +911,11 @@ export async function materializeOverpaymentRefunds(): Promise<RefundRow[]> {
         AND (l.total_paid - l.invoice_total) <= 0
       RETURNING r.id
     )
-    -- Brand-new overpayments (no active refund row yet) become fresh pending rows.
-    INSERT INTO refunds (event, customer, reason, refund_amount, note)
-    SELECT
-      l.event,
-      l.customer,
-      'overpayment',
-      (l.total_paid - l.invoice_total),
-      'Auto-detected: paid Rp ' || l.total_paid || ' of Rp ' || l.invoice_total
-    FROM live l
-    LEFT JOIN refunds r ON r.event = l.event AND r.customer = l.customer
-      AND r.reason = 'overpayment' AND r.status != 'cancelled'
-    WHERE r.id IS NULL
-      AND (l.total_paid - l.invoice_total) > 0
-    RETURNING *
+    -- Nothing is inserted. A brand-new overpayment is not a refund until a
+    -- person says so — it appears in the To-check list instead
+    -- (listOverpaymentsToCheck). The WITH chain still needs a final statement
+    -- for the data-modifying CTEs above to run, and this one returns no rows.
+    SELECT * FROM refunds WHERE false
   `
   })
   return rows.map(mapRefundRow)

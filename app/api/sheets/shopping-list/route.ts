@@ -32,8 +32,8 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
 
-    // Out-of-stock: FIFO-reduce pending order quantities. The dropped invoice
-    // auto-materializes an overpayment refund for anyone who already paid.
+    // Out-of-stock: FIFO-reduce pending order quantities, and refund whoever
+    // had already paid for the units that went — with the reason, and a notice.
     if (body.action === "out_of_stock") {
       const { event, productId, quantityOutOfStock } = body
       if (!event || !productId || typeof quantityOutOfStock !== "number" || quantityOutOfStock < 1) {

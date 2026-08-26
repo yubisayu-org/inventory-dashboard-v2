@@ -1287,7 +1287,7 @@ function RejectPaymentModal({
           />
         </div>
 
-        <p className="text-xs text-muted">She gets this in her inbox and on the order.</p>
+        <p className="text-xs text-muted">They get this in their inbox and on the order.</p>
         {error && <p className="text-xs text-red-500">{error}</p>}
 
         <div className="flex items-center justify-end gap-2">

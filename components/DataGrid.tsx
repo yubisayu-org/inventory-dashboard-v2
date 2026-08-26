@@ -129,6 +129,12 @@ interface DataGridProps<T> {
   pageSize?: number
   /** Global search placeholder */
   searchPlaceholder?: string
+  /** Controlled search text for client-side mode. Pair with onSearchChange to
+   *  own it outside the grid — e.g. so a search survives a tab switch that
+   *  swaps the data (and remounts the grid) underneath it. Leave both unset
+   *  and the grid keeps its own. */
+  searchValue?: string
+  onSearchChange?: (value: string) => void
   /** Hide the built-in search box — use when the caller renders its own
    *  search input elsewhere and drives filtering externally (via `data`). */
   hideSearch?: boolean
@@ -224,6 +230,8 @@ export default function DataGrid<T>({
   columns,
   pageSize = 25,
   searchPlaceholder = "Search…",
+  searchValue,
+  onSearchChange,
   hideSearch,
   fullWidthSearch,
   tightToolbar,
@@ -277,6 +285,18 @@ export default function DataGrid<T>({
 
   const ss = serverSide
 
+  // Client-side search can be owned by the caller. Server-side mode already has
+  // its own controlled pair and keeps precedence.
+  const searchControlled = searchValue !== undefined
+  const effectiveSearch = searchControlled ? searchValue : globalFilter
+  const setSearch: OnChangeFn<string> = (updater) => {
+    const next = typeof updater === "function"
+      ? (updater as (old: string) => string)(effectiveSearch)
+      : updater
+    if (searchControlled) onSearchChange?.(next)
+    else setGlobalFilter(next)
+  }
+
   const table = useReactTable({
     data,
     columns,
@@ -284,14 +304,14 @@ export default function DataGrid<T>({
       sorting: ss ? ss.sorting : sorting,
       columnFilters: ss ? ss.columnFilters : columnFilters,
       columnVisibility,
-      globalFilter: ss ? ss.globalFilter : globalFilter,
+      globalFilter: ss ? ss.globalFilter : effectiveSearch,
       ...(ss ? { pagination: ss.pagination } : {}),
       ...(enableRowSelection ? { rowSelection } : {}),
     },
     onSortingChange: ss ? ss.onSortingChange : setSorting,
     onColumnFiltersChange: ss ? ss.onColumnFiltersChange : setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
-    onGlobalFilterChange: ss ? ss.onGlobalFilterChange : setGlobalFilter,
+    onGlobalFilterChange: ss ? ss.onGlobalFilterChange : setSearch,
     ...(ss ? {
       onPaginationChange: ss.onPaginationChange,
       manualFiltering: true,
@@ -328,7 +348,7 @@ export default function DataGrid<T>({
     if (ss) return
     onFilteredRowsChange?.(table.getFilteredRowModel().rows.map((r) => r.original))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, globalFilter, columnFilters])
+  }, [data, effectiveSearch, columnFilters])
 
   // Client-side mode: with autoResetPageIndex off (so edits keep the current
   // page), still jump to page 1 when the filter/search/sort changes...
@@ -336,7 +356,7 @@ export default function DataGrid<T>({
     if (ss) return
     table.setPageIndex(0)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [columnFilters, globalFilter, sorting])
+  }, [columnFilters, effectiveSearch, sorting])
 
   // ...and clamp if a delete shrinks the data past the current page.
   useEffect(() => {

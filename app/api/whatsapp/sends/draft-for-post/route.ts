@@ -32,25 +32,35 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "event is required" }, { status: 400 })
   }
 
-  const post = await getCataloguePost(postId)
-  if (!post) return NextResponse.json({ error: "Not found" }, { status: 404 })
+  // Everything below talks to the database, and until this was wrapped an
+  // error escaped the handler: Next answers an unhandled throw with a 500 and
+  // NO BODY, so the caller's res.json() failed with "Unexpected end of JSON
+  // input" and the real fault was never seen. Every sibling route wraps; this
+  // one did not.
+  try {
+    const post = await getCataloguePost(postId)
+    if (!post) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
-  // An empty draft (nothing ever tagged onto it) is useless to resume —
-  // reusing one would show up as "the tagged product is not there" for a
-  // post that clearly has tags, since isNew=false skips the prefill that
-  // would otherwise re-attach them. Requiring at least one code means a
-  // draft abandoned before anything was tagged is simply skipped in favor
-  // of a fresh one, never resurfaced as a false "existing draft".
-  const [existing] = await sql`
-    SELECT s.id FROM wa_sends s
-    WHERE s.post_id = ${postId} AND s.event = ${event} AND s.message_id = ''
-      AND EXISTS (SELECT 1 FROM wa_send_codes c WHERE c.send_id = s.id)
-    ORDER BY s.id DESC LIMIT 1
-  `
-  if (existing) {
-    return NextResponse.json({ sendId: existing.id as number, isNew: false })
+    // An empty draft (nothing ever tagged onto it) is useless to resume —
+    // reusing one would show up as "the tagged product is not there" for a
+    // post that clearly has tags, since isNew=false skips the prefill that
+    // would otherwise re-attach them. Requiring at least one code means a
+    // draft abandoned before anything was tagged is simply skipped in favor
+    // of a fresh one, never resurfaced as a false "existing draft".
+    const [existing] = await sql`
+      SELECT s.id FROM wa_sends s
+      WHERE s.post_id = ${postId} AND s.event = ${event} AND s.message_id = ''
+        AND EXISTS (SELECT 1 FROM wa_send_codes c WHERE c.send_id = s.id)
+      ORDER BY s.id DESC LIMIT 1
+    `
+    if (existing) {
+      return NextResponse.json({ sendId: existing.id as number, isNew: false })
+    }
+
+    const send = await createSend({ postId, event, title: post.title })
+    return NextResponse.json({ sendId: send.id, isNew: true })
+  } catch (err) {
+    console.error("Failed to open a draft for post:", err)
+    return NextResponse.json({ error: "Could not open the editor for this post" }, { status: 500 })
   }
-
-  const send = await createSend({ postId, event, title: post.title })
-  return NextResponse.json({ sendId: send.id, isNew: true })
 }

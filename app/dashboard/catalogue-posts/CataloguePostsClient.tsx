@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import type { CataloguePost, CatalogueHighlight } from "@/lib/db"
 import EventSelect from "@/components/EventSelect"
+import SearchInput from "@/components/SearchInput"
 import ComposerProductStep from "./ComposerProductStep"
 
 export default function CataloguePostsClient() {
@@ -173,80 +174,104 @@ export default function CataloguePostsClient() {
       {error && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
       )}
-      <div className="flex items-center gap-2">
-        <input
-          value={listQuery}
-          onChange={(e) => setListQuery(e.target.value)}
-          placeholder="Cari judul atau nama produk…"
-          className="flex-1 h-10 border border-cream-border rounded-lg px-3 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
-        />
-        <div className="w-56 shrink-0">
-          <EventSelect value={defaultEvent} onChange={setDefaultEvent} events={options?.activeEvents ?? []} placeholder="Default trip…" clearable />
-        </div>
-        <button
-          onClick={() => setBulkOpen(true)}
-          disabled={selectedPostIds.size === 0}
-          aria-label="Bulk actions"
-          title="Bulk actions"
-          className={`relative h-10 w-10 flex items-center justify-center rounded-lg border border-cream-border shrink-0 ${
-            selectedPostIds.size > 0 ? "bg-brand text-white" : "bg-white text-faint"
-          }`}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="m3 17 2 2 4-4" /><path d="m3 7 2 2 4-4" /><path d="M13 6h8" /><path d="M13 12h8" /><path d="M13 18h8" />
-          </svg>
-          {selectedPostIds.size > 0 && (
-            <span className="absolute -top-1.5 -right-1.5 min-w-4 h-4 px-1 rounded-full bg-white text-brand text-[10px] font-bold flex items-center justify-center border border-brand">
-              {selectedPostIds.size}
-            </span>
-          )}
-        </button>
-        <button
-          onClick={() => setHighlightsOpen(true)}
-          aria-label="Highlights"
-          title="Highlights"
-          className="h-10 w-10 flex items-center justify-center rounded-lg border border-cream-border bg-white text-faint shrink-0"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z" />
-          </svg>
-        </button>
-        <div className="flex items-center h-10 rounded-lg border border-cream-border overflow-hidden shrink-0">
+      {/* One row on a desktop, two on a phone. The fixed widths here come to
+          about 550px before the search field is given anything, so on a phone
+          the row used to run off the side and Highlights and Add Post sat past
+          the edge.
+      
+          The two rows are columns as well: search over the trip filter, the
+          bulk tick over Highlights, the view toggle over Add Post. That is why
+          the toggle and Add Post are both w-24 below sm — the toggle is two
+          48px halves, and matching it is what makes the grid read as one.
+      
+          sm:order-* restores the original left-to-right sequence above sm, so
+          the desktop toolbar is exactly as it was. */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        {/* Row one: search and the controls that act on the list it shows.
+            sm:contents dissolves each group on a desktop so every child rejoins
+            one row — one layout that bends, not a phone copy kept in step. */}
+        <div className="flex items-center gap-2 w-full sm:contents">
+          {/* The shared search box, as on every other list screen: magnifier on
+              the left, a clear button once there is something to clear. This was
+              the one page still using a bare input. */}
+          <SearchInput
+            value={listQuery}
+            onChange={setListQuery}
+            placeholder="Cari judul atau nama produk…"
+            className="flex-1 min-w-0 sm:order-1"
+          />
           <button
-            onClick={() => setViewMode("list")}
-            aria-label="Tampilan list"
-            title="List"
-            className={`h-full px-4 flex items-center ${viewMode === "list" ? "bg-brand text-white" : "bg-white text-faint"}`}
+            onClick={() => setBulkOpen(true)}
+            disabled={selectedPostIds.size === 0}
+            aria-label="Bulk actions"
+            title="Bulk actions"
+            className={`relative h-10 w-10 sm:order-3 flex items-center justify-center rounded-lg border border-cream-border shrink-0 ${
+              selectedPostIds.size > 0 ? "bg-brand text-white" : "bg-white text-faint"
+            }`}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" />
-              <line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" />
+              <path d="m3 17 2 2 4-4" /><path d="m3 7 2 2 4-4" /><path d="M13 6h8" /><path d="M13 12h8" /><path d="M13 18h8" />
+            </svg>
+            {selectedPostIds.size > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 min-w-4 h-4 px-1 rounded-full bg-white text-brand text-[10px] font-bold flex items-center justify-center border border-brand">
+                {selectedPostIds.size}
+              </span>
+            )}
+          </button>
+          <div className="flex items-center h-10 w-24 sm:w-auto sm:order-5 rounded-lg border border-cream-border overflow-hidden shrink-0">
+            <button
+              onClick={() => setViewMode("list")}
+              aria-label="Tampilan list"
+              title="List"
+              className={`h-full px-4 flex items-center ${viewMode === "list" ? "bg-brand text-white" : "bg-white text-faint"}`}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" />
+                <line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" />
+              </svg>
+            </button>
+            <button
+              onClick={() => setViewMode("gallery")}
+              aria-label="Tampilan gallery"
+              title="Gallery"
+              className={`h-full px-4 flex items-center border-l border-cream-border ${viewMode === "gallery" ? "bg-brand text-white" : "bg-white text-faint"}`}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
+                <rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        {/* Row two: the trip filter and the things that act on a trip. */}
+        <div className="flex items-center gap-2 w-full sm:contents">
+          <div className="flex-1 min-w-0 sm:flex-none sm:w-56 sm:shrink-0 sm:order-2">
+            <EventSelect value={defaultEvent} onChange={setDefaultEvent} events={options?.activeEvents ?? []} placeholder="Default trip…" clearable />
+          </div>
+          <button
+            onClick={() => setHighlightsOpen(true)}
+            aria-label="Highlights"
+            title="Highlights"
+            className="h-10 w-10 sm:order-4 flex items-center justify-center rounded-lg border border-cream-border bg-white text-faint shrink-0"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z" />
             </svg>
           </button>
           <button
-            onClick={() => setViewMode("gallery")}
-            aria-label="Tampilan gallery"
-            title="Gallery"
-            className={`h-full px-4 flex items-center border-l border-cream-border ${viewMode === "gallery" ? "bg-brand text-white" : "bg-white text-faint"}`}
+            type="button"
+            onClick={() => setAddOpen((o) => !o)}
+            className={`inline-flex items-center justify-center gap-1.5 h-10 px-4 text-sm rounded-lg border w-24 sm:w-auto shrink-0 sm:order-6 transition-colors ${
+              addOpen ? "bg-brand-light text-brand border-brand/30" : "bg-brand text-white border-transparent hover:bg-brand-dark"
+            }`}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
-              <rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <path d="M12 5v14M5 12h14" />
             </svg>
+            <span className="sm:hidden">Add</span>
+            <span className="hidden sm:inline">Add Post</span>
           </button>
         </div>
-        <button
-          type="button"
-          onClick={() => setAddOpen((o) => !o)}
-          className={`inline-flex items-center gap-1.5 h-10 px-4 text-sm rounded-lg border shrink-0 transition-colors ${
-            addOpen ? "bg-brand-light text-brand border-brand/30" : "bg-brand text-white border-transparent hover:bg-brand-dark"
-          }`}
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-          Add Post
-        </button>
       </div>
       {addOpen && (
         <UploadForm options={options} onCreated={reload} onCancel={() => setAddOpen(false)} />
@@ -342,16 +367,11 @@ export default function CataloguePostsClient() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <select
-                  value={post.highlightId ?? ""}
-                  onChange={(e) => assignHighlight(post, e.target.value ? Number(e.target.value) : null)}
-                  className="text-xs border border-cream-border rounded-lg px-1.5 py-1"
-                >
-                  <option value="">No highlight</option>
-                  {highlights.map((h) => (
-                    <option key={h.id} value={h.id}>{h.name}{h.visible ? "" : " (hidden)"}</option>
-                  ))}
-                </select>
+                <HighlightPicker
+                  highlights={highlights}
+                  value={post.highlightId}
+                  onChange={(id) => assignHighlight(post, id)}
+                />
                 <button
                   onClick={() => setEditingProductsPost(post)}
                   aria-label="Edit title & products"
@@ -487,6 +507,122 @@ export default function CataloguePostsClient() {
 // Just a display now — title and product tags are one screen
 // (EditProductsModal), reached only through the pencil link below. Two
 // separate clickable things opening the same modal was redundant.
+/**
+ * Which highlight a post belongs to, as a star rather than a dropdown.
+ *
+ * A post sits in at most one highlight (migration 080: nullable FK, no join
+ * table), so this is a one-of-many choice and not a toggle — which is why the
+ * star opens a list instead of flipping a flag. A brand-coloured star means the
+ * post is in one and the name is in the tooltip, so which one can be read
+ * without opening anything; a grey star struck through means it is in none,
+ * the same way the eye says Hidden.
+ *
+ * It replaces a text select that sat among three icon buttons and was the only
+ * control on the row wide enough to push the title into an ellipsis.
+ */
+function HighlightPicker({ highlights, value, onChange }: {
+  highlights: CatalogueHighlight[]
+  value: number | null
+  onChange: (highlightId: number | null) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const current = highlights.find((h) => h.id === value) ?? null
+
+  useEffect(() => {
+    if (!open) return
+    function onOutsideClick(e: MouseEvent) {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    function onEscape(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false)
+    }
+    document.addEventListener("mousedown", onOutsideClick)
+    document.addEventListener("keydown", onEscape)
+    return () => {
+      document.removeEventListener("mousedown", onOutsideClick)
+      document.removeEventListener("keydown", onEscape)
+    }
+  }, [open])
+
+  const label = current ? `Highlight: ${current.name}` : "No highlight"
+
+  return (
+    <div className="relative" ref={rootRef}>
+      {/* Styled exactly as the Kirim ulang button beside it: one border, one
+          background, and only the icon's colour carrying the state — brand
+          when the post is in a highlight, muted and struck through when it is
+          not. The star is never filled, so the row reads as four controls of
+          one weight rather than one shouting. */}
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-label={label}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title={label}
+        className={`p-1.5 rounded-lg border border-cream-border bg-white/90 backdrop-blur-sm shadow-sm transition-colors ${
+          current ? "text-brand" : "text-muted"
+        }`}
+      >
+        <svg
+          width="16" height="16" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+        >
+          <path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z" />
+          {/* The same struck-through line the Hidden eye uses — a state that is
+              off is said the same way wherever it appears on this row. */}
+          {!current && <line x1="3" y1="21" x2="21" y2="3" />}
+        </svg>
+      </button>
+
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 top-full mt-1 z-30 min-w-44 max-h-64 overflow-y-auto rounded-lg border border-cream-border bg-white shadow-lg py-1"
+        >
+          <HighlightOption selected={value === null} onClick={() => { onChange(null); setOpen(false) }}>
+            No highlight
+          </HighlightOption>
+          {highlights.map((h) => (
+            <HighlightOption
+              key={h.id}
+              selected={value === h.id}
+              onClick={() => { onChange(h.id); setOpen(false) }}
+            >
+              {h.name}{h.visible ? "" : " (hidden)"}
+            </HighlightOption>
+          ))}
+          {highlights.length === 0 && (
+            <p className="px-3 py-2 text-xs text-faint">No highlights yet — make one from the toolbar.</p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function HighlightOption({ selected, onClick, children }: {
+  selected: boolean
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitemradio"
+      aria-checked={selected}
+      onClick={onClick}
+      className={`w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors ${
+        selected ? "text-brand font-medium" : "text-foreground hover:bg-surface-muted"
+      }`}
+    >
+      <span className="w-3 shrink-0">{selected ? "✓" : ""}</span>
+      <span className="min-w-0 truncate">{children}</span>
+    </button>
+  )
+}
+
 function PostTitleLabel({ label, muted }: { label: string; muted: boolean }) {
   return (
     <p className={`text-sm truncate ${muted ? "text-amber-600" : "text-foreground"}`}>
@@ -700,8 +836,10 @@ function EditProductsModal({ post, defaultEvent, activeEvents, onClose }: {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ postId: post.id, event }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? "Failed to start")
+      // A body is not guaranteed: a route that throws answers 500 with nothing
+      // in it, and parsing that reports a JSON error instead of the failure.
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? `Failed to start (${res.status})`)
       setDraft({ sendId: data.sendId, isNew: data.isNew })
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start")
@@ -999,7 +1137,14 @@ function UploadForm({ options, onCreated, onCancel }: {
               <span className="flex-1 min-w-0 truncate">{job.file.name}</span>
               {job.status === "done" && <span className="text-green-600">✓</span>}
               {job.status === "uploading" && <span className="text-faint">Mengirim…</span>}
-              {job.status === "failed" && <span className="text-red-500" title={job.error}>Gagal</span>}
+              {/* The reason inline, not in a tooltip: an upload that failed is
+                  read once, often on a phone, where there is nothing to hover.
+                  Matches the send list above, which already said it out loud. */}
+              {job.status === "failed" && (
+                <span className="text-red-500 min-w-0 truncate" title={job.error}>
+                  Gagal{job.error ? ` — ${job.error}` : ""}
+                </span>
+              )}
               {job.status === "queued" && (
                 <button type="button" onClick={() => removeFile(job.id)} className="text-faint hover:text-foreground">
                   &times;

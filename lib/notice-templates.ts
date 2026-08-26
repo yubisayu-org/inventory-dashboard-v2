@@ -95,6 +95,40 @@ export interface RefundCause {
   needsItems?: boolean
   /** The invoice already knows the figure; do not ask for one. */
   fixed?: boolean
+  /** Names what turned up instead, so it needs {receivedItem} to say it. */
+  needsReceived?: boolean
+  /** Wording for when nobody recorded what turned up. */
+  lineWithout?: string
+  /**
+   * The same sentence for WhatsApp, in Indonesian.
+   *
+   * Not a translation of `line`: the inbox card sits beside buttons that ask
+   * how she wants the money, and the WhatsApp message has to ask for bank
+   * details in writing. What stays identical is which reason is being given —
+   * the two must never tell one customer two different stories.
+   */
+  waLine?: string
+  waLineWithout?: string
+}
+
+/**
+ * The sentence to send: the one that names the substitute only when there is a
+ * substitute to name. A template quietly missing a value would reach her with
+ * "{receivedItem}" printed in it, or — worse — refuse to send at all, and a
+ * notice that fails to send is the one outcome this file exists to prevent.
+ */
+export function causeLineFor(
+  cause: RefundCause,
+  have: { items?: string; receivedItem?: string } = {},
+  channel: "inbox" | "whatsapp" = "inbox",
+): string {
+  const missing = (cause.needsReceived && !have.receivedItem?.trim())
+    || (cause.needsItems && !have.items?.trim())
+  if (channel === "whatsapp") {
+    const full = cause.waLine ?? cause.line
+    return missing ? (cause.waLineWithout ?? full) : full
+  }
+  return missing ? (cause.lineWithout ?? cause.line) : cause.line
 }
 
 export const REFUND_CAUSES: RefundCause[] = [
@@ -103,33 +137,69 @@ export const REFUND_CAUSES: RefundCause[] = [
     label: "We could not buy it",
     needsItems: true,
     line: "We could not buy {itemsList} from {event}.",
+    waLine: "Barang berikut tidak tersedia:\n{itemsList}",
+    waLineWithout: "Ada barang yang tidak tersedia.",
   },
   {
     key: "damaged",
     label: "It arrived damaged",
     needsItems: true,
     line: "{itemsList} arrived damaged, so we are not sending it.",
+    waLine: "Barang berikut tiba dalam kondisi rusak sehingga tidak kami kirimkan:\n{itemsList}",
+    waLineWithout: "Ada barang yang tiba dalam kondisi rusak sehingga tidak kami kirimkan.",
+  },
+  {
+    key: "wrong_item",
+    label: "The wrong thing arrived",
+    needsItems: true,
+    needsReceived: true,
+    // Naming the substitute used to be withheld on the grounds that it invited
+    // a question she could not answer. She can answer it now, because we ask
+    // it: the refund stands unless she says she would rather have what came.
+    // Somebody has the thing in their hands either way, so she may as well be
+    // the one to decide where it goes.
+    line: "{itemsList} was not what arrived — {receivedItem} came instead, so we are not sending it. "
+      + "If you would rather keep what came, message us and we will sort it out.",
+    // What arrives when nobody recorded the substitute: a refund raised by hand
+    // knows the reason but not the item, and a sentence with a hole in it is
+    // worse than a shorter sentence.
+    lineWithout: "{itemsList} was not what arrived, so we are not sending it.",
+    waLine: "Barang yang datang tidak sesuai dengan pesanan Anda — yang kami terima adalah *{receivedItem}*, "
+      + "sehingga pesanan berikut tidak kami kirimkan:\n{itemsList}\n\n"
+      + "Jika Anda ingin tetap mengambil barang yang datang, silakan beri tahu kami.",
+    waLineWithout: "Barang yang datang tidak sesuai dengan pesanan berikut sehingga tidak kami kirimkan:\n{itemsList}",
   },
   {
     key: "overpayment",
-    label: "She paid more than the total",
+    label: "They paid more than the total",
     fixed: true,
     // Says what happened, not why: this cause covers both a discount applied
     // after she paid and a transfer typed wrong, and the shop's own row is
     // usually generated from paid > invoiced, which cannot tell them apart.
     line: "You paid more than your order for {event} came to.",
+    waLine: "Pembayaran Anda melebihi total pesanan.",
   },
   {
     key: "shipping_loss",
     label: "The parcel was lost",
-    line: "Your parcel from {event} was lost on its way to you.",
+    needsItems: true,
+    // Which of her things went astray, not just that something did: a trip can
+    // carry several parcels for one customer, and "your parcel from {event}"
+    // leaves her counting what is still coming.
+    line: "{itemsList} was lost on its way to you from {event}.",
+    lineWithout: "Your parcel from {event} was lost on its way to you.",
+    waLine: "Barang berikut hilang dalam pengiriman:\n{itemsList}",
+    waLineWithout: "Paket Anda hilang dalam pengiriman.",
   },
   {
     key: "goodwill",
     label: "Goodwill",
     line: "A goodwill refund from us on {event}.",
+    waLine: "Sebagai bentuk permohonan maaf kami atas ketidaknyamanan yang terjadi.",
   },
-  { key: "other", label: "Something else", line: "" },
+  // No sentence of its own: a catch-all that invented an explanation would be
+  // guessing at one. The amount and the request for bank details still stand.
+  { key: "other", label: "Something else", line: "", waLine: "Terdapat penyesuaian pada pesanan Anda." },
 ]
 
 export const NOTICE_TOKENS = [
@@ -139,6 +209,7 @@ export const NOTICE_TOKENS = [
   "{outstanding}",
   "{refundAmount}",
   "{itemsList}",
+  "{receivedItem}",
   "{cause}",
 ] as const
 
@@ -178,7 +249,7 @@ export const NOTICE_KEYS: NoticeKey[] = NOTICE_TEMPLATES.map((t) => t.key)
  */
 export const NOTICE_TOKENS_FOR: Record<NoticeKey, string[]> = {
   inbox_invoice_due: ["{customer}", "{event}", "{total}", "{outstanding}"],
-  inbox_refund_offered: ["{customer}", "{event}", "{refundAmount}", "{cause}", "{itemsList}"],
+  inbox_refund_offered: ["{customer}", "{event}", "{refundAmount}", "{cause}", "{itemsList}", "{receivedItem}"],
   inbox_payment_confirmed: ["{customer}", "{event}", "{total}"],
   inbox_waiting_payment: ["{customer}", "{event}", "{total}", "{outstanding}"],
   inbox_delayed: ["{customer}", "{event}"],

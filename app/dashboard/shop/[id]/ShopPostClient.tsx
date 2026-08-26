@@ -371,7 +371,7 @@ export default function ShopPostClient({
 
       {adding?.kind === "picking" ? (
         <span className="absolute bottom-3 left-2 rounded-full bg-black/60 px-2.5 py-1 text-[11px] text-white backdrop-blur-sm">
-          Tap where she pointed, or a SKU below
+          Tap where they pointed, or a SKU below
         </span>
       ) : null}
       </div>

@@ -57,7 +57,7 @@ export default function DashboardClient({
   const summary = use(summaryPromise)
 
   const items: ActionItem[] = ([
-    { count: summary.actionQueue.overpaymentCandidates, label: "overpayments to refund", href: "/dashboard/refunds", tone: "yellow" },
+    { count: summary.actionQueue.overpaymentCandidates, label: "overpayments to check", href: "/dashboard/refunds?tab=to_check", tone: "yellow" },
     { count: summary.actionQueue.refundsReadyToTransfer, label: "refunds ready to transfer", href: "/dashboard/refunds", tone: "orange" },
     { count: summary.actionQueue.itemsPendingPurchase, label: "items pending purchase", href: "/dashboard/shopping-list", tone: "green" },
     { count: summary.actionQueue.paymentsUnverified, label: "payment deposits unverified", href: "/dashboard/payments", tone: "blue" },

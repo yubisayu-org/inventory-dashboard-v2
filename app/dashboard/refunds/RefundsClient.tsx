@@ -4,7 +4,9 @@ import { displayIg } from "@/lib/format"
 import TableSkeleton from "@/components/TableSkeleton"
 import DataGrid, { type ColumnDef } from "@/components/DataGrid"
 import { useCallback, useEffect, useMemo, useState } from "react"
-import type { InvoiceEvent, InvoiceResult, RefundRow, RefundReason, RefundStatus } from "@/lib/db"
+import type { InvoiceEvent, InvoiceResult, RefundRow, RefundReason, RefundStatus, OverpaymentToCheck, OutstandingTrip } from "@/lib/db"
+import { normalizeId } from "@/lib/db/helpers"
+import { isCreditPromised } from "@/lib/db/refund-credit"
 import { REFUND_REASONS } from "@/lib/db/types"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import { fetchJson } from "@/lib/api-fetch"
@@ -13,6 +15,7 @@ import SearchableSelect from "@/components/SearchableSelect"
 import { InvoiceDetailDrawer } from "@/app/dashboard/invoice/InvoiceDetailDrawer"
 import { useMessageTemplates } from "@/hooks/useMessageTemplates"
 import { fillTemplate, DEFAULT_TEMPLATES } from "@/lib/message-templates"
+import { causeLineFor, fillNotice, REFUND_CAUSES } from "@/lib/notice-templates"
 
 const INPUT_CLASS =
   "border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
@@ -49,12 +52,188 @@ const STATUS_COLORS: Record<RefundStatus, string> = {
   cancelled: "bg-surface-muted text-muted border-cream-border",
 }
 
-const ACTIVE_TABS: { key: RefundStatus | "active"; label: string }[] = [
+/** Not a refund status — a list of money owed that nobody has decided about. */
+const TO_CHECK = "to_check" as const
+type TabKey = RefundStatus | typeof TO_CHECK
+
+const ACTIVE_TABS: { key: TabKey; label: string }[] = [
+  { key: TO_CHECK, label: "To check" },
   { key: "pending", label: "Pending" },
   { key: "awaiting_bank_info", label: "Bank Info" },
   { key: "ready_to_refund", label: "Transfer" },
   { key: "refunded", label: "Done" },
 ]
+
+/**
+ * Money a customer is owed that no refund covers yet.
+ *
+ * Deliberately not the Pending grid. Pending is a to-do list — every row in it
+ * is money you have decided to send — and a Rp 2.000 shipping rounding is not a
+ * task. Put it there and you learn to skim the one list that must not be
+ * skimmed. Here it is an observation until you say otherwise.
+ */
+function ToCheckPanel({ rows, error, promoting, onPromote, onRetry, search, onSearchChange }: {
+  rows: OverpaymentToCheck[] | null
+  error: string
+  promoting: string
+  onPromote: (row: OverpaymentToCheck) => void
+  onRetry: () => void
+  search: string
+  onSearchChange: (value: string) => void
+}) {
+  const columns = useMemo<ColumnDef<OverpaymentToCheck, unknown>[]>(() => [
+    {
+      accessorKey: "customer",
+      header: "Customer",
+      size: 180,
+      filterFn: "textContains",
+      cell: ({ getValue }) => (
+        <span className="font-medium text-foreground">{displayIg(getValue<string>())}</span>
+      ),
+    },
+    {
+      accessorKey: "event",
+      header: "Event",
+      size: 130,
+      filterFn: "textContains",
+      cell: ({ getValue }) => <span className="text-muted-strong">{getValue<string>()}</span>,
+    },
+    // Paid and invoiced sit beside the gap so a small difference can be
+    // recognised as rounding without opening the invoice.
+    {
+      accessorKey: "totalPaid",
+      header: "Paid",
+      size: 130,
+      filterFn: "numeric",
+      meta: { align: "right" },
+      cell: ({ getValue }) => (
+        <span className="tabular-nums text-muted">{formatRp(getValue<number>())}</span>
+      ),
+    },
+    {
+      accessorKey: "invoiceTotal",
+      header: "Invoiced",
+      size: 130,
+      filterFn: "numeric",
+      meta: { align: "right" },
+      cell: ({ getValue }) => (
+        <span className="tabular-nums text-muted">{formatRp(getValue<number>())}</span>
+      ),
+    },
+    {
+      accessorKey: "uncovered",
+      header: "Uncovered",
+      size: 140,
+      filterFn: "numeric",
+      meta: { align: "right" },
+      cell: ({ row }) => (
+        <div className="flex flex-col items-end">
+          <span className="tabular-nums font-semibold text-brand">{formatRp(row.original.uncovered)}</span>
+          {/* What a mark has already covered, where the gap is only what is
+              left of it — otherwise the figure reads as the whole overpayment. */}
+          {row.original.refundedSoFar > 0 && (
+            <span className="text-[11px] text-faint tabular-nums">
+              after {formatRp(row.original.refundedSoFar)} refunded
+            </span>
+          )}
+        </div>
+      ),
+    },
+    {
+      id: "action",
+      header: "",
+      size: 140,
+      enableSorting: false,
+      enableColumnFilter: false,
+      meta: { align: "right" },
+      cell: ({ row }) => {
+        const r = row.original
+        const busy = promoting === `${r.event}|${r.customer}`
+        return (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onPromote(r) }}
+            disabled={busy}
+            className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-bold disabled:opacity-50 whitespace-nowrap"
+          >
+            {busy ? "Creating…" : "Create refund"}
+          </button>
+        )
+      },
+    },
+  ], [promoting, onPromote])
+
+  const renderMobileCard = useCallback((r: OverpaymentToCheck) => {
+    const busy = promoting === `${r.event}|${r.customer}`
+    return (
+      <div className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-sm font-semibold text-foreground">{r.event}</span>
+            <span className="text-xs text-faint uppercase truncate">{displayIg(r.customer)}</span>
+          </div>
+          <div className="mt-0.5 text-xs text-muted tabular-nums">
+            paid {formatRp(r.totalPaid)} of {formatRp(r.invoiceTotal)}
+          </div>
+        </div>
+        <div className="shrink-0 flex flex-col items-end gap-1.5">
+          <span className="text-sm font-semibold tabular-nums text-brand">{formatRp(r.uncovered)}</span>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onPromote(r) }}
+            disabled={busy}
+            className="px-2.5 py-1 rounded-lg bg-brand text-white text-[11px] font-bold disabled:opacity-50 whitespace-nowrap"
+          >
+            {busy ? "Creating…" : "Create refund"}
+          </button>
+        </div>
+      </div>
+    )
+  }, [promoting, onPromote])
+
+  if (error) {
+    return (
+      <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 flex items-center justify-between gap-3">
+        <span>{error}</span>
+        <button onClick={onRetry} className="text-xs px-3 py-1.5 rounded-lg border border-red-300 text-red-700 hover:bg-red-100 shrink-0">
+          Retry
+        </button>
+      </div>
+    )
+  }
+  if (rows === null) return <div className="mt-3"><TableSkeleton /></div>
+  if (rows.length === 0) {
+    return (
+      <div className="mt-3 rounded-xl border border-cream-border bg-white p-8 text-center text-sm text-faint">
+        No overpayments to check.
+      </div>
+    )
+  }
+
+  // The same mt-3 the pending grid sits in, so switching tabs does not nudge
+  // the table up or down.
+  return (
+    <div className="mt-3">
+    <DataGrid
+      data={rows}
+      columns={columns}
+      pageSize={25}
+      searchPlaceholder="Search customer or event…"
+      searchValue={search}
+      onSearchChange={onSearchChange}
+      fullWidthSearch
+      tightToolbar
+      boldUppercaseHeader
+      hideRowCount
+      getRowId={(r) => `${r.event}|${r.customer}`}
+      renderMobileCard={renderMobileCard}
+      paginationVariant="simple"
+      // Largest first, because that is the order they get worked.
+      initialSorting={[{ id: "uncovered", desc: true }]}
+    />
+    </div>
+  )
+}
 
 function formatRp(n: number) {
   return `Rp ${new Intl.NumberFormat("id-ID").format(n)}`
@@ -69,6 +248,15 @@ function isFullyAppliedAsCredit(row: RefundRow): boolean {
 }
 function displayAmount(row: RefundRow): number {
   return isFullyAppliedAsCredit(row) ? row.appliedCreditAmount : row.refundAmount
+}
+
+// "Applied to Next Order" claims something that has not happened yet. The
+// promise gets its own words and the purple the credit action already uses.
+function statusLabel(row: RefundRow): string {
+  return isCreditPromised(row) ? "Credit Promised" : STATUS_LABELS[row.status]
+}
+function statusColor(row: RefundRow): string {
+  return isCreditPromised(row) ? "bg-purple-50 text-purple-700 border-purple-200" : STATUS_COLORS[row.status]
 }
 
 // A non-null liveOverpayment means the server found this refund's stored amount
@@ -88,17 +276,26 @@ function reviewMessage(row: RefundRow): string | null {
 
 // ─── Main component ──────────────────────────────────────────────────────────
 
+const CREDIT_PANEL_ID = "refund-credit-panel"
+
 export default function RefundsClient() {
   const options = useSheetOptions()
   const [rows, setRows] = useState<RefundRow[]>([])
   const [dbReasons, setDbReasons] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
-  const [tab, setTab] = useState<RefundStatus>("pending")
+  const [tab, setTab] = useState<TabKey>("pending")
+  const [toCheck, setToCheck] = useState<OverpaymentToCheck[] | null>(null)
+  const [toCheckError, setToCheckError] = useState("")
+  const [promoting, setPromoting] = useState("")
   const [creating, setCreating] = useState(false)
   const [mobileCreating, setMobileCreating] = useState(false)
   const [editRow, setEditRow] = useState<RefundRow | null>(null)
   const [eventFilter, setEventFilter] = useState("")
+  // Owned here rather than by each grid: the tabs swap the data underneath and
+  // remount the table, which would drop whatever was typed. Looking for one
+  // customer usually means looking for them on more than one tab.
+  const [search, setSearch] = useState("")
 
   const reasonOptions = useMemo(() => toReasonOptions(dbReasons), [dbReasons])
 
@@ -119,13 +316,75 @@ export default function RefundsClient() {
 
   useEffect(() => { fetchRows() }, [fetchRows])
 
+  // Fetched on first sight of the tab rather than with the page: it is a second
+  // pass over every invoice, and most visits never open it.
+  const fetchToCheck = useCallback(() => {
+    setToCheckError("")
+    fetchJson<{ rows: OverpaymentToCheck[] }>("/api/sheets/overpayments")
+      .then((data) => setToCheck(data.rows ?? []))
+      .catch((err) => setToCheckError(err instanceof Error ? err.message : "Failed to load"))
+  }, [])
+
+  useEffect(() => {
+    if (tab === TO_CHECK && toCheck === null) fetchToCheck()
+  }, [tab, toCheck, fetchToCheck])
+
+  // Every customer's debts on other trips, keyed by normalized handle. One call
+  // for the page: a refund is per trip, so a row cannot see that the same person
+  // still owes on another one, and nobody thinks to look.
+  const [owesElsewhere, setOwesElsewhere] = useState<Record<string, OutstandingTrip[]>>({})
+
+  useEffect(() => {
+    // Silent on failure — the chip is a hint. Losing it must not break the page.
+    fetchJson<{ byCustomer: Record<string, OutstandingTrip[]> }>("/api/sheets/refunds/outstanding")
+      .then((data) => setOwesElsewhere(data.byCustomer ?? {}))
+      .catch(() => {})
+  }, [])
+
+  /** That customer's other trips with money still owed on them. */
+  const outstandingFor = useCallback(
+    (customer: string, event: string): OutstandingTrip[] =>
+      (owesElsewhere[normalizeId(customer)] ?? []).filter((t) => t.event !== event),
+    [owesElsewhere],
+  )
+
+  /** Promote one row to a refund. The server recomputes the amount. */
+  async function promote(row: OverpaymentToCheck) {
+    const key = `${row.event}|${row.customer}`
+    setPromoting(key)
+    setToCheckError("")
+    try {
+      const res = await fetch("/api/sheets/overpayments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event: row.event, customer: row.customer }),
+      })
+      // A route that dies returns no body; parsing it reports a JSON error
+      // instead of the failure.
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? `Failed to create refund (${res.status})`)
+      setToCheck((prev) => (prev ?? []).filter((r) => `${r.event}|${r.customer}` !== key))
+      fetchRows()
+    } catch (err) {
+      setToCheckError(err instanceof Error ? err.message : "Failed to create refund")
+    } finally {
+      setPromoting("")
+    }
+  }
+
   const doneStatuses: RefundStatus[] = ["refunded", "applied_to_next_order", "cancelled"]
 
   // Tabs pre-filter by status stage; the DataGrid then does search / per-column
   // sort & filter over the resulting set.
   const tabFiltered = useMemo(() => {
     return rows.filter((r) =>
-      (tab === "refunded" ? doneStatuses.includes(r.status) : r.status === tab) &&
+      (tab === "refunded"
+        ? doneStatuses.includes(r.status) && !isCreditPromised(r)
+        : tab === "pending"
+          // A promised credit is money still owed, so it belongs with the rest
+          // of what is owed rather than filed away as settled.
+          ? r.status === "pending" || isCreditPromised(r)
+          : r.status === tab) &&
       (!eventFilter || r.event === eventFilter),
     )
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -134,7 +393,8 @@ export default function RefundsClient() {
   const counts = useMemo(() => {
     const c: Partial<Record<RefundStatus | "done", number>> = {}
     for (const r of rows) {
-      c[r.status] = (c[r.status] ?? 0) + 1
+      const key = isCreditPromised(r) ? "pending" : r.status
+      c[key] = (c[key] ?? 0) + 1
     }
     const done = (c.refunded ?? 0) + (c.applied_to_next_order ?? 0) + (c.cancelled ?? 0)
     return { ...c, done }
@@ -149,6 +409,8 @@ export default function RefundsClient() {
       cell: ({ row }) => {
         const r = row.original
         const msg = reviewMessage(r)
+        const owes = outstandingFor(r.customer, r.event)
+        const owesTotal = owes.reduce((sum, t) => sum + t.amount, 0)
         return (
           <div className="flex items-center gap-1.5 font-medium text-foreground">
             {displayIg(r.customer)}
@@ -157,6 +419,21 @@ export default function RefundsClient() {
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
                   <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+              </span>
+            )}
+            {/* Owed here, behind there. A marker rather than a figure: the
+                amount belongs to another trip, and printing it beside this
+                row's own amount invites reading the wrong one. Purple is the
+                credit colour it leads to. */}
+            {owes.length > 0 && (
+              <span
+                title={`Owes elsewhere — ${owes.map((t) => `${formatRp(t.amount)} on ${t.event}`).join(", ")}`}
+                aria-label={`Owes ${formatRp(owesTotal)} on ${owes.length === 1 ? owes[0].event : `${owes.length} other trips`}`}
+                className="text-purple-400 shrink-0"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M8 3 4 7l4 4" /><path d="M4 7h16" /><path d="m16 21 4-4-4-4" /><path d="M20 17H4" />
                 </svg>
               </span>
             )}
@@ -192,13 +469,13 @@ export default function RefundsClient() {
     },
     {
       id: "status",
-      accessorFn: (r) => STATUS_LABELS[r.status],
+      accessorFn: (r) => statusLabel(r),
       header: "Status",
       size: 150,
       filterFn: "textContains",
       cell: ({ row }) => (
-        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${STATUS_COLORS[row.original.status]}`}>
-          {STATUS_LABELS[row.original.status]}
+        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${statusColor(row.original)}`}>
+          {statusLabel(row.original)}
         </span>
       ),
     },
@@ -209,7 +486,7 @@ export default function RefundsClient() {
       header: "Updated",
       enableColumnFilter: false,
     },
-  ], [])
+  ], [outstandingFor])
 
   const renderMobileCard = useCallback((r: RefundRow) => {
     const msg = reviewMessage(r)
@@ -263,12 +540,15 @@ export default function RefundsClient() {
       {/* Tabs */}
       <div className="flex items-center gap-1 w-full rounded-xl border border-cream-border bg-white p-1 overflow-x-auto">
         {ACTIVE_TABS.map(({ key, label }) => {
-          const count = key === "refunded" ? counts.done : counts[key as RefundStatus]
-          const active = tab === key || (key === "refunded" && doneStatuses.includes(tab))
+          const count = key === TO_CHECK
+            ? toCheck?.length
+            : key === "refunded" ? counts.done : counts[key as RefundStatus]
+          const active = tab === key
+            || (key === "refunded" && tab !== TO_CHECK && doneStatuses.includes(tab as RefundStatus))
           return (
             <button
               key={key}
-              onClick={() => setTab(key === "refunded" ? "refunded" : key as RefundStatus)}
+              onClick={() => setTab(key)}
               className={`flex-1 shrink-0 flex items-center justify-center gap-1 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
                 active
                   ? "bg-brand text-white"
@@ -286,6 +566,17 @@ export default function RefundsClient() {
         })}
       </div>
 
+      {tab === TO_CHECK ? (
+        <ToCheckPanel
+          rows={toCheck}
+          error={toCheckError}
+          promoting={promoting}
+          onPromote={promote}
+          onRetry={fetchToCheck}
+          search={search}
+          onSearchChange={setSearch}
+        />
+      ) : (
       <div className="mt-3">
         <DataGrid
           key={tab}
@@ -293,6 +584,8 @@ export default function RefundsClient() {
           columns={columns}
           pageSize={25}
           searchPlaceholder="Search customer or event…"
+          searchValue={search}
+          onSearchChange={setSearch}
           fullWidthSearch
           tightToolbar
           boldUppercaseHeader
@@ -344,6 +637,7 @@ export default function RefundsClient() {
           }
         />
       </div>
+      )}
 
       {/* Mobile add FAB */}
       <button
@@ -579,7 +873,9 @@ function RefundDetailModal({
 
   // Apply-as-credit flow: the customer's other orders are the valid targets.
   const [customerEvents, setCustomerEvents] = useState<InvoiceEvent[]>([])
-  const [showCredit, setShowCredit] = useState(false)
+  // Open on a promised credit: applying it is the only reason this refund is
+  // still on the list.
+  const [showCredit, setShowCredit] = useState(() => isCreditPromised(row))
   const [creditTarget, setCreditTarget] = useState("")
   const [creditAmount, setCreditAmount] = useState("")
 
@@ -602,7 +898,23 @@ function RefundDetailModal({
     return () => { cancelled = true }
   }, [row.customer, row.event])
 
-  const isReadOnly = row.status === "refunded" || row.status === "cancelled" || row.status === "applied_to_next_order"
+  // A promised credit is deliberately NOT read-only: closing it is what left it
+  // with no way to be applied once the customer's next order finally existed.
+  const isReadOnly = !isCreditPromised(row)
+    && (row.status === "refunded" || row.status === "cancelled" || row.status === "applied_to_next_order")
+
+  // The same customer's other trips that still owe money. Refunds are per trip,
+  // so nothing on this one says the person you are about to pay is already
+  // behind on another — and marks now create refunds without anyone asking.
+  const owedElsewhere = useMemo(
+    () =>
+      customerEvents
+        .filter((ev) => ev.eventId !== row.event && ev.invoice.sisaPelunasan > 0)
+        .map((ev) => ({ event: ev.eventId, amount: ev.invoice.sisaPelunasan }))
+        .sort((a, b) => b.amount - a.amount),
+    [customerEvents, row.event],
+  )
+
 
   async function patch(body: object) {
     setSaving(true)
@@ -715,19 +1027,53 @@ function RefundDetailModal({
     .filter((o) => o.unit === 0)
     .map((o) => o.productName)
   const templates = useMessageTemplates()
-  const waMessageText =
-    unavailableItems.length > 0
-      ? fillTemplate(templates?.refund_specific ?? DEFAULT_TEMPLATES.refund_specific, {
-          customer: row.customer,
-          event: row.event,
-          itemsList: unavailableItems.map((n) => `- ${n}`).join("\n"),
-          refundAmount: formatRp(row.refundAmount),
-        })
-      : fillTemplate(templates?.refund_generic ?? DEFAULT_TEMPLATES.refund_generic, {
-          customer: row.customer,
-          event: row.event,
-          refundAmount: formatRp(row.refundAmount),
-        })
+
+  // A mark writes what it removed onto the refund, quantities and all, which is
+  // better than anything this screen can reconstruct: a line reduced 3 → 2
+  // keeps no record of the original, so orders alone can only see what went to
+  // zero.
+  const itemsList = row.note?.trim()
+    ? row.note.trim()
+    : unavailableItems.map((n) => `- ${n}`).join("\n")
+
+  // What arrived instead, where a wrong delivery was marked on this trip.
+  const [receivedMap, setReceivedMap] = useState<Record<string, string>>({})
+  const wantsReceived = REFUND_CAUSES.find((c) => c.key === row.reason)?.needsReceived === true
+  useEffect(() => {
+    if (!wantsReceived) return
+    let live = true
+    fetch(`/api/sheets/wrong-deliveries?event=${encodeURIComponent(row.event)}`)
+      .then((r) => r.json())
+      .then((d: { received?: Record<string, string> }) => { if (live) setReceivedMap(d.received ?? {}) })
+      // Silent: the wording drops to the sentence that does not name it.
+      .catch(() => {})
+    return () => { live = false }
+  }, [wantsReceived, row.event])
+  const receivedItem = [...new Set(Object.values(receivedMap))].join(", ")
+
+  // The reason, said out loud — the same one the inbox card gives, in the
+  // language this channel speaks. Before this, every refund reached WhatsApp as
+  // an item being out of stock, whatever had actually happened.
+  const cause = REFUND_CAUSES.find((c) => c.key === row.reason)
+  const causeText = cause
+    ? fillNotice(causeLineFor(cause, { items: itemsList, receivedItem }, "whatsapp"), {
+        "{event}": row.event,
+        "{itemsList}": itemsList,
+        "{receivedItem}": receivedItem,
+      })
+    : `Ada pengembalian dana untuk pesanan Anda pada event *${row.event}*.`
+
+  const waVars = {
+    customer: row.customer,
+    event: row.event,
+    itemsList,
+    receivedItem,
+    cause: causeText,
+    refundAmount: formatRp(row.refundAmount),
+  }
+  const waMessageText = itemsList
+    ? fillTemplate(templates?.refund_specific ?? DEFAULT_TEMPLATES.refund_specific, waVars)
+    : fillTemplate(templates?.refund_generic ?? DEFAULT_TEMPLATES.refund_generic, waVars)
   const waMessage = encodeURIComponent(waMessageText)
 
   async function handleCopyMessage() {
@@ -866,11 +1212,45 @@ function RefundDetailModal({
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${STATUS_COLORS[row.status]}`}>
-              {STATUS_LABELS[row.status]}
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${statusColor(row)}`}>
+              {statusLabel(row)}
             </span>
           </div>
         </div>
+
+        {/* Outstanding elsewhere — the credit offer, one click from taken. Only
+            where a credit can still be applied; a settled refund is history. */}
+        {!isReadOnly && owedElsewhere.length > 0 && (
+          <div className="shrink-0 flex flex-wrap items-center gap-x-2 gap-y-1.5 px-6 py-2.5 border-b border-purple-200 bg-purple-50">
+            <span className="text-xs text-purple-800">
+              <span className="font-semibold">Outstanding elsewhere</span> ·{" "}
+              {owedElsewhere.map((t, i) => (
+                <span key={t.event}>
+                  {i > 0 && ", "}
+                  <span className="font-bold tabular-nums">{formatRp(t.amount)}</span> on {t.event}
+                </span>
+              ))}
+            </span>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => {
+                const top = owedElsewhere[0]
+                setCreditTarget(top.event)
+                setCreditAmount(String(Math.min(row.refundAmount, top.amount) || row.refundAmount))
+                setShowCredit(true)
+                // The panel this fills sits below the fold. Without this the
+                // click reads as having done nothing at all.
+                requestAnimationFrame(() =>
+                  document.getElementById(CREDIT_PANEL_ID)?.scrollIntoView({ behavior: "smooth", block: "center" }),
+                )
+              }}
+              className="ml-auto shrink-0 px-2.5 py-1 rounded-md text-xs font-medium bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 transition-colors"
+            >
+              Apply {formatRp(Math.min(row.refundAmount, owedElsewhere[0].amount))} to {owedElsewhere[0].event}
+            </button>
+          </div>
+        )}
 
         {/* Invoice — one line, expandable. Was a 6-row block eating the modal.
             Hidden on mobile: the open-invoice icon in the header covers it there. */}
@@ -1106,7 +1486,7 @@ function RefundDetailModal({
 
           {/* Apply as credit — pick which of the customer's other orders to credit */}
           {!isReadOnly && (
-            <div className="flex flex-col gap-2 p-3 rounded-lg bg-surface-muted border border-cream-border">
+            <div id={CREDIT_PANEL_ID} className="flex flex-col gap-2 p-3 rounded-lg bg-surface-muted border border-cream-border">
               <div className="flex items-center justify-between gap-2">
                 <div className="text-xs font-medium text-muted-strong">Apply as credit</div>
                 <button
@@ -1124,6 +1504,12 @@ function RefundDetailModal({
               </div>
               {showCredit && (
               <div className="flex flex-col gap-3">
+              {isCreditPromised(row) && (
+                <div className="text-xs text-purple-800 font-medium">
+                  {displayIg(row.customer)} asked to keep this as credit. Nothing has moved yet — it waits here until
+                  one of their orders can take it.
+                </div>
+              )}
               <div className="text-xs text-purple-700">
                 Move up to <span className="font-bold">{formatRp(row.refundAmount)}</span> of overpayment credit to
                 another order for <span className="font-medium">{displayIg(row.customer)}</span>. No cash moves — it

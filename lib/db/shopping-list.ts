@@ -1,4 +1,5 @@
 import sql from "../db-pool"
+import { refundForReduction, type MarkReduction } from "./mark-refunds"
 import { allocateFifo } from "../fifo-fill"
 import type { DBExecutor } from "./actor"
 
@@ -345,14 +346,19 @@ export async function markProductOutOfStock(data: {
   event: string
   productId: number
   quantityOutOfStock: number
-}, actor?: string | null): Promise<{ reducedOrderIds: number[]; reducedUnits: number }> {
-  type Row = { id: number; customer: string; unit: number; unitBuy: number; pending: number }
+}, actor?: string | null): Promise<{
+  reducedOrderIds: number[]
+  reducedUnits: number
+  refunds: { customer: string; amount: number; refundId: number }[]
+}> {
+  type Row = { id: number; customer: string; unit: number; unitBuy: number; pending: number; unitPrice: number }
   const orders = (await sql`
     SELECT
       id,
       customer,
       unit::int AS unit,
       COALESCE(unit_buy, 0)::int AS "unitBuy",
+      COALESCE(unit_price, 0)::int AS "unitPrice",
       (unit - COALESCE(unit_buy, 0))::int AS pending
     FROM orders
     WHERE event = ${data.event}
@@ -375,6 +381,7 @@ export async function markProductOutOfStock(data: {
   // one is still waiting on.
   const { allocations } = allocateFifo(orders, (o) => o.pending, data.quantityOutOfStock)
   const reducedOrderIds: number[] = []
+  const reductions: MarkReduction[] = []
   let reducedUnits = 0
 
   await sql.begin(async (tx) => {
@@ -382,6 +389,7 @@ export async function markProductOutOfStock(data: {
     for (const { item: o, allocated } of allocations) {
       if (allocated <= 0) continue
       reducedOrderIds.push(o.id)
+      reductions.push({ customer: o.customer, unitsRemoved: allocated, unitPrice: o.unitPrice })
       reducedUnits += allocated
       await tx`
         UPDATE orders
@@ -391,7 +399,14 @@ export async function markProductOutOfStock(data: {
     }
   })
 
-  return { reducedOrderIds, reducedUnits }
+  // After the commit, deliberately: what is owed depends on the invoice as it
+  // now stands, and a customer who had not paid is owed nothing.
+  const [product] = await sql<{ name: string }[]>`
+    SELECT name FROM products WHERE id = ${data.productId}`
+  const refunds = await refundForReduction(
+    data.event, "unavailable", product?.name ?? "the item", reductions, actor)
+
+  return { reducedOrderIds, reducedUnits, refunds }
 }
 
 export async function markProductBought(data: {
