@@ -396,12 +396,19 @@ export default function RefundsClient() {
                 </svg>
               </span>
             )}
+            {/* Owed here, behind there. A marker rather than a figure: the
+                amount belongs to another trip, and printing it beside this
+                row's own amount invites reading the wrong one. Purple is the
+                credit colour it leads to. */}
             {owes.length > 0 && (
               <span
                 title={`Owes elsewhere — ${owes.map((t) => `${formatRp(t.amount)} on ${t.event}`).join(", ")}`}
-                className="shrink-0 rounded px-1 py-px text-[10px] font-semibold uppercase tracking-wide bg-purple-100 text-purple-700 tabular-nums"
+                aria-label={`Owes ${formatRp(owesTotal)} on ${owes.length === 1 ? owes[0].event : `${owes.length} other trips`}`}
+                className="text-purple-400 shrink-0"
               >
-                owes {formatRp(owesTotal)}
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M8 3 4 7l4 4" /><path d="M4 7h16" /><path d="m16 21 4-4-4-4" /><path d="M20 17H4" />
+                </svg>
               </span>
             )}
           </div>
