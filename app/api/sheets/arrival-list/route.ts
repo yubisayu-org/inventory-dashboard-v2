@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireOwner } from "@/lib/api"
-import { getArrivalList, getExcessArrivalPending, markProductArrived, recordWrongProduct, recordBrokenArrival, recordMissingArrival, recordCustomerCancellation, recordNotReceived, renameDispatchReceipt, withActor } from "@/lib/db"
+import { getArrivalList, getExcessArrivalPending, markProductArrived, recordCustomerCancellation, recordNotReceived, renameDispatchReceipt, withActor } from "@/lib/db"
 import { withServerTiming } from "@/lib/server-timing"
 
 async function handleGET(req: NextRequest) {
@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Wrong-product path: supplier sent a different SKU. Log it to ready stock
-    // and zero the chosen customer orders (refunds auto-materialize if paid).
+    // and zero the chosen customer orders, refunding whoever had paid for them.
     if (body.action === "wrong_product") {
       const { event, expectedItem, receivedItem, qty } = body
       if (!event || !expectedItem || !receivedItem || typeof qty !== "number" || qty < 1) {
@@ -77,15 +77,21 @@ export async function POST(req: NextRequest) {
       const cancelOrderIds = Array.isArray(body.cancelOrderIds)
         ? body.cancelOrderIds.filter((n: unknown) => Number.isInteger(n)) as number[]
         : []
-      const result = await withActor(session.user.email, (tx) =>
-        recordWrongProduct({ event, expectedItem, receivedItem, qty, cancelOrderIds }, tx),
+      // Same function the quantity flow uses, narrowed to the chosen orders:
+      // only the marked quantity comes off, whoever it comes off. Cancelling
+      // whole lines instead used to strip units nobody had marked, leaving the
+      // surviving stock on no order and in no inventory.
+      const result = await recordNotReceived(
+        { event, productId: Number(body.productId), productName: expectedItem, qty,
+          mode: "wrong", receivedItem, orderIds: cancelOrderIds },
+        session.user.email,
       )
       return NextResponse.json({ success: true, ...result })
     }
 
     // Broken path: the expected item arrived damaged. Log the broken units to
     // inventory flagged 'broken' (tracked but never assignable to orders) and
-    // cancel the chosen customer orders (refunds auto-materialize if paid).
+    // cancel the chosen customer orders, refunding whoever had paid for them.
     if (body.action === "broken") {
       const { event, productName, qty } = body
       if (!event || !productName || typeof qty !== "number" || qty < 1) {
@@ -97,28 +103,32 @@ export async function POST(req: NextRequest) {
       const cancelOrderIds = Array.isArray(body.cancelOrderIds)
         ? body.cancelOrderIds.filter((n: unknown) => Number.isInteger(n)) as number[]
         : []
-      const result = await withActor(session.user.email, (tx) =>
-        recordBrokenArrival({ event, productName, qty, cancelOrderIds }, tx),
+      const result = await recordNotReceived(
+        { event, productId: Number(body.productId), productName, qty,
+          mode: "broken", orderIds: cancelOrderIds },
+        session.user.email,
       )
       return NextResponse.json({ success: true, ...result })
     }
 
-    // Missing path: the expected item never arrived. Like broken, cancel the
-    // chosen customer orders (refunds auto-materialize if paid) — but nothing is
-    // logged to inventory, since there are no physical units.
+    // Missing path: the expected item never arrived. Like broken: take the
+    // marked quantity off the chosen orders, refund whoever had paid, and log
+    // the units flagged "missing" — unassignable, but a record of the loss.
     if (body.action === "missing") {
       const { event } = body
       const cancelOrderIds = Array.isArray(body.cancelOrderIds)
         ? body.cancelOrderIds.filter((n: unknown) => Number.isInteger(n)) as number[]
         : []
-      if (!event || cancelOrderIds.length === 0) {
+      if (!event || cancelOrderIds.length === 0 || !(Number(body.qty) >= 1)) {
         return NextResponse.json(
-          { error: "event and at least one order to cancel are required" },
+          { error: "event, a quantity and at least one order to cancel are required" },
           { status: 400 },
         )
       }
-      const result = await withActor(session.user.email, (tx) =>
-        recordMissingArrival({ cancelOrderIds }, tx),
+      const result = await recordNotReceived(
+        { event, productId: Number(body.productId), productName: String(body.productName ?? "").trim(),
+          qty: Number(body.qty), mode: "missing", orderIds: cancelOrderIds },
+        session.user.email,
       )
       return NextResponse.json({ success: true, ...result })
     }

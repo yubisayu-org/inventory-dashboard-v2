@@ -1264,7 +1264,7 @@ function StatusModal({ request, dead, items, selectedCandidate, onSelectCandidat
           <div className="flex flex-col gap-2">
             <p className="text-xs text-amber-600 font-medium">Ditanya di grup — belum ada kandidat</p>
             <p className="text-xs text-muted">
-              If she confirmed what she wants over DM, pick the product directly — no candidate code needed.
+              If they confirmed what they want over DM, pick the product directly — no candidate code needed.
             </p>
             <SearchableSelect value={manualProductId} onChange={setManualProductId} options={itemOptions} placeholder="Search product…" />
             <div className="flex justify-end gap-2">

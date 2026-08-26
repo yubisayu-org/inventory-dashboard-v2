@@ -1144,6 +1144,7 @@ function ArriveModal({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "wrong_product",
+            productId: item.productId,
             event: item.event,
             expectedItem: item.productName,
             receivedItem,
@@ -1156,14 +1157,15 @@ function ArriveModal({
       } else if (mode === "broken") {
         if (quantityArrived < 1) { setSaveError("Enter how many units arrived broken."); return }
         // Broken on arrival: log the broken units to Inventory (flagged broken,
-        // never assignable to orders) and cancel the chosen customer orders
-        // (refunds auto-materialize if paid).
+        // never assignable to orders) and cancel the chosen customer orders,
+        // refunding whoever had paid for them.
         const res = await fetch("/api/sheets/arrival-list", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "broken",
             event: item.event,
+            productId: item.productId,
             productName: item.productName,
             qty: quantityArrived,
             cancelOrderIds: [...cancelIds],
@@ -1180,6 +1182,13 @@ function ArriveModal({
           body: JSON.stringify({
             action: "missing",
             event: item.event,
+            productId: item.productId,
+            // Nothing is logged to Inventory for a missing item, but the refund
+            // note still has to say what went astray.
+            productName: item.productName,
+            // The figure the modal shows: what is still owed on the orders that
+            // were checked, and nothing beyond them.
+            qty: item.orders.filter((o) => cancelIds.has(o.id)).reduce((sum, o) => sum + o.pending, 0),
             cancelOrderIds: [...cancelIds],
           }),
         })
@@ -1190,7 +1199,8 @@ function ArriveModal({
         // Customer backed out after we already bought their item — it's
         // correct, sellable stock, not broken or missing. Log the
         // already-bought units to Inventory as ready stock and cancel the
-        // chosen orders (refunds auto-materialize if paid).
+        // chosen orders. No refund is raised here: a cancellation is the
+        // customer's own doing and has its own flow.
         const res = await fetch("/api/sheets/arrival-list", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1358,11 +1368,11 @@ function ArriveModal({
                 {mode === "broken"
                   ? "Broken units are logged to Inventory (flagged “broken”, not sellable). "
                   : mode === "missing"
-                  ? "The item never arrived, so nothing is logged to Inventory. "
+                  ? "Missing units are logged to Inventory (flagged “missing”, not sellable) so the loss is on the record. "
                   : mode === "cancelled"
                   ? `The units already bought for checked orders (${item.orders.filter((o) => cancelIds.has(o.id)).reduce((s, o) => s + o.unitBuy, 0)} total) are logged to Inventory as ready stock, assignable to the next customer who wants this item. `
                   : ""}
-                Checked orders are removed from the invoice and refunded if paid; unchecked orders stay pending.
+                Only the quantity above comes off, taken from the checked orders — unpaid ones first, so paid customers keep theirs. Whoever loses units is refunded if they had paid. Unchecked orders stay pending.
               </p>
               {mode === "cancelled" && (
                 <div className="flex flex-col gap-1">
