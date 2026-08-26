@@ -252,7 +252,7 @@ export default function CataloguePostsClient() {
           <button
             type="button"
             onClick={() => setAddOpen((o) => !o)}
-            className={`inline-flex items-center justify-center gap-1.5 h-10 px-4 text-sm rounded-lg border flex-1 sm:flex-none sm:shrink-0 sm:order-6 transition-colors ${
+            className={`inline-flex items-center justify-center gap-1.5 h-10 px-4 text-sm rounded-lg border shrink-0 sm:order-6 transition-colors ${
               addOpen ? "bg-brand-light text-brand border-brand/30" : "bg-brand text-white border-transparent hover:bg-brand-dark"
             }`}
           >
