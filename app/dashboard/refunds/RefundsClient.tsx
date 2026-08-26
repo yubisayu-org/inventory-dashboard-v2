@@ -6,6 +6,7 @@ import DataGrid, { type ColumnDef } from "@/components/DataGrid"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import type { InvoiceEvent, InvoiceResult, RefundRow, RefundReason, RefundStatus, OverpaymentToCheck, OutstandingTrip } from "@/lib/db"
 import { normalizeId } from "@/lib/db/helpers"
+import { isCreditPromised } from "@/lib/db/refund-credit"
 import { REFUND_REASONS } from "@/lib/db/types"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import { fetchJson } from "@/lib/api-fetch"
@@ -244,6 +245,15 @@ function displayAmount(row: RefundRow): number {
   return isFullyAppliedAsCredit(row) ? row.appliedCreditAmount : row.refundAmount
 }
 
+// "Applied to Next Order" claims something that has not happened yet. The
+// promise gets its own words and the purple the credit action already uses.
+function statusLabel(row: RefundRow): string {
+  return isCreditPromised(row) ? "Credit Promised" : STATUS_LABELS[row.status]
+}
+function statusColor(row: RefundRow): string {
+  return isCreditPromised(row) ? "bg-purple-50 text-purple-700 border-purple-200" : STATUS_COLORS[row.status]
+}
+
 // A non-null liveOverpayment means the server found this refund's stored amount
 // no longer matches the real overpayment and couldn't auto-fix it (credit was
 // already applied). Returns the human message, or null when nothing to review.
@@ -359,7 +369,13 @@ export default function RefundsClient() {
   // sort & filter over the resulting set.
   const tabFiltered = useMemo(() => {
     return rows.filter((r) =>
-      (tab === "refunded" ? doneStatuses.includes(r.status) : r.status === tab) &&
+      (tab === "refunded"
+        ? doneStatuses.includes(r.status) && !isCreditPromised(r)
+        : tab === "pending"
+          // A promised credit is money still owed, so it belongs with the rest
+          // of what is owed rather than filed away as settled.
+          ? r.status === "pending" || isCreditPromised(r)
+          : r.status === tab) &&
       (!eventFilter || r.event === eventFilter),
     )
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -368,7 +384,8 @@ export default function RefundsClient() {
   const counts = useMemo(() => {
     const c: Partial<Record<RefundStatus | "done", number>> = {}
     for (const r of rows) {
-      c[r.status] = (c[r.status] ?? 0) + 1
+      const key = isCreditPromised(r) ? "pending" : r.status
+      c[key] = (c[key] ?? 0) + 1
     }
     const done = (c.refunded ?? 0) + (c.applied_to_next_order ?? 0) + (c.cancelled ?? 0)
     return { ...c, done }
@@ -443,13 +460,13 @@ export default function RefundsClient() {
     },
     {
       id: "status",
-      accessorFn: (r) => STATUS_LABELS[r.status],
+      accessorFn: (r) => statusLabel(r),
       header: "Status",
       size: 150,
       filterFn: "textContains",
       cell: ({ row }) => (
-        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${STATUS_COLORS[row.original.status]}`}>
-          {STATUS_LABELS[row.original.status]}
+        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${statusColor(row.original)}`}>
+          {statusLabel(row.original)}
         </span>
       ),
     },
@@ -843,7 +860,9 @@ function RefundDetailModal({
 
   // Apply-as-credit flow: the customer's other orders are the valid targets.
   const [customerEvents, setCustomerEvents] = useState<InvoiceEvent[]>([])
-  const [showCredit, setShowCredit] = useState(false)
+  // Open on a promised credit: applying it is the only reason this refund is
+  // still on the list.
+  const [showCredit, setShowCredit] = useState(() => isCreditPromised(row))
   const [creditTarget, setCreditTarget] = useState("")
   const [creditAmount, setCreditAmount] = useState("")
 
@@ -866,7 +885,10 @@ function RefundDetailModal({
     return () => { cancelled = true }
   }, [row.customer, row.event])
 
-  const isReadOnly = row.status === "refunded" || row.status === "cancelled" || row.status === "applied_to_next_order"
+  // A promised credit is deliberately NOT read-only: closing it is what left it
+  // with no way to be applied once the customer's next order finally existed.
+  const isReadOnly = !isCreditPromised(row)
+    && (row.status === "refunded" || row.status === "cancelled" || row.status === "applied_to_next_order")
 
   // The same customer's other trips that still owe money. Refunds are per trip,
   // so nothing on this one says the person you are about to pay is already
@@ -1143,8 +1165,8 @@ function RefundDetailModal({
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${STATUS_COLORS[row.status]}`}>
-              {STATUS_LABELS[row.status]}
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${statusColor(row)}`}>
+              {statusLabel(row)}
             </span>
           </div>
         </div>
@@ -1435,6 +1457,12 @@ function RefundDetailModal({
               </div>
               {showCredit && (
               <div className="flex flex-col gap-3">
+              {isCreditPromised(row) && (
+                <div className="text-xs text-purple-800 font-medium">
+                  {displayIg(row.customer)} asked to keep this as credit. Nothing has moved yet — it waits here until
+                  one of her orders can take it.
+                </div>
+              )}
               <div className="text-xs text-purple-700">
                 Move up to <span className="font-bold">{formatRp(row.refundAmount)}</span> of overpayment credit to
                 another order for <span className="font-medium">{displayIg(row.customer)}</span>. No cash moves — it
