@@ -521,7 +521,7 @@ export default function ExcessTable() {
         <EditInventoryModal
           existing={editRow}
           eventOptions={options?.events ?? []}
-          itemOptions={(options?.items ?? []).map((it) => ({ value: it.name, label: it.name, meta: it.store || undefined }))}
+          itemOptions={(options?.items ?? []).map((it) => ({ value: it.name, label: it.name, meta: `Rp ${fmt(it.price)}` }))}
           onClose={() => setEditRow(null)}
           onUpdated={() => { refreshRef.current(); setEditRow(null) }}
           onRequestDelete={() => { setDeleteRow(editRow); setDeleteError(null) }}
