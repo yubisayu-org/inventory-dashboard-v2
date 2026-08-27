@@ -1447,11 +1447,6 @@ function BundleCard({
               Timing beda — kotak menunggu
             </span>
           )}
-          {unpaid.length > 0 && (
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700">
-              {unpaid.map((m) => m.event).join(", ")} belum lunas
-            </span>
-          )}
         </div>
         <div className="flex items-center gap-1.5">
           {/* Cancel Merge sits where Cancel Split does on a split card: after
@@ -1469,12 +1464,20 @@ function BundleCard({
             type="button"
             onClick={() => setMerging(true)}
             disabled={!b.ready || unpaid.length > 0 || units === 0 || owesForEarly}
+            // Why it is greyed comes first: a header badge listing five trip
+            // codes explains a disabled button from an inch away, and the
+            // header is where you look to identify the card, not to find out
+            // why you cannot press something.
             title={
-              planExtra > 0
-                ? `Ongkir tambahan Rp ${planExtra.toLocaleString("id-ID")} untuk seluruh rencana`
-                : planExtra < 0
-                  ? `Hemat ongkir Rp ${(-planExtra).toLocaleString("id-ID")} — satu kotak, bukan dua`
-                  : "Tidak ada selisih ongkir — pembulatan berat menutupinya"
+              unpaid.length > 0
+                ? `Menunggu pembayaran — ${unpaid.map((m) => m.event).join(", ")}`
+                : !b.ready
+                  ? `Menunggu ${b.waitingFor.join(", ")} tiba`
+                  : planExtra > 0
+                    ? `Ongkir tambahan Rp ${planExtra.toLocaleString("id-ID")} untuk seluruh rencana`
+                    : planExtra < 0
+                      ? `Hemat ongkir Rp ${(-planExtra).toLocaleString("id-ID")} — satu kotak, bukan dua`
+                      : "Tidak ada selisih ongkir — pembulatan berat menutupinya"
             }
             className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-1.5"
           >
