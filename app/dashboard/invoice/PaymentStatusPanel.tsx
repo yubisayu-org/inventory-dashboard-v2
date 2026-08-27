@@ -421,7 +421,7 @@ function ExpandedInvoice({
       {/* Order lines */}
       <table className="w-full text-sm">
         <thead>
-          <tr className="text-left text-xs text-muted border-b border-cream-border bg-surface-muted/80">
+          <tr className="text-left text-xs text-muted border-b border-cream-border">
             <th className="px-4 py-2 font-medium">Order</th>
             <th className="px-4 py-2 font-medium text-right w-20">Unit</th>
             <th className="px-4 py-2 font-medium text-right w-28">Price</th>
