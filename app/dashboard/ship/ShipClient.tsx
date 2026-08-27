@@ -726,57 +726,10 @@ function CustomerCard({
             so a hold on a "Tiba Sebagian" card is still releasable — otherwise a
             held unit whose siblings haven't arrived would be stranded with no
             checkbox, Ship, or Release control. */}
-        {/* A partly-arrived card is not a split — it is a card that could
-            become one, and most never do. Nothing is priced until Split Ship
-            declares it, so waiting for the rest stays silent and free.
-
-            Once declared the card moves to Kirim Duluan and this strip becomes
-            the running total: what the second parcel costs, and whether it has
-            been settled. The fee is never a button of its own — it follows the
-            plan, and the payment gate holds the box until she pays. */}
-        {c.splitRequested && (
-          <div className="px-5 py-2.5 border-b border-cream-border bg-blue-50/60 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
-            <span className="text-blue-800 font-medium">Kirim duluan — sisanya menyusul</span>
-            {c.splitRequested && (
-              c.splitExtraOngkir > 0 ? (
-                <span className="text-muted-strong">
-                  Ongkir tambahan{" "}
-                  <span className="tabular-nums font-semibold text-foreground">
-                    Rp {c.splitExtraOngkir.toLocaleString("id-ID")}
-                  </span>
-                </span>
-              ) : (
-                <span className="text-muted-strong">Tidak ada ongkir tambahan — pembulatan berat menutupinya</span>
-              )
-            )}
-            <span className="flex-1" />
-            {c.splitRequested && !paymentClear && (
-              <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-medium">
-                Menunggu pembayaran
-              </span>
-            )}
-            {c.splitRequested && paymentClear && (
-              <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">
-                Lunas — siap dikirim
-              </span>
-            )}
-            {/* Only a way back. Going forward is the Ship button's job — a
-                second control for the same act is what made this card
-                confusing, since Ship already sent part of an order and simply
-                never charged for it. */}
-            {c.splitRequested && (
-              <button
-                type="button"
-                onClick={() => postPlan("unsplit", [c.event])}
-                disabled={splitBusy}
-                className="px-3 py-1.5 rounded-lg border border-blue-300 text-blue-800 text-xs font-medium hover:bg-blue-100 disabled:opacity-50 transition-colors"
-              >
-                {splitBusy ? "…" : "Batalkan kirim duluan"}
-              </button>
-            )}
-          </div>
-        )}
-
+        {/* The declared split says nothing here any more. What it costs and
+            whether it is settled both live on the Ship button — the control
+            that acts on them — so the card keeps its shape whether or not a
+            split is running. */}
         {/* Merging needs somewhere to merge to. Offered only where this
             customer has another trip open — including one that has not
             arrived, since a pairing survives a partial shipment and that is
@@ -865,6 +818,19 @@ function CustomerCard({
                   >
                     {holdBusy ? "…" : "Hold"}
                   </button>
+                  {/* Between Hold and Ship, because that is the order the card
+                      is worked in: park it, undo the split, or send it. */}
+                  {c.splitRequested && (
+                    <button
+                      type="button"
+                      onClick={() => postPlan("unsplit", [c.event])}
+                      disabled={splitBusy}
+                      title="Batalkan kirim duluan — ongkir tambahannya ikut dihapus"
+                      className="px-3 py-1.5 rounded-lg border border-blue-300 text-blue-800 text-xs font-medium hover:bg-blue-50 disabled:opacity-50 transition-colors"
+                    >
+                      {splitBusy ? "…" : "Cancel Split"}
+                    </button>
+                  )}
                   {/* Two acts, two names, two places. Sending part of an order
                       is a decision — it commits the shop to a second trip to
                       the courier and, where the rounding does not absorb it,
@@ -885,8 +851,11 @@ function CustomerCard({
                     // saying the same thing an inch away made the card busy
                     // for a fact most cards do not have to act on.
                     title={
-                      c.splitRequested && !paymentClear
-                        ? "Menunggu pembayaran ongkir tambahan"
+                      c.splitRequested
+                        ? c.splitExtraOngkir > 0
+                          ? `Ongkir tambahan Rp ${c.splitExtraOngkir.toLocaleString("id-ID")} — `
+                            + (paymentClear ? "lunas, siap dikirim" : "menunggu pembayaran")
+                          : "Tidak ada ongkir tambahan — pembulatan berat menutupinya"
                         : canSplit
                           ? c.splitExtraOngkir > 0
                             ? `Kirim ${c.totalToShip} unit sekarang, sisanya menyusul — `
