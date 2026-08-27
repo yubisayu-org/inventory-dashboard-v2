@@ -582,6 +582,9 @@ function CustomerCard({
   const [holdError, setHoldError] = useState<string | null>(null)
   const [splitBusy, setSplitBusy] = useState(false)
   const [splitError, setSplitError] = useState<string | null>(null)
+  // Which of her other trips go in the box. Everything open, until somebody
+  // says otherwise — the common case is two trips and no choice to make.
+  const [mergePick, setMergePick] = useState<Set<string> | null>(null)
   const paymentClear = ["paid", "overpaid", "void"].includes(c.paymentStatus)
   const { customerDetail } = c
   const { widths, startResize } = useResizableColumns({ items: 200, unit: 80, unitArrive: 80, unitShip: 80, toShip: 80 })
@@ -590,7 +593,11 @@ function CustomerCard({
   // parcel whatever anyone declares; nothing arrived is not a split either.
   const totalUnits = c.orders.reduce((s, o) => s + o.unit, 0)
   const totalShipped = c.orders.reduce((s, o) => s + o.unitShip, 0)
-  const canSplit = c.totalToShip > 0 && c.totalToShip + totalShipped < totalUnits
+  // Something to send and something still to come — and not already declared.
+  // Once declared the card sits in Kirim Duluan, where the same button plainly
+  // ships, so it must stop offering to declare what it already has.
+  const canSplit = !c.splitRequested
+    && c.totalToShip > 0 && c.totalToShip + totalShipped < totalUnits
 
   /**
    * Record what the parcels are going to be. The fee or credit follows on its
@@ -713,17 +720,32 @@ function CustomerCard({
             held unit whose siblings haven't arrived would be stranded with no
             checkbox, Ship, or Release control. */}
         {/* A partly-arrived card is not a split — it is a card that could
-            become one, and most never do. Nothing is priced until somebody
-            declares the intent, so waiting for the rest stays silent and free.
+            become one, and most never do. Nothing is priced until Split Ship
+            declares it, so waiting for the rest stays silent and free.
 
-            The fee is no longer a button of its own. It follows the plan, and
-            the ordinary payment gate holds the parcel until she settles it —
-            which is what the shop asked for: paid before the box goes. */}
+            Once declared the card moves to Kirim Duluan and this strip becomes
+            the running total: what the second parcel costs, and whether it has
+            been settled. The fee is never a button of its own — it follows the
+            plan, and the payment gate holds the box until she pays. */}
         {(canSplit || c.splitRequested) && (
           <div className="px-5 py-2.5 border-b border-cream-border bg-blue-50/60 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
             <span className="text-blue-800 font-medium">
               {c.splitRequested ? "Kirim duluan — sisanya menyusul" : "Sebagian sudah tiba"}
             </span>
+            {/* Before it is declared, say what declaring would cost. Pressing
+                Split Ship should not be the first time a fee is mentioned. */}
+            {!c.splitRequested && (
+              c.splitExtraOngkir > 0 ? (
+                <span className="text-muted-strong">
+                  Split Ship menambah ongkir{" "}
+                  <span className="tabular-nums font-semibold text-foreground">
+                    Rp {c.splitExtraOngkir.toLocaleString("id-ID")}
+                  </span>
+                </span>
+              ) : (
+                <span className="text-muted-strong">Split Ship tidak menambah ongkir — pembulatan berat menutupinya</span>
+              )
+            )}
             {c.splitRequested && (
               c.splitExtraOngkir > 0 ? (
                 <span className="text-muted-strong">
@@ -747,18 +769,20 @@ function CustomerCard({
                 Lunas — siap dikirim
               </span>
             )}
-            <button
-              type="button"
-              onClick={() => postPlan(c.splitRequested ? "unsplit" : "split", [c.event])}
-              disabled={splitBusy}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-50 transition-colors ${
-                c.splitRequested
-                  ? "border border-blue-300 text-blue-800 hover:bg-blue-100"
-                  : "bg-blue-600 text-white hover:bg-blue-700"
-              }`}
-            >
-              {splitBusy ? "…" : c.splitRequested ? "Batalkan" : "Kirim duluan"}
-            </button>
+            {/* Only a way back. Going forward is the Ship button's job — a
+                second control for the same act is what made this card
+                confusing, since Ship already sent part of an order and simply
+                never charged for it. */}
+            {c.splitRequested && (
+              <button
+                type="button"
+                onClick={() => postPlan("unsplit", [c.event])}
+                disabled={splitBusy}
+                className="px-3 py-1.5 rounded-lg border border-blue-300 text-blue-800 text-xs font-medium hover:bg-blue-100 disabled:opacity-50 transition-colors"
+              >
+                {splitBusy ? "…" : "Batalkan kirim duluan"}
+              </button>
+            )}
           </div>
         )}
 
@@ -773,14 +797,64 @@ function CustomerCard({
             </span>
             <span className="text-muted-strong">Digabung jadi satu box, ongkirnya dihitung sekali</span>
             <span className="flex-1" />
-            <button
-              type="button"
-              onClick={() => postPlan("merge", [c.event, ...otherEvents])}
-              disabled={splitBusy}
-              className="px-3 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-medium hover:bg-purple-700 disabled:opacity-50 transition-colors"
-            >
-              {splitBusy ? "…" : "Gabung jadi 1 box"}
-            </button>
+            {/* One other trip is not a choice — merging is the only thing the
+                button could mean, so it just does it. With two or more, which
+                ones share the box is the shop's decision and asking is the
+                only honest option. */}
+            {otherEvents.length === 1 || mergePick === null ? (
+              <button
+                type="button"
+                onClick={() => (otherEvents.length === 1
+                  ? postPlan("merge", [c.event, otherEvents[0]])
+                  : setMergePick(new Set(otherEvents)))}
+                disabled={splitBusy}
+                className="px-3 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-medium hover:bg-purple-700 disabled:opacity-50 transition-colors"
+              >
+                {splitBusy ? "…" : otherEvents.length === 1 ? "Gabung jadi 1 box" : "Pilih trip untuk digabung…"}
+              </button>
+            ) : (
+              <div className="w-full flex flex-col gap-2 pt-1">
+                <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                  {otherEvents.map((ev) => (
+                    <label key={ev} className="inline-flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={mergePick.has(ev)}
+                        onChange={() => {
+                          const next = new Set(mergePick)
+                          if (next.has(ev)) next.delete(ev)
+                          else next.add(ev)
+                          setMergePick(next)
+                        }}
+                        className="accent-purple-600"
+                      />
+                      <span className="text-muted-strong">{ev}</span>
+                    </label>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-purple-800">
+                    {c.event} + {mergePick.size} trip lain
+                  </span>
+                  <span className="flex-1" />
+                  <button
+                    type="button"
+                    onClick={() => setMergePick(null)}
+                    className="px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-xs font-medium hover:bg-surface-muted transition-colors"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => postPlan("merge", [c.event, ...mergePick])}
+                    disabled={splitBusy || mergePick.size === 0}
+                    className="px-3 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-medium hover:bg-purple-700 disabled:opacity-50 transition-colors"
+                  >
+                    {splitBusy ? "…" : `Gabung ${mergePick.size + 1} trip`}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
         {splitError && (
@@ -800,13 +874,28 @@ function CustomerCard({
                   >
                     {holdBusy ? "…" : "Hold"}
                   </button>
+                  {/* Two acts, two names, two places. Sending part of an order
+                      is a decision — it commits the shop to a second trip to
+                      the courier and, where the rounding does not absorb it,
+                      the customer to a second fee. So the partly-arrived card
+                      declares it, and the card moves to Kirim Duluan where a
+                      plain Ship sends it.
+
+                      One button doing both, changing meaning by context, is
+                      what this replaced. */}
                   <button
                     type="button"
-                    onClick={() => setConfirming(true)}
-                    disabled={holdBusy}
+                    onClick={() => (canSplit ? postPlan("split", [c.event]) : setConfirming(true))}
+                    // A declared split whose fee is unpaid holds the parcel.
+                    // That is the whole order of events the shop asked for:
+                    // she settles the extra ongkir, then the box goes.
+                    disabled={holdBusy || splitBusy || (c.splitRequested && !paymentClear)}
+                    title={c.splitRequested && !paymentClear
+                      ? "Menunggu pembayaran ongkir tambahan"
+                      : undefined}
                     className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors inline-flex items-center gap-1.5"
                   >
-                    Ship
+                    {splitBusy ? "…" : canSplit ? "Split Ship" : "Ship"}
                     {/* Count lives in the button instead of a stacked
                         "N / to ship" block below it — that block forced every
                         card header to be three rows tall, leaving a big empty
