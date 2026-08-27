@@ -1,5 +1,5 @@
 import sql from "../db-pool"
-import type { DBExecutor } from "./actor"
+import { withActor, type DBExecutor } from "./actor"
 import { normalizeId, parcelPlanExtra } from "./helpers"
 import { sendInvoiceNotice } from "./notices"
 import { fillNotice, NOTICE_TEMPLATES } from "../notice-templates"
@@ -168,4 +168,76 @@ export async function reconcileParcelPlan(
     if (existing.amount !== wanted.amount) await announce(event, customer, wanted, db)
   }
   return wanted
+}
+
+/**
+ * What the courier actually charged for a parcel, when it disagreed with the
+ * estimate.
+ *
+ * NULL means it did not — most parcels — and nothing is recorded. A weight
+ * equal to the estimate is the same thing said differently, and is stored
+ * without producing a row.
+ *
+ * The difference is its own adjustment rather than an edit to the split fee.
+ * They answer different questions — what splitting cost, and what the estimate
+ * missed — and folded into one number, a change in either would be
+ * indistinguishable.
+ */
+export async function recordChargedWeight(
+  shipmentId: number,
+  chargedKg: number | null,
+  actor?: string | null,
+): Promise<void> {
+  await withActor(actor ?? null, async (tx) => {
+    const [s] = (await tx`
+      UPDATE shipments SET weight_charged = ${chargedKg}, updated_at = NOW()
+       WHERE id = ${shipmentId}
+      RETURNING event, customer, weight_estimation::int AS estimated, ongkir::int AS rate
+    `) as unknown as { event: string; customer: string; estimated: number; rate: number }[]
+    if (!s) throw new Error("Shipment not found")
+
+    const difference = chargedKg === null ? 0 : (chargedKg - s.estimated)
+    const amount = difference * s.rate
+
+    const [existing] = (await tx`
+      SELECT id, amount::int AS amount FROM adjustments
+       WHERE event = ${s.event} AND customer = ${s.customer}
+         AND auto AND description LIKE 'Selisih ongkir JNE%'
+       ORDER BY id LIMIT 1
+    `) as unknown as { id: number; amount: number }[]
+
+    if (amount === 0) {
+      if (existing) await tx`DELETE FROM adjustments WHERE id = ${existing.id}`
+      return
+    }
+
+    const description = `Selisih ongkir JNE (${s.estimated} kg → ${chargedKg} kg)`
+    if (existing) {
+      if (existing.amount === amount) return
+      await tx`
+        UPDATE adjustments SET description = ${description}, amount = ${amount}, updated_at = NOW()
+         WHERE id = ${existing.id}`
+    } else {
+      await tx`
+        INSERT INTO adjustments (event, customer, description, amount, auto)
+        VALUES (${s.event}, ${s.customer}, ${description}, ${amount}, true)`
+    }
+
+    // Same rule as every other automatic change, and it matters more here:
+    // this one lands after her parcel has already left.
+    const template = NOTICE_TEMPLATES.find((t) => t.key === "inbox_ongkir_reweighed")!
+    const tokens = {
+      "{event}": s.event,
+      "{customer}": s.customer,
+      "{amount}": rupiah(amount),
+      "{chargedKg}": String(chargedKg),
+      "{estimatedKg}": String(s.estimated),
+    }
+    await sendInvoiceNotice({
+      event: s.event,
+      customer: s.customer,
+      title: fillNotice(template.title, tokens),
+      body: fillNotice(template.body, tokens),
+    }, tx)
+  })
 }

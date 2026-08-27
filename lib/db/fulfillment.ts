@@ -880,7 +880,7 @@ export async function getShippingRecords(sinceDays?: number | null): Promise<Shi
   const rows = await sql`
     SELECT s.id, s.event, s.customer, c.name AS customer_name,
            s.shipping_id, s.invoicing,
-           s.weight_estimation, s.ongkir, s.ongkir_total, s.is_last_shipment,
+           s.weight_estimation, s.weight_charged, s.ongkir, s.ongkir_total, s.is_last_shipment,
            s.created_at, s.updated_at, s.tracking_number, s.merge_group, s.temp_address
     FROM shipments s
     LEFT JOIN customers c ON c.instagram_id = s.customer
@@ -896,6 +896,7 @@ export async function getShippingRecords(sinceDays?: number | null): Promise<Shi
     shippingId: String(r.shipping_id).padStart(4, "0"),
     invoicing: r.invoicing ?? "",
     weightEstimation: Number(r.weight_estimation) || 0,
+    weightCharged: r.weight_charged == null ? null : Number(r.weight_charged),
     ongkir: r.ongkir ?? 0,
     ongkirTotal: r.ongkir_total ?? 0,
     isLastShipment: r.is_last_shipment ?? false,

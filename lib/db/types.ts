@@ -464,6 +464,12 @@ export interface ShippingRecord {
   shippingId: string
   invoicing: string
   weightEstimation: number
+  /**
+   * Kilos the courier actually billed, when that differed from the estimate.
+   * Null means it did not, which is most parcels — and is what the row's
+   * corrected-weight marker keys off.
+   */
+  weightCharged: number | null
   ongkir: number
   ongkirTotal: number
   isLastShipment: boolean
