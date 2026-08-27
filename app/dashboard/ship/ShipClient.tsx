@@ -21,16 +21,20 @@ import { buildShipmentConfirmMessage } from "@/lib/shipment-message"
 
 type Segment = ShipSegment
 
+// In the order a packing day is worked: what can go now, then the plans that
+// are running, then what is blocked, then what is only waiting, and the
+// finished and the whole lot at the end. The tab this opens on is the first
+// one for the same reason.
 const SEGMENTS: { id: Segment; label: string }[] = [
-  { id: "all", label: "Semua" },
-  { id: "not_arrived", label: "Belum Tiba" },
-  { id: "partial", label: "Tiba Sebagian" },
+  { id: "ready", label: "Siap Kirim" },
   { id: "split_requested", label: "Kirim Duluan" },
   { id: "paired", label: "Gabung" },
   { id: "ready_unpaid", label: "Belum Bayar" },
-  { id: "ready", label: "Siap Kirim" },
   { id: "hold", label: "Tunda Kirim" },
+  { id: "partial", label: "Tiba Sebagian" },
+  { id: "not_arrived", label: "Belum Tiba" },
   { id: "shipped", label: "Sudah Dikirim" },
+  { id: "all", label: "Semua" },
 ]
 
 // Per-line hold marker. Icon rather than a "Hold" pill so it doesn't compete
