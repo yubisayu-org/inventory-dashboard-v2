@@ -465,7 +465,7 @@ function ExpandedInvoice({
                   title="Batalkan seluruh pesanan customer ini di trip ini"
                   className="text-[11px] font-medium text-muted hover:text-red-600 transition-colors whitespace-nowrap"
                 >
-                  Batalkan semua
+                  Cancel
                 </button>
               </th>
             )}
