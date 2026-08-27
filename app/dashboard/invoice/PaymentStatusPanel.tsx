@@ -405,19 +405,19 @@ function ExpandedInvoice({
   }, [customer, cache])
 
   if (error) {
-    return <div className="px-6 py-4 bg-cream text-sm text-red-500">{error}</div>
+    return <div className="px-6 py-4 text-sm text-red-500">{error}</div>
   }
   if (!result) {
-    return <div className="px-6 py-4 bg-cream text-sm text-faint">Loading invoice…</div>
+    return <div className="px-6 py-4 text-sm text-faint">Loading invoice…</div>
   }
 
   const ev = result.events.find((e) => e.eventId === event)
   if (!ev) {
-    return <div className="px-6 py-4 bg-cream text-sm text-faint">No invoice found for {event}.</div>
+    return <div className="px-6 py-4 text-sm text-faint">No invoice found for {event}.</div>
   }
 
   return (
-    <div className="bg-cream">
+    <div>
       {/* Order lines */}
       <table className="w-full text-sm">
         <thead>
