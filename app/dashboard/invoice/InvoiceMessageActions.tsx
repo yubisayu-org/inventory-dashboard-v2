@@ -57,7 +57,7 @@ export function InvoiceMessageActions({
           title="Send a notice on the catalogue"
           className="shrink-0 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 transition-colors"
         >
-          Tell them…
+          Send notice
         </button>
       )}
       <button
