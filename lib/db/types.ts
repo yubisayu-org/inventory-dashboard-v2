@@ -153,6 +153,9 @@ export interface InvoiceOrderLine {
   // Units purchased for this line — how many can return to Inventory on a
   // customer cancellation (0 when not yet bought).
   unitBuy: number
+  // Units already sent. A line whose parcel has gone cannot be cancelled: the
+  // journey happened, and what is owed for it is a refund's business.
+  unitShip: number
 }
 
 export interface InvoiceShipment {

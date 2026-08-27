@@ -8,6 +8,7 @@ import InvoiceSummary from "@/components/InvoiceSummary"
 import { CustomerInfoModal } from "./CustomerInfoModal"
 import { InvoiceMessageActions } from "./InvoiceMessageActions"
 import { CancelOrderFromInvoiceModal } from "./CancelOrderFromInvoiceModal"
+import { CancelWholeOrderModal } from "./CancelWholeOrderModal"
 import { AddAdjustmentFromInvoiceModal } from "./AddAdjustmentFromInvoiceModal"
 
 export function EventCard({
@@ -23,6 +24,7 @@ export function EventCard({
 }) {
   const [infoOpen, setInfoOpen] = useState(false)
   const [cancelLine, setCancelLine] = useState<InvoiceOrderLine | null>(null)
+  const [cancelAll, setCancelAll] = useState(false)
   const [addAdjOpen, setAddAdjOpen] = useState(false)
   const { eta, status, shipments, showShipments, orders, totals } = event
   const { widths, startResize } = useResizableColumns({ order: 220, unit: 60, price: 100, subtotal: 100, ready: 60, refund: 56 })
@@ -56,6 +58,18 @@ export function EventCard({
           <div className="flex flex-wrap items-center gap-2 text-sm text-white">
             <span className="font-medium">{event.eventId}</span>
             {eta && <span className="text-white/70">• {eta}</span>}
+            <span className="flex-1" />
+            {/* The whole order at once, for a customer who has gone quiet.
+                Cancelling her five lines one at a time is five confirmations
+                and a half-cancelled order if anything interrupts. */}
+            <button
+              type="button"
+              onClick={() => setCancelAll(true)}
+              title="Batalkan seluruh pesanan customer ini di trip ini"
+              className="text-white/60 hover:text-white text-xs font-medium transition-colors"
+            >
+              Batalkan semua
+            </button>
           </div>
           {status && (
             <div className="text-xs text-white/80">
@@ -199,6 +213,15 @@ export function EventCard({
 
       {/* Invoice summary */}
       <InvoiceSummary event={event} actions={<InvoiceMessageActions event={event} whatsapp={customerDetail?.whatsapp} customer={customer} />} />
+
+      {cancelAll && (
+        <CancelWholeOrderModal
+          event={event}
+          customer={customer}
+          onClose={() => setCancelAll(false)}
+          onCancelled={() => { setCancelAll(false); onMutated?.() }}
+        />
+      )}
 
       {/* Cancel-order modal — customer backed out of this line */}
       {cancelLine && (
