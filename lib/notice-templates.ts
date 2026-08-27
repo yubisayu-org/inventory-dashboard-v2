@@ -146,6 +146,12 @@ export interface RefundCause {
    * that leaves the order still claiming units nobody will receive.
    */
   fromMark?: boolean
+  /**
+   * Kept so refunds already carrying it still read properly, and not offered
+   * for new ones. A reason nobody can choose is one nobody has to interpret
+   * later.
+   */
+  retired?: boolean
   /** Wording for when nobody recorded what turned up. */
   lineWithout?: string
   /**
@@ -250,13 +256,21 @@ export const REFUND_CAUSES: RefundCause[] = [
     line: "A goodwill refund from us on {event}.",
     waLine: "Sebagai bentuk permohonan maaf kami atas ketidaknyamanan yang terjadi.",
   },
-  // No sentence of its own: a catch-all that invented an explanation would be
-  // guessing at one. The amount and the request for bank details still stand.
-  { key: "other", label: "Something else", line: "", waLine: "Terdapat penyesuaian pada pesanan Anda." },
+  // Retired. Everything it was reached for turned out to have a name: money
+  // she paid that she should not have is an overpayment however it arose, and
+  // a gesture is goodwill. A catch-all with no sentence of its own left the
+  // customer a refund that explained nothing, and left the shop guessing six
+  // weeks later at what it had been for.
+  //
+  // Still here because old refunds carry it and have to keep reading properly.
+  { key: "other", label: "Something else", retired: true, line: "", waLine: "Terdapat penyesuaian pada pesanan Anda." },
 ]
 
 /** The reasons nobody can mark — what is left for a person to decide. */
-export const MANUAL_REFUND_CAUSES = REFUND_CAUSES.filter((c) => !c.fromMark)
+export const MANUAL_REFUND_CAUSES = REFUND_CAUSES.filter((c) => !c.fromMark && !c.retired)
+
+/** Everything still offered anywhere, marks included. */
+export const OFFERED_REFUND_CAUSES = REFUND_CAUSES.filter((c) => !c.retired)
 
 export const NOTICE_TOKENS = [
   "{customer}",
