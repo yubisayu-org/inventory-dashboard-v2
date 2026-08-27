@@ -11,6 +11,8 @@ import { AddAdjustmentFromInvoiceModal } from "./AddAdjustmentFromInvoiceModal"
 import { InvoiceMessageActions } from "./InvoiceMessageActions"
 import { CancelOrderFromInvoiceModal } from "./CancelOrderFromInvoiceModal"
 import { CancelWholeOrderModal } from "./CancelWholeOrderModal"
+import { HitAndRunFlag } from "@/components/HitAndRunFlag"
+import { useHitAndRun, handleKey } from "@/hooks/useHitAndRun"
 
 // ─── Payment Status Panel ────────────────────────────────────────────────────
 
@@ -53,12 +55,15 @@ export function PaymentStatusPanel({
   // Per-customer invoice cache for expanded rows — one fetch covers every
   // event row of that customer; cleared on refresh so amounts stay current.
   const invoiceCache = useRef(new Map<string, InvoiceResult>())
+  // One fetch for the whole page; every row reads from it.
+  const { marks, refresh: refreshMarks } = useHitAndRun()
 
   // Fetch every event's payment status once; the event picker filters client-side.
   const fetchRows = useCallback(async () => {
     setLoading(true)
     setError(null)
     invoiceCache.current.clear()
+    refreshMarks()
     try {
       const res = await fetch(`/api/sheets/invoice/payment-status`, { cache: "no-store" })
       const data = await res.json()
@@ -70,7 +75,7 @@ export function PaymentStatusPanel({
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [refreshMarks])
 
   useEffect(() => { fetchRows() }, [fetchRows])
 
@@ -128,13 +133,16 @@ export function PaymentStatusPanel({
       size: 160,
       filterFn: "textContains",
       cell: ({ row }) => (
-        <button
-          type="button"
-          onClick={() => onOpenCustomer(row.original.customer)}
-          className="font-medium text-foreground hover:text-brand transition-colors text-left"
-        >
-          {displayIg(row.original.customer)}
-        </button>
+        <span className="flex items-center gap-1.5 min-w-0">
+          <button
+            type="button"
+            onClick={() => onOpenCustomer(row.original.customer)}
+            className="font-medium text-foreground hover:text-brand transition-colors text-left truncate"
+          >
+            {displayIg(row.original.customer)}
+          </button>
+          <HitAndRunFlag stamps={marks.get(handleKey(row.original.customer))} />
+        </span>
       ),
     },
     {
@@ -205,7 +213,7 @@ export function PaymentStatusPanel({
         </div>
       ),
     },
-  ], [onOpenCustomer])
+  ], [onOpenCustomer, marks])
 
   const tabs: { key: StatusFilter; label: string; count: number }[] = [
     { key: "all", label: "All", count: rows.length },

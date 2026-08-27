@@ -16,6 +16,7 @@ import DataGrid, {
   type PaginationState,
   type RowSelectionState,
 } from "@/components/DataGrid"
+import { useHitAndRun, handleKey } from "@/hooks/useHitAndRun"
 import SearchableSelect from "@/components/SearchableSelect"
 import SearchInput from "@/components/SearchInput"
 import EventSelect from "@/components/EventSelect"
@@ -1331,6 +1332,10 @@ function AddOrderForm({ options, onOrderAdded, onCancel }: {
   // several items, the item when entering one item's several customers.
   const [mode, setMode] = useState<OrderFormMode>("byCustomer")
   const [customer, setCustomer] = useState("")
+  // Whether anybody named on this form has walked away from an order before.
+  // Fetched once for the form, not per line: the same answer serves every name
+  // on it, and asking per line would turn one scan into one per row.
+  const { marks } = useHitAndRun()
   const [fixedItem, setFixedItem] = useState("")
   const [lines, setLines] = useState([newAddLine()])
   const byItem = mode === "byItem"
@@ -1350,6 +1355,23 @@ function AddOrderForm({ options, onOrderAdded, onCancel }: {
     })),
     [options],
   )
+
+  // Names on this form that carry a mark. One row per person however many
+  // lines they occupy -- the warning is about her, not about a line.
+  const flagged = useMemo(() => {
+    const names = byItem ? lines.map((l) => l.customer) : [customer]
+    const seen = new Set<string>()
+    const out: { who: string; stamps: string[] }[] = []
+    for (const name of names) {
+      const key = handleKey(name ?? "")
+      if (!key || seen.has(key)) continue
+      const stamps = marks.get(key)
+      if (!stamps?.length) continue
+      seen.add(key)
+      out.push({ who: name, stamps })
+    }
+    return out
+  }, [byItem, lines, customer, marks])
 
   function updateLine(id: number, field: "productId" | "customer" | "unit" | "note", value: string) {
     setLines((prev) => prev.map((l) => l.id === id ? { ...l, [field]: value } : l))
@@ -1459,6 +1481,20 @@ function AddOrderForm({ options, onOrderAdded, onCancel }: {
           )}
         </div>
       </div>
+
+      {flagged.length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 flex items-start gap-2.5">
+          <span className="text-amber-700 text-sm leading-none mt-0.5">⚑</span>
+          <div className="text-xs text-muted-strong">
+            {flagged.map(({ who, stamps }) => (
+              <div key={who}>
+                <b className="text-foreground">{displayIg(who)}</b> pernah kabur —{" "}
+                {stamps.join(", ")}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div>
         <div className="flex items-center justify-between mb-2">

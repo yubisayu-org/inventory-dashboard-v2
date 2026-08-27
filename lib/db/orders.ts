@@ -1069,7 +1069,12 @@ export async function recordCustomerCancellation(
  * path the Arrival List uses (which always zeroes both fields outright).
  */
 export async function cancelOrderUnits(
-  data: { orderId: number; qty: number; event: string; productName: string; receipt?: string },
+  data: {
+    orderId: number; qty: number; event: string; productName: string; receipt?: string
+    /** Stamped onto the line's note, appended behind whatever is already
+     *  there. The note she was ordering against is why the line exists. */
+    stamp?: string
+  },
   db: DBExecutor = sql,
 ): Promise<{ excessUnits: number; remainingUnit: number }> {
   const [order] = await db`
@@ -1107,6 +1112,18 @@ export async function cancelOrderUnits(
         unit_dispatch = LEAST(COALESCE(unit_dispatch, 0), ${remainingUnitBuy}), updated_at = NOW()
     WHERE id = ${data.orderId}
   `
+
+  // Appended, never replacing, and never twice: cancelling the rest of a line
+  // that was already stamped would otherwise say it again.
+  const stamp = data.stamp?.trim()
+  if (stamp) {
+    await db`
+      UPDATE orders
+      SET note = CASE WHEN note = '' THEN ${stamp} ELSE note || ' · ' || ${stamp} END,
+          updated_at = NOW()
+      WHERE id = ${data.orderId} AND position(${stamp} in note) = 0
+    `
+  }
 
   return { excessUnits, remainingUnit }
 }

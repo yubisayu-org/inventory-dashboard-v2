@@ -4,6 +4,7 @@ import { useState } from "react"
 import type { InvoiceEvent } from "@/lib/db"
 import { displayIg } from "@/lib/format"
 import { useModalDismiss } from "@/hooks/useModalDismiss"
+import { hitAndRunStamp } from "@/lib/hit-and-run"
 
 /**
  * Cancel everything this customer ordered on one trip.
@@ -35,10 +36,21 @@ export function CancelWholeOrderModal({
   const cancellable = event.orders.filter((o) => o.unit > 0 && o.unitShip < o.unit)
   const alreadyGone = event.orders.filter((o) => o.unitShip > 0)
 
+  // What she walked away owing: her invoice less anything she had already
+  // transferred. Not what the cancelled lines were worth -- money she did send
+  // is a refund owed to her, not a loss, and it surfaces in To check on its
+  // own.
+  const unpaid = Math.max(0, event.invoice.sisaPelunasan)
+
   const [receipt, setReceipt] = useState(customer)
+  // Stamped onto every line this cancels, so the next time she orders the note
+  // says which trip and how much. Editable, and skippable for a cancellation
+  // that was the shop's own doing rather than hers.
+  const [markHer, setMarkHer] = useState(true)
+  const [stamp, setStamp] = useState(hitAndRunStamp(event.eventId, unpaid))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [done, setDone] = useState<{ lines: number; returned: number } | null>(null)
+  const [done, setDone] = useState<{ lines: number; returned: number; marked: boolean } | null>(null)
 
   const returning = cancellable.reduce(
     (n, o) => n + Math.max(0, Math.min(o.unit - o.unitShip, o.unitBuy - o.unitShip)), 0)
@@ -64,13 +76,14 @@ export function CancelWholeOrderModal({
             orderId: o.orderId,
             qty: o.unit - o.unitShip,
             receipt,
+            stamp: markHer ? stamp.trim() : undefined,
           }),
         })
         const data = await res.json()
         if (!res.ok) throw new Error(data.error ?? `Gagal membatalkan ${o.productName}`)
         returned += typeof data.excessUnits === "number" ? data.excessUnits : 0
       }
-      setDone({ lines: cancellable.length, returned })
+      setDone({ lines: cancellable.length, returned, marked: markHer && stamp.trim().length > 0 })
     } catch (err) {
       setError(err instanceof Error ? err.message : "Gagal membatalkan pesanan")
       setSaving(false)
@@ -92,6 +105,11 @@ export function CancelWholeOrderModal({
                 ? ` ${done.returned} unit yang sudah dibeli masuk ke Inventory.`
                 : " Tidak ada unit yang perlu dikembalikan ke Inventory."}
             </p>
+            {done.marked && (
+              <p className="text-xs text-amber-700">
+                ⚑ Ditandai di catatan pesanannya — akan muncul lagi kalau dia pesan lain kali.
+              </p>
+            )}
             <p className="text-xs text-faint">
               Kalau dia sudah membayar, kelebihannya muncul di tab <b>To check</b> pada halaman Refunds.
             </p>
@@ -153,6 +171,32 @@ export function CancelWholeOrderModal({
                     className="w-full px-3 py-2 rounded-lg border border-cream-border text-sm"
                   />
                 </label>
+
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 flex flex-col gap-1.5">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+                    ⚑ Ditempel di catatan tiap baris
+                  </span>
+                  <input
+                    value={stamp}
+                    onChange={(e) => setStamp(e.target.value)}
+                    disabled={saving || !markHer}
+                    className="w-full px-3 py-2 rounded-lg border border-amber-200 bg-white text-sm disabled:opacity-50"
+                  />
+                  <label className="flex items-center gap-2 text-xs text-muted-strong">
+                    <input
+                      type="checkbox"
+                      checked={markHer}
+                      onChange={(e) => setMarkHer(e.target.checked)}
+                      disabled={saving}
+                      className="accent-brand"
+                    />
+                    Tandai customer ini
+                    <span className="text-faint">— matikan kalau ini kesalahan sendiri</span>
+                  </label>
+                  <span className="text-[11px] text-faint">
+                    Tagihan {rp(event.invoice.total)} − dibayar {rp(event.invoice.pembayaran)} = {rp(unpaid)}
+                  </span>
+                </div>
 
                 <p className="text-xs text-muted-strong">
                   {returning > 0
