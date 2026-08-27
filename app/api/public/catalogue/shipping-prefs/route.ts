@@ -3,6 +3,7 @@ import { customerFromRequest } from "@/lib/catalogue-bearer"
 import { corsHeaders, privateHeaders } from "@/lib/catalogue-cors"
 import {
   getShippingPrefs,
+  ineligibleReason,
   setShippingMode,
   setMergeGroup,
   setTempAddress,
@@ -28,7 +29,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401, headers: privateHeaders() })
   }
   try {
-    return NextResponse.json({ prefs: await getShippingPrefs(customer.id) }, { headers: privateHeaders() })
+    // Each pref carries why it can no longer be changed, if it cannot.
+    //
+    // The write side has always refused a shipped trip; without saying so on
+    // the read side, her page shows buttons that only fail when pressed. She
+    // cannot tell a choice she is allowed to make from one she is not.
+    const prefs = await getShippingPrefs(customer.id)
+    const locked = await Promise.all(
+      prefs.map((p) => ineligibleReason(customer.id, p.event)),
+    )
+    return NextResponse.json(
+      { prefs: prefs.map((p, i) => ({ ...p, lockedBecause: locked[i] })) },
+      { headers: privateHeaders() },
+    )
   } catch (err) {
     console.error("Failed to load shipping prefs:", err)
     return NextResponse.json({ error: "Failed to load" }, { status: 500, headers: corsHeaders() })
