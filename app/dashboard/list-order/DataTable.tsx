@@ -1524,7 +1524,7 @@ function AddOrderForm({ options, onOrderAdded, onCancel }: {
       <div>
         <div className="flex items-center justify-between mb-2">
           <span className={LABEL + " mb-0"}>
-            {byItem ? "Customers" : "Items"} <span className="text-brand">*</span>
+            {byItem ? "Customer(s)" : "Item(s)"} <span className="text-brand">*</span>
           </span>
           <button type="button" onClick={addLine} className="text-xs text-brand hover:underline">
             + Add {byItem ? "customer" : "item"}
@@ -1536,7 +1536,7 @@ function AddOrderForm({ options, onOrderAdded, onCancel }: {
             the remove sits at the end of the row it removes. */}
         <div className="space-y-2">
           <div className="hidden sm:grid grid-cols-[1fr_auto_auto_auto] gap-3">
-            <span className={LABEL + " mb-0"}>{byItem ? "Customer" : "Item"}</span>
+            <span />
             <span className={LABEL + " mb-0 w-24"}>Qty</span>
             <span className={LABEL + " mb-0 w-32"}>Note</span>
             <span className="w-5" />
