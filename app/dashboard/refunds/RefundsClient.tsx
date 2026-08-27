@@ -28,6 +28,7 @@ const REASON_LABELS: Record<string, string> = {
   shipping_loss: "Lost in Shipping",
   damaged: "Damaged",
   goodwill: "Goodwill",
+  quality: "Quality",
   other: "Other",
 }
 
@@ -782,7 +783,7 @@ function CreateRefundCard({
           refund: {
             cause: form.reason,
             amount: Number(form.refundAmount),
-            items: form.note.trim(),
+            items: pickedItems || form.note.trim(),
           },
         }),
       })
@@ -936,12 +937,14 @@ function CreateRefundCard({
         </div>
       )}
 
-      <label className="flex flex-col gap-1">
-        <span className="text-xs font-medium text-muted">
-          What it is for <span className="font-normal text-faint">(shown in the notice)</span>
-        </span>
-        <textarea {...field("note")} disabled={saving} rows={2} placeholder="mis. keterlambatan 3 minggu" className={`${INPUT_CLASS} w-full resize-none`} />
-      </label>
+      {!needsLines && (
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-muted">
+            What it is for <span className="font-normal text-faint">(shown in the notice)</span>
+          </span>
+          <textarea {...field("note")} disabled={saving} rows={2} placeholder="mis. keterlambatan 3 minggu" className={`${INPUT_CLASS} w-full resize-none`} />
+        </label>
+      )}
 
       {/* Shown before it goes, because it goes: a refund made here now sends
           the customer the same notice a marked one does. */}
@@ -961,7 +964,7 @@ function CreateRefundCard({
         <button type="button" onClick={onClose} disabled={saving} className="px-4 py-2 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
           Cancel
         </button>
-        <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors">
+        <button type="submit" disabled={saving || (needsLines && pickedTotal <= 0)} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors">
           {saving ? "Mengirim…" : "Create & send notice"}
         </button>
       </div>
