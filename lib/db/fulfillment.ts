@@ -164,7 +164,11 @@ function buildShipGroups(
       requestedAddress: addressMap.get(`${customerKey}|${event}`)?.address ?? null,
       requestedOtherArea: addressMap.get(`${customerKey}|${event}`)?.otherArea ?? false,
       splitRequested: askedSplit,
-      splitExtraOngkir: askedSplit ? splitExtraOngkir(orders, ongkirPerKg) : 0,
+      // Priced whether or not a split has been declared. Before, this was zero
+      // until somebody committed — so the Split Ship button, whose whole job is
+      // to say what pressing it will cost, promised "tidak menambah ongkir" on
+      // every undeclared card, including the ones that cost a kilo.
+      splitExtraOngkir: splitExtraOngkir(orders, ongkirPerKg),
       splitCharged: splitBilled.has(`${customerKey}|${event}`),
       mergeKey,
       pairedWith: partners,
