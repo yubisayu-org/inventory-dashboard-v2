@@ -476,13 +476,13 @@ export default function DataGrid<T>({
                     className={`border-b border-cream-border transition-colors ${enableRowSelection && row.getIsSelected() ? "bg-brand-light/20" : "hover:bg-cream/30"} ${onRowClick ? "cursor-pointer" : ""} ${isExpanded ? "bg-cream/30" : ""} ${rowClassName?.(row.original) ?? ""}`}
                   >
                     {renderExpandedRow && (
-                      <td className="pl-3 pr-0 py-3 w-8">
+                      <td className="pl-3 pr-0 py-3">
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); setExpandedRows((prev) => ({ ...prev, [row.id]: !prev[row.id] })) }}
                           aria-label={isExpanded ? "Collapse row" : "Expand row"}
                           aria-expanded={isExpanded}
-                          className="p-[3px] text-faint hover:text-brand transition-colors rounded"
+                          className="p-1 text-faint hover:text-brand transition-colors rounded"
                         >
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform ${isExpanded ? "rotate-90" : ""}`}>
                             <path d="m9 18 6-6-6-6" />
@@ -512,7 +512,9 @@ export default function DataGrid<T>({
                   </tr>
                   {isExpanded && renderExpandedRow && (
                     <tr className="border-b border-cream-border">
-                      <td colSpan={table.getVisibleLeafColumns().length + 1 + (enableRowSelection ? 1 : 0)} className="p-0">
+                      <td className="p-0" />
+                      {enableRowSelection && <td className="p-0" />}
+                      <td colSpan={table.getVisibleLeafColumns().length} className="p-0">
                         {renderExpandedRow(row.original)}
                       </td>
                     </tr>
