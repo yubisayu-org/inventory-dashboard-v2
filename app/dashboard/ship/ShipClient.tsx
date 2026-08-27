@@ -200,11 +200,20 @@ export default function ShipClient() {
   const readyFiltered = groups.filter((c) => c.totalToShip > 0)
   const allSelected = readyFiltered.length > 0 && readyFiltered.every((c) => selected.has(`${c.customer}|${c.event}`))
 
-  // "Ship together" is offered whenever the selected cards are all one customer;
-  // the modal then fetches that customer's other shippable events to combine.
-  const selectedGroups = readyFiltered.filter((c) => selected.has(`${c.customer}|${c.event}`))
+  // Anything with units still to send can be picked, not only what is on the
+  // bench today. Pairing two trips that have not arrived at all is the case
+  // this exists for most: the boxes are planned together before either lands,
+  // and the ongkir is settled on the invoice she has yet to pay.
+  const unsentUnits = (c: ShipCustomer) => c.orders.reduce((n, o) => n + (o.unit - o.unitShip), 0)
+  const selectable = groups.filter((c) => unsentUnits(c) > 0)
+
+  // Combining is offered whenever the selected cards are all one customer; the
+  // modal then fetches that customer's other events to combine.
+  const selectedGroups = selectable.filter((c) => selected.has(`${c.customer}|${c.event}`))
   const mergeCustomers = new Set(selectedGroups.map((c) => normalizeId(c.customer)))
   const mergeEligible = selectedGroups.length >= 1 && mergeCustomers.size === 1
+  // Shipping, though, still needs something on the bench.
+  const selectedShippable = readyFiltered.filter((c) => selected.has(`${c.customer}|${c.event}`))
 
   function toggleSelect(key: string) {
     setSelected((prev) => {
@@ -391,7 +400,9 @@ export default function ShipClient() {
                     label: bulkShipping && bulkProgress ? `${bulkProgress.done}/${bulkProgress.total}` : "Ship",
                     color: "brand" as const,
                     onClick: () => setBulkConfirmOpen(true),
-                    disabled: bulkShipping,
+                    // Selecting a card with nothing arrived is now allowed, for
+                    // combining. Shipping it is not — there is no box.
+                    disabled: bulkShipping || selectedShippable.length === 0,
                     icon: (
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M22 2 11 13" /><path d="M22 2 15 22l-4-9-9-4 20-7z" />
@@ -418,7 +429,7 @@ export default function ShipClient() {
                 customer={c}
                 segment={segment}
                 isSelected={selected.has(key)}
-                onToggleSelect={c.totalToShip > 0 ? () => toggleSelect(key) : undefined}
+                onToggleSelect={unsentUnits(c) > 0 ? () => toggleSelect(key) : undefined}
                 onShipped={() => { setSegment("all"); refresh() }}
                 onRefresh={refresh}
                 onOpenInvoice={() => setInvoiceCustomer(c.customer)}
@@ -435,9 +446,9 @@ export default function ShipClient() {
         </>
       )}
 
-      {bulkConfirmOpen && selectedGroups.length > 0 && (
+      {bulkConfirmOpen && selectedShippable.length > 0 && (
         <BulkShipConfirmModal
-          groups={selectedGroups}
+          groups={selectedShippable}
           busy={bulkShipping}
           onClose={() => setBulkConfirmOpen(false)}
           onConfirm={() => { setBulkConfirmOpen(false); handleBulkShip() }}
