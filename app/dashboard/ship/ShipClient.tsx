@@ -751,8 +751,14 @@ function CustomerCard({
                     {holdBusy ? "…" : "Hold"}
                   </button>
                   {/* Between Hold and Ship, because that is the order the card
-                      is worked in: park it, undo the split, or send it. */}
-                  {c.splitRequested && (
+                      is worked in: park it, undo the split, or send it.
+
+                      Only while the box is still here. Once the early parcel
+                      has gone the split is not a plan any more, it is
+                      something that happened — there is nothing left to
+                      cancel, and a button offering to would be offering to
+                      unpick a journey. */}
+                  {c.splitRequested && totalShipped === 0 && (
                     <button
                       type="button"
                       onClick={() => postPlan("unsplit", [c.event])}

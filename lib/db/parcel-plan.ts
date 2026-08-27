@@ -65,6 +65,12 @@ async function announce(
  * Scoped to one customer: a reconcile triggered by one person's arrival must
  * never rewrite another's row.
  *
+ * What it cannot see: a parcel that has already gone. The orders it reads no
+ * longer contain it, so a plan declared after the first box has left prices
+ * only what is still pending. That under-charges rather than double-charges,
+ * and the fee written when the plan WAS declared is held by the in-flight rule
+ * below — which is the half that costs real money if it goes wrong.
+ *
  * Returns the row as it now stands, or null when the plan costs nothing.
  */
 export async function reconcileParcelPlan(
@@ -138,6 +144,21 @@ export async function reconcileParcelPlan(
   const partner = merged ? events.filter((e) => e !== event).sort()[0] ?? null : null
   const wanted = planAdjustment(extra, partner)
 
+  // Has any of this plan already travelled?
+  //
+  // A parcel that has gone was paid for at the price agreed when it was
+  // declared, and this function prices what is true now — where a shipped box
+  // no longer appears. So from the first shipment the figure may still rise, if
+  // the plan grew, but it may never fall: taking money back for a journey that
+  // happened is the one mistake here that cannot be undone by pressing the
+  // button again.
+  const [sent] = (await db`
+    SELECT COALESCE(SUM(unit_ship), 0)::int AS shipped
+      FROM orders
+     WHERE event = ANY(${events}) AND lower(replace(customer, '@', '')) = ${key}
+  `) as unknown as { shipped: number }[]
+  const inFlight = (sent?.shipped ?? 0) > 0
+
   // Only ever its own row. A description matching by accident is not enough —
   // see the test that plants one.
   const [existing] = (await db`
@@ -148,8 +169,12 @@ export async function reconcileParcelPlan(
   `) as unknown as { id: number; description: string; amount: number }[]
 
   if (!wanted) {
-    if (existing) await db`DELETE FROM adjustments WHERE id = ${existing.id}`
-    return null
+    // Nothing owed by today's arithmetic — but if a box has gone, today's
+    // arithmetic is not the whole story.
+    if (existing && !inFlight) await db`DELETE FROM adjustments WHERE id = ${existing.id}`
+    return existing && inFlight
+      ? { description: existing.description, amount: existing.amount }
+      : null
   }
   if (!existing) {
     await db`
@@ -157,6 +182,11 @@ export async function reconcileParcelPlan(
       VALUES (${event}, ${customer}, ${wanted.description}, ${wanted.amount}, true)`
     await announce(event, customer, wanted, db)
     return wanted
+  }
+  // Downwards is refused once a parcel has left; upwards is still allowed,
+  // because a plan that grew after the first box is genuinely owed more.
+  if (inFlight && wanted.amount < existing.amount) {
+    return { description: existing.description, amount: existing.amount }
   }
   if (existing.amount !== wanted.amount || existing.description !== wanted.description) {
     await db`
