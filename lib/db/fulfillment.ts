@@ -109,7 +109,11 @@ function buildShipGroups(
     const ongkirPerKg = ongkirMap.get(`${customerKey}|${event}`) ?? 0
 
     // Arrival-first status: compare arrived vs ordered units per line.
-    const anyArrived = orders.some((o) => o.unitArrive > 0)
+    // On the bench now, not ever. A unit that arrived and then left in an
+    // early parcel is not something waiting to be packed, and counting it kept
+    // a card in Tiba Sebagian with nothing on it to do — the work is waiting on
+    // the courier, which is what Belum Tiba means.
+    const anyArrived = orders.some((o) => o.unitArrive > o.unitShip)
     const allArrived = orders.every((o) => o.unitArrive >= o.unit)
     // Default "unpaid" when no payment row exists (e.g. a customer who never had
     // orders/payments tied to this event yet) — keeps physically-ready cards
