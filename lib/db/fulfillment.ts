@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto"
-import { refundForReduction, type MarkReduction } from "./mark-refunds"
+import { refundForReduction, invoiceTotalsNow, type MarkReduction } from "./mark-refunds"
+import { reconcileParcelPlan } from "./parcel-plan"
 import sql from "../db-pool"
 import { normalizeId, normalizeCustomer, tsToString, splitExtraOngkir, parcelPlanExtra } from "./helpers"
 import { allocateFifo } from "../fifo-fill"
@@ -119,10 +120,14 @@ function buildShipGroups(
     const paymentClear = paymentStatus === "paid" || paymentStatus === "overpaid" || paymentStatus === "void"
     // "hold" wins over ready/shipped when any unit is parked — the customer
     // asked to wait, so we surface that even if some other units already went out.
-    // She asked for the arrived part to go early. That outranks "partial",
-    // which is a card you skip — this one is a card with work on it.
-    // The wish, not its current effect: a parked card has no toShip, and it is
-    // still an order she asked to send early.
+    //
+    // A declared split outranks "partial", and does so whether or not there is
+    // anything on the bench today. The wish, not its current effect: once the
+    // early box has gone the card has no toShip and is still a split running —
+    // a fee is charged and a remainder is owed. Kirim Duluan is where that is
+    // tracked. Requiring toShip here scattered the leftovers into Tiba
+    // Sebagian, a tab that means "stock is here, decide", where they had
+    // nothing to decide.
     const askedSplit = splitAsked.has(`${customerKey}|${event}`)
     // A pairing outranks every other status: the pair is the unit of work, and
     // the Gabung tab is the only place it can be acted on. Being held is not a
@@ -137,7 +142,7 @@ function buildShipGroups(
     const status: ShipStatus = bundled ? "paired" : !anyArrived
       ? "not_arrived"
       : !allArrived
-        ? (totalHold > 0 ? "hold" : askedSplit && totalToShip > 0 ? "split_requested" : "partial")
+        ? (totalHold > 0 ? "hold" : askedSplit ? "split_requested" : "partial")
         : totalHold > 0
           ? "hold"
           : totalToShip > 0
@@ -159,7 +164,11 @@ function buildShipGroups(
       requestedAddress: addressMap.get(`${customerKey}|${event}`)?.address ?? null,
       requestedOtherArea: addressMap.get(`${customerKey}|${event}`)?.otherArea ?? false,
       splitRequested: askedSplit,
-      splitExtraOngkir: askedSplit ? splitExtraOngkir(orders, ongkirPerKg) : 0,
+      // Priced whether or not a split has been declared. Before, this was zero
+      // until somebody committed — so the Split Ship button, whose whole job is
+      // to say what pressing it will cost, promised "tidak menambah ongkir" on
+      // every undeclared card, including the ones that cost a kilo.
+      splitExtraOngkir: splitExtraOngkir(orders, ongkirPerKg),
       splitCharged: splitBilled.has(`${customerKey}|${event}`),
       mergeKey,
       pairedWith: partners,
@@ -620,26 +629,14 @@ export async function shipMergedCustomerOrders(params: ShipMergedParams, actor?:
       isPrimary = false
     }
 
-    // If the whole parcel plan was already priced and charged up front — which
-    // is what happens when she asks for an early box — then the saving is
-    // already inside that number. Crediting it again would pay her twice for
-    // the same rounding.
-    const [settled] = await tx<{ id: number }[]>`
-      SELECT id FROM adjustments
-       WHERE event = ANY(${events})
-         AND description = ${SPLIT_ONGKIR_NOTE}
-         AND lower(replace(customer, '@', '')) = ${custKey}
-       LIMIT 1`
-
-    if (discount > 0 && !settled) {
-      const normCust = normalizeCustomer(customer)
-      const others = groups.slice(1).map((g) => g.event).join(", ")
-      await tx`INSERT INTO customers (instagram_id) VALUES (${normCust}) ON CONFLICT (instagram_id) DO NOTHING`
-      await tx`
-        INSERT INTO adjustments (event, customer, description, amount)
-        VALUES (${groups[0].event}, ${normCust}, ${`Gabung ongkir dengan ${others}`}, ${-discount})
-      `
-    }
+    // The merge saving is not credited here any more. reconcileParcelPlan owns
+    // it, and priced it the moment the merge was recorded — which is earlier
+    // and better: she pays the right amount once, instead of paying for two
+    // parcels and being credited after one arrives.
+    //
+    // Two writers of the same credit, with the same wording, would have paid
+    // her the discount twice: the guard below only ever looked for the split
+    // fee, so it could not have seen the reconciler's row.
 
     // The pairing is spent only when the whole group has gone. She asked for
     // these to travel together, not to travel together once — so what is left
@@ -772,95 +769,6 @@ export async function reapplyHoldsForArrival(
   }
 }
 
-/**
- * Put the cost of sending early on her invoice, once.
- *
- * The shop asked for this to happen before the parcel goes, not after: an
- * extra delivery fee is easier to collect while she still wants the parcel
- * than once she has it. So this is a billing step, and shipping stays blocked
- * behind the ordinary payment gate until it clears.
- *
- * Refuses to bill twice — the adjustment is the record that it happened, so a
- * second click finds it and stops. Refuses to bill nothing, which is a real
- * case: when the rounding absorbs the split there is no extra cost, and an
- * adjustment of zero on someone's invoice is a question she should not have
- * to ask.
- */
-export async function chargeSplitOngkir(
-  params: { customer: string; event: string; events?: string[] },
-  actor?: string | null,
-): Promise<{ amount: number }> {
-  const { customer, event } = params
-  // A paired group is priced as one plan: one early box now, one remainder
-  // later, against what both invoices already bill. The adjustment lands on
-  // the first event, and covers the lot.
-  const events = params.events?.length ? params.events : [event]
-  const custKey = normalizeId(customer)
-
-  return await sql.begin(async (tx) => {
-    await tx`SELECT set_config('app.actor', ${actor ?? ""}, true)`
-
-    const [already] = await tx<{ id: number }[]>`
-      SELECT id FROM adjustments
-       WHERE event = ANY(${events}) AND description = ${SPLIT_ONGKIR_NOTE}
-         AND lower(replace(customer, '@', '')) = ${custKey}
-       LIMIT 1`
-    if (already) throw new Error("Ongkir kirim duluan sudah ditagihkan untuk pesanan ini.")
-
-    const rows = await tx<{ event: string; gram: string; unit: number; to_ship: string }[]>`
-      SELECT o.event, COALESCE(p.gram, 0) AS gram, o.unit,
-             -- What would travel once the parcel actually goes. unit_hold is
-             -- ignored on purpose: a pairing parks the parcel, and combining
-             -- unparks it, so holding is not a reason to price it smaller.
-             GREATEST(COALESCE(o.unit_arrive, 0) - COALESCE(o.unit_ship, 0), 0) AS to_ship
-        FROM orders o
-        JOIN products p ON p.id = o.product_id
-       WHERE o.event = ANY(${events})
-         AND lower(replace(o.customer, '@', '')) = ${custKey}
-         AND o.unit > 0`
-    const [rate] = await tx<{ ongkir: string }[]>`
-      SELECT COALESCE(cwo.ongkos_kirim, 0) AS ongkir
-        FROM events ev
-        JOIN customer_warehouse_ongkir cwo ON cwo.warehouse_id = ev.warehouse_id
-        JOIN customers c ON c.id = cwo.customer_id
-       WHERE ev.name = ${event}
-         AND lower(replace(c.instagram_id, '@', '')) = ${custKey}`
-
-    const byEvent = new Map<string, { gram: number; unit: number; toShip: number }[]>()
-    for (const r of rows) {
-      const line = { gram: Number(r.gram), unit: r.unit, toShip: Number(r.to_ship) }
-      const list = byEvent.get(r.event)
-      if (list) list.push(line)
-      else byEvent.set(r.event, [line])
-    }
-    const amount = parcelPlanExtra(
-      [...byEvent.values()].map((lines) => ({ lines })),
-      Number(rate?.ongkir ?? 0),
-    )
-    if (amount <= 0) {
-      throw new Error("Tidak ada ongkir tambahan untuk pengiriman ini — bisa langsung dikirim.")
-    }
-
-    const normCust = normalizeCustomer(customer)
-    await tx`INSERT INTO customers (instagram_id) VALUES (${normCust}) ON CONFLICT (instagram_id) DO NOTHING`
-    await tx`
-      INSERT INTO adjustments (event, customer, description, amount)
-      VALUES (${event}, ${normCust}, ${SPLIT_ONGKIR_NOTE}, ${amount})`
-
-    await notifyCustomer(customer, {
-      title: `Extra delivery fee for ${events.join(" + ")}`,
-      body: `You asked for the items that have arrived to be sent ahead of the rest. `
-        + `Rp ${amount.toLocaleString("id-ID")} has been added to your ${event} invoice to cover it. `
-        + `The early parcel goes out once that is settled`
-        + (events.length > 1
-            ? `, and what is left still travels together in one box — with nothing more to pay.`
-            : `, and the rest follows with nothing more to pay.`),
-    }, tx)
-
-    return { amount }
-  })
-}
-
 // ─── Shipments ──────────────────────────────────────────────────────────────
 
 export async function getShippingRecords(sinceDays?: number | null): Promise<ShippingRecord[]> {
@@ -879,7 +787,7 @@ export async function getShippingRecords(sinceDays?: number | null): Promise<Shi
   const rows = await sql`
     SELECT s.id, s.event, s.customer, c.name AS customer_name,
            s.shipping_id, s.invoicing,
-           s.weight_estimation, s.ongkir, s.ongkir_total, s.is_last_shipment,
+           s.weight_estimation, s.weight_charged, s.ongkir, s.ongkir_total, s.is_last_shipment,
            s.created_at, s.updated_at, s.tracking_number, s.merge_group, s.temp_address
     FROM shipments s
     LEFT JOIN customers c ON c.instagram_id = s.customer
@@ -895,6 +803,7 @@ export async function getShippingRecords(sinceDays?: number | null): Promise<Shi
     shippingId: String(r.shipping_id).padStart(4, "0"),
     invoicing: r.invoicing ?? "",
     weightEstimation: Number(r.weight_estimation) || 0,
+    weightCharged: r.weight_charged == null ? null : Number(r.weight_charged),
     ongkir: r.ongkir ?? 0,
     ongkirTotal: r.ongkir_total ?? 0,
     isLastShipment: r.is_last_shipment ?? false,
@@ -1255,6 +1164,14 @@ export async function markProductArrived(data: {
     })
   }
 
+  // The plan moved: what travels now versus later has just changed, and a
+  // stale fee is a wrong invoice. Priced per customer this arrival touched,
+  // never the whole event — another customer's adjustment is not its business.
+  // After the transaction, because the reconciler prices what is now true.
+  for (const customer of [...new Set(allocations.map(({ item }) => item.customer))]) {
+    await reconcileParcelPlan(customer, data.event)
+  }
+
   return { filledOrderIds, unassignedUnits }
 }
 
@@ -1334,12 +1251,16 @@ export async function recordNotReceived(
   let cancelledUnits = 0
   let inHandUnits = 0
   const reductions: MarkReduction[] = []
+  // Before anything moves: what each of them is billed today. The refund is
+  // capped by the difference this mark makes to that, which is how the ongkir
+  // riding on the removed goods comes back with them.
+  const totalsBefore = await invoiceTotalsNow(data.event)
   await sql.begin(async (tx) => {
     await tx`SELECT set_config('app.actor', ${actor ?? ""}, true)`
     for (const { item: o, allocated } of allocations) {
       cancelledUnits += allocated
       inHandUnits += Math.min(allocated, Math.max(0, o.unitBuy - o.unitShip))
-      reductions.push({ customer: o.customer, unitsRemoved: allocated, unitPrice: o.unitPrice })
+      reductions.push({ customer: o.customer, unitsRemoved: allocated })
       await reduceOrderRefundOnly({ orderId: o.id, qty: allocated }, tx)
     }
     if (data.mode === "broken" || data.mode === "missing") {
@@ -1372,9 +1293,20 @@ export async function recordNotReceived(
     cancelled: null,
   }
   const reason = REASON_FOR[data.mode]
-  // After the commit: what is owed depends on the invoice as it now stands.
+
+  // Fewer units means a different parcel plan, whether or not anyone is
+  // splitting: what is invoiced has changed underneath it. Before the refund is
+  // priced, not after -- it moves the invoice too, and a refund settled against
+  // a total that is about to change is settled against the wrong one.
+  for (const customer of [...new Set(reductions.map((r) => r.customer))]) {
+    await reconcileParcelPlan(customer, data.event)
+  }
+
+  // Now the invoice has finished moving: what is owed depends on where it
+  // landed, and on how far it fell.
   const refunds = reason
-    ? await refundForReduction(data.event, reason, data.productName, reductions, actor, data.receivedItem)
+    ? await refundForReduction(
+        data.event, reason, data.productName, reductions, totalsBefore, actor, data.receivedItem)
     : []
 
   const excessUnits = data.mode === "cancelled" ? inHandUnits : data.qty

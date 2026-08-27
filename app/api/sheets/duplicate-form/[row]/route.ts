@@ -1,8 +1,25 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
 import { updateFormRow, updateFormRowStage2, updateFormRowStage3, updateOrderOwnerCell, reapplyHoldsForArrival, updateOrderNote, updateOrderReceipt, updateOrderDispatchReceipt, deleteFormRow, returnOrderUnitsToExcess, withActor } from "@/lib/db"
+import { strandedBoughtUnits, bankStrandedBoughtUnits } from "@/lib/db/orders"
+import type { DBExecutor } from "@/lib/db/actor"
 
 type Params = { params: Promise<{ row: string }> }
+
+/** Signals a save that would leave bought units attached to nothing. */
+class StrandedUnits extends Error {
+  constructor(readonly count: number) {
+    super(`${count} bought unit(s) would belong to no order`)
+    this.name = "StrandedUnits"
+  }
+}
+
+async function strandedAfterEdit(rowNumber: number, tx: DBExecutor): Promise<number> {
+  const [row] = (await tx`
+    SELECT unit, COALESCE(unit_buy, 0) AS unit_buy FROM orders WHERE id = ${rowNumber}
+  `) as unknown as { unit: number; unit_buy: number }[]
+  return row ? strandedBoughtUnits(Number(row.unit), Number(row.unit_buy)) : 0
+}
 
 export async function PUT(req: NextRequest, { params }: Params) {
   const { session, error: authError } = await requireSession()
@@ -61,7 +78,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
       if (numericValue !== null && !Number.isFinite(numericValue)) {
         return NextResponse.json({ error: "value must be a number or null" }, { status: 400 })
       }
-      await withActor(session.user.email, async (tx) => {
+      const bankedCell = await withActor(session.user.email, async (tx) => {
         await updateOrderOwnerCell(rowNumber, column, numericValue, tx)
         // Editing unit_arrive by hand raises arrivals the same way receiving
         // does, so a standing hold has to be re-applied here too — otherwise
@@ -71,7 +88,15 @@ export async function PUT(req: NextRequest, { params }: Params) {
             SELECT event, customer FROM orders WHERE id = ${rowNumber}`
           if (row) await reapplyHoldsForArrival(row.event, [row.customer], tx)
         }
+        // Recording more bought than were ordered strands the surplus just as
+        // surely as shrinking the order does — same question, asked once.
+        const stranded = await strandedAfterEdit(rowNumber, tx)
+        if (stranded === 0) return 0
+        if (body.bankStranded !== true) throw new StrandedUnits(stranded)
+        const { banked } = await bankStrandedBoughtUnits(rowNumber, tx)
+        return banked
       })
+      return NextResponse.json({ success: true, banked: bankedCell })
 
     } else if (stage === "receipt_cell") {
       // Inline receipt edit — owner-only (receipt is set during purchasing).
@@ -125,18 +150,39 @@ export async function PUT(req: NextRequest, { params }: Params) {
       if (!event || !customer || !productId || unit == null) {
         return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
       }
-      await withActor(session.user.email, (tx) => updateFormRow(rowNumber, {
-        event: String(event),
-        customer: String(customer),
-        productId: Number(productId),
-        unitPrice: Number(unitPrice ?? 0),
-        unit: Number(unit),
-        note: note ? String(note) : "",
-      }, tx))
+      const banked = await withActor(session.user.email, async (tx) => {
+        await updateFormRow(rowNumber, {
+          event: String(event),
+          customer: String(customer),
+          productId: Number(productId),
+          unitPrice: Number(unitPrice ?? 0),
+          unit: Number(unit),
+          note: note ? String(note) : "",
+        }, tx)
+
+        // A unit that was bought is either on somebody's order or on the
+        // shelf. If this edit has left it on neither, it does not silently
+        // stop existing: the caller is asked once, and says which.
+        const stranded = await strandedAfterEdit(rowNumber, tx)
+        if (stranded === 0) return 0
+        if (body.bankStranded !== true) throw new StrandedUnits(stranded)
+        const { banked } = await bankStrandedBoughtUnits(rowNumber, tx)
+        return banked
+      })
+      return NextResponse.json({ success: true, banked })
     }
 
     return NextResponse.json({ success: true })
   } catch (err) {
+    // Not a failure — a question. The edit is refused until somebody says what
+    // happened to the units, and the transaction has already rolled back, so
+    // nothing was half-saved while asking.
+    if (err instanceof StrandedUnits) {
+      return NextResponse.json(
+        { error: "stranded_units", stranded: err.count },
+        { status: 409 },
+      )
+    }
     console.error("Failed to update row:", err)
     return NextResponse.json({ error: "Failed to update row" }, { status: 500 })
   }

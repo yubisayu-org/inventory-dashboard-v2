@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole, requireOwner } from "@/lib/api"
 import { appendOrders, cancelOrderUnits, withActor } from "@/lib/db"
+import { invalidate } from "@/lib/route-cache"
 
 export async function POST(req: NextRequest) {
   const { session, error: authError } = await requireSession()
@@ -64,7 +65,7 @@ export async function PATCH(req: NextRequest) {
     if (body.action !== "customer_cancelled") {
       return NextResponse.json({ error: "Unknown action" }, { status: 400 })
     }
-    const { event, productName, orderId, qty, receipt } = body
+    const { event, productName, orderId, qty, receipt, stamp } = body
     if (!event || !productName || !Number.isInteger(orderId) || !Number.isInteger(qty) || qty < 1) {
       return NextResponse.json(
         { error: "event, productName, orderId and a positive integer qty are required" },
@@ -72,8 +73,13 @@ export async function PATCH(req: NextRequest) {
       )
     }
     const result = await withActor(session.user.email, (tx) =>
-      cancelOrderUnits({ event, productName, orderId, qty, receipt: typeof receipt === "string" ? receipt : undefined }, tx),
+      cancelOrderUnits({
+        event, productName, orderId, qty,
+        receipt: typeof receipt === "string" ? receipt : undefined,
+        stamp: typeof stamp === "string" ? stamp : undefined,
+      }, tx),
     )
+    if (typeof stamp === "string" && stamp.trim()) invalidate("hit-and-run")
     return NextResponse.json({ success: true, ...result })
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Failed to cancel order"

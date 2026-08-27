@@ -46,6 +46,11 @@ type Person = {
    * on the Arrival List. The prefix decides the route tab.
    */
   receipt?: string
+  /**
+   * How many units have landed. Some-but-not-all is the only shape a split can
+   * take, and it is what the Packing List's Kirim duluan needs to offer.
+   */
+  arrived?: number
   why: string
 }
 
@@ -108,11 +113,37 @@ const PEOPLE: Person[] = [
     product: { name: "Muji Wall Shelf Oak 88cm", store: "MUJI", gram: 1_900 },
     why: "paid exactly — for an 'other' refund by hand" },
 
+  // ── Splitting costs a whole extra kilo ─────────────────────────────────
+  // 1 kg in two halves. Send one half early and each parcel rounds up to 1 kg,
+  // so two are paid for against the one the invoice billed. Fully paid, so the
+  // fee shows up as an outstanding balance the moment it is declared.
+  { handle: "kirana.wp", units: 2, price: 240_000, ongkir: 25_000, receipt: "MNC-88410", arrived: 1,
+    product: { name: "Muji Aroma Diffuser Small", store: "MUJI", gram: 500 },
+    why: "1 kg split in half — kirim duluan costs 25.000" },
+
+  // ── Splitting costs nothing, and must say so ───────────────────────────
+  // 4 kg in four. Two now and two later is still 4 kg billed, so the rounding
+  // absorbs it and no adjustment may appear.
+  { handle: "shinta.ok", units: 4, price: 180_000, ongkir: 25_000, receipt: "CJI-55190", arrived: 2,
+    product: { name: "Uniqlo Heattech Blanket", store: "UNIQLO", gram: 1_000 },
+    why: "4 kg split 2+2 — nothing extra, and the card should say so" },
+
+  // ── Merging saves a kilo ───────────────────────────────────────────────
+  // 0.4 kg here and 0.4 kg on the Korea trip: billed as 1 + 1, shipped as one
+  // 0.8 kg box. Merging credits the difference.
+  { handle: "hana.mrt", units: 1, price: 195_000, ongkir: 25_000,
+    product: { name: "Innisfree Cherry Blossom Mist", store: "INNISFREE", gram: 400 },
+    why: "merges with " + OTHER_TRIP + " to save 25.000" },
+
   // ── Owed here, behind on the Korea trip: the credit prompt ──────────────
   { handle: "laras.dwi", units: 1, price: 200_000, ongkir: 20_000, over: 60_000,
     product: { name: "Laneige Lip Sleeping Mask", store: "LANEIGE", gram: 120 },
     why: "overpaid 60.000 here, owes on " + OTHER_TRIP },
 ]
+
+/** hana.mrt's other half, so there is something to merge with. */
+const MERGE_PARTNER = { handle: "hana.mrt", price: 210_000,
+  product: { name: "Laneige Cream Skin Refiner 170ml", store: "LANEIGE", gram: 400 } }
 
 /** The one unpaid order on the other trip, which is what laras.dwi owes. */
 const OTHER_ORDER = { handle: "laras.dwi", price: 300_000, gram: 610,
@@ -120,7 +151,7 @@ const OTHER_ORDER = { handle: "laras.dwi", price: 300_000, gram: 610,
 
 const EVENTS = [TRIP, OTHER_TRIP]
 const HANDLES = [...new Set(PEOPLE.map((p) => p.handle))]
-const PRODUCTS = [...PEOPLE.map((p) => p.product.name), OTHER_ORDER.product.name]
+const PRODUCTS = [...PEOPLE.map((p) => p.product.name), OTHER_ORDER.product.name, MERGE_PARTNER.product.name]
 
 async function clean() {
   await sql`DELETE FROM announcements WHERE customer_id IN (
@@ -195,15 +226,22 @@ async function main() {
       VALUES (${customer.id}, ${warehouse.id}, ${p.ongkir})`
     await sql`
       INSERT INTO orders (event, customer, product_id, unit_price, unit,
-                          unit_buy, unit_dispatch, dispatch_receipt, dispatched_at)
+                          unit_buy, unit_dispatch, unit_arrive, dispatch_receipt, dispatched_at)
       VALUES (${TRIP}, ${p.handle}, ${await product(p.product, p.price)}, ${p.price}, ${p.units},
               -- Dispatched stock was bought first, or the Shopping List would
               -- still offer to buy what is already in transit.
               ${p.receipt ? p.units : null},
               ${p.receipt ? p.units : null},
+              ${p.arrived ?? 0},
               ${p.receipt ?? ""},
               ${p.receipt ? sql`now()` : null})`
   }
+
+  // hana.mrt's second trip, so a merge has two boxes to become one.
+  await sql`
+    INSERT INTO orders (event, customer, product_id, unit_price, unit, unit_buy, unit_dispatch, unit_arrive, dispatch_receipt)
+    VALUES (${OTHER_TRIP}, ${MERGE_PARTNER.handle},
+            ${await product(MERGE_PARTNER.product, MERGE_PARTNER.price)}, ${MERGE_PARTNER.price}, 1, 1, 1, 1, '')`
 
   // The Korea trip: one order, never paid, so laras.dwi is outstanding there.
   await sql`

@@ -5,20 +5,37 @@ import { normalizeId } from "./helpers"
 import { owed } from "./refund-owed"
 import { causeLineFor, fillNotice, NOTICE_TEMPLATES, REFUND_CAUSES } from "../notice-templates"
 
-/** One customer's share of a mark: how many of their units went, and at what price. */
+/** One customer's share of a mark: how many of their units went. */
 export type MarkReduction = {
   customer: string
   unitsRemoved: number
-  unitPrice: number
+}
+
+/**
+ * Every customer's invoice total on this event, as it stands right now.
+ *
+ * Taken before the units come off, so what the reduction costs each of them can
+ * be measured rather than guessed: the ongkir their goods were carrying falls
+ * with the goods, and only a before-and-after knows by how much once the
+ * courier's rounding has had its say.
+ */
+export async function invoiceTotalsNow(event: string): Promise<Map<string, number>> {
+  const rows = await getPaymentStatus(event)
+  return new Map(rows.map((s) => [normalizeId(s.customer), s.invoiceTotal]))
 }
 
 /**
  * Turn a mark's reductions into refunds, and tell each customer.
  *
- * Called AFTER the units have come off the orders, because the amount depends
- * on the invoice as it now stands: a reduction owes money only to somebody
- * whose payment has become surplus. Somebody who had not paid simply owes less,
- * and refunding them would invent a debt.
+ * Called AFTER the units have come off the orders -- and after any parcel-plan
+ * reconcile the same change triggered -- because the amount depends on the
+ * invoice as it now stands: a reduction owes money only to somebody whose
+ * payment has become surplus. Somebody who had not paid simply owes less, and
+ * refunding them would invent a debt.
+ *
+ * The caller passes the totals from before the reduction, so the refund carries
+ * the ongkir that left with the goods instead of stranding it as an
+ * overpayment for somebody to reconcile by hand.
  *
  * The refund and the notice are one action — sendInvoiceNotice writes both in a
  * single transaction, because a refund nobody is told about is a promise nobody
@@ -30,6 +47,8 @@ export async function refundForReduction(
   reason: string,
   itemsLabel: string,
   reductions: MarkReduction[],
+  /** Their invoice totals before the reduction, from invoiceTotalsNow. */
+  totalsBefore: Map<string, number>,
   actor?: string | null,
   /** What turned up instead, where a mark knows — a wrong delivery names it. */
   receivedItem?: string,
@@ -47,9 +66,13 @@ export async function refundForReduction(
   const made: { customer: string; amount: number; refundId: number }[] = []
 
   for (const r of reductions) {
-    const status = byCustomer.get(normalizeId(r.customer))
+    const key = normalizeId(r.customer)
+    const status = byCustomer.get(key)
     if (!status) continue
-    const amount = owed(r.unitsRemoved, r.unitPrice, status.totalPaid, status.invoiceTotal)
+    // What the reduction cost her: goods, the ongkir those goods were bearing,
+    // and anything the same change moved. Measured, not reconstructed.
+    const cost = (totalsBefore.get(key) ?? status.invoiceTotal) - status.invoiceTotal
+    const amount = owed(cost, status.totalPaid, status.invoiceTotal)
     if (amount <= 0) continue
 
     const items = `${itemsLabel} × ${r.unitsRemoved}`

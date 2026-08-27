@@ -4,7 +4,7 @@ import { displayIg } from "@/lib/format"
 import TableSkeleton from "@/components/TableSkeleton"
 import DataGrid, { type ColumnDef } from "@/components/DataGrid"
 import { useCallback, useEffect, useMemo, useState } from "react"
-import type { InvoiceEvent, InvoiceResult, RefundRow, RefundReason, RefundStatus, OverpaymentToCheck, OutstandingTrip } from "@/lib/db"
+import type { InvoiceEvent, InvoiceOrderLine, InvoiceResult, RefundRow, RefundReason, RefundStatus, OverpaymentToCheck, OutstandingTrip } from "@/lib/db"
 import { normalizeId } from "@/lib/db/helpers"
 import { isCreditPromised } from "@/lib/db/refund-credit"
 import { REFUND_REASONS } from "@/lib/db/types"
@@ -15,7 +15,9 @@ import SearchableSelect from "@/components/SearchableSelect"
 import { InvoiceDetailDrawer } from "@/app/dashboard/invoice/InvoiceDetailDrawer"
 import { useMessageTemplates } from "@/hooks/useMessageTemplates"
 import { fillTemplate, DEFAULT_TEMPLATES } from "@/lib/message-templates"
-import { causeLineFor, fillNotice, REFUND_CAUSES } from "@/lib/notice-templates"
+import {
+  causeLineFor, fillNotice, REFUND_CAUSES, MANUAL_REFUND_CAUSES, NOTICE_TEMPLATES,
+} from "@/lib/notice-templates"
 
 const INPUT_CLASS =
   "border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
@@ -26,6 +28,7 @@ const REASON_LABELS: Record<string, string> = {
   shipping_loss: "Lost in Shipping",
   damaged: "Damaged",
   goodwill: "Goodwill",
+  quality: "Quality",
   other: "Other",
 }
 
@@ -516,8 +519,10 @@ export default function RefundsClient() {
     setEditRow(null)
   }
 
-  function handleCreated(created: RefundRow) {
-    setRows((prev) => [created, ...prev])
+  function handleCreated() {
+    // Reloaded rather than pushed on: the refund is written by the notice
+    // path, which answers with an id, and the row it made is the truth.
+    fetchRows()
     setTab("pending")
   }
 
@@ -656,7 +661,7 @@ export default function RefundsClient() {
             <CreateRefundCard
               events={options?.events ?? []}
               reasonOptions={reasonOptions}
-              onCreated={(row) => { handleCreated(row); setMobileCreating(false); window.scrollTo({ top: 0, behavior: "smooth" }) }}
+              onCreated={() => { handleCreated(); setMobileCreating(false); window.scrollTo({ top: 0, behavior: "smooth" }) }}
               onClose={() => setMobileCreating(false)}
             />
           </div>
@@ -686,18 +691,69 @@ function CreateRefundCard({
 }: {
   events: string[]
   reasonOptions: { value: string; label: string }[]
-  onCreated: (row: RefundRow) => void
+  /** The notice route returns an id, not a row, so the list reloads. */
+  onCreated: () => void
   onClose: () => void
 }) {
   const [form, setForm] = useState({
     event: "",
     customer: "",
-    reason: "overpayment" as RefundReason,
+    reason: "" as RefundReason,
     refundAmount: "",
     note: "",
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Which lines it is about, for a reason that names them, and how many units
+  // of each. Only fetched once there is a customer and an event to fetch for.
+  const [lines, setLines] = useState<InvoiceOrderLine[]>([])
+  const [picked, setPicked] = useState<Record<number, number>>({})
+  const [goods, setGoods] = useState<"kept" | "returned" | "returned_unsellable">("kept")
+
+  const needsLines = MANUAL_REFUND_CAUSES.find((c) => c.key === form.reason)?.needsItems === true
+
+  useEffect(() => {
+    if (!needsLines || !form.event || !form.customer.trim()) { setLines([]); return }
+    let live = true
+    fetch(`/api/sheets/invoice?customer=${encodeURIComponent(form.customer.trim())}`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d: { events?: InvoiceEvent[] }) => {
+        if (!live) return
+        setLines(d.events?.find((e) => e.eventId === form.event)?.orders ?? [])
+      })
+      .catch(() => { if (live) setLines([]) })
+    return () => { live = false }
+  }, [needsLines, form.event, form.customer])
+
+  // What the picked lines come to. Prefilled, not imposed: she may be keeping
+  // the item at a discount rather than sending it back for all of it.
+  const pickedTotal = lines.reduce((sum, o) => sum + o.rawUnitPrice * (picked[o.orderId] ?? 0), 0)
+  const pickedItems = lines
+    .filter((o) => (picked[o.orderId] ?? 0) > 0)
+    .map((o) => `${o.productName} × ${picked[o.orderId]}`)
+    .join(", ")
+
+  useEffect(() => {
+    if (needsLines && pickedTotal > 0) setForm((f) => ({ ...f, refundAmount: String(pickedTotal) }))
+  }, [needsLines, pickedTotal])
+
+  // The same wording a marked refund sends, filled from what is typed here, so
+  // one customer cannot receive two different explanations of the same thing.
+  const cause = MANUAL_REFUND_CAUSES.find((c) => c.key === form.reason)
+  const template = NOTICE_TEMPLATES.find((t) => t.key === "inbox_refund_offered")!
+  const tokens = {
+    "{customer}": form.customer.trim(),
+    "{event}": form.event,
+    "{refundAmount}": formatRp(Number(form.refundAmount) || 0),
+    "{itemsList}": pickedItems || form.note.trim() || "pesanan Anda",
+    "{cause}": "",
+  }
+  const causeLine = cause
+    ? fillNotice(causeLineFor(cause, { items: pickedItems || form.note.trim() }), tokens)
+    : ""
+  const noticeTitle = fillNotice(template.title, tokens)
+  const noticeBody = fillNotice(template.body, { ...tokens, "{cause}": causeLine })
 
   function field<K extends keyof typeof form>(key: K) {
     return {
@@ -712,21 +768,48 @@ function CreateRefundCard({
     setSaving(true)
     setError(null)
     try {
-      const res = await fetch("/api/sheets/refunds", {
+      // Through the notice, so a refund written by hand tells her the same way
+      // a marked one does. She never reads an adjustment or a refund's own
+      // description — the notice is the only surface that explains itself, and
+      // creating one silently was the difference between these two routes.
+      const res = await fetch("/api/sheets/invoice/notice", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           event: form.event,
           customer: form.customer.trim(),
-          reason: form.reason,
-          refundAmount: Number(form.refundAmount),
-          note: form.note.trim(),
+          title: noticeTitle,
+          body: noticeBody,
+          refund: {
+            cause: form.reason,
+            amount: Number(form.refundAmount),
+            items: pickedItems || form.note.trim(),
+          },
         }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "Failed to create")
-      setForm({ event: "", customer: "", reason: "overpayment", refundAmount: "", note: "" })
-      onCreated(data.row)
+
+      // Goods coming back are stock, and stock the books have to know about.
+      // After the refund, so a failure here cannot leave money unexplained.
+      if (needsLines && goods !== "kept") {
+        for (const o of lines) {
+          const units = picked[o.orderId] ?? 0
+          if (units <= 0) continue
+          await fetch("/api/sheets/excess-purchase", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              event: form.event, items: o.productName, unitBuy: units, reason: goods,
+            }),
+          })
+        }
+      }
+
+      setForm({ event: "", customer: "", reason: "" as RefundReason, refundAmount: "", note: "" })
+      setPicked({})
+      setGoods("kept")
+      onCreated()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create")
     } finally {
@@ -751,12 +834,16 @@ function CreateRefundCard({
         </label>
         <label className="flex flex-col gap-1">
           <span className="text-xs font-medium text-muted">Reason</span>
+          {/* Only the reasons nobody can mark. Sold out, damaged, missing and
+              wrong deliveries are made on the Shopping or Arrival List, where
+              one action reduces the order, writes the refund and sends the
+              notice — offering them here invites a second refund for the same
+              thing, on an order still claiming units she will never get. */}
           <SearchableSelect
             value={form.reason}
             onChange={(v) => setForm((f) => ({ ...f, reason: v }))}
-            options={reasonOptions}
-            placeholder="Select or type…"
-            allowNewValue
+            options={MANUAL_REFUND_CAUSES.map((c) => ({ value: c.key, label: reasonLabel(c.key) }))}
+            placeholder="Select…"
             disabled={saving}
           />
         </label>
@@ -774,10 +861,102 @@ function CreateRefundCard({
         </label>
       </div>
 
-      <label className="flex flex-col gap-1">
-        <span className="text-xs font-medium text-muted">Note <span className="font-normal text-faint">(optional)</span></span>
-        <textarea {...field("note")} disabled={saving} rows={2} placeholder="Additional context…" className={`${INPUT_CLASS} w-full resize-none`} />
-      </label>
+      {/* Which lines, for a reason that names them. A quality complaint is
+          about a thing she is holding, so the notice has to say which thing —
+          and the amount follows from it rather than being guessed. */}
+      {needsLines && lines.length > 0 && (
+        <div className="rounded-lg border border-cream-border bg-surface-muted p-3 flex flex-col gap-2">
+          <span className="text-xs font-medium text-muted">Barang yang dikeluhkan</span>
+          {lines.map((o) => (
+            <label key={o.orderId} className="flex items-center gap-2.5 text-sm">
+              <input
+                type="checkbox"
+                checked={(picked[o.orderId] ?? 0) > 0}
+                onChange={(e) =>
+                  setPicked((p) => ({ ...p, [o.orderId]: e.target.checked ? o.unit : 0 }))}
+                disabled={saving}
+                className="accent-brand"
+              />
+              <span className="flex-1 min-w-0 truncate">{o.productName}</span>
+              {(picked[o.orderId] ?? 0) > 0 && (
+                <input
+                  type="number"
+                  min="1"
+                  max={o.unit}
+                  value={picked[o.orderId]}
+                  onChange={(e) => setPicked((p) => ({
+                    ...p,
+                    [o.orderId]: Math.min(o.unit, Math.max(1, Number(e.target.value) || 1)),
+                  }))}
+                  disabled={saving}
+                  className="w-16 px-2 py-1 rounded border border-cream-border text-sm tabular-nums"
+                />
+              )}
+              <span className="text-xs text-faint tabular-nums w-24 text-right">
+                {formatRp(o.rawUnitPrice)} × {o.unit}
+              </span>
+            </label>
+          ))}
+        </div>
+      )}
+
+      {/* Where the goods ended up. Three real outcomes, and the shop knows
+          which — the refund cannot work it out, and guessing either invents
+          stock or loses it. */}
+      {needsLines && pickedTotal > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs font-medium text-muted">Barangnya</span>
+          <div className="flex flex-wrap gap-2">
+            {([
+              ["kept", "Tetap di customer"],
+              ["returned", "Dikembalikan — masih bisa dijual"],
+              ["returned_unsellable", "Dikembalikan — tidak bisa dijual"],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setGoods(value)}
+                disabled={saving}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                  goods === value
+                    ? "bg-brand text-white border-brand"
+                    : "border-cream-border text-muted-strong hover:bg-surface-muted"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <span className="text-[11px] text-faint">
+            {goods === "kept"
+              ? "Tidak ada yang masuk Inventory."
+              : goods === "returned"
+                ? "Masuk Inventory sebagai stok siap dijual."
+                : "Masuk Inventory, tercatat tapi tidak ditawarkan ke pesanan lain."}
+          </span>
+        </div>
+      )}
+
+      {!needsLines && (
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-muted">
+            What it is for <span className="font-normal text-faint">(shown in the notice)</span>
+          </span>
+          <textarea {...field("note")} disabled={saving} rows={2} placeholder="mis. keterlambatan 3 minggu" className={`${INPUT_CLASS} w-full resize-none`} />
+        </label>
+      )}
+
+      {/* Shown before it goes, because it goes: a refund made here now sends
+          the customer the same notice a marked one does. */}
+      {Number(form.refundAmount) > 0 && form.event && form.reason && (
+        <div className="rounded-lg border border-purple-200 bg-purple-50 p-3">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-purple-700 mb-1.5">
+            Yang dia terima
+          </div>
+          <div className="text-sm font-semibold text-foreground">{noticeTitle}</div>
+          <p className="text-xs text-muted-strong whitespace-pre-wrap mt-1 leading-relaxed">{noticeBody}</p>
+        </div>
+      )}
 
       {error && <p className="text-xs text-red-500">{error}</p>}
 
@@ -785,8 +964,8 @@ function CreateRefundCard({
         <button type="button" onClick={onClose} disabled={saving} className="px-4 py-2 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
           Cancel
         </button>
-        <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors">
-          {saving ? "Creating…" : "Create"}
+        <button type="submit" disabled={saving || !form.reason || (needsLines && pickedTotal <= 0)} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors">
+          {saving ? "Mengirim…" : "Create & send notice"}
         </button>
       </div>
     </form>

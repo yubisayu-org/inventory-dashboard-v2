@@ -1,3 +1,4 @@
+import type { ExcessReason } from "@/lib/db/types"
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
 import {
@@ -16,6 +17,9 @@ import {
 type UpdatedRow = { rowNumber: number; event: string; customer: string; oldUnitBuy: number; unitBuy: number }
 type ItemResult = { event: string; items: string; originalUnitBuy: number; filled: UpdatedRow[]; remainder: number }
 
+/** Reasons whose units are on the shelf but not for sale. */
+const UNSELLABLE = ["broken", "missing", "returned_unsellable"]
+
 export async function POST(req: NextRequest) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
@@ -29,7 +33,8 @@ export async function POST(req: NextRequest) {
 
     // Broken inventory is tracked but never sellable, so exclude it from the
     // apply-to-orders working set entirely (not matched, not deleted/updated).
-    const excessRows = (await getExcessPurchaseRows()).filter((r) => r.reason !== "broken" && r.reason !== "missing")
+    const excessRows = (await getExcessPurchaseRows())
+      .filter((r) => !UNSELLABLE.includes(r.reason))
 
     if (excessRows.length === 0) {
       return NextResponse.json({ results: [] })
@@ -242,11 +247,13 @@ export async function PUT(req: NextRequest) {
 
   try {
     const body = await req.json()
-    const { event, items, unitBuy, receipt } = body as {
+    const { event, items, unitBuy, receipt, reason } = body as {
       event?: string
       items?: string
       unitBuy?: number
       receipt?: string
+      /** Only a returned item names one; everything else is plain stock. */
+      reason?: string
     }
 
     // event is optional — inventory can be logged before it's tied to an event.
@@ -257,8 +264,14 @@ export async function PUT(req: NextRequest) {
       )
     }
 
+    // A whitelist, not the caller's word: "reason" decides whether these units
+    // can be sold to somebody else, and that is not a free-text decision.
+    const ALLOWED: ExcessReason[] = ["manual", "returned", "returned_unsellable"]
+    const chosen: ExcessReason =
+      reason && (ALLOWED as string[]).includes(reason) ? (reason as ExcessReason) : "manual"
+
     await withActor(session.user.email, (tx) => appendExcessPurchase(
-      [{ event: event ?? "", items, unitBuy, receipt: receipt ? String(receipt).trim() : "", reason: "manual" }],
+      [{ event: event ?? "", items, unitBuy, receipt: receipt ? String(receipt).trim() : "", reason: chosen }],
       tx,
     ))
 

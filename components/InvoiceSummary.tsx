@@ -8,12 +8,18 @@ export default function InvoiceSummary({
   event,
   actions,
   leftPadding = "pl-5",
+  tinted = true,
 }: {
   event: InvoiceEvent
   actions?: ReactNode
   /** Override the left padding so the summary can line up with a caller's
    *  own indented layout (e.g. an expanded row with a caret column). */
   leftPadding?: string
+  /** The wash marks where the lines end and the money starts, and wants both
+   *  edges of whatever it sits in. Off for a caller whose container starts
+   *  part-way across the row -- a band that stops in open space reads as a
+   *  mistake rather than as a heading. */
+  tinted?: boolean
 }) {
   const { invoice, totals } = event
   const { subtotalBarang, estimasiOngkir, biayaLainnya, total, pembayaran, sisaPelunasan } =
@@ -25,7 +31,7 @@ export default function InvoiceSummary({
   const sisaColor = sisaPelunasan <= 0 ? "text-green-700" : "text-red-600"
 
   return (
-    <div className={`${leftPadding} pr-5 py-4 bg-cream/30 border-t border-cream-border`}>
+    <div className={`${leftPadding} pr-5 py-4 border-t border-cream-border ${tinted ? "bg-cream/30" : ""}`}>
       <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
         <div className="text-sm font-semibold text-brand">Invoice</div>
         {actions}

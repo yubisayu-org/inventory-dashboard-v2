@@ -1,12 +1,15 @@
 "use client"
 
-import { useState, useRef, useEffect, useMemo, useCallback, memo } from "react"
+import { useState, useRef, useEffect, useMemo, useCallback, memo, type ReactNode } from "react"
 
 export interface SelectOption {
   value: string
   label: string
   /** Secondary text shown alongside the label (e.g. store name for items) */
   meta?: string
+  /** Drawn immediately after the label — a mark about this option, not a
+   *  control. The meta stays at the far right. */
+  badge?: ReactNode
 }
 
 interface Props {
@@ -27,6 +30,9 @@ interface Props {
   searchMeta?: boolean
   /** Shorter trigger input (34px) instead of the default 38px */
   dense?: boolean
+  /** Fired on every keystroke, before anything is committed. For a caller that
+   *  has to react to what is being typed rather than to what was chosen. */
+  onQueryChange?: (query: string) => void
 }
 
 export default function SearchableSelect({
@@ -41,6 +47,7 @@ export default function SearchableSelect({
   searchable = true,
   searchMeta = false,
   dense = false,
+  onQueryChange,
 }: Props) {
   const selectedLabel = useMemo(
     () => options.find((o) => o.value === value)?.label ?? (allowNewValue ? value : ""),
@@ -85,6 +92,9 @@ export default function SearchableSelect({
 
   const onChangeRef = useRef(onChange)
   useEffect(() => { onChangeRef.current = onChange }, [onChange])
+
+  const onQueryChangeRef = useRef(onQueryChange)
+  useEffect(() => { onQueryChangeRef.current = onQueryChange }, [onQueryChange])
 
   const optionsRef = useRef(options)
   useEffect(() => { optionsRef.current = options }, [options])
@@ -188,6 +198,7 @@ export default function SearchableSelect({
       onChange(val)
       const label = options.find((o) => o.value === val)?.label ?? val
       setInputValue(label)
+      onQueryChangeRef.current?.(label)
       setOpen(false)
       inputRef.current?.blur()
     },
@@ -276,6 +287,7 @@ export default function SearchableSelect({
   function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
     const v = e.target.value
     setInputValue(v)
+    onQueryChange?.(v)
     if (!open) openDropdown()
   }
 
@@ -474,6 +486,7 @@ export default function SearchableSelect({
                     key={`${opt.value}-${i}`}
                     label={opt.label}
                     meta={opt.meta}
+                    badge={opt.badge}
                     highlighted={highlightIdx === idx}
                     selected={value === opt.value}
                     onSelect={() => selectOption(opt.value)}
@@ -540,6 +553,7 @@ const ChipItem = memo(function ChipItem({
 const OptionItem = memo(function OptionItem({
   label,
   meta,
+  badge,
   highlighted,
   selected,
   onSelect,
@@ -547,6 +561,7 @@ const OptionItem = memo(function OptionItem({
 }: {
   label: string
   meta?: string
+  badge?: ReactNode
   highlighted: boolean
   selected: boolean
   onSelect: () => void
@@ -573,7 +588,10 @@ const OptionItem = memo(function OptionItem({
             : "text-foreground hover:bg-brand-light"
       } ${className ?? ""}`}
     >
-      <span>{label}</span>
+      <span className="flex items-center gap-1.5 min-w-0">
+        <span className="truncate">{label}</span>
+        {badge}
+      </span>
       {meta && (
         <span className="ml-2 shrink-0 text-xs text-faint">{meta}</span>
       )}

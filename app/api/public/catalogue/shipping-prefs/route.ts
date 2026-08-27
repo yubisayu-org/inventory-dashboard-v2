@@ -3,12 +3,14 @@ import { customerFromRequest } from "@/lib/catalogue-bearer"
 import { corsHeaders, privateHeaders } from "@/lib/catalogue-cors"
 import {
   getShippingPrefs,
+  ineligibleReason,
   setShippingMode,
   setMergeGroup,
   setTempAddress,
   isShipMode,
   ShippingPrefError,
 } from "@/lib/db/shipping-prefs"
+import { reconcileParcelPlan } from "@/lib/db/parcel-plan"
 
 // The customer's shipping choices for her own events. The customer id comes
 // from the verified session and nowhere else; every guard — paid, not shipped,
@@ -27,7 +29,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401, headers: privateHeaders() })
   }
   try {
-    return NextResponse.json({ prefs: await getShippingPrefs(customer.id) }, { headers: privateHeaders() })
+    // Each pref carries why it can no longer be changed, if it cannot.
+    //
+    // The write side has always refused a shipped trip; without saying so on
+    // the read side, her page shows buttons that only fail when pressed. She
+    // cannot tell a choice she is allowed to make from one she is not.
+    const prefs = await getShippingPrefs(customer.id)
+    const locked = await Promise.all(
+      prefs.map((p) => ineligibleReason(customer.id, p.event)),
+    )
+    return NextResponse.json(
+      { prefs: prefs.map((p, i) => ({ ...p, lockedBecause: locked[i] })) },
+      { headers: privateHeaders() },
+    )
   } catch (err) {
     console.error("Failed to load shipping prefs:", err)
     return NextResponse.json({ error: "Failed to load" }, { status: 500, headers: corsHeaders() })
@@ -72,9 +86,19 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "mode must be wait, split or hold" }, { status: 400, headers: corsHeaders() })
       }
       await setShippingMode(customer.id, event, body.mode)
+      // Her choice changes what the parcels will be, exactly as the shop's
+      // does. Same reconciler, same arithmetic — only set_by differs.
+      await reconcileParcelPlan(customer.instagramId, event)
     } else if (action === "merge") {
       const events = Array.isArray(body.events) ? body.events.map((e) => String(e)) : []
+      const previous = (await getShippingPrefs(customer.id))
+        .filter((p) => p.mergeKey).map((p) => p.event)
       await setMergeGroup(customer.id, events)
+      // Every trip the merge touched, including one it just released: an
+      // orphaned partner is priced as its own parcel again.
+      for (const event of new Set([...events, ...previous])) {
+        await reconcileParcelPlan(customer.instagramId, event)
+      }
     } else if (action === "address") {
       const event = String(body.event ?? "").trim()
       const address = String(body.address ?? "")

@@ -7,7 +7,7 @@ import { useModalDismiss } from "@/hooks/useModalDismiss"
 import {
   NOTICE_TEMPLATES,
   NOTICE_TOKENS,
-  REFUND_CAUSES,
+  OFFERED_REFUND_CAUSES,
   causeLineFor,
   applyNoticeOverrides,
   fillNotice,
@@ -35,7 +35,6 @@ export function InvoiceMessageActions({
 }: { event: InvoiceEvent; whatsapp?: string | null; customer?: string }) {
   const [open, setOpen] = useState(false)
   const [telling, setTelling] = useState(false)
-  const { copied, copy } = useCopyFeedback()
   const { message } = event
 
   return (
@@ -57,16 +56,9 @@ export function InvoiceMessageActions({
           title="Send a notice on the catalogue"
           className="shrink-0 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 transition-colors"
         >
-          Tell them…
+          Send notice
         </button>
       )}
-      <button
-        type="button"
-        onClick={() => copy(message)}
-        className="shrink-0 px-3 py-1.5 rounded-lg border border-brand text-brand text-xs font-medium hover:bg-brand hover:text-white transition-colors"
-      >
-        {copied ? "Copied!" : "Copy message"}
-      </button>
       {telling && customer && (
         <TellHerModal event={event} customer={customer} onClose={() => setTelling(false)} />
       )}
@@ -166,7 +158,7 @@ function TellHerModal({
   // changes, and only if the field is still untouched.
   const [wordings, setWordings] = useState<NoticeTemplate[]>(NOTICE_TEMPLATES)
   const [reason, setReason] = useState<NoticeTemplate>(NOTICE_TEMPLATES[0])
-  const [cause, setCause] = useState<RefundCause>(REFUND_CAUSES[0])
+  const [cause, setCause] = useState<RefundCause>(OFFERED_REFUND_CAUSES[0])
   const [title, setTitle] = useState(NOTICE_TEMPLATES[0].title)
   const [body, setBody] = useState(NOTICE_TEMPLATES[0].body)
   // How many units of each line the refund is about. Keyed by orderId.
@@ -362,10 +354,10 @@ function TellHerModal({
                   <select
                     id="notice-cause"
                     value={cause.key}
-                    onChange={(e) => setCause(REFUND_CAUSES.find((c) => c.key === e.target.value) ?? REFUND_CAUSES[0])}
+                    onChange={(e) => setCause(OFFERED_REFUND_CAUSES.find((c) => c.key === e.target.value) ?? OFFERED_REFUND_CAUSES[0])}
                     className={INPUT}
                   >
-                    {REFUND_CAUSES.map((c) => (
+                    {OFFERED_REFUND_CAUSES.map((c) => (
                       <option key={c.key} value={c.key}>{c.label}</option>
                     ))}
                   </select>
