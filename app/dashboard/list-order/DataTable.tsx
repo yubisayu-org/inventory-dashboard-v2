@@ -1530,54 +1530,64 @@ function AddOrderForm({ options, onOrderAdded, onCancel }: {
             + Add {byItem ? "customer" : "item"}
           </button>
         </div>
-        <div className="space-y-3">
-          {lines.map((line, idx) => (
-            <div key={line.id} className="rounded-lg border border-cream-border p-3 relative">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto_auto]">
-                <div>
-                  <label className={LABEL}>
-                    {byItem ? "Customer" : "Item"} {lines.length > 1 ? idx + 1 : ""}
-                  </label>
-                  {byItem ? (
-                    <SearchableSelect
-                      value={line.customer}
-                      onChange={(v) => updateLine(line.id, "customer", v)}
-                      onQueryChange={(q) => setTyping((t) => ({ ...t, [`l${line.id}`]: q }))}
-                      options={customerOptions}
-                      placeholder="Search or type new customer..."
-                      allowNewValue
-                      searchMeta
-                    />
-                  ) : (
-                    <SearchableSelect
-                      value={line.productId}
-                      onChange={(v) => updateLine(line.id, "productId", v)}
-                      options={itemOptions}
-                      placeholder="Search item..."
-                    />
-                  )}
-                </div>
-                <div className="grid grid-cols-2 gap-3 sm:contents">
-                  <div className="w-full sm:w-24">
-                    <label className={LABEL}>Qty</label>
-                    <input type="number" min="1" value={line.unit} onChange={(e) => updateLine(line.id, "unit", e.target.value)} placeholder="Qty" className={INPUT_CLS} />
-                  </div>
-                  <div className="w-full sm:w-32">
-                    <label className={LABEL}>Note</label>
-                    <input type="text" value={line.note} onChange={(e) => updateLine(line.id, "note", e.target.value)} placeholder="Optional" className={INPUT_CLS} />
-                  </div>
-                </div>
+        {/* Rows, not cards. A border around every line drew three boxes to say
+            one thing -- these are lines of the same order, and the numbering
+            said so twice over. The column headings sit once, above them, and
+            the remove sits at the end of the row it removes. */}
+        <div className="space-y-2">
+          <div className="hidden sm:grid grid-cols-[1fr_auto_auto_auto] gap-3">
+            <span className={LABEL + " mb-0"}>{byItem ? "Customer" : "Item"}</span>
+            <span className={LABEL + " mb-0 w-24"}>Qty</span>
+            <span className={LABEL + " mb-0 w-32"}>Note</span>
+            <span className="w-5" />
+          </div>
+          {lines.map((line) => (
+            <div key={line.id} className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto_auto] sm:gap-3 sm:items-center">
+              {byItem ? (
+                <SearchableSelect
+                  value={line.customer}
+                  onChange={(v) => updateLine(line.id, "customer", v)}
+                  onQueryChange={(q) => setTyping((t) => ({ ...t, [`l${line.id}`]: q }))}
+                  options={customerOptions}
+                  placeholder="Search or type new customer..."
+                  allowNewValue
+                  searchMeta
+                />
+              ) : (
+                <SearchableSelect
+                  value={line.productId}
+                  onChange={(v) => updateLine(line.id, "productId", v)}
+                  options={itemOptions}
+                  placeholder="Search item..."
+                />
+              )}
+              <div className="grid grid-cols-2 gap-2 sm:contents">
+                <input type="number" min="1" value={line.unit} onChange={(e) => updateLine(line.id, "unit", e.target.value)} placeholder="Qty" className={`${INPUT_CLS} sm:w-24`} />
+                <input type="text" value={line.note} onChange={(e) => updateLine(line.id, "note", e.target.value)} placeholder="Note" className={`${INPUT_CLS} sm:w-32`} />
+              </div>
+              {/* Holds its width whether or not it can be pressed, so a row
+                  removed above does not shift every field left. */}
+              <div className="hidden sm:flex w-5 justify-center">
+                {lines.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => removeLine(line.id)}
+                    className="text-faint hover:text-red-400 transition-colors"
+                    aria-label="Remove"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                      <path d="M18 6 6 18M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
               </div>
               {lines.length > 1 && (
                 <button
                   type="button"
                   onClick={() => removeLine(line.id)}
-                  className="absolute top-2 right-2 text-faint hover:text-red-400 transition-colors"
-                  aria-label="Remove"
+                  className="sm:hidden self-start text-xs text-faint hover:text-red-400 transition-colors"
                 >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                    <path d="M18 6 6 18M6 6l12 12" />
-                  </svg>
+                  Remove
                 </button>
               )}
             </div>
