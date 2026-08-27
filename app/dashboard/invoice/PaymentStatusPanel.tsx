@@ -447,6 +447,7 @@ function ExpandedInvoice({
         event={ev}
         actions={<InvoiceMessageActions event={ev} whatsapp={result.customerDetail?.whatsapp} customer={result.customer} />}
         leftPadding="pl-4"
+        tinted={false}
       />
     </div>
   )
