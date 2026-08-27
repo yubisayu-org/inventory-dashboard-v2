@@ -186,22 +186,19 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
     column: "unit_buy" | "unit_arrive" | "unit_dispatch",
     value: number | null,
   ) => {
-    const res = await fetch(`/api/sheets/duplicate-form/${rowNumber}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ stage: "owner_cell", column, value }),
-    })
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}))
-      throw new Error(data.error ?? "Failed to save")
-    }
-    setRows((rs) => rs.map((r) =>
-      r.rowNumber === rowNumber
-        ? { ...r, ...(column === "unit_buy" ? { unitBuy: value }
-            : column === "unit_dispatch" ? { unitDispatch: value }
-            : { unitArrive: value }) }
-        : r,
-    ))
+    // Through the shared helper, so an inline cell asks the same question the
+    // modal does: typing 4 into Buy on an order of 3 strands a unit exactly as
+    // dropping the order to 2 would.
+    const { banked } = await putOrderEdit(rowNumber, { stage: "owner_cell", column, value })
+    setRows((rs) => rs.map((r) => {
+      if (r.rowNumber !== rowNumber) return r
+      // Banking moves the surplus onto the shelf and off the order, so the
+      // saved figure is the order's own unit — not the number just typed.
+      const settled = banked > 0 && column === "unit_buy" ? r.unit : value
+      return { ...r, ...(column === "unit_buy" ? { unitBuy: settled }
+        : column === "unit_dispatch" ? { unitDispatch: value }
+        : { unitArrive: value }) }
+    }))
   }, [])
 
   const handleNoteSave = useCallback(async (rowNumber: number, value: string) => {
@@ -926,6 +923,48 @@ function EditableTextCell({ value, onSave }: {
 // Edit Order Modal
 // ---------------------------------------------------------------------------
 
+/**
+ * Save an edit, and ask once if it would leave bought units on nobody's order.
+ *
+ * A unit that was paid for is either on an order or on the shelf. When an edit
+ * would leave it on neither the server refuses with 409 rather than saving,
+ * because it cannot know which happened — the order shrank, or too many were
+ * bought — and both end in the same place: the stock exists and belongs in
+ * Inventory.
+ */
+async function putOrderEdit(
+  rowNumber: number,
+  payload: Record<string, unknown>,
+): Promise<{ banked: number }> {
+  async function send(bankStranded?: boolean) {
+    return await fetch(`/api/sheets/duplicate-form/${rowNumber}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(bankStranded === undefined ? payload : { ...payload, bankStranded }),
+    })
+  }
+
+  let res = await send()
+  if (res.status === 409) {
+    const d = await res.json()
+    if (d.error === "stranded_units") {
+      const n = Number(d.stranded) || 0
+      const ok = confirm(
+        `${n} unit sudah dibeli tapi tidak ada di pesanan ini.\n\n` +
+        `Unit itu akan dicatat ke Inventory sebagai stok siap dijual.\n\n` +
+        `Lanjutkan?`,
+      )
+      // Declining abandons the edit rather than saving it anyway: the whole
+      // point is that this state does not get written quietly.
+      if (!ok) throw new Error("Dibatalkan — tidak ada yang disimpan")
+      res = await send(true)
+    }
+  }
+  if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? "Failed to save") }
+  const done = await res.json().catch(() => ({}))
+  return { banked: Number(done.banked) || 0 }
+}
+
 function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
   row: FormRow
   options: SheetOptions | null
@@ -988,20 +1027,15 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
     try {
       const pid = Number(form.productId)
       const product = options?.items.find((it) => it.id === pid)
-      const res = await fetch(`/api/sheets/duplicate-form/${row.rowNumber}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          stage: "1",
-          event: form.event,
-          customer: form.customer,
-          productId: pid,
-          unitPrice: product?.price ?? 0,
-          unit: Number(form.unit),
-          note: form.note,
-        }),
+      await putOrderEdit(row.rowNumber, {
+        stage: "1",
+        event: form.event,
+        customer: form.customer,
+        productId: pid,
+        unitPrice: product?.price ?? 0,
+        unit: Number(form.unit),
+        note: form.note,
       })
-      if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? "Failed to save") }
 
       if (isOwner) {
         // Issue a single-column PUT per changed field via stage:"owner_cell".
@@ -1017,12 +1051,7 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
           pending.push({ column: "unit_arrive", value: unitArrive === "" ? null : Number(unitArrive) })
         }
         for (const p of pending) {
-          const res2 = await fetch(`/api/sheets/duplicate-form/${row.rowNumber}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ stage: "owner_cell", column: p.column, value: p.value }),
-          })
-          if (!res2.ok) { const d = await res2.json(); throw new Error(d.error ?? `Failed to save ${p.column}`) }
+          await putOrderEdit(row.rowNumber, { stage: "owner_cell", column: p.column, value: p.value })
         }
       }
 
