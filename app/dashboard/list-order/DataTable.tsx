@@ -1530,16 +1530,16 @@ function AddOrderForm({ options, onOrderAdded, onCancel }: {
           {/* One line of headings for all three columns. Item(s) used to sit a
               row higher, level with nothing, while the columns it belongs to
               were labelled underneath it. */}
-          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto_auto] gap-3 mb-1">
+          <div className="grid grid-cols-[minmax(0,1fr)_3.25rem_5.25rem_1.25rem] sm:grid-cols-[1fr_auto_auto_auto] gap-2 sm:gap-3 mb-1">
             <span className={LABEL + " mb-0"}>
               {byItem ? "Customer(s)" : "Item(s)"} <span className="text-brand">*</span>
             </span>
-            <span className={LABEL + " mb-0 w-24 hidden sm:block"}>Qty</span>
-            <span className={LABEL + " mb-0 w-32 hidden sm:block"}>Note</span>
-            <span className="w-5 hidden sm:block" />
+            <span className={LABEL + " mb-0 sm:w-24"}>Qty</span>
+            <span className={LABEL + " mb-0 sm:w-32"}>Note</span>
+            <span />
           </div>
           {lines.map((line) => (
-            <div key={line.id} className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto_auto] sm:gap-3 sm:items-center">
+            <div key={line.id} className="grid grid-cols-[minmax(0,1fr)_3.25rem_5.25rem_1.25rem] sm:grid-cols-[1fr_auto_auto_auto] gap-2 sm:gap-3 items-center">
               {byItem ? (
                 <SearchableSelect
                   value={line.customer}
@@ -1558,13 +1558,11 @@ function AddOrderForm({ options, onOrderAdded, onCancel }: {
                   placeholder="Search item..."
                 />
               )}
-              <div className="grid grid-cols-2 gap-2 sm:contents">
-                <input type="number" min="1" value={line.unit} onChange={(e) => updateLine(line.id, "unit", e.target.value)} placeholder="Qty" className={`${INPUT_CLS} sm:w-24`} />
-                <input type="text" value={line.note} onChange={(e) => updateLine(line.id, "note", e.target.value)} placeholder="Note" className={`${INPUT_CLS} sm:w-32`} />
-              </div>
+              <input type="number" min="1" value={line.unit} onChange={(e) => updateLine(line.id, "unit", e.target.value)} placeholder="Qty" className={`${INPUT_CLS} px-2 text-center sm:px-3 sm:text-left sm:w-24`} />
+              <input type="text" value={line.note} onChange={(e) => updateLine(line.id, "note", e.target.value)} placeholder="Note" className={`${INPUT_CLS} px-2 sm:px-3 sm:w-32`} />
               {/* Holds its width whether or not it can be pressed, so a row
                   removed above does not shift every field left. */}
-              <div className="hidden sm:flex w-5 justify-center">
+              <div className="flex justify-center">
                 {lines.length > 1 && (
                   <button
                     type="button"
@@ -1578,15 +1576,6 @@ function AddOrderForm({ options, onOrderAdded, onCancel }: {
                   </button>
                 )}
               </div>
-              {lines.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => removeLine(line.id)}
-                  className="sm:hidden self-start text-xs text-faint hover:text-red-400 transition-colors"
-                >
-                  Remove
-                </button>
-              )}
             </div>
           ))}
           <button
