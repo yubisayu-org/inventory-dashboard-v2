@@ -621,26 +621,14 @@ export async function shipMergedCustomerOrders(params: ShipMergedParams, actor?:
       isPrimary = false
     }
 
-    // If the whole parcel plan was already priced and charged up front — which
-    // is what happens when she asks for an early box — then the saving is
-    // already inside that number. Crediting it again would pay her twice for
-    // the same rounding.
-    const [settled] = await tx<{ id: number }[]>`
-      SELECT id FROM adjustments
-       WHERE event = ANY(${events})
-         AND description = ${SPLIT_ONGKIR_NOTE}
-         AND lower(replace(customer, '@', '')) = ${custKey}
-       LIMIT 1`
-
-    if (discount > 0 && !settled) {
-      const normCust = normalizeCustomer(customer)
-      const others = groups.slice(1).map((g) => g.event).join(", ")
-      await tx`INSERT INTO customers (instagram_id) VALUES (${normCust}) ON CONFLICT (instagram_id) DO NOTHING`
-      await tx`
-        INSERT INTO adjustments (event, customer, description, amount)
-        VALUES (${groups[0].event}, ${normCust}, ${`Gabung ongkir dengan ${others}`}, ${-discount})
-      `
-    }
+    // The merge saving is not credited here any more. reconcileParcelPlan owns
+    // it, and priced it the moment the merge was recorded — which is earlier
+    // and better: she pays the right amount once, instead of paying for two
+    // parcels and being credited after one arrives.
+    //
+    // Two writers of the same credit, with the same wording, would have paid
+    // her the discount twice: the guard below only ever looked for the split
+    // fee, so it could not have seen the reconciler's row.
 
     // The pairing is spent only when the whole group has gone. She asked for
     // these to travel together, not to travel together once — so what is left
@@ -771,95 +759,6 @@ export async function reapplyHoldsForArrival(
   for (const row of rows) {
     await holdPackingList({ customer: row.instagram_id, event }, db)
   }
-}
-
-/**
- * Put the cost of sending early on her invoice, once.
- *
- * The shop asked for this to happen before the parcel goes, not after: an
- * extra delivery fee is easier to collect while she still wants the parcel
- * than once she has it. So this is a billing step, and shipping stays blocked
- * behind the ordinary payment gate until it clears.
- *
- * Refuses to bill twice — the adjustment is the record that it happened, so a
- * second click finds it and stops. Refuses to bill nothing, which is a real
- * case: when the rounding absorbs the split there is no extra cost, and an
- * adjustment of zero on someone's invoice is a question she should not have
- * to ask.
- */
-export async function chargeSplitOngkir(
-  params: { customer: string; event: string; events?: string[] },
-  actor?: string | null,
-): Promise<{ amount: number }> {
-  const { customer, event } = params
-  // A paired group is priced as one plan: one early box now, one remainder
-  // later, against what both invoices already bill. The adjustment lands on
-  // the first event, and covers the lot.
-  const events = params.events?.length ? params.events : [event]
-  const custKey = normalizeId(customer)
-
-  return await sql.begin(async (tx) => {
-    await tx`SELECT set_config('app.actor', ${actor ?? ""}, true)`
-
-    const [already] = await tx<{ id: number }[]>`
-      SELECT id FROM adjustments
-       WHERE event = ANY(${events}) AND description = ${SPLIT_ONGKIR_NOTE}
-         AND lower(replace(customer, '@', '')) = ${custKey}
-       LIMIT 1`
-    if (already) throw new Error("Ongkir kirim duluan sudah ditagihkan untuk pesanan ini.")
-
-    const rows = await tx<{ event: string; gram: string; unit: number; to_ship: string }[]>`
-      SELECT o.event, COALESCE(p.gram, 0) AS gram, o.unit,
-             -- What would travel once the parcel actually goes. unit_hold is
-             -- ignored on purpose: a pairing parks the parcel, and combining
-             -- unparks it, so holding is not a reason to price it smaller.
-             GREATEST(COALESCE(o.unit_arrive, 0) - COALESCE(o.unit_ship, 0), 0) AS to_ship
-        FROM orders o
-        JOIN products p ON p.id = o.product_id
-       WHERE o.event = ANY(${events})
-         AND lower(replace(o.customer, '@', '')) = ${custKey}
-         AND o.unit > 0`
-    const [rate] = await tx<{ ongkir: string }[]>`
-      SELECT COALESCE(cwo.ongkos_kirim, 0) AS ongkir
-        FROM events ev
-        JOIN customer_warehouse_ongkir cwo ON cwo.warehouse_id = ev.warehouse_id
-        JOIN customers c ON c.id = cwo.customer_id
-       WHERE ev.name = ${event}
-         AND lower(replace(c.instagram_id, '@', '')) = ${custKey}`
-
-    const byEvent = new Map<string, { gram: number; unit: number; toShip: number }[]>()
-    for (const r of rows) {
-      const line = { gram: Number(r.gram), unit: r.unit, toShip: Number(r.to_ship) }
-      const list = byEvent.get(r.event)
-      if (list) list.push(line)
-      else byEvent.set(r.event, [line])
-    }
-    const amount = parcelPlanExtra(
-      [...byEvent.values()].map((lines) => ({ lines })),
-      Number(rate?.ongkir ?? 0),
-    )
-    if (amount <= 0) {
-      throw new Error("Tidak ada ongkir tambahan untuk pengiriman ini — bisa langsung dikirim.")
-    }
-
-    const normCust = normalizeCustomer(customer)
-    await tx`INSERT INTO customers (instagram_id) VALUES (${normCust}) ON CONFLICT (instagram_id) DO NOTHING`
-    await tx`
-      INSERT INTO adjustments (event, customer, description, amount)
-      VALUES (${event}, ${normCust}, ${SPLIT_ONGKIR_NOTE}, ${amount})`
-
-    await notifyCustomer(customer, {
-      title: `Extra delivery fee for ${events.join(" + ")}`,
-      body: `You asked for the items that have arrived to be sent ahead of the rest. `
-        + `Rp ${amount.toLocaleString("id-ID")} has been added to your ${event} invoice to cover it. `
-        + `The early parcel goes out once that is settled`
-        + (events.length > 1
-            ? `, and what is left still travels together in one box — with nothing more to pay.`
-            : `, and the rest follows with nothing more to pay.`),
-    }, tx)
-
-    return { amount }
-  })
 }
 
 // ─── Shipments ──────────────────────────────────────────────────────────────
