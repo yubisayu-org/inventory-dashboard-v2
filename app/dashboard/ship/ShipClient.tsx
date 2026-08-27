@@ -1408,10 +1408,14 @@ function BundleCard({
 
   return (
     <div className="rounded-xl border border-cream-border bg-white overflow-hidden">
+      {/* The same header every other card has: what it is on the left, what
+          you can do to it on the right. It used to say "diminta customer",
+          which stopped being true the day staff could arrange a merge. */}
       <div className="px-5 py-4 bg-surface-muted border-b border-cream-border flex justify-between gap-4 items-center flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">
-          <button type="button" onClick={onOpenInvoice} className="font-semibold text-sm hover:text-brand transition-colors">
-            {displayIg(customer).toUpperCase()}
+          <span className="font-semibold text-sm">{b.members.map((m) => m.event).join(" + ")}</span>
+          <button type="button" onClick={onOpenInvoice} className="text-sm text-faint uppercase hover:text-brand transition-colors">
+            {displayIg(customer)}
           </button>
           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
             b.ready ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
@@ -1428,52 +1432,46 @@ function BundleCard({
               Timing beda — kotak menunggu
             </span>
           )}
+          {unpaid.length > 0 && (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700">
+              {unpaid.map((m) => m.event).join(", ")} belum lunas
+            </span>
+          )}
         </div>
-        <span className="text-xs text-faint">diminta customer</span>
-      </div>
-
-      {/* The plan's cost, whichever way it went. A merge that saves nothing is
-          still worth saying so, or the absence reads as a bug. */}
-      <div className="px-5 py-2.5 border-b border-cream-border bg-blue-50/60 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
-          <span className="text-blue-800 font-medium">
-            {planExtra > 0 ? "Kotak duluan — sisanya tetap digabung" : "Digabung jadi satu box"}
-          </span>
-          <span className="text-muted-strong">
-            {planExtra > 0 ? (
-              <>Ongkir tambahan{" "}
-              <span className="tabular-nums font-semibold text-foreground">
-                Rp {planExtra.toLocaleString("id-ID")}
-              </span>{" "}
-              untuk seluruh rencana</>
-            ) : planExtra < 0 ? (
-              <>Hemat ongkir{" "}
-              <span className="tabular-nums font-semibold text-foreground">
-                Rp {(-planExtra).toLocaleString("id-ID")}
-              </span></>
-            ) : (
-              <>Tidak ada selisih ongkir — pembulatan berat menutupinya</>
-            )}
-          </span>
-          <span className="flex-1" />
+        <div className="flex items-center gap-1.5">
+          {/* Cancel Merge sits where Cancel Split does on a split card: after
+              the way out, before the way on. */}
           <button
             type="button"
             onClick={unmergePlan}
             disabled={charging}
-            className="px-3 py-1.5 rounded-lg border border-blue-300 text-blue-800 text-xs font-medium hover:bg-blue-100 disabled:opacity-50 transition-colors"
+            title="Batalkan gabung — ongkirnya dihitung per paket lagi"
+            className="px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-xs font-medium hover:bg-surface-muted disabled:opacity-50 transition-colors"
           >
-            {charging ? "…" : "Batalkan gabung"}
+            {charging ? "…" : "Cancel Merge"}
           </button>
-          {charged && unpaid.length > 0 && (
-            <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-medium">
-              Sudah ditagih — menunggu pembayaran
-            </span>
-          )}
-          {charged && unpaid.length === 0 && (
-            <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">
-              Ongkir tambahan lunas
-            </span>
-          )}
+          <button
+            type="button"
+            onClick={() => setMerging(true)}
+            disabled={!b.ready || unpaid.length > 0 || units === 0 || owesForEarly}
+            title={
+              planExtra > 0
+                ? `Ongkir tambahan Rp ${planExtra.toLocaleString("id-ID")} untuk seluruh rencana`
+                : planExtra < 0
+                  ? `Hemat ongkir Rp ${(-planExtra).toLocaleString("id-ID")} — satu kotak, bukan dua`
+                  : "Tidak ada selisih ongkir — pembulatan berat menutupinya"
+            }
+            className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-1.5"
+          >
+            Ship
+            <span className="px-1.5 py-0.5 rounded bg-white/20 tabular-nums font-semibold">{units}</span>
+          </button>
+        </div>
       </div>
+
+      {/* No cost strip. What the plan costs is on the Ship button that acts
+          on it, and whether it is paid is a badge in the header — the same
+          places every other card keeps them. */}
       {chargeError && (
         <div className="px-5 py-2 text-xs text-red-700 bg-red-50 border-b border-cream-border">{chargeError}</div>
       )}
@@ -1518,20 +1516,6 @@ function BundleCard({
         {b.ready && planExtra > 0 && (
           <span className="text-xs text-muted">sisanya menyusul dalam satu kotak, tanpa ongkir lagi</span>
         )}
-        {unpaid.length > 0 && (
-          <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 font-medium">
-            {unpaid.map((m) => m.event).join(", ")} belum lunas
-          </span>
-        )}
-        <span className="flex-1" />
-        <button
-          type="button"
-          onClick={() => setMerging(true)}
-          disabled={!b.ready || unpaid.length > 0 || units === 0 || owesForEarly}
-          className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          Gabung &amp; Kirim
-        </button>
       </div>
 
       {merging && (
