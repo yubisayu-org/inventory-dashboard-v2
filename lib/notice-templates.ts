@@ -16,6 +16,10 @@ export type NoticeKey =
   | "inbox_payment_confirmed"
   | "inbox_waiting_payment"
   | "inbox_delayed"
+  | "inbox_ongkir_extra"
+  | "inbox_ongkir_credit"
+  | "inbox_ongkir_reweighed"
+  | "inbox_ongkir_reweighed_less"
   | "inbox_custom"
 
 export interface NoticeTemplate {
@@ -48,6 +52,44 @@ export const NOTICE_TEMPLATES: NoticeTemplate[] = [
       "{cause} That is {refundAmount} owed back to you.\n\n"
       + "Open the order to say whether to keep it on your account for next time, or have "
       + "us transfer it to your bank.",
+  },
+  {
+    key: "inbox_ongkir_extra",
+    label: "Extra shipping fee",
+    title: "Ongkir tambahan {amount} · {event}",
+    body:
+      "Sebagian pesanan Anda sudah tiba dan akan kami kirim lebih dulu. Karena menjadi dua paket, "
+      + "ada tambahan ongkir {amount} yang perlu diselesaikan sebelum paket berangkat.",
+  },
+  {
+    key: "inbox_ongkir_credit",
+    label: "Shipping discount",
+    title: "Diskon ongkir {amount} · {event}",
+    body:
+      "Pesanan Anda kami gabung menjadi satu paket, sehingga ongkir berkurang {amount}. "
+      + "Tagihan Anda sudah kami sesuaikan.",
+  },
+  {
+    key: "inbox_ongkir_reweighed",
+    label: "Courier weighed it heavier",
+    title: "Ongkir tambahan {amount} · {event}",
+    // Apologetic on purpose: she is being charged after her parcel left, for
+    // something she did not cause and could not have known.
+    body:
+      "Paket Anda ditimbang {chargedKg} kg oleh kurir, sedangkan estimasi kami {estimatedKg} kg. "
+      + "Selisihnya menambah ongkir {amount} pada tagihan {event}.\n\n"
+      + "Mohon maaf atas ketidaknyamanannya — berat sebenarnya baru diketahui setelah paket ditimbang.",
+  },
+  {
+    key: "inbox_ongkir_reweighed_less",
+    label: "Courier weighed it lighter",
+    // The same correction the other way. Sending the heavier wording for money
+    // going back to her announces a charge that is really a refund, and
+    // apologises for it.
+    title: "Ongkir berkurang {amount} · {event}",
+    body:
+      "Paket Anda ditimbang {chargedKg} kg oleh kurir, lebih ringan dari estimasi kami "
+      + "{estimatedKg} kg. Selisihnya {amount} sudah kami kurangkan dari tagihan {event}.",
   },
   {
     key: "inbox_payment_confirmed",
@@ -97,6 +139,19 @@ export interface RefundCause {
   fixed?: boolean
   /** Names what turned up instead, so it needs {receivedItem} to say it. */
   needsReceived?: boolean
+  /**
+   * A mark on the Shopping or Arrival List already produces this reason, with
+   * the item, the units and the notice, in one action. Offering it again in a
+   * hand-written refund invites a second refund for the same thing — and one
+   * that leaves the order still claiming units nobody will receive.
+   */
+  fromMark?: boolean
+  /**
+   * Kept so refunds already carrying it still read properly, and not offered
+   * for new ones. A reason nobody can choose is one nobody has to interpret
+   * later.
+   */
+  retired?: boolean
   /** Wording for when nobody recorded what turned up. */
   lineWithout?: string
   /**
@@ -134,6 +189,7 @@ export function causeLineFor(
 export const REFUND_CAUSES: RefundCause[] = [
   {
     key: "unavailable",
+    fromMark: true,
     label: "We could not buy it",
     needsItems: true,
     line: "We could not buy {itemsList} from {event}.",
@@ -142,6 +198,7 @@ export const REFUND_CAUSES: RefundCause[] = [
   },
   {
     key: "damaged",
+    fromMark: true,
     label: "It arrived damaged",
     needsItems: true,
     line: "{itemsList} arrived damaged, so we are not sending it.",
@@ -150,6 +207,7 @@ export const REFUND_CAUSES: RefundCause[] = [
   },
   {
     key: "wrong_item",
+    fromMark: true,
     label: "The wrong thing arrived",
     needsItems: true,
     needsReceived: true,
@@ -181,6 +239,7 @@ export const REFUND_CAUSES: RefundCause[] = [
   },
   {
     key: "shipping_loss",
+    fromMark: true,
     label: "The parcel was lost",
     needsItems: true,
     // Which of her things went astray, not just that something did: a trip can
@@ -192,15 +251,41 @@ export const REFUND_CAUSES: RefundCause[] = [
     waLineWithout: "Paket Anda hilang dalam pengiriman.",
   },
   {
+    key: "quality",
+    label: "Not as good as promised",
+    needsItems: true,
+    // Deliberately not "damaged". That one means the parcel arrived broken and
+    // was caught before it went out; this is the shop's own check having missed
+    // something, found by the customer after she opened the box. Counting them
+    // separately is the only way to learn anything from either.
+    line: "{itemsList} tidak sesuai dengan kualitas yang kami janjikan. "
+      + "Maaf — ini luput dari pemeriksaan kami sebelum dikirim.",
+    waLine: "Barang berikut tidak sesuai dengan kualitas yang kami janjikan:\n{itemsList}\n\n"
+      + "Mohon maaf, ini luput dari pemeriksaan kami sebelum dikirim.",
+    waLineWithout: "Ada barang yang tidak sesuai dengan kualitas yang kami janjikan. "
+      + "Mohon maaf, ini luput dari pemeriksaan kami.",
+  },
+  {
     key: "goodwill",
     label: "Goodwill",
     line: "A goodwill refund from us on {event}.",
     waLine: "Sebagai bentuk permohonan maaf kami atas ketidaknyamanan yang terjadi.",
   },
-  // No sentence of its own: a catch-all that invented an explanation would be
-  // guessing at one. The amount and the request for bank details still stand.
-  { key: "other", label: "Something else", line: "", waLine: "Terdapat penyesuaian pada pesanan Anda." },
+  // Retired. Everything it was reached for turned out to have a name: money
+  // she paid that she should not have is an overpayment however it arose, and
+  // a gesture is goodwill. A catch-all with no sentence of its own left the
+  // customer a refund that explained nothing, and left the shop guessing six
+  // weeks later at what it had been for.
+  //
+  // Still here because old refunds carry it and have to keep reading properly.
+  { key: "other", label: "Something else", retired: true, line: "", waLine: "Terdapat penyesuaian pada pesanan Anda." },
 ]
+
+/** The reasons nobody can mark — what is left for a person to decide. */
+export const MANUAL_REFUND_CAUSES = REFUND_CAUSES.filter((c) => !c.fromMark && !c.retired)
+
+/** Everything still offered anywhere, marks included. */
+export const OFFERED_REFUND_CAUSES = REFUND_CAUSES.filter((c) => !c.retired)
 
 export const NOTICE_TOKENS = [
   "{customer}",
@@ -210,6 +295,9 @@ export const NOTICE_TOKENS = [
   "{refundAmount}",
   "{itemsList}",
   "{receivedItem}",
+  "{amount}",
+  "{chargedKg}",
+  "{estimatedKg}",
   "{cause}",
 ] as const
 
@@ -253,6 +341,10 @@ export const NOTICE_TOKENS_FOR: Record<NoticeKey, string[]> = {
   inbox_payment_confirmed: ["{customer}", "{event}", "{total}"],
   inbox_waiting_payment: ["{customer}", "{event}", "{total}", "{outstanding}"],
   inbox_delayed: ["{customer}", "{event}"],
+  inbox_ongkir_extra: ["{customer}", "{event}", "{amount}"],
+  inbox_ongkir_credit: ["{customer}", "{event}", "{amount}"],
+  inbox_ongkir_reweighed: ["{customer}", "{event}", "{amount}", "{chargedKg}", "{estimatedKg}"],
+  inbox_ongkir_reweighed_less: ["{customer}", "{event}", "{amount}", "{chargedKg}", "{estimatedKg}"],
   inbox_custom: [...NOTICE_TOKENS],
 }
 

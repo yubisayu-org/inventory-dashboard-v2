@@ -1,7 +1,7 @@
 import { test, before, after } from "node:test"
 import assert from "node:assert/strict"
 import sql from "../db-pool"
-import { refundForReduction } from "./mark-refunds"
+import { refundForReduction, invoiceTotalsNow } from "./mark-refunds"
 import { getRefunds } from "./finance"
 import { markProductOutOfStock } from "./shopping-list"
 import { recordNotReceived } from "./fulfillment"
@@ -37,17 +37,24 @@ after(async () => {
   await sql`DELETE FROM payments WHERE event LIKE ${`${TAG}%`}`
   await sql`DELETE FROM orders WHERE event LIKE ${`${TAG}%`}`
   await sql`DELETE FROM events WHERE name LIKE ${`${TAG}%`}`
+  // Products only after the orders that point at them, and the ongkir rows
+  // only before the customers they hang off.
+  await sql`DELETE FROM products WHERE name LIKE ${`${TAG}%`}`
+  await sql`DELETE FROM customer_warehouse_ongkir WHERE customer_id IN (
+    SELECT id FROM customers WHERE instagram_id LIKE ${`${TAG}%`})`
   await sql`DELETE FROM customers WHERE instagram_id LIKE ${`${TAG}%`}`
   await sql.end()
 })
 
 test("only the customer who paid is refunded", async () => {
+  // Snapshot first: the refund is capped by how far each invoice falls.
+  const before = await invoiceTotalsNow(EVENT)
   // Both orders shrink to zero. The unpaid one simply owes less.
   await sql`UPDATE orders SET unit = 0 WHERE event = ${EVENT}`
   const made = await refundForReduction(EVENT, "unavailable", "Test Product", [
-    { customer: PAID, unitsRemoved: 1, unitPrice: 100000 },
-    { customer: UNPAID, unitsRemoved: 1, unitPrice: 100000 },
-  ], "tester")
+    { customer: PAID, unitsRemoved: 1 },
+    { customer: UNPAID, unitsRemoved: 1 },
+  ], before, "tester")
 
   assert.equal(made.length, 1, "one refund, not two")
   assert.equal(made[0].amount, 100000)
@@ -181,4 +188,61 @@ test("the filter narrows the candidates without changing the rule", async () => 
   const [b] = await sql<{ unit: number }[]>`SELECT unit FROM orders WHERE id = ${ids[spared]}`
   assert.equal(a.unit, 0)
   assert.equal(b.unit, 1, "an order nobody picked keeps its units")
+})
+
+test("the ongkir the missing goods were carrying comes back with them", async () => {
+  // The bug this replaced: the refund was the price of the goods, full stop.
+  // Her invoice bills ongkir on weight it no longer carries, so the difference
+  // sat behind as an overpayment for somebody to find in To check -- and the
+  // notice told her a smaller number than she was actually owed.
+  const EV = `${TAG}_KG`
+  const who = `${TAG}_kg_paid`
+  const RATE = 25_000
+
+  // A 1 kg product, so removing one unit removes exactly one billed kilo.
+  const [heavy] = await sql<{ id: number }[]>`
+    INSERT INTO products (name, gram, price)
+    VALUES (${`${TAG} Heavy Thing`}, 1000, 300000) RETURNING id`
+  const [wh] = await sql<{ id: number }[]>`SELECT id FROM warehouses ORDER BY id LIMIT 1`
+  await sql`INSERT INTO events (name, warehouse_id) VALUES (${EV}, ${wh.id})`
+  const [cust] = await sql<{ id: number }[]>`
+    INSERT INTO customers (instagram_id) VALUES (${who}) RETURNING id`
+  await sql`
+    INSERT INTO customer_warehouse_ongkir (customer_id, warehouse_id, ongkos_kirim)
+    VALUES (${cust.id}, ${wh.id}, ${RATE})
+    ON CONFLICT (customer_id, warehouse_id) DO UPDATE SET ongkos_kirim = ${RATE}`
+
+  // Four units at 300_000 = 1_200_000 of goods, 4 kg of ongkir = 100_000.
+  await sql`
+    INSERT INTO orders (event, customer, product_id, unit_price, unit, unit_buy, unit_dispatch)
+    VALUES (${EV}, ${who}, ${heavy.id}, 300000, 4, 4, 4)`
+  await sql`
+    INSERT INTO payments (event, customer, amount, is_checked, kind)
+    VALUES (${EV}, ${who}, ${1_200_000 + 4 * RATE}, true, 'deposit')`
+
+  const result = await recordNotReceived(
+    { event: EV, productId: heavy.id, productName: `${TAG} Heavy Thing`, qty: 1, mode: "missing" },
+    "tester",
+  )
+
+  assert.equal(result.refunds.length, 1)
+  assert.equal(
+    result.refunds[0].amount,
+    300_000 + RATE,
+    "the goods and the kilo they occupied, in one refund",
+  )
+
+  // And nothing left over pretending to be an overpayment.
+  const [status] = await sql<{ invoice_total: number; total_paid: number }[]>`
+    SELECT (SUM(o.unit_price * o.unit) + ${RATE} * CEIL(SUM(COALESCE(p.gram,0) * o.unit)::numeric / 1000))::int
+             AS invoice_total,
+           (SELECT COALESCE(SUM(amount),0)::int FROM payments
+             WHERE event = ${EV} AND is_checked) AS total_paid
+      FROM orders o JOIN products p ON p.id = o.product_id
+     WHERE o.event = ${EV}`
+  assert.equal(
+    status.total_paid - status.invoice_total,
+    result.refunds[0].amount,
+    "the refund is the whole surplus -- no stray kilo waiting in To check",
+  )
 })

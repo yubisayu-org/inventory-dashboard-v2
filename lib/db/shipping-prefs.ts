@@ -141,6 +141,27 @@ async function shippedUnits(customerId: number, event: string, db: DBExecutor): 
   return Number(row?.shipped ?? 0)
 }
 
+/** Who set a shipping preference. The shop is not a customer. */
+export type SetBy = "customer" | "shop"
+
+/**
+ * Whether a refusal applies to this caller.
+ *
+ * "shipped" and "unknown" are facts about the world and stop everyone.
+ * "unpaid" is a rule about what a customer may do on her own account, and the
+ * shop inherits it only by accident: a merge is arranged precisely while she
+ * still owes, so the saving reaches the invoice she settles — and a split
+ * could otherwise never be undone, because its own fee is what makes her
+ * unpaid.
+ *
+ * Shipping keeps its own payment gate. This decides who may write down a plan,
+ * not who may send a box.
+ */
+function blocks(reason: Ineligible | null, setBy: SetBy): boolean {
+  if (!reason) return false
+  return !(setBy === "shop" && reason === "unpaid")
+}
+
 export class ShippingPrefError extends Error {
   constructor(message: string) {
     super(message)
@@ -167,9 +188,11 @@ export async function setShippingMode(
   event: string,
   mode: ShipMode,
   db: DBExecutor = sql,
+  /** Who chose it. The shop recording a plan is not the customer asking. */
+  setBy: SetBy = "customer",
 ): Promise<void> {
   const reason = await ineligibleReason(customerId, event, db)
-  if (reason) throw new ShippingPrefError(reason)
+  if (blocks(reason, setBy)) throw new ShippingPrefError(reason!)
 
   // A half-shipped event cannot be held: the queue and the parcel that already
   // left would disagree about what is outstanding.
@@ -184,10 +207,10 @@ export async function setShippingMode(
   const previous = (await getShippingPrefs(customerId, db)).find((p) => p.event === event)
 
   await db`
-    INSERT INTO customer_shipping_prefs (customer_id, event, mode)
-    VALUES (${customerId}, ${event}, ${mode})
+    INSERT INTO customer_shipping_prefs (customer_id, event, mode, set_by)
+    VALUES (${customerId}, ${event}, ${mode}, ${setBy})
     ON CONFLICT (customer_id, event)
-    DO UPDATE SET mode = ${mode}, updated_at = NOW()
+    DO UPDATE SET mode = ${mode}, set_by = ${setBy}, updated_at = NOW()
   `
 
   if (mode === "hold") {
@@ -210,12 +233,14 @@ export async function setMergeGroup(
   customerId: number,
   events: string[],
   db: DBExecutor = sql,
+  /** Who arranged it. The shop merging its own boxes is not the customer asking. */
+  setBy: SetBy = "customer",
 ): Promise<string | null> {
   const wanted = Array.from(new Set(events.filter((e) => typeof e === "string" && e.trim())))
 
   for (const event of wanted) {
     const reason = await ineligibleReason(customerId, event, db)
-    if (reason) throw new ShippingPrefError(reason)
+    if (blocks(reason, setBy)) throw new ShippingPrefError(reason!)
   }
 
   const prefs = await getShippingPrefs(customerId, db)
@@ -246,10 +271,10 @@ export async function setMergeGroup(
     }
     for (const event of wanted) {
       await tx`
-        INSERT INTO customer_shipping_prefs (customer_id, event, merge_key)
-        VALUES (${customerId}, ${event}, ${key})
+        INSERT INTO customer_shipping_prefs (customer_id, event, merge_key, set_by)
+        VALUES (${customerId}, ${event}, ${key}, ${setBy})
         ON CONFLICT (customer_id, event)
-        DO UPDATE SET merge_key = ${key}, updated_at = NOW()`
+        DO UPDATE SET merge_key = ${key}, set_by = ${setBy}, updated_at = NOW()`
     }
   })
 

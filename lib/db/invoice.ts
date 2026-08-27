@@ -243,6 +243,7 @@ export async function getInvoiceForCustomer(
       productName: r.product_name as string,
       rawUnitPrice: r.unit_price as number,
       unitBuy: (r.unit_buy as number) ?? 0,
+      unitShip: (r.unit_ship as number) ?? 0,
     }))
 
     const { eta, totals, invoice } = computeEventCore(

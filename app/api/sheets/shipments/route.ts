@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
 import { getShippingRecords, updateTrackingNumber, updateShipmentTempAddress, withActor } from "@/lib/db"
+import { recordChargedWeight } from "@/lib/db/parcel-plan"
 
 // Default recent window (days) for the shipments list, so the payload stays
 // bounded as shipment history grows. `?days=all` loads the full history.
@@ -44,8 +45,10 @@ export async function PATCH(req: NextRequest) {
       trackingNumber?: string
       // null clears, string sets, undefined means "don't touch this field"
       tempAddress?: string | null
+      // null clears a correction: the estimate was right after all.
+      weightCharged?: number | null
     }
-    const { rowNumber, trackingNumber, tempAddress } = body
+    const { rowNumber, trackingNumber, tempAddress, weightCharged } = body
     if (!rowNumber) {
       return NextResponse.json({ error: "rowNumber is required" }, { status: 400 })
     }
@@ -63,6 +66,17 @@ export async function PATCH(req: NextRequest) {
         return NextResponse.json({ error: "tempAddress must be a string or null" }, { status: 400 })
       }
       await withActor(session.user.email, (tx) => updateShipmentTempAddress(rowNumber, tempAddress, tx))
+    }
+    if (weightCharged !== undefined) {
+      if (weightCharged !== null && (!Number.isInteger(weightCharged) || weightCharged < 1)) {
+        return NextResponse.json(
+          { error: "weightCharged must be a whole number of kilos, or null" },
+          { status: 400 },
+        )
+      }
+      // Changes what a customer owes, so it runs through the same path the
+      // tests cover rather than writing the column directly.
+      await recordChargedWeight(rowNumber, weightCharged, session.user.email)
     }
     return NextResponse.json({ ok: true })
   } catch (err) {

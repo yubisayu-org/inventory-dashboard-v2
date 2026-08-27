@@ -2,13 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react"
 import { displayIg, fmt } from "@/lib/format"
-import type { InvoiceResult, PaymentStatus, PaymentStatusRow } from "@/lib/db"
+import type { InvoiceOrderLine, InvoiceResult, PaymentStatus, PaymentStatusRow } from "@/lib/db"
 import DataGrid, { type ColumnDef } from "@/components/DataGrid"
 import EventSelect from "@/components/EventSelect"
 import CopyInvoiceButton from "@/components/CopyInvoiceButton"
 import InvoiceSummary from "@/components/InvoiceSummary"
 import { AddAdjustmentFromInvoiceModal } from "./AddAdjustmentFromInvoiceModal"
 import { InvoiceMessageActions } from "./InvoiceMessageActions"
+import { CancelOrderFromInvoiceModal } from "./CancelOrderFromInvoiceModal"
+import { CancelWholeOrderModal } from "./CancelWholeOrderModal"
+import { HitAndRunFlag } from "@/components/HitAndRunFlag"
+import { useHitAndRun, handleKey } from "@/hooks/useHitAndRun"
 
 // ─── Payment Status Panel ────────────────────────────────────────────────────
 
@@ -32,8 +36,10 @@ type StatusFilter = "all" | PaymentStatus
 
 export function PaymentStatusPanel({
   onOpenCustomer,
+  isOwner,
 }: {
   onOpenCustomer: (customer: string) => void
+  isOwner: boolean
 }) {
   const [rows, setRows] = useState<PaymentStatusRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -49,12 +55,15 @@ export function PaymentStatusPanel({
   // Per-customer invoice cache for expanded rows — one fetch covers every
   // event row of that customer; cleared on refresh so amounts stay current.
   const invoiceCache = useRef(new Map<string, InvoiceResult>())
+  // One fetch for the whole page; every row reads from it.
+  const { marks, refresh: refreshMarks } = useHitAndRun()
 
   // Fetch every event's payment status once; the event picker filters client-side.
   const fetchRows = useCallback(async () => {
     setLoading(true)
     setError(null)
     invoiceCache.current.clear()
+    refreshMarks()
     try {
       const res = await fetch(`/api/sheets/invoice/payment-status`, { cache: "no-store" })
       const data = await res.json()
@@ -66,7 +75,7 @@ export function PaymentStatusPanel({
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [refreshMarks])
 
   useEffect(() => { fetchRows() }, [fetchRows])
 
@@ -124,13 +133,16 @@ export function PaymentStatusPanel({
       size: 160,
       filterFn: "textContains",
       cell: ({ row }) => (
-        <button
-          type="button"
-          onClick={() => onOpenCustomer(row.original.customer)}
-          className="font-medium text-foreground hover:text-brand transition-colors text-left"
-        >
-          {displayIg(row.original.customer)}
-        </button>
+        <span className="flex items-center gap-1.5 min-w-0">
+          <button
+            type="button"
+            onClick={() => onOpenCustomer(row.original.customer)}
+            className="font-medium text-foreground hover:text-brand transition-colors text-left truncate"
+          >
+            {displayIg(row.original.customer)}
+          </button>
+          <HitAndRunFlag stamps={marks.get(handleKey(row.original.customer))} />
+        </span>
       ),
     },
     {
@@ -201,7 +213,7 @@ export function PaymentStatusPanel({
         </div>
       ),
     },
-  ], [onOpenCustomer])
+  ], [onOpenCustomer, marks])
 
   const tabs: { key: StatusFilter; label: string; count: number }[] = [
     { key: "all", label: "All", count: rows.length },
@@ -213,8 +225,14 @@ export function PaymentStatusPanel({
   ]
 
   const renderExpandedRow = useCallback((r: PaymentStatusRow) => (
-    <ExpandedInvoice event={r.event} customer={r.customer} cache={invoiceCache} />
-  ), [])
+    <ExpandedInvoice
+      event={r.event}
+      customer={r.customer}
+      cache={invoiceCache}
+      isOwner={isOwner}
+      onMutated={fetchRows}
+    />
+  ), [isOwner, fetchRows])
 
   const renderMobileCard = useCallback((r: PaymentStatusRow) => (
     <div className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
@@ -376,13 +394,30 @@ function ExpandedInvoice({
   event,
   customer,
   cache,
+  isOwner,
+  onMutated,
 }: {
   event: string
   customer: string
   cache: MutableRefObject<Map<string, InvoiceResult>>
+  isOwner: boolean
+  /** Refetch the status rows; the totals above moved too. */
+  onMutated: () => void
 }) {
   const [result, setResult] = useState<InvoiceResult | null>(cache.current.get(customer) ?? null)
   const [error, setError] = useState<string | null>(null)
+  const [reloads, setReloads] = useState(0)
+  const [cancelLine, setCancelLine] = useState<InvoiceOrderLine | null>(null)
+  const [cancelAll, setCancelAll] = useState(false)
+
+  // A cancelled line has to leave the panel it was cancelled from. The cache
+  // is keyed by customer and the effect below returns early on a hit, so the
+  // entry goes first and the counter is what makes the effect run again.
+  const reload = useCallback(() => {
+    cache.current.delete(customer)
+    setReloads((n) => n + 1)
+    onMutated()
+  }, [cache, customer, onMutated])
 
   useEffect(() => {
     const cached = cache.current.get(customer)
@@ -402,41 +437,71 @@ function ExpandedInvoice({
       })
       .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load") })
     return () => { cancelled = true }
-  }, [customer, cache])
+  }, [customer, cache, reloads])
 
   if (error) {
-    return <div className="px-6 py-4 bg-cream text-sm text-red-500">{error}</div>
+    return <div className="px-6 py-4 text-sm text-red-500">{error}</div>
   }
   if (!result) {
-    return <div className="px-6 py-4 bg-cream text-sm text-faint">Loading invoice…</div>
+    return <div className="px-6 py-4 text-sm text-faint">Loading invoice…</div>
   }
 
   const ev = result.events.find((e) => e.eventId === event)
   if (!ev) {
-    return <div className="px-6 py-4 bg-cream text-sm text-faint">No invoice found for {event}.</div>
+    return <div className="px-6 py-4 text-sm text-faint">No invoice found for {event}.</div>
   }
 
   return (
-    <div className="bg-cream">
+    <div>
       {/* Order lines */}
       <table className="w-full text-sm">
         <thead>
           <tr className="text-left text-xs text-muted border-b border-cream-border bg-surface-muted/80">
-            <th className="pl-12 pr-4 py-2 font-medium">Order</th>
+            <th className="pl-[calc(var(--dg-indent,0px)+1rem)] pr-4 py-2 font-medium">Order</th>
             <th className="px-4 py-2 font-medium text-right w-20">Unit</th>
             <th className="px-4 py-2 font-medium text-right w-28">Price</th>
             <th className="px-4 py-2 font-medium text-right w-28">Subtotal</th>
             <th className="px-4 py-2 font-medium text-right w-20">Ready</th>
+            {/* The whole order at once, for a customer who has gone quiet.
+                Cancelling her lines one at a time is a confirmation each and a
+                half-cancelled order if anything interrupts. */}
+            {isOwner && (
+              <th className="pl-2 pr-4 py-2 text-right w-32 normal-case">
+                <button
+                  type="button"
+                  onClick={() => setCancelAll(true)}
+                  title="Batalkan seluruh pesanan customer ini di trip ini"
+                  className="text-[11px] font-medium text-muted hover:text-red-600 transition-colors whitespace-nowrap"
+                >
+                  Cancel
+                </button>
+              </th>
+            )}
           </tr>
         </thead>
         <tbody>
           {[...ev.orders].reverse().map((r, i) => (
             <tr key={i} className="border-b border-cream-border">
-              <td className="pl-12 pr-4 py-2">{r.productName || r.order}</td>
+              <td className="pl-[calc(var(--dg-indent,0px)+1rem)] pr-4 py-2">{r.productName || r.order}</td>
               <td className="px-4 py-2 text-right tabular-nums">{r.unit}</td>
               <td className="px-4 py-2 text-right tabular-nums">{r.price}</td>
               <td className="px-4 py-2 text-right tabular-nums">{r.subtotal}</td>
               <td className="px-4 py-2 text-right tabular-nums">{r.unitArrive}</td>
+              {isOwner && (
+                <td className="pl-2 pr-4 py-2 text-right">
+                  {r.unitShip < r.unit && (
+                    <button
+                      type="button"
+                      onClick={() => setCancelLine(r)}
+                      title="Batalkan baris ini"
+                      aria-label="Batalkan baris ini"
+                      className="text-faint hover:text-red-600 transition-colors"
+                    >
+                      ⃠
+                    </button>
+                  )}
+                </td>
+              )}
             </tr>
           ))}
         </tbody>
@@ -446,8 +511,28 @@ function ExpandedInvoice({
       <InvoiceSummary
         event={ev}
         actions={<InvoiceMessageActions event={ev} whatsapp={result.customerDetail?.whatsapp} customer={result.customer} />}
-        leftPadding="pl-12"
+        leftPadding="pl-[calc(var(--dg-indent,0px)+1rem)]"
       />
+
+      {cancelAll && (
+        <CancelWholeOrderModal
+          event={ev}
+          customer={customer}
+          onClose={() => setCancelAll(false)}
+          onCancelled={() => { setCancelAll(false); reload() }}
+        />
+      )}
+
+      {cancelLine && (
+        <CancelOrderFromInvoiceModal
+          line={cancelLine}
+          event={ev.eventId}
+          customer={displayIg(customer)}
+          productName={cancelLine.productName || (cancelLine.order ?? "").replace(/ x \d+$/, "")}
+          onClose={() => setCancelLine(null)}
+          onCancelled={() => { setCancelLine(null); reload() }}
+        />
+      )}
     </div>
   )
 }

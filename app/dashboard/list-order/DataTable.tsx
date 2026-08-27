@@ -16,6 +16,8 @@ import DataGrid, {
   type PaginationState,
   type RowSelectionState,
 } from "@/components/DataGrid"
+import { useHitAndRun, handleKey, marksFor } from "@/hooks/useHitAndRun"
+import { HitAndRunFlag } from "@/components/HitAndRunFlag"
 import SearchableSelect from "@/components/SearchableSelect"
 import SearchInput from "@/components/SearchInput"
 import EventSelect from "@/components/EventSelect"
@@ -186,22 +188,19 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
     column: "unit_buy" | "unit_arrive" | "unit_dispatch",
     value: number | null,
   ) => {
-    const res = await fetch(`/api/sheets/duplicate-form/${rowNumber}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ stage: "owner_cell", column, value }),
-    })
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}))
-      throw new Error(data.error ?? "Failed to save")
-    }
-    setRows((rs) => rs.map((r) =>
-      r.rowNumber === rowNumber
-        ? { ...r, ...(column === "unit_buy" ? { unitBuy: value }
-            : column === "unit_dispatch" ? { unitDispatch: value }
-            : { unitArrive: value }) }
-        : r,
-    ))
+    // Through the shared helper, so an inline cell asks the same question the
+    // modal does: typing 4 into Buy on an order of 3 strands a unit exactly as
+    // dropping the order to 2 would.
+    const { banked } = await putOrderEdit(rowNumber, { stage: "owner_cell", column, value })
+    setRows((rs) => rs.map((r) => {
+      if (r.rowNumber !== rowNumber) return r
+      // Banking moves the surplus onto the shelf and off the order, so the
+      // saved figure is the order's own unit — not the number just typed.
+      const settled = banked > 0 && column === "unit_buy" ? r.unit : value
+      return { ...r, ...(column === "unit_buy" ? { unitBuy: settled }
+        : column === "unit_dispatch" ? { unitDispatch: value }
+        : { unitArrive: value }) }
+    }))
   }, [])
 
   const handleNoteSave = useCallback(async (rowNumber: number, value: string) => {
@@ -926,6 +925,48 @@ function EditableTextCell({ value, onSave }: {
 // Edit Order Modal
 // ---------------------------------------------------------------------------
 
+/**
+ * Save an edit, and ask once if it would leave bought units on nobody's order.
+ *
+ * A unit that was paid for is either on an order or on the shelf. When an edit
+ * would leave it on neither the server refuses with 409 rather than saving,
+ * because it cannot know which happened — the order shrank, or too many were
+ * bought — and both end in the same place: the stock exists and belongs in
+ * Inventory.
+ */
+async function putOrderEdit(
+  rowNumber: number,
+  payload: Record<string, unknown>,
+): Promise<{ banked: number }> {
+  async function send(bankStranded?: boolean) {
+    return await fetch(`/api/sheets/duplicate-form/${rowNumber}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(bankStranded === undefined ? payload : { ...payload, bankStranded }),
+    })
+  }
+
+  let res = await send()
+  if (res.status === 409) {
+    const d = await res.json()
+    if (d.error === "stranded_units") {
+      const n = Number(d.stranded) || 0
+      const ok = confirm(
+        `${n} unit sudah dibeli tapi tidak ada di pesanan ini.\n\n` +
+        `Unit itu akan dicatat ke Inventory sebagai stok siap dijual.\n\n` +
+        `Lanjutkan?`,
+      )
+      // Declining abandons the edit rather than saving it anyway: the whole
+      // point is that this state does not get written quietly.
+      if (!ok) throw new Error("Dibatalkan — tidak ada yang disimpan")
+      res = await send(true)
+    }
+  }
+  if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? "Failed to save") }
+  const done = await res.json().catch(() => ({}))
+  return { banked: Number(done.banked) || 0 }
+}
+
 function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
   row: FormRow
   options: SheetOptions | null
@@ -951,10 +992,21 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
   const [confirmPriceOpen, setConfirmPriceOpen] = useState(false)
+  // Same question as the add form asks: is this somebody who has walked away
+  // from an order before.
+  const { marks } = useHitAndRun()
 
   const customerOptions = useMemo(
-    () => (options?.customers ?? []).map((c) => ({ value: c, label: displayIg(c), meta: options?.customerMobiles?.[c] || undefined })),
-    [options],
+    () => (options?.customers ?? []).map((c) => {
+      const stamps = marks.get(handleKey(c))
+      return {
+        value: c,
+        label: displayIg(c),
+        meta: options?.customerMobiles?.[c] || undefined,
+        badge: stamps?.length ? <HitAndRunFlag stamps={stamps} /> : undefined,
+      }
+    }),
+    [options, marks],
   )
   const itemOptions = useMemo(
     // Inactive products are hidden from the Order-input item picker only.
@@ -988,20 +1040,15 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
     try {
       const pid = Number(form.productId)
       const product = options?.items.find((it) => it.id === pid)
-      const res = await fetch(`/api/sheets/duplicate-form/${row.rowNumber}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          stage: "1",
-          event: form.event,
-          customer: form.customer,
-          productId: pid,
-          unitPrice: product?.price ?? 0,
-          unit: Number(form.unit),
-          note: form.note,
-        }),
+      await putOrderEdit(row.rowNumber, {
+        stage: "1",
+        event: form.event,
+        customer: form.customer,
+        productId: pid,
+        unitPrice: product?.price ?? 0,
+        unit: Number(form.unit),
+        note: form.note,
       })
-      if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? "Failed to save") }
 
       if (isOwner) {
         // Issue a single-column PUT per changed field via stage:"owner_cell".
@@ -1017,12 +1064,7 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
           pending.push({ column: "unit_arrive", value: unitArrive === "" ? null : Number(unitArrive) })
         }
         for (const p of pending) {
-          const res2 = await fetch(`/api/sheets/duplicate-form/${row.rowNumber}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ stage: "owner_cell", column: p.column, value: p.value }),
-          })
-          if (!res2.ok) { const d = await res2.json(); throw new Error(d.error ?? `Failed to save ${p.column}`) }
+          await putOrderEdit(row.rowNumber, { stage: "owner_cell", column: p.column, value: p.value })
         }
       }
 
@@ -1302,6 +1344,14 @@ function AddOrderForm({ options, onOrderAdded, onCancel }: {
   // several items, the item when entering one item's several customers.
   const [mode, setMode] = useState<OrderFormMode>("byCustomer")
   const [customer, setCustomer] = useState("")
+  // Whether anybody named on this form has walked away from an order before.
+  // Fetched once for the form, not per line: the same answer serves every name
+  // on it, and asking per line would turn one scan into one per row.
+  const { marks } = useHitAndRun()
+  // What is in the customer fields right now. The select commits on blur, and
+  // a warning that waits for blur arrives after the decision it was meant to
+  // inform.
+  const [typing, setTyping] = useState<Record<string, string>>({})
   const [fixedItem, setFixedItem] = useState("")
   const [lines, setLines] = useState([newAddLine()])
   const byItem = mode === "byItem"
@@ -1309,8 +1359,16 @@ function AddOrderForm({ options, onOrderAdded, onCancel }: {
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null)
 
   const customerOptions = useMemo(
-    () => (options?.customers ?? []).map((c) => ({ value: c, label: displayIg(c), meta: options?.customerMobiles?.[c] || undefined })),
-    [options],
+    () => (options?.customers ?? []).map((c) => {
+      const stamps = marks.get(handleKey(c))
+      return {
+        value: c,
+        label: displayIg(c),
+        meta: options?.customerMobiles?.[c] || undefined,
+        badge: stamps?.length ? <HitAndRunFlag stamps={stamps} /> : undefined,
+      }
+    }),
+    [options, marks],
   )
   const itemOptions = useMemo(
     // Inactive products are hidden from the Order-input item picker only.
@@ -1321,6 +1379,24 @@ function AddOrderForm({ options, onOrderAdded, onCancel }: {
     })),
     [options],
   )
+
+  // Names on this form that carry a mark. One row per person however many
+  // lines they occupy -- the warning is about her, not about a line.
+  const flagged = useMemo(() => {
+    const names = byItem
+      ? lines.map((l) => typing[`l${l.id}`] ?? l.customer)
+      : [typing.main ?? customer]
+    const seen = new Set<string>()
+    const out: { who: string; stamps: string[] }[] = []
+    for (const name of names) {
+      for (const m of marksFor(marks, name ?? "")) {
+        if (!m.exact || seen.has(m.who)) continue
+        seen.add(m.who)
+        out.push({ who: m.who, stamps: m.stamps })
+      }
+    }
+    return out
+  }, [byItem, lines, customer, marks, typing])
 
   function updateLine(id: number, field: "productId" | "customer" | "unit" | "note", value: string) {
     setLines((prev) => prev.map((l) => l.id === id ? { ...l, [field]: value } : l))
@@ -1422,6 +1498,7 @@ function AddOrderForm({ options, onOrderAdded, onCancel }: {
             <SearchableSelect
               value={customer}
               onChange={(v) => { setCustomer(v); setFeedback(null) }}
+              onQueryChange={(q) => setTyping((t) => ({ ...t, main: q }))}
               options={customerOptions}
               placeholder="Search or type new customer..."
               allowNewValue
@@ -1431,66 +1508,83 @@ function AddOrderForm({ options, onOrderAdded, onCancel }: {
         </div>
       </div>
 
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <span className={LABEL + " mb-0"}>
-            {byItem ? "Customers" : "Items"} <span className="text-brand">*</span>
-          </span>
-          <button type="button" onClick={addLine} className="text-xs text-brand hover:underline">
-            + Add {byItem ? "customer" : "item"}
-          </button>
-        </div>
-        <div className="space-y-3">
-          {lines.map((line, idx) => (
-            <div key={line.id} className="rounded-lg border border-cream-border p-3 relative">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto_auto]">
-                <div>
-                  <label className={LABEL}>
-                    {byItem ? "Customer" : "Item"} {lines.length > 1 ? idx + 1 : ""}
-                  </label>
-                  {byItem ? (
-                    <SearchableSelect
-                      value={line.customer}
-                      onChange={(v) => updateLine(line.id, "customer", v)}
-                      options={customerOptions}
-                      placeholder="Search or type new customer..."
-                      allowNewValue
-                      searchMeta
-                    />
-                  ) : (
-                    <SearchableSelect
-                      value={line.productId}
-                      onChange={(v) => updateLine(line.id, "productId", v)}
-                      options={itemOptions}
-                      placeholder="Search item..."
-                    />
-                  )}
-                </div>
-                <div className="grid grid-cols-2 gap-3 sm:contents">
-                  <div className="w-full sm:w-24">
-                    <label className={LABEL}>Qty</label>
-                    <input type="number" min="1" value={line.unit} onChange={(e) => updateLine(line.id, "unit", e.target.value)} placeholder="Qty" className={INPUT_CLS} />
-                  </div>
-                  <div className="w-full sm:w-32">
-                    <label className={LABEL}>Note</label>
-                    <input type="text" value={line.note} onChange={(e) => updateLine(line.id, "note", e.target.value)} placeholder="Optional" className={INPUT_CLS} />
-                  </div>
-                </div>
+      {flagged.length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 flex items-start gap-2.5">
+          <span className="text-amber-700 text-sm leading-none mt-0.5">⚑</span>
+          <div className="text-xs text-muted-strong">
+            {flagged.map(({ who, stamps }) => (
+              <div key={who}>
+                <b className="text-foreground">{displayIg(who)}</b> — {stamps.join(", ")}
               </div>
-              {lines.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => removeLine(line.id)}
-                  className="absolute top-2 right-2 text-faint hover:text-red-400 transition-colors"
-                  aria-label="Remove"
-                >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                    <path d="M18 6 6 18M6 6l12 12" />
-                  </svg>
-                </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div>
+        {/* Rows, not cards. A border around every line drew three boxes to say
+            one thing -- these are lines of the same order, and the numbering
+            said so twice over. The column headings sit once, above them, and
+            the remove sits at the end of the row it removes. */}
+        <div className="space-y-2">
+          {/* One line of headings for all three columns. Item(s) used to sit a
+              row higher, level with nothing, while the columns it belongs to
+              were labelled underneath it. */}
+          <div className="grid grid-cols-[minmax(0,1fr)_3.25rem_5.25rem_1.25rem] sm:grid-cols-[1fr_auto_auto_auto] gap-2 sm:gap-3 mb-1">
+            <span className={LABEL + " mb-0"}>
+              {byItem ? "Customer(s)" : "Item(s)"} <span className="text-brand">*</span>
+            </span>
+            <span className={LABEL + " mb-0 sm:w-24"}>Qty</span>
+            <span className={LABEL + " mb-0 sm:w-32"}>Note</span>
+            <span />
+          </div>
+          {lines.map((line) => (
+            <div key={line.id} className="grid grid-cols-[minmax(0,1fr)_3.25rem_5.25rem_1.25rem] sm:grid-cols-[1fr_auto_auto_auto] gap-2 sm:gap-3 items-center">
+              {byItem ? (
+                <SearchableSelect
+                  value={line.customer}
+                  onChange={(v) => updateLine(line.id, "customer", v)}
+                  onQueryChange={(q) => setTyping((t) => ({ ...t, [`l${line.id}`]: q }))}
+                  options={customerOptions}
+                  placeholder="Search or type new customer..."
+                  allowNewValue
+                  searchMeta
+                />
+              ) : (
+                <SearchableSelect
+                  value={line.productId}
+                  onChange={(v) => updateLine(line.id, "productId", v)}
+                  options={itemOptions}
+                  placeholder="Search item..."
+                />
               )}
+              <input type="number" min="1" value={line.unit} onChange={(e) => updateLine(line.id, "unit", e.target.value)} placeholder="Qty" className={`${INPUT_CLS} px-2 text-center sm:px-3 sm:text-left sm:w-24`} />
+              <input type="text" value={line.note} onChange={(e) => updateLine(line.id, "note", e.target.value)} placeholder="Note" className={`${INPUT_CLS} px-2 sm:px-3 sm:w-32`} />
+              {/* Holds its width whether or not it can be pressed, so a row
+                  removed above does not shift every field left. */}
+              <div className="flex justify-center">
+                {lines.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => removeLine(line.id)}
+                    className="text-faint hover:text-red-400 transition-colors"
+                    aria-label="Remove"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                      <path d="M18 6 6 18M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
+              </div>
             </div>
           ))}
+          <button
+            type="button"
+            onClick={addLine}
+            className="text-xs text-brand hover:underline self-start"
+          >
+            + Add {byItem ? "customer" : "item"}
+          </button>
         </div>
       </div>
 

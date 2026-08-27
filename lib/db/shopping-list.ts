@@ -1,5 +1,6 @@
 import sql from "../db-pool"
-import { refundForReduction, type MarkReduction } from "./mark-refunds"
+import { refundForReduction, invoiceTotalsNow, type MarkReduction } from "./mark-refunds"
+import { reconcileParcelPlan } from "./parcel-plan"
 import { allocateFifo } from "../fifo-fill"
 import type { DBExecutor } from "./actor"
 
@@ -383,13 +384,16 @@ export async function markProductOutOfStock(data: {
   const reducedOrderIds: number[] = []
   const reductions: MarkReduction[] = []
   let reducedUnits = 0
+  // Before anything moves -- the refund is capped by how far this mark drops
+  // each invoice, so the ongkir leaving with the goods leaves in one movement.
+  const totalsBefore = await invoiceTotalsNow(data.event)
 
   await sql.begin(async (tx) => {
     await tx`SELECT set_config('app.actor', ${actor ?? ""}, true)`
     for (const { item: o, allocated } of allocations) {
       if (allocated <= 0) continue
       reducedOrderIds.push(o.id)
-      reductions.push({ customer: o.customer, unitsRemoved: allocated, unitPrice: o.unitPrice })
+      reductions.push({ customer: o.customer, unitsRemoved: allocated })
       reducedUnits += allocated
       await tx`
         UPDATE orders
@@ -399,12 +403,19 @@ export async function markProductOutOfStock(data: {
     }
   })
 
+  // Same reason as the arrival paths: the order shrank, so what the parcels
+  // will weigh — and what the invoice already billed — no longer agree. Runs
+  // before the refund is priced, because it moves the invoice as well.
+  for (const customer of [...new Set(reductions.map((r) => r.customer))]) {
+    await reconcileParcelPlan(customer, data.event)
+  }
+
   // After the commit, deliberately: what is owed depends on the invoice as it
   // now stands, and a customer who had not paid is owed nothing.
   const [product] = await sql<{ name: string }[]>`
     SELECT name FROM products WHERE id = ${data.productId}`
   const refunds = await refundForReduction(
-    data.event, "unavailable", product?.name ?? "the item", reductions, actor)
+    data.event, "unavailable", product?.name ?? "the item", reductions, totalsBefore, actor)
 
   return { reducedOrderIds, reducedUnits, refunds }
 }

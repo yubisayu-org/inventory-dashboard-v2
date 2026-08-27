@@ -369,6 +369,70 @@ export async function appendOrders(
   return inserted.map((r) => ({ id: r.id as number, productId: r.product_id as number }))
 }
 
+/**
+ * Bought units that belong to no order.
+ *
+ * A unit you have paid for is either on somebody's order or on your shelf.
+ * `unit_buy` above `unit` means it is on neither — bought, and attached to
+ * nothing. That happens two ways and they look identical afterwards: shrinking
+ * an order you had already bought for, and buying more than was ordered.
+ *
+ * Caught here rather than at either edit, because this is the state that is
+ * wrong, whichever keystroke arrived at it.
+ */
+export function strandedBoughtUnits(unit: number, unitBuy: number): number {
+  return Math.max(0, (unitBuy || 0) - (unit || 0))
+}
+
+/**
+ * Put bought-but-unattached units on the shelf, and take them off the order.
+ *
+ * Called when an edit has left `unit_buy` above `unit` — she wants fewer than
+ * were bought, or more were bought than she wanted. Either way the surplus
+ * physically exists, and Inventory is where a unit with no buyer belongs.
+ *
+ * Carries the dispatched count forward for surplus already in transit, the
+ * same way returnOrderUnitsToExcess does: stock in the air still has to land
+ * somewhere the books know about.
+ */
+export async function bankStrandedBoughtUnits(
+  orderId: number,
+  db: DBExecutor = sql,
+): Promise<{ banked: number }> {
+  const rows = (await db`
+    SELECT o.event, o.unit, o.unit_buy, o.unit_dispatch, o.receipt, p.name AS product_name
+      FROM orders o JOIN products p ON p.id = o.product_id
+     WHERE o.id = ${orderId}
+     FOR UPDATE OF o
+  `) as unknown as {
+    event: string; unit: number; unit_buy: number | null
+    unit_dispatch: number | null; receipt: string | null; product_name: string
+  }[]
+  const r = rows[0]
+  if (!r) throw new Error("Order not found")
+
+  const unit = Number(r.unit) || 0
+  const unitBuy = Number(r.unit_buy) || 0
+  const banked = strandedBoughtUnits(unit, unitBuy)
+  if (banked === 0) return { banked: 0 }
+
+  const dispatched = Math.min(banked, Math.max(0, (Number(r.unit_dispatch) || 0) - unit))
+  await db`
+    INSERT INTO excess_purchase (event, items, unit_buy, receipt, unit_dispatch)
+    VALUES (${r.event}, ${r.product_name}, ${banked}, ${r.receipt ?? ""},
+            ${dispatched > 0 ? dispatched : null})`
+
+  // The units are the shelf's now, so the order stops claiming them.
+  await db`
+    UPDATE orders
+       SET unit_buy = ${unit},
+           unit_dispatch = LEAST(COALESCE(unit_dispatch, 0), ${unit}),
+           updated_at = NOW()
+     WHERE id = ${orderId}`
+
+  return { banked }
+}
+
 export async function updateFormRow(
   rowNumber: number,
   data: Pick<FormRow, "event" | "customer" | "productId" | "unitPrice" | "unit" | "note">,
@@ -1005,7 +1069,12 @@ export async function recordCustomerCancellation(
  * path the Arrival List uses (which always zeroes both fields outright).
  */
 export async function cancelOrderUnits(
-  data: { orderId: number; qty: number; event: string; productName: string; receipt?: string },
+  data: {
+    orderId: number; qty: number; event: string; productName: string; receipt?: string
+    /** Stamped onto the line's note, appended behind whatever is already
+     *  there. The note she was ordering against is why the line exists. */
+    stamp?: string
+  },
   db: DBExecutor = sql,
 ): Promise<{ excessUnits: number; remainingUnit: number }> {
   const [order] = await db`
@@ -1043,6 +1112,18 @@ export async function cancelOrderUnits(
         unit_dispatch = LEAST(COALESCE(unit_dispatch, 0), ${remainingUnitBuy}), updated_at = NOW()
     WHERE id = ${data.orderId}
   `
+
+  // Appended, never replacing, and never twice: cancelling the rest of a line
+  // that was already stamped would otherwise say it again.
+  const stamp = data.stamp?.trim()
+  if (stamp) {
+    await db`
+      UPDATE orders
+      SET note = CASE WHEN note = '' THEN ${stamp} ELSE note || ' · ' || ${stamp} END,
+          updated_at = NOW()
+      WHERE id = ${data.orderId} AND position(${stamp} in note) = 0
+    `
+  }
 
   return { excessUnits, remainingUnit }
 }
@@ -1139,7 +1220,7 @@ export async function getSellableExcessTotals(): Promise<Record<string, number>>
   const rows = await sql`
     SELECT items, SUM(unit_buy)::int AS total
     FROM excess_purchase
-    WHERE reason NOT IN ('broken', 'missing')
+    WHERE reason NOT IN ('broken', 'missing', 'returned_unsellable')
     GROUP BY items
   `
   const totals: Record<string, number> = {}
@@ -1188,7 +1269,7 @@ export async function applyExcessToShoppingItem(
     db`
       SELECT id, unit_buy, unit_dispatch, unit_arrive
       FROM excess_purchase
-      WHERE items = ${data.productName} AND reason NOT IN ('broken', 'missing') AND unit_buy > 0
+      WHERE items = ${data.productName} AND reason NOT IN ('broken', 'missing', 'returned_unsellable') AND unit_buy > 0
       ORDER BY (event = ${data.event}) DESC, id ASC
     `,
     fetchPaidStatusMap([data.event]),

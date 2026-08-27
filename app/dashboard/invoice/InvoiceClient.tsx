@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { PaymentStatusPanel } from "./PaymentStatusPanel"
 import { InvoiceDetailDrawer } from "./InvoiceDetailDrawer"
 
-export default function InvoiceClient() {
+export default function InvoiceClient({ isOwner }: { isOwner: boolean }) {
   const searchParams = useSearchParams()
   const pathname = usePathname()
   const router = useRouter()
@@ -27,7 +27,7 @@ export default function InvoiceClient() {
 
   return (
     <div>
-      <PaymentStatusPanel onOpenCustomer={setSelectedCustomer} />
+      <PaymentStatusPanel onOpenCustomer={setSelectedCustomer} isOwner={isOwner} />
       {selectedCustomer && (
         <InvoiceDetailDrawer
           customer={selectedCustomer}

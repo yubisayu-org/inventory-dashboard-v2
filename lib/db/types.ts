@@ -64,7 +64,13 @@ export interface FormRow {
   hasAddress: boolean
 }
 
-export type ExcessReason = "overbuy" | "overship" | "wrong_product" | "broken" | "missing" | "customer_cancelled" | "manual"
+export type ExcessReason =
+  | "overbuy" | "overship" | "wrong_product" | "broken" | "missing"
+  | "customer_cancelled" | "manual"
+  // A customer sent something back. Resellable goes on the shelf like any
+  // other stock; the other is tracked so the loss is on the record, and is
+  // excluded from everything that offers stock to a new order.
+  | "returned" | "returned_unsellable"
 
 export interface ExcessRow {
   rowNumber: number
@@ -147,6 +153,9 @@ export interface InvoiceOrderLine {
   // Units purchased for this line — how many can return to Inventory on a
   // customer cancellation (0 when not yet bought).
   unitBuy: number
+  // Units already sent. A line whose parcel has gone cannot be cancelled: the
+  // journey happened, and what is owed for it is a refund's business.
+  unitShip: number
 }
 
 export interface InvoiceShipment {
@@ -257,7 +266,7 @@ export interface WarehouseRow {
 // the apply-as-credit flow, the one-active-overpayment unique index), but any other
 // reason is just a label. REFUND_REASONS are the suggested presets in the picker.
 export type RefundReason = string
-export const REFUND_REASONS: RefundReason[] = ["overpayment", "unavailable", "shipping_loss", "damaged", "wrong_item", "goodwill", "other"]
+export const REFUND_REASONS: RefundReason[] = ["overpayment", "unavailable", "shipping_loss", "damaged", "wrong_item", "quality", "goodwill", "other"]
 export type RefundStatus = "pending" | "awaiting_bank_info" | "ready_to_refund" | "refunded" | "applied_to_next_order" | "cancelled"
 
 export interface RefundRow {
@@ -464,6 +473,12 @@ export interface ShippingRecord {
   shippingId: string
   invoicing: string
   weightEstimation: number
+  /**
+   * Kilos the courier actually billed, when that differed from the estimate.
+   * Null means it did not, which is most parcels — and is what the row's
+   * corrected-weight marker keys off.
+   */
+  weightCharged: number | null
   ongkir: number
   ongkirTotal: number
   isLastShipment: boolean
