@@ -35,7 +35,6 @@ export function InvoiceMessageActions({
 }: { event: InvoiceEvent; whatsapp?: string | null; customer?: string }) {
   const [open, setOpen] = useState(false)
   const [telling, setTelling] = useState(false)
-  const { copied, copy } = useCopyFeedback()
   const { message } = event
 
   return (
@@ -60,13 +59,6 @@ export function InvoiceMessageActions({
           Send notice
         </button>
       )}
-      <button
-        type="button"
-        onClick={() => copy(message)}
-        className="shrink-0 px-3 py-1.5 rounded-lg border border-brand text-brand text-xs font-medium hover:bg-brand hover:text-white transition-colors"
-      >
-        {copied ? "Copied!" : "Copy message"}
-      </button>
       {telling && customer && (
         <TellHerModal event={event} customer={customer} onClose={() => setTelling(false)} />
       )}
