@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect, useMemo, useCallback, memo } from "react"
+import { useState, useRef, useEffect, useMemo, useCallback, memo, type ReactNode } from "react"
 
 export interface SelectOption {
   value: string
@@ -27,6 +27,12 @@ interface Props {
   searchMeta?: boolean
   /** Shorter trigger input (34px) instead of the default 38px */
   dense?: boolean
+  /** Fired on every keystroke, before anything is committed. For a caller that
+   *  has to react to what is being typed rather than to what was chosen. */
+  onQueryChange?: (query: string) => void
+  /** Rendered inside the trigger, left of the clear and chevron. A badge about
+   *  the current value -- not a control. */
+  adornment?: ReactNode
 }
 
 export default function SearchableSelect({
@@ -41,6 +47,8 @@ export default function SearchableSelect({
   searchable = true,
   searchMeta = false,
   dense = false,
+  onQueryChange,
+  adornment,
 }: Props) {
   const selectedLabel = useMemo(
     () => options.find((o) => o.value === value)?.label ?? (allowNewValue ? value : ""),
@@ -85,6 +93,9 @@ export default function SearchableSelect({
 
   const onChangeRef = useRef(onChange)
   useEffect(() => { onChangeRef.current = onChange }, [onChange])
+
+  const onQueryChangeRef = useRef(onQueryChange)
+  useEffect(() => { onQueryChangeRef.current = onQueryChange }, [onQueryChange])
 
   const optionsRef = useRef(options)
   useEffect(() => { optionsRef.current = options }, [options])
@@ -188,6 +199,7 @@ export default function SearchableSelect({
       onChange(val)
       const label = options.find((o) => o.value === val)?.label ?? val
       setInputValue(label)
+      onQueryChangeRef.current?.(label)
       setOpen(false)
       inputRef.current?.blur()
     },
@@ -276,6 +288,7 @@ export default function SearchableSelect({
   function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
     const v = e.target.value
     setInputValue(v)
+    onQueryChange?.(v)
     if (!open) openDropdown()
   }
 
@@ -342,8 +355,15 @@ export default function SearchableSelect({
         disabled={disabled}
         readOnly={!searchable}
         autoComplete="off"
-        className={`w-full border border-cream-border rounded-lg px-3 bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${showInlineClear ? "pr-14" : "pr-8"} ${!searchable ? "cursor-pointer" : ""} ${dense ? "h-[34px] py-0 text-xs" : "h-10 text-sm"}`}
+        className={`w-full border border-cream-border rounded-lg px-3 bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${showInlineClear ? (adornment ? "pr-20" : "pr-14") : (adornment ? "pr-14" : "pr-8")} ${!searchable ? "cursor-pointer" : ""} ${dense ? "h-[34px] py-0 text-xs" : "h-10 text-sm"}`}
       />
+      {adornment && (
+        <span
+          className={`absolute top-1/2 -translate-y-1/2 flex items-center pointer-events-none ${showInlineClear ? "right-14" : "right-8"}`}
+        >
+          {adornment}
+        </span>
+      )}
       {showInlineClear && (
         <button
           type="button"

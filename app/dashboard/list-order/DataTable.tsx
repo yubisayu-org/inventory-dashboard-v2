@@ -17,6 +17,7 @@ import DataGrid, {
   type RowSelectionState,
 } from "@/components/DataGrid"
 import { useHitAndRun, handleKey } from "@/hooks/useHitAndRun"
+import { HitAndRunFlag } from "@/components/HitAndRunFlag"
 import SearchableSelect from "@/components/SearchableSelect"
 import SearchInput from "@/components/SearchInput"
 import EventSelect from "@/components/EventSelect"
@@ -1336,6 +1337,11 @@ function AddOrderForm({ options, onOrderAdded, onCancel }: {
   // Fetched once for the form, not per line: the same answer serves every name
   // on it, and asking per line would turn one scan into one per row.
   const { marks } = useHitAndRun()
+  // What is in the customer fields right now. The select commits on blur, and
+  // a warning that waits for blur arrives after the decision it was meant to
+  // inform.
+  const [typing, setTyping] = useState<Record<string, string>>({})
+  const stampsFor = (name: string) => marks.get(handleKey(name ?? "")) ?? []
   const [fixedItem, setFixedItem] = useState("")
   const [lines, setLines] = useState([newAddLine()])
   const byItem = mode === "byItem"
@@ -1359,7 +1365,9 @@ function AddOrderForm({ options, onOrderAdded, onCancel }: {
   // Names on this form that carry a mark. One row per person however many
   // lines they occupy -- the warning is about her, not about a line.
   const flagged = useMemo(() => {
-    const names = byItem ? lines.map((l) => l.customer) : [customer]
+    const names = byItem
+      ? lines.map((l) => typing[`l${l.id}`] ?? l.customer)
+      : [typing.main ?? customer]
     const seen = new Set<string>()
     const out: { who: string; stamps: string[] }[] = []
     for (const name of names) {
@@ -1371,7 +1379,7 @@ function AddOrderForm({ options, onOrderAdded, onCancel }: {
       out.push({ who: name, stamps })
     }
     return out
-  }, [byItem, lines, customer, marks])
+  }, [byItem, lines, customer, marks, typing])
 
   function updateLine(id: number, field: "productId" | "customer" | "unit" | "note", value: string) {
     setLines((prev) => prev.map((l) => l.id === id ? { ...l, [field]: value } : l))
@@ -1473,6 +1481,8 @@ function AddOrderForm({ options, onOrderAdded, onCancel }: {
             <SearchableSelect
               value={customer}
               onChange={(v) => { setCustomer(v); setFeedback(null) }}
+              onQueryChange={(q) => setTyping((t) => ({ ...t, main: q }))}
+              adornment={<HitAndRunFlag stamps={stampsFor(typing.main ?? customer)} />}
               options={customerOptions}
               placeholder="Search or type new customer..."
               allowNewValue
@@ -1488,8 +1498,7 @@ function AddOrderForm({ options, onOrderAdded, onCancel }: {
           <div className="text-xs text-muted-strong">
             {flagged.map(({ who, stamps }) => (
               <div key={who}>
-                <b className="text-foreground">{displayIg(who)}</b> pernah kabur —{" "}
-                {stamps.join(", ")}
+                <b className="text-foreground">{displayIg(who)}</b> — {stamps.join(", ")}
               </div>
             ))}
           </div>
@@ -1517,6 +1526,8 @@ function AddOrderForm({ options, onOrderAdded, onCancel }: {
                     <SearchableSelect
                       value={line.customer}
                       onChange={(v) => updateLine(line.id, "customer", v)}
+                      onQueryChange={(q) => setTyping((t) => ({ ...t, [`l${line.id}`]: q }))}
+                      adornment={<HitAndRunFlag stamps={stampsFor(typing[`l${line.id}`] ?? line.customer)} />}
                       options={customerOptions}
                       placeholder="Search or type new customer..."
                       allowNewValue
