@@ -395,6 +395,34 @@ function EditResiModal({
   )
 }
 
+/**
+ * The kilos this parcel was actually billed at.
+ *
+ * weight_estimation is the raw weight on older rows and the rounded one on
+ * newer, and a merged partner can carry a weight with no charge at all. What
+ * was paid, divided by the rate, is true on every row — and it is what a
+ * correction is a correction to.
+ */
+function billedKg(r: {
+  weightEstimation: number; ongkir: number; ongkirTotal: number; mergeGroup?: string | null
+}): number {
+  // What was actually paid, where anything was paid.
+  if (r.ongkir > 0 && r.ongkirTotal > 0) return Math.round(r.ongkirTotal / r.ongkir)
+  // A merged partner's weight lives on the primary row; this one cost nothing.
+  if (r.mergeGroup) return 0
+  // Older rows kept the raw weight and never got a total. The courier still
+  // rounded it up, so this is what it would have been charged at.
+  return Math.ceil(r.weightEstimation)
+}
+
+/** What this parcel cost, once a corrected weight says the estimate was wrong. */
+function chargedTotal(r: {
+  weightEstimation: number; ongkir: number; ongkirTotal: number
+  mergeGroup?: string | null; weightCharged: number | null
+}): number {
+  return r.weightCharged !== null ? r.weightCharged * r.ongkir : r.ongkirTotal
+}
+
 // ─── EditWeightModal ──────────────────────────────────────────────────────
 //
 // The estimate is what the invoice billed. This records what the courier
@@ -423,7 +451,8 @@ function EditWeightModal({
 
   const typed = value.trim()
   const charged = typed === "" ? null : Number(typed)
-  const difference = charged === null ? 0 : (charged - record.weightEstimation) * (record.ongkir || 0)
+  const estimated = billedKg(record)
+  const difference = charged === null ? 0 : (charged - estimated) * (record.ongkir || 0)
 
   async function handleSave() {
     if (charged !== null && (!Number.isInteger(charged) || charged < 1)) {
@@ -461,8 +490,8 @@ function EditWeightModal({
         <div>
           <h3 className="text-sm font-semibold text-foreground">Berat ditagih kurir</h3>
           <p className="text-xs text-muted mt-1">
-            {record.event} · {displayIg(record.customer)} · estimasi{" "}
-            <span className="font-semibold text-foreground">{record.weightEstimation} kg</span>
+            {record.event} · {displayIg(record.customer)} · ditagih{" "}
+            <span className="font-semibold text-foreground">{estimated} kg</span>
           </p>
         </div>
         <input
@@ -828,7 +857,7 @@ export default function ShipmentsClient() {
               onClick={(e) => { e.stopPropagation(); setEditWeightRecord(record) }}
               className="group flex items-center justify-end gap-1.5 w-full text-right"
               title={corrected
-                ? `Berat dikoreksi — estimasi ${fmt(record.weightEstimation)} kg, ditagih kurir ${fmt(record.weightCharged!)} kg`
+                ? `Berat dikoreksi — semula ${fmt(billedKg(record))} kg, ditagih kurir ${fmt(record.weightCharged!)} kg`
                 : "Koreksi berat jika kurir menagih berbeda"}
             >
               {/* Beside the figure, where the temporary-address marker already
@@ -844,9 +873,9 @@ export default function ShipmentsClient() {
               )}
               <span className="whitespace-nowrap">
                 {corrected && (
-                  <span className="text-faint line-through mr-1">{fmt(record.weightEstimation)}</span>
+                  <span className="text-faint line-through mr-1">{fmt(billedKg(record))}</span>
                 )}
-                {fmt(corrected ? record.weightCharged! : record.weightEstimation)} kg
+                {fmt(corrected ? record.weightCharged! : billedKg(record))} kg
               </span>
             </button>
           )
@@ -856,11 +885,24 @@ export default function ShipmentsClient() {
         accessorKey: "ongkirTotal",
         header: "Ongkir",
         filterFn: "numeric",
-        size: 120,
+        size: 130,
         meta: { align: "right" },
-        cell: ({ getValue }) => (
-          <span className="whitespace-nowrap">Rp {fmt(getValue<number>())}</span>
-        ),
+        // What the parcel cost once a corrected weight has been recorded. The
+        // stored total is the estimate made at ship time, and leaving it on
+        // screen beside a corrected weight showed a figure the correction had
+        // already contradicted.
+        cell: ({ row }) => {
+          const r = row.original
+          const real = chargedTotal(r)
+          return (
+            <span className="whitespace-nowrap">
+              {real !== r.ongkirTotal && (
+                <span className="text-faint line-through mr-1">{fmt(r.ongkirTotal)}</span>
+              )}
+              Rp {fmt(real)}
+            </span>
+          )
+        },
       },
       {
         accessorKey: "isLastShipment",

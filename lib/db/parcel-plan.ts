@@ -153,11 +153,24 @@ export async function reconcileParcelPlan(
   // parcels that already left are not in the orders any more. Three sends,
   // three yeses, and the shop quietly absorbs every kilo after the first.
   //
-  // weight_estimation holds CEIL(kg), which is what was charged. A merged
-  // shipment carries the combined weight on its primary row and zero on its
-  // partners, so summing the group is the group's real weight.
+  // Read from the money, not the weight. weight_estimation is the raw figure
+  // on most rows and the rounded one on the newest, and a merged shipment can
+  // carry a weight with a zero total — the partner of a box somebody else's
+  // row paid for. Dividing what was charged by the per-kilo rate gives the
+  // kilos actually billed, on every row of either era, and gives a merge
+  // partner the nothing it cost.
   const [sent] = (await db`
-    SELECT COALESCE(SUM(weight_estimation), 0)::int AS kg
+    SELECT COALESCE(SUM(
+             CASE
+               -- What was actually paid, where anything was paid.
+               WHEN COALESCE(ongkir, 0) > 0 AND COALESCE(ongkir_total, 0) > 0
+                 THEN ROUND(ongkir_total::numeric / ongkir)
+               -- A merged partner's weight sits on the primary row.
+               WHEN merge_group IS NOT NULL THEN 0
+               -- Older rows kept the raw weight and no total; the courier
+               -- rounded it up all the same.
+               ELSE CEIL(COALESCE(weight_estimation, 0))
+             END), 0)::int AS kg
       FROM shipments
      WHERE event = ANY(${events})
        AND lower(replace(customer, '@', '')) = ${key}
@@ -263,7 +276,13 @@ export async function recordChargedWeight(
     const [s] = (await tx`
       UPDATE shipments SET weight_charged = ${chargedKg}, updated_at = NOW()
        WHERE id = ${shipmentId}
-      RETURNING event, customer, weight_estimation::int AS estimated, ongkir::int AS rate
+      RETURNING event, customer, ongkir::int AS rate,
+                -- What this parcel was billed at, not what it weighed: the
+                -- stored weight is raw on older rows, and the difference the
+                -- customer owes is a difference in kilos charged.
+                CASE WHEN COALESCE(ongkir, 0) > 0 AND COALESCE(ongkir_total, 0) > 0
+                     THEN ROUND(ongkir_total::numeric / ongkir)::int
+                     ELSE CEIL(COALESCE(weight_estimation, 0))::int END AS estimated
     `) as unknown as { event: string; customer: string; estimated: number; rate: number }[]
     if (!s) throw new Error("Shipment not found")
 
