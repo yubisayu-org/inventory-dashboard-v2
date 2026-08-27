@@ -1522,24 +1522,21 @@ function AddOrderForm({ options, onOrderAdded, onCancel }: {
       )}
 
       <div>
-        <div className="flex items-center justify-between mb-2">
-          <span className={LABEL + " mb-0"}>
-            {byItem ? "Customer(s)" : "Item(s)"} <span className="text-brand">*</span>
-          </span>
-          <button type="button" onClick={addLine} className="text-xs text-brand hover:underline">
-            + Add {byItem ? "customer" : "item"}
-          </button>
-        </div>
         {/* Rows, not cards. A border around every line drew three boxes to say
             one thing -- these are lines of the same order, and the numbering
             said so twice over. The column headings sit once, above them, and
             the remove sits at the end of the row it removes. */}
         <div className="space-y-2">
-          <div className="hidden sm:grid grid-cols-[1fr_auto_auto_auto] gap-3">
-            <span />
-            <span className={LABEL + " mb-0 w-24"}>Qty</span>
-            <span className={LABEL + " mb-0 w-32"}>Note</span>
-            <span className="w-5" />
+          {/* One line of headings for all three columns. Item(s) used to sit a
+              row higher, level with nothing, while the columns it belongs to
+              were labelled underneath it. */}
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto_auto] gap-3 mb-1">
+            <span className={LABEL + " mb-0"}>
+              {byItem ? "Customer(s)" : "Item(s)"} <span className="text-brand">*</span>
+            </span>
+            <span className={LABEL + " mb-0 w-24 hidden sm:block"}>Qty</span>
+            <span className={LABEL + " mb-0 w-32 hidden sm:block"}>Note</span>
+            <span className="w-5 hidden sm:block" />
           </div>
           {lines.map((line) => (
             <div key={line.id} className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto_auto] sm:gap-3 sm:items-center">
@@ -1592,6 +1589,13 @@ function AddOrderForm({ options, onOrderAdded, onCancel }: {
               )}
             </div>
           ))}
+          <button
+            type="button"
+            onClick={addLine}
+            className="text-xs text-brand hover:underline self-start"
+          >
+            + Add {byItem ? "customer" : "item"}
+          </button>
         </div>
       </div>
 
