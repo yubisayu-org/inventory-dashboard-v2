@@ -475,7 +475,45 @@ Write the same `before`/`after` fixture as Task 2 Step 5, with `TAG = "prefsby"`
 Run: `npx tsx --env-file-if-exists=.env.development.local --test lib/db/parcel-plan-prefs.test.ts`
 Expected: FAIL — `setShippingMode` takes 4 arguments, not 5.
 
-- [ ] **Step 3: Thread `setBy` through both writers**
+- [ ] **Step 3: Add the failing test for the payment check**
+
+Append to `lib/db/parcel-plan-prefs.test.ts`:
+
+```ts
+test("the shop may plan a parcel for a customer who still owes", async () => {
+  // A merge is arranged BEFORE she pays — that is the point, so the discount
+  // reaches the invoice she settles. The unpaid rule is a policy about what a
+  // customer may do on her own, and the shop is not a customer.
+  const [c] = await sql<{ id: number }[]>`
+    SELECT id FROM customers WHERE instagram_id = 'prefsby_c'`
+  await sql`DELETE FROM payments WHERE event = 'prefsby_EV'`   // she owes everything
+  await setShippingMode(c.id, "prefsby_EV", "split", sql, "shop")
+  const [row] = await sql<{ mode: string }[]>`
+    SELECT mode FROM customer_shipping_prefs WHERE customer_id = ${c.id} AND event = 'prefsby_EV'`
+  assert.equal(row.mode, "split")
+})
+
+test("the customer herself is still stopped by it", async () => {
+  const [c] = await sql<{ id: number }[]>`
+    SELECT id FROM customers WHERE instagram_id = 'prefsby_c'`
+  await assert.rejects(() => setShippingMode(c.id, "prefsby_EV", "split"), /unpaid/)
+})
+
+test("a parcel that already shipped stops the shop too", async () => {
+  // Not a policy — the box has gone. Nobody may re-plan it.
+  await sql`UPDATE orders SET unit_ship = unit WHERE event = 'prefsby_EV'`
+  await assert.rejects(
+    () => setShippingMode(c.id, "prefsby_EV", "split", sql, "shop"), /shipped/)
+  await sql`UPDATE orders SET unit_ship = 0 WHERE event = 'prefsby_EV'`
+})
+```
+
+- [ ] **Step 4: Run it and watch the first one fail**
+
+Run: `npx tsx --env-file-if-exists=.env.development.local --test lib/db/parcel-plan-prefs.test.ts`
+Expected: FAIL — `ShippingPrefError: unpaid`. That refusal is the bug.
+
+- [ ] **Step 5: Thread `setBy` through both writers**
 
 In `lib/db/shipping-prefs.ts`, change the signature and the upsert:
 
@@ -488,7 +526,19 @@ export async function setShippingMode(
   /** Who chose it. The shop recording a plan is not the customer asking. */
   setBy: "customer" | "shop" = "customer",
 ): Promise<void> {
+  const reason = await ineligibleReason(customerId, event, db)
+  // "shipped" and "unknown" are facts about the world and stop everyone.
+  // "unpaid" is a rule about what a customer may do on her own: the shop
+  // arranges a merge precisely while she still owes, so the discount lands on
+  // the invoice she settles — and a split cannot otherwise be undone, because
+  // its own fee makes her unpaid.
+  if (reason && !(setBy === "shop" && reason === "unpaid")) {
+    throw new ShippingPrefError(reason)
+  }
 ```
+
+Delete the original two lines that computed `reason` and threw unconditionally.
+Make the same change in `setMergeGroup`, which runs the same check per event.
 
 ```ts
   await db`
@@ -501,12 +551,12 @@ export async function setShippingMode(
 
 Make the same two changes to `setMergeGroup`: add the fifth parameter and write `set_by` on both the UPDATE and the INSERT it already performs.
 
-- [ ] **Step 4: Run it and watch it pass**
+- [ ] **Step 6: Run it and watch it pass**
 
 Run: `npx tsx --env-file-if-exists=.env.development.local --test lib/db/parcel-plan-prefs.test.ts`
-Expected: PASS, 2 tests.
+Expected: PASS, 5 tests.
 
-- [ ] **Step 5: Write the route**
+- [ ] **Step 7: Write the route**
 
 Create `app/api/sheets/ship/plan/route.ts`:
 
@@ -567,12 +617,12 @@ export async function POST(req: NextRequest) {
 }
 ```
 
-- [ ] **Step 6: Typecheck and build**
+- [ ] **Step 8: Typecheck and build**
 
 Run: `npx tsc --noEmit && npm run build`
 Expected: no errors.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 git add lib/db/shipping-prefs.ts lib/db/parcel-plan-prefs.test.ts app/api/sheets/ship/plan/route.ts

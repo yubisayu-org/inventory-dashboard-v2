@@ -172,6 +172,32 @@ so this is a whole number matching the receipt.
 
 ## Staff controls
 
+### Which rules apply to whom
+
+`setShippingMode` refuses a plan for three reasons. Two are facts about the
+world and stop everyone. The third is a policy about customers, and the shop is
+not a customer:
+
+| refusal | customer | staff |
+|---|---|---|
+| `unpaid` — the trip is not settled | blocks | **skipped** |
+| `shipped` — the parcel already left | blocks | blocks |
+| `unknown` — no order on that trip | blocks | blocks |
+
+Left in place, `unpaid` breaks the feature in two ordinary situations.
+
+A merge is arranged *before* the customer pays — that is the point, so the
+discount is on the invoice she settles. Blocking it until she has paid means
+the saving can only ever arrive too late.
+
+Worse, a split cannot be undone. Declaring one writes a fee, the fee makes her
+unpaid, and clearing the split now trips the rule — so cancelling a parcel you
+have decided not to send requires her to first pay for it.
+
+Staff therefore pass a flag that skips only the payment check. The other two
+are unchanged for both callers.
+
+
 ### Kirim duluan
 
 On a partly-arrived card. Pressing it writes `mode = 'split'`, `set_by =
