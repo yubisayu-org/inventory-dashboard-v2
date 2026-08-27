@@ -2,6 +2,7 @@ import { test, before, after } from "node:test"
 import assert from "node:assert/strict"
 import sql from "../db-pool"
 import { setShippingMode, setMergeGroup } from "./shipping-prefs"
+import { reconcileParcelPlan } from "./parcel-plan"
 
 const TAG = "prefsby"
 const EVENT = `${TAG}_EV`
@@ -100,4 +101,33 @@ test("a parcel that already shipped stops the shop too", async () => {
   await assert.rejects(
     () => setShippingMode(customerId, EVENT, "split", sql, "shop"), /shipped/)
   await sql`UPDATE orders SET unit_ship = 0 WHERE event = ${EVENT}`
+})
+
+test("clearing a merge needs one member named, not an empty list", async () => {
+  // setMergeGroup finds a group's partners by starting from the events it is
+  // given. Given none it finds none, so an empty list clears nothing at all —
+  // and the credit for a box no longer being shared would stay on the invoice.
+  await setMergeGroup(customerId, [EVENT, OTHER], sql, "shop")
+  await reconcileParcelPlan(WHO, EVENT)
+
+  await setMergeGroup(customerId, [], sql, "shop")
+  const stillGrouped = (await sql`
+    SELECT count(*)::int AS n FROM customer_shipping_prefs
+     WHERE customer_id = ${customerId} AND merge_key IS NOT NULL`) as unknown as { n: number }[]
+  assert.equal(stillGrouped[0].n, 2, "an empty list is not how a group is cleared")
+
+  // Naming one member releases the whole group, partners included.
+  await setMergeGroup(customerId, [EVENT], sql, "shop")
+  const cleared = (await sql`
+    SELECT count(*)::int AS n FROM customer_shipping_prefs
+     WHERE customer_id = ${customerId} AND merge_key IS NOT NULL`) as unknown as { n: number }[]
+  assert.equal(cleared[0].n, 0)
+
+  for (const e of [EVENT, OTHER]) await reconcileParcelPlan(WHO, e)
+  // Scoped to the credit: earlier tests in this fixture leave a split declared,
+  // and its fee is a different row with its own reason to exist.
+  const left = (await sql`
+    SELECT count(*)::int AS n FROM adjustments
+     WHERE customer = ${WHO} AND auto AND description LIKE 'Gabung ongkir%'`) as unknown as { n: number }[]
+  assert.equal(left[0].n, 0, "the credit outlived the merge it was for")
 })

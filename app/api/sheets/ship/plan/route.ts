@@ -51,9 +51,20 @@ export async function POST(req: NextRequest) {
       if (action === "split") await setShippingMode(row.id, events[0], "split", tx, "shop")
       else if (action === "unsplit") await setShippingMode(row.id, events[0], "wait", tx, "shop")
       else if (action === "merge") await setMergeGroup(row.id, events, tx, "shop")
-      else await setMergeGroup(row.id, [], tx, "shop")
-      // After the plan is stored, so it prices what is now true.
-      return await reconcileParcelPlan(customer, events[0], tx)
+      // A group of one is not a group, so naming a single member clears the
+      // whole thing — its partners are released as orphans. An empty list
+      // would clear nothing at all: the orphan search starts from the events
+      // it was given, and given none it finds none.
+      else await setMergeGroup(row.id, [events[0]], tx, "shop")
+
+      // After the plan is stored, so it prices what is now true. Every trip
+      // the change touched, not only the first: a partner released from a
+      // group is priced as its own parcel again, and would otherwise keep a
+      // discount for a box it no longer shares.
+      const priced = await Promise.all(
+        events.map((e) => reconcileParcelPlan(customer, e, tx)),
+      )
+      return priced[0]
     })
 
     return NextResponse.json({ success: true, adjustment })
