@@ -808,7 +808,7 @@ function CreateRefundCard({
 
       <label className="flex flex-col gap-1">
         <span className="text-xs font-medium text-muted">
-          What it is for <span className="font-normal text-faint">(she reads this)</span>
+          What it is for <span className="font-normal text-faint">(shown in the notice)</span>
         </span>
         <textarea {...field("note")} disabled={saving} rows={2} placeholder="mis. keterlambatan 3 minggu" className={`${INPUT_CLASS} w-full resize-none`} />
       </label>
@@ -832,7 +832,7 @@ function CreateRefundCard({
           Cancel
         </button>
         <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors">
-          {saving ? "Mengirim…" : "Create & tell her"}
+          {saving ? "Mengirim…" : "Create & send notice"}
         </button>
       </div>
     </form>
