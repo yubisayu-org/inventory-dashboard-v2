@@ -698,7 +698,7 @@ function CreateRefundCard({
   const [form, setForm] = useState({
     event: "",
     customer: "",
-    reason: "goodwill" as RefundReason,
+    reason: "" as RefundReason,
     refundAmount: "",
     note: "",
   })
@@ -806,7 +806,7 @@ function CreateRefundCard({
         }
       }
 
-      setForm({ event: "", customer: "", reason: "goodwill", refundAmount: "", note: "" })
+      setForm({ event: "", customer: "", reason: "" as RefundReason, refundAmount: "", note: "" })
       setPicked({})
       setGoods("kept")
       onCreated()
@@ -948,7 +948,7 @@ function CreateRefundCard({
 
       {/* Shown before it goes, because it goes: a refund made here now sends
           the customer the same notice a marked one does. */}
-      {Number(form.refundAmount) > 0 && form.event && (
+      {Number(form.refundAmount) > 0 && form.event && form.reason && (
         <div className="rounded-lg border border-purple-200 bg-purple-50 p-3">
           <div className="text-[11px] font-semibold uppercase tracking-wide text-purple-700 mb-1.5">
             Yang dia terima
@@ -964,7 +964,7 @@ function CreateRefundCard({
         <button type="button" onClick={onClose} disabled={saving} className="px-4 py-2 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
           Cancel
         </button>
-        <button type="submit" disabled={saving || (needsLines && pickedTotal <= 0)} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors">
+        <button type="submit" disabled={saving || !form.reason || (needsLines && pickedTotal <= 0)} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors">
           {saving ? "Mengirim…" : "Create & send notice"}
         </button>
       </div>
