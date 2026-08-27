@@ -4,7 +4,7 @@ import { displayIg } from "@/lib/format"
 import TableSkeleton from "@/components/TableSkeleton"
 import DataGrid, { type ColumnDef } from "@/components/DataGrid"
 import { useCallback, useEffect, useMemo, useState } from "react"
-import type { InvoiceEvent, InvoiceResult, RefundRow, RefundReason, RefundStatus, OverpaymentToCheck, OutstandingTrip } from "@/lib/db"
+import type { InvoiceEvent, InvoiceOrderLine, InvoiceResult, RefundRow, RefundReason, RefundStatus, OverpaymentToCheck, OutstandingTrip } from "@/lib/db"
 import { normalizeId } from "@/lib/db/helpers"
 import { isCreditPromised } from "@/lib/db/refund-credit"
 import { REFUND_REASONS } from "@/lib/db/types"
@@ -704,6 +704,39 @@ function CreateRefundCard({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Which lines it is about, for a reason that names them, and how many units
+  // of each. Only fetched once there is a customer and an event to fetch for.
+  const [lines, setLines] = useState<InvoiceOrderLine[]>([])
+  const [picked, setPicked] = useState<Record<number, number>>({})
+  const [goods, setGoods] = useState<"kept" | "returned" | "returned_unsellable">("kept")
+
+  const needsLines = MANUAL_REFUND_CAUSES.find((c) => c.key === form.reason)?.needsItems === true
+
+  useEffect(() => {
+    if (!needsLines || !form.event || !form.customer.trim()) { setLines([]); return }
+    let live = true
+    fetch(`/api/sheets/invoice?customer=${encodeURIComponent(form.customer.trim())}`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d: { events?: InvoiceEvent[] }) => {
+        if (!live) return
+        setLines(d.events?.find((e) => e.eventId === form.event)?.orders ?? [])
+      })
+      .catch(() => { if (live) setLines([]) })
+    return () => { live = false }
+  }, [needsLines, form.event, form.customer])
+
+  // What the picked lines come to. Prefilled, not imposed: she may be keeping
+  // the item at a discount rather than sending it back for all of it.
+  const pickedTotal = lines.reduce((sum, o) => sum + o.rawUnitPrice * (picked[o.orderId] ?? 0), 0)
+  const pickedItems = lines
+    .filter((o) => (picked[o.orderId] ?? 0) > 0)
+    .map((o) => `${o.productName} × ${picked[o.orderId]}`)
+    .join(", ")
+
+  useEffect(() => {
+    if (needsLines && pickedTotal > 0) setForm((f) => ({ ...f, refundAmount: String(pickedTotal) }))
+  }, [needsLines, pickedTotal])
+
   // The same wording a marked refund sends, filled from what is typed here, so
   // one customer cannot receive two different explanations of the same thing.
   const cause = MANUAL_REFUND_CAUSES.find((c) => c.key === form.reason)
@@ -712,10 +745,12 @@ function CreateRefundCard({
     "{customer}": form.customer.trim(),
     "{event}": form.event,
     "{refundAmount}": formatRp(Number(form.refundAmount) || 0),
-    "{itemsList}": form.note.trim() || "pesanan Anda",
+    "{itemsList}": pickedItems || form.note.trim() || "pesanan Anda",
     "{cause}": "",
   }
-  const causeLine = cause ? fillNotice(causeLineFor(cause, { items: form.note.trim() }), tokens) : ""
+  const causeLine = cause
+    ? fillNotice(causeLineFor(cause, { items: pickedItems || form.note.trim() }), tokens)
+    : ""
   const noticeTitle = fillNotice(template.title, tokens)
   const noticeBody = fillNotice(template.body, { ...tokens, "{cause}": causeLine })
 
@@ -753,7 +788,26 @@ function CreateRefundCard({
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "Failed to create")
+
+      // Goods coming back are stock, and stock the books have to know about.
+      // After the refund, so a failure here cannot leave money unexplained.
+      if (needsLines && goods !== "kept") {
+        for (const o of lines) {
+          const units = picked[o.orderId] ?? 0
+          if (units <= 0) continue
+          await fetch("/api/sheets/excess-purchase", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              event: form.event, items: o.productName, unitBuy: units, reason: goods,
+            }),
+          })
+        }
+      }
+
       setForm({ event: "", customer: "", reason: "goodwill", refundAmount: "", note: "" })
+      setPicked({})
+      setGoods("kept")
       onCreated()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create")
@@ -805,6 +859,82 @@ function CreateRefundCard({
           />
         </label>
       </div>
+
+      {/* Which lines, for a reason that names them. A quality complaint is
+          about a thing she is holding, so the notice has to say which thing —
+          and the amount follows from it rather than being guessed. */}
+      {needsLines && lines.length > 0 && (
+        <div className="rounded-lg border border-cream-border bg-surface-muted p-3 flex flex-col gap-2">
+          <span className="text-xs font-medium text-muted">Barang yang dikeluhkan</span>
+          {lines.map((o) => (
+            <label key={o.orderId} className="flex items-center gap-2.5 text-sm">
+              <input
+                type="checkbox"
+                checked={(picked[o.orderId] ?? 0) > 0}
+                onChange={(e) =>
+                  setPicked((p) => ({ ...p, [o.orderId]: e.target.checked ? o.unit : 0 }))}
+                disabled={saving}
+                className="accent-brand"
+              />
+              <span className="flex-1 min-w-0 truncate">{o.productName}</span>
+              {(picked[o.orderId] ?? 0) > 0 && (
+                <input
+                  type="number"
+                  min="1"
+                  max={o.unit}
+                  value={picked[o.orderId]}
+                  onChange={(e) => setPicked((p) => ({
+                    ...p,
+                    [o.orderId]: Math.min(o.unit, Math.max(1, Number(e.target.value) || 1)),
+                  }))}
+                  disabled={saving}
+                  className="w-16 px-2 py-1 rounded border border-cream-border text-sm tabular-nums"
+                />
+              )}
+              <span className="text-xs text-faint tabular-nums w-24 text-right">
+                {formatRp(o.rawUnitPrice)} × {o.unit}
+              </span>
+            </label>
+          ))}
+        </div>
+      )}
+
+      {/* Where the goods ended up. Three real outcomes, and the shop knows
+          which — the refund cannot work it out, and guessing either invents
+          stock or loses it. */}
+      {needsLines && pickedTotal > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs font-medium text-muted">Barangnya</span>
+          <div className="flex flex-wrap gap-2">
+            {([
+              ["kept", "Tetap di customer"],
+              ["returned", "Dikembalikan — masih bisa dijual"],
+              ["returned_unsellable", "Dikembalikan — tidak bisa dijual"],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setGoods(value)}
+                disabled={saving}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                  goods === value
+                    ? "bg-brand text-white border-brand"
+                    : "border-cream-border text-muted-strong hover:bg-surface-muted"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <span className="text-[11px] text-faint">
+            {goods === "kept"
+              ? "Tidak ada yang masuk Inventory."
+              : goods === "returned"
+                ? "Masuk Inventory sebagai stok siap dijual."
+                : "Masuk Inventory, tercatat tapi tidak ditawarkan ke pesanan lain."}
+          </span>
+        </div>
+      )}
 
       <label className="flex flex-col gap-1">
         <span className="text-xs font-medium text-muted">

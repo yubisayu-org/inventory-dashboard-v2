@@ -251,6 +251,21 @@ export const REFUND_CAUSES: RefundCause[] = [
     waLineWithout: "Paket Anda hilang dalam pengiriman.",
   },
   {
+    key: "quality",
+    label: "Not as good as promised",
+    needsItems: true,
+    // Deliberately not "damaged". That one means the parcel arrived broken and
+    // was caught before it went out; this is the shop's own check having missed
+    // something, found by the customer after she opened the box. Counting them
+    // separately is the only way to learn anything from either.
+    line: "{itemsList} tidak sesuai dengan kualitas yang kami janjikan. "
+      + "Maaf — ini luput dari pemeriksaan kami sebelum dikirim.",
+    waLine: "Barang berikut tidak sesuai dengan kualitas yang kami janjikan:\n{itemsList}\n\n"
+      + "Mohon maaf, ini luput dari pemeriksaan kami sebelum dikirim.",
+    waLineWithout: "Ada barang yang tidak sesuai dengan kualitas yang kami janjikan. "
+      + "Mohon maaf, ini luput dari pemeriksaan kami.",
+  },
+  {
     key: "goodwill",
     label: "Goodwill",
     line: "A goodwill refund from us on {event}.",

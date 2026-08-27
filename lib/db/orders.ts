@@ -1203,7 +1203,7 @@ export async function getSellableExcessTotals(): Promise<Record<string, number>>
   const rows = await sql`
     SELECT items, SUM(unit_buy)::int AS total
     FROM excess_purchase
-    WHERE reason NOT IN ('broken', 'missing')
+    WHERE reason NOT IN ('broken', 'missing', 'returned_unsellable')
     GROUP BY items
   `
   const totals: Record<string, number> = {}
@@ -1252,7 +1252,7 @@ export async function applyExcessToShoppingItem(
     db`
       SELECT id, unit_buy, unit_dispatch, unit_arrive
       FROM excess_purchase
-      WHERE items = ${data.productName} AND reason NOT IN ('broken', 'missing') AND unit_buy > 0
+      WHERE items = ${data.productName} AND reason NOT IN ('broken', 'missing', 'returned_unsellable') AND unit_buy > 0
       ORDER BY (event = ${data.event}) DESC, id ASC
     `,
     fetchPaidStatusMap([data.event]),

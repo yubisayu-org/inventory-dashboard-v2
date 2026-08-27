@@ -64,7 +64,13 @@ export interface FormRow {
   hasAddress: boolean
 }
 
-export type ExcessReason = "overbuy" | "overship" | "wrong_product" | "broken" | "missing" | "customer_cancelled" | "manual"
+export type ExcessReason =
+  | "overbuy" | "overship" | "wrong_product" | "broken" | "missing"
+  | "customer_cancelled" | "manual"
+  // A customer sent something back. Resellable goes on the shelf like any
+  // other stock; the other is tracked so the loss is on the record, and is
+  // excluded from everything that offers stock to a new order.
+  | "returned" | "returned_unsellable"
 
 export interface ExcessRow {
   rowNumber: number
@@ -257,7 +263,7 @@ export interface WarehouseRow {
 // the apply-as-credit flow, the one-active-overpayment unique index), but any other
 // reason is just a label. REFUND_REASONS are the suggested presets in the picker.
 export type RefundReason = string
-export const REFUND_REASONS: RefundReason[] = ["overpayment", "unavailable", "shipping_loss", "damaged", "wrong_item", "goodwill", "other"]
+export const REFUND_REASONS: RefundReason[] = ["overpayment", "unavailable", "shipping_loss", "damaged", "wrong_item", "quality", "goodwill", "other"]
 export type RefundStatus = "pending" | "awaiting_bank_info" | "ready_to_refund" | "refunded" | "applied_to_next_order" | "cancelled"
 
 export interface RefundRow {
