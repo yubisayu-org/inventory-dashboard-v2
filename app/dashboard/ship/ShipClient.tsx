@@ -423,7 +423,10 @@ export default function ShipClient() {
                 onRefresh={refresh}
                 onOpenInvoice={() => setInvoiceCustomer(c.customer)}
                 otherEvents={groups
-                  .filter((g) => g.customer === c.customer && g.event !== c.event)
+                  .filter((g) => g.customer === c.customer && g.event !== c.event
+                    // A trip whose box has already gone cannot join another
+                    // one. The server refuses it; the card should not ask.
+                    && g.orders.reduce((n, o) => n + o.unit - o.unitShip, 0) > 0)
                   .map((g) => g.event)}
               />
             )
@@ -598,6 +601,10 @@ function CustomerCard({
   // ships, so it must stop offering to declare what it already has.
   const canSplit = !c.splitRequested
     && c.totalToShip > 0 && c.totalToShip + totalShipped < totalUnits
+  // Merging is about a box that has not left yet. Once everything has shipped
+  // there is nothing to put in one, and the server refuses it anyway — so the
+  // card should not be offering.
+  const canMerge = totalShipped < totalUnits
 
   /**
    * Record what the parcels are going to be. The fee or credit follows on its
@@ -727,25 +734,9 @@ function CustomerCard({
             the running total: what the second parcel costs, and whether it has
             been settled. The fee is never a button of its own — it follows the
             plan, and the payment gate holds the box until she pays. */}
-        {(canSplit || c.splitRequested) && (
+        {c.splitRequested && (
           <div className="px-5 py-2.5 border-b border-cream-border bg-blue-50/60 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
-            <span className="text-blue-800 font-medium">
-              {c.splitRequested ? "Kirim duluan — sisanya menyusul" : "Sebagian sudah tiba"}
-            </span>
-            {/* Before it is declared, say what declaring would cost. Pressing
-                Split Ship should not be the first time a fee is mentioned. */}
-            {!c.splitRequested && (
-              c.splitExtraOngkir > 0 ? (
-                <span className="text-muted-strong">
-                  Split Ship menambah ongkir{" "}
-                  <span className="tabular-nums font-semibold text-foreground">
-                    Rp {c.splitExtraOngkir.toLocaleString("id-ID")}
-                  </span>
-                </span>
-              ) : (
-                <span className="text-muted-strong">Split Ship tidak menambah ongkir — pembulatan berat menutupinya</span>
-              )
-            )}
+            <span className="text-blue-800 font-medium">Kirim duluan — sisanya menyusul</span>
             {c.splitRequested && (
               c.splitExtraOngkir > 0 ? (
                 <span className="text-muted-strong">
@@ -790,7 +781,7 @@ function CustomerCard({
             customer has another trip open — including one that has not
             arrived, since a pairing survives a partial shipment and that is
             what lets the whole plan be settled once. */}
-        {otherEvents.length > 0 && !c.pairedWith?.length && (
+        {canMerge && otherEvents.length > 0 && !c.pairedWith?.length && (
           <div className="px-5 py-2.5 border-b border-cream-border bg-purple-50/60 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
             <span className="text-purple-800 font-medium">
               Juga punya {otherEvents.join(", ")}
@@ -890,9 +881,21 @@ function CustomerCard({
                     // That is the whole order of events the shop asked for:
                     // she settles the extra ongkir, then the box goes.
                     disabled={holdBusy || splitBusy || (c.splitRequested && !paymentClear)}
-                    title={c.splitRequested && !paymentClear
-                      ? "Menunggu pembayaran ongkir tambahan"
-                      : undefined}
+                    // What it costs, on the control that does it. A strip
+                    // saying the same thing an inch away made the card busy
+                    // for a fact most cards do not have to act on.
+                    title={
+                      c.splitRequested && !paymentClear
+                        ? "Menunggu pembayaran ongkir tambahan"
+                        : canSplit
+                          ? c.splitExtraOngkir > 0
+                            ? `Kirim ${c.totalToShip} unit sekarang, sisanya menyusul — `
+                              + `ongkir tambahan Rp ${c.splitExtraOngkir.toLocaleString("id-ID")}, `
+                              + "dibayar sebelum paket berangkat"
+                            : `Kirim ${c.totalToShip} unit sekarang, sisanya menyusul — `
+                              + "tidak menambah ongkir, pembulatan berat menutupinya"
+                          : undefined
+                    }
                     className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors inline-flex items-center gap-1.5"
                   >
                     {splitBusy ? "…" : canSplit ? "Split Ship" : "Ship"}
