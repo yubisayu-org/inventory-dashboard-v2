@@ -514,8 +514,10 @@ export default function DataGrid<T>({
                     <tr className="border-b border-cream-border bg-surface-muted">
                       <td className="p-0" />
                       {enableRowSelection && <td className="p-0" />}
-                      <td colSpan={table.getVisibleLeafColumns().length} className="p-0">
-                        {renderExpandedRow(row.original)}
+                      <td colSpan={table.getVisibleLeafColumns().length} className="p-0 pr-4">
+                        <div className="my-2 rounded-lg border border-cream-border bg-white overflow-hidden">
+                          {renderExpandedRow(row.original)}
+                        </div>
                       </td>
                     </tr>
                   )}
