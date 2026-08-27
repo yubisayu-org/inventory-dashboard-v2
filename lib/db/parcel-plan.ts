@@ -115,6 +115,10 @@ export async function reconcileParcelPlan(
 
   const lines = (await db`
     SELECT o.event, COALESCE(p.gram, 0)::int AS gram, o.unit::int AS unit,
+           -- What is left to send. Units already gone are counted once, in the
+           -- shipments above; counting them here as "still to come" as well is
+           -- what made three boxes look like four.
+           GREATEST(o.unit - COALESCE(o.unit_ship, 0), 0)::int AS remaining,
            -- What actually travels in the early parcel. Only a declared split
            -- sends part of an order; otherwise the whole line goes at once.
            GREATEST(COALESCE(o.unit_arrive, 0) - COALESCE(o.unit_ship, 0), 0)::int AS arrived
@@ -122,42 +126,79 @@ export async function reconcileParcelPlan(
      WHERE o.event = ANY(${events})
        AND lower(replace(o.customer, '@', '')) = ${key}
        AND o.unit > 0
-  `) as unknown as { event: string; gram: number; unit: number; arrived: number }[]
+  `) as unknown as { event: string; gram: number; unit: number; remaining: number; arrived: number }[]
 
+  // Two views of the same lines. The invoice was written against everything
+  // she ordered; the parcels still to come are only what has not gone yet.
+  const invoicedByEvent = new Map<string, number>()
   const byEvent = new Map<string, { gram: number; unit: number; toShip: number }[]>()
   for (const l of lines) {
+    invoicedByEvent.set(l.event, (invoicedByEvent.get(l.event) ?? 0) + l.gram * l.unit)
     const list = byEvent.get(l.event) ?? []
-    list.push({ gram: l.gram, unit: l.unit, toShip: splitting ? Math.min(l.arrived, l.unit) : l.unit })
+    list.push({
+      gram: l.gram,
+      unit: l.remaining,
+      toShip: splitting ? Math.min(l.arrived, l.remaining) : l.remaining,
+    })
     byEvent.set(l.event, list)
   }
 
   const all = [...byEvent.values()]
-  const invoicedKg = all.reduce(
-    (kg, l) => kg + Math.ceil(l.reduce((g, x) => g + x.gram * x.unit, 0) / 1000), 0)
+  const invoicedKg = [...invoicedByEvent.values()].reduce((kg, g) => kg + Math.ceil(g / 1000), 0)
+
+  // Boxes that have already gone, in the kilos the courier billed for them.
+  //
+  // Without this the arithmetic judges each send on its own and asks "does
+  // this fit inside what she paid?" — and answers yes every time, because the
+  // parcels that already left are not in the orders any more. Three sends,
+  // three yeses, and the shop quietly absorbs every kilo after the first.
+  //
+  // weight_estimation holds CEIL(kg), which is what was charged. A merged
+  // shipment carries the combined weight on its primary row and zero on its
+  // partners, so summing the group is the group's real weight.
+  const [sent] = (await db`
+    SELECT COALESCE(SUM(weight_estimation), 0)::int AS kg
+      FROM shipments
+     WHERE event = ANY(${events})
+       AND lower(replace(customer, '@', '')) = ${key}
+  `) as unknown as { kg: number }[]
+  const sentKg = Number(sent?.kg ?? 0)
 
   // A merge is one parcel for the whole group, so its weight is summed before
   // rounding rather than after — which is exactly where the saving comes from.
-  const extra = merged
-    ? ongkirPerKg * (Math.ceil(all.flat().reduce((g, x) => g + x.gram * x.unit, 0) / 1000) - invoicedKg)
-    : parcelPlanExtra(all.map((l) => ({ lines: l })), ongkirPerKg)
+  // The parcels still to come, each rounded up the way a courier charges.
+  //
+  // Counted here rather than through parcelPlanExtra: that function measures
+  // a plan against the invoice itself, and here the invoice has to be compared
+  // against the sent boxes too. Same rounding, one subtraction instead of two.
+  const kg = (gram: number) => (gram > 0 ? Math.ceil(gram / 1000) : 0)
+  const plannedKg = merged
+    // One box for the whole group, so its weight is summed before rounding —
+    // which is exactly where a merge saves anything.
+    ? kg(all.flat().reduce((g, x) => g + x.gram * x.unit, 0))
+    : all.reduce((total, lines) => {
+        const now = lines.reduce((g, x) => g + x.gram * x.toShip, 0)
+        const rest = lines.reduce((g, x) => g + x.gram * Math.max(0, x.unit - x.toShip), 0)
+        return total + kg(now) + kg(rest)
+      }, 0)
+
+  // Everything the courier will have been paid for this trip, against the one
+  // ongkir the invoice charged for it.
+  const extra = ongkirPerKg * (sentKg + plannedKg - invoicedKg)
 
   const partner = merged ? events.filter((e) => e !== event).sort()[0] ?? null : null
   const wanted = planAdjustment(extra, partner)
 
-  // Has any of this plan already travelled?
-  //
-  // A parcel that has gone was paid for at the price agreed when it was
-  // declared, and this function prices what is true now — where a shipped box
-  // no longer appears. So from the first shipment the figure may still rise, if
-  // the plan grew, but it may never fall: taking money back for a journey that
-  // happened is the one mistake here that cannot be undone by pressing the
-  // button again.
-  const [sent] = (await db`
-    SELECT COALESCE(SUM(unit_ship), 0)::int AS shipped
-      FROM orders
-     WHERE event = ANY(${events}) AND lower(replace(customer, '@', '')) = ${key}
-  `) as unknown as { shipped: number }[]
-  const inFlight = (sent?.shipped ?? 0) > 0
+  // A parcel that has gone was paid for at the price agreed then, and this
+  // prices what is true now. The kilos are counted above, so the figure holds
+  // on its own — but the rule stays as a floor: from the first shipment it may
+  // rise, never fall. Taking money back for a journey that happened is the one
+  // mistake here that pressing the button again cannot undo.
+  // Either signal will do. Shipping writes both a shipments row and the units,
+  // and a plan whose units have gone is in flight whether or not its paperwork
+  // landed — the floor below is the last thing that should depend on a join.
+  const shippedUnits = lines.reduce((n, l) => n + Math.max(0, l.unit - l.remaining), 0)
+  const inFlight = sentKg > 0 || shippedUnits > 0
 
   // Only ever its own row. A description matching by accident is not enough —
   // see the test that plants one.
