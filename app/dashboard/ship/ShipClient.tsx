@@ -422,12 +422,6 @@ export default function ShipClient() {
                 onShipped={() => { setSegment("all"); refresh() }}
                 onRefresh={refresh}
                 onOpenInvoice={() => setInvoiceCustomer(c.customer)}
-                otherEvents={groups
-                  .filter((g) => g.customer === c.customer && g.event !== c.event
-                    // A trip whose box has already gone cannot join another
-                    // one. The server refuses it; the card should not ask.
-                    && g.orders.reduce((n, o) => n + o.unit - o.unitShip, 0) > 0)
-                  .map((g) => g.event)}
               />
             )
           })}
@@ -562,15 +556,9 @@ function CustomerCard({
   onShipped,
   onRefresh,
   onOpenInvoice,
-  otherEvents,
 }: {
   customer: ShipCustomer
   segment: Segment
-  /**
-   * This customer's other open trips on this page. A merge needs somewhere to
-   * merge to, and the card alone cannot see its siblings.
-   */
-  otherEvents: string[]
   isSelected?: boolean
   onToggleSelect?: () => void
   onShipped: () => void
@@ -585,9 +573,6 @@ function CustomerCard({
   const [holdError, setHoldError] = useState<string | null>(null)
   const [splitBusy, setSplitBusy] = useState(false)
   const [splitError, setSplitError] = useState<string | null>(null)
-  // Which of her other trips go in the box. Everything open, until somebody
-  // says otherwise — the common case is two trips and no choice to make.
-  const [mergePick, setMergePick] = useState<Set<string> | null>(null)
   const paymentClear = ["paid", "overpaid", "void"].includes(c.paymentStatus)
   const { customerDetail } = c
   const { widths, startResize } = useResizableColumns({ items: 200, unit: 80, unitArrive: 80, unitShip: 80, toShip: 80 })
@@ -601,10 +586,6 @@ function CustomerCard({
   // ships, so it must stop offering to declare what it already has.
   const canSplit = !c.splitRequested
     && c.totalToShip > 0 && c.totalToShip + totalShipped < totalUnits
-  // Merging is about a box that has not left yet. Once everything has shipped
-  // there is nothing to put in one, and the server refuses it anyway — so the
-  // card should not be offering.
-  const canMerge = totalShipped < totalUnits
 
   /**
    * Record what the parcels are going to be. The fee or credit follows on its
@@ -730,77 +711,11 @@ function CustomerCard({
             whether it is settled both live on the Ship button — the control
             that acts on them — so the card keeps its shape whether or not a
             split is running. */}
-        {/* Merging needs somewhere to merge to. Offered only where this
-            customer has another trip open — including one that has not
-            arrived, since a pairing survives a partial shipment and that is
-            what lets the whole plan be settled once. */}
-        {canMerge && otherEvents.length > 0 && !c.pairedWith?.length && (
-          <div className="px-5 py-2.5 border-b border-cream-border bg-purple-50/60 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
-            <span className="text-purple-800 font-medium">
-              Juga punya {otherEvents.join(", ")}
-            </span>
-            <span className="text-muted-strong">Digabung jadi satu box, ongkirnya dihitung sekali</span>
-            <span className="flex-1" />
-            {/* One other trip is not a choice — merging is the only thing the
-                button could mean, so it just does it. With two or more, which
-                ones share the box is the shop's decision and asking is the
-                only honest option. */}
-            {otherEvents.length === 1 || mergePick === null ? (
-              <button
-                type="button"
-                onClick={() => (otherEvents.length === 1
-                  ? postPlan("merge", [c.event, otherEvents[0]])
-                  : setMergePick(new Set(otherEvents)))}
-                disabled={splitBusy}
-                className="px-3 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-medium hover:bg-purple-700 disabled:opacity-50 transition-colors"
-              >
-                {splitBusy ? "…" : otherEvents.length === 1 ? "Gabung jadi 1 box" : "Pilih trip untuk digabung…"}
-              </button>
-            ) : (
-              <div className="w-full flex flex-col gap-2 pt-1">
-                <div className="flex flex-wrap gap-x-4 gap-y-1.5">
-                  {otherEvents.map((ev) => (
-                    <label key={ev} className="inline-flex items-center gap-1.5 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={mergePick.has(ev)}
-                        onChange={() => {
-                          const next = new Set(mergePick)
-                          if (next.has(ev)) next.delete(ev)
-                          else next.add(ev)
-                          setMergePick(next)
-                        }}
-                        className="accent-purple-600"
-                      />
-                      <span className="text-muted-strong">{ev}</span>
-                    </label>
-                  ))}
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-purple-800">
-                    {c.event} + {mergePick.size} trip lain
-                  </span>
-                  <span className="flex-1" />
-                  <button
-                    type="button"
-                    onClick={() => setMergePick(null)}
-                    className="px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-xs font-medium hover:bg-surface-muted transition-colors"
-                  >
-                    Batal
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => postPlan("merge", [c.event, ...mergePick])}
-                    disabled={splitBusy || mergePick.size === 0}
-                    className="px-3 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-medium hover:bg-purple-700 disabled:opacity-50 transition-colors"
-                  >
-                    {splitBusy ? "…" : `Gabung ${mergePick.size + 1} trip`}
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+        {/* No merge control here. Combining is one route — select the cards
+            and use Combine — and it now covers both cases: everything ready
+            ships as one box, anything still waiting is recorded and priced and
+            travels together later. A second way in from the card was the same
+            act under another name. */}
         {splitError && (
           <div className="px-5 py-2 text-xs text-red-700 bg-red-50 border-b border-cream-border">{splitError}</div>
         )}
@@ -826,7 +741,7 @@ function CustomerCard({
                       onClick={() => postPlan("unsplit", [c.event])}
                       disabled={splitBusy}
                       title="Batalkan kirim duluan — ongkir tambahannya ikut dihapus"
-                      className="px-3 py-1.5 rounded-lg border border-blue-300 text-blue-800 text-xs font-medium hover:bg-blue-50 disabled:opacity-50 transition-colors"
+                      className="px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-xs font-medium hover:bg-surface-muted disabled:opacity-50 transition-colors"
                     >
                       {splitBusy ? "…" : "Cancel Split"}
                     </button>
@@ -1660,8 +1575,12 @@ function MergeShipConfirmModal({
         if (cancelled) return
         const mine = json.groups
           // A paired event has toShip 0 until the merge releases it, and it is
-          // exactly the event this modal exists to ship.
-          .filter((g) => normalizeId(g.customer) === normalizeId(customer) && unparkedToShip(g) > 0)
+          // exactly the event this modal exists to ship. A trip with nothing
+          // arrived yet has toShip 0 too, and is exactly what "wait and travel
+          // together" means — so both are offered, and what can be picked
+          // decides whether the box goes now or waits.
+          .filter((g) => normalizeId(g.customer) === normalizeId(customer)
+            && (unparkedToShip(g) > 0 || g.orders.some((o) => o.unit > o.unitShip)))
           .sort((a, b) => a.event.localeCompare(b.event))
         setAllGroups(mine)
         setChecked((prev) => {
@@ -1676,6 +1595,10 @@ function MergeShipConfirmModal({
   }, [customer])
 
   const checkedGroups = (allGroups ?? []).filter((g) => checked.has(g.event))
+  // Everything picked has stock on the bench → one box, now. Anything still
+  // waiting → record that they travel together and let the ongkir follow; the
+  // box goes when the last of it lands.
+  const shipsNow = checkedGroups.length > 0 && checkedGroups.every((g) => unparkedToShip(g) > 0)
   const customerDetail = allGroups?.[0]?.customerDetail ?? null
   const ongkirPerKg = allGroups?.[0]?.ongkirPerKg ?? 0
   const profileAddress = customerDetail?.dataDiri ?? ""
@@ -1728,6 +1651,27 @@ function MergeShipConfirmModal({
     setError(null)
     const effectiveAddress = useTempAddress ? tempAddress : profileAddress
     try {
+      // Recorded either way, and before anything ships: the pairing is what
+      // prices the ongkir as one parcel, and a box that leaves without it
+      // would be billed as two.
+      const planRes = await fetch("/api/sheets/ship/plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "merge", customer, events: checkedGroups.map((g) => g.event),
+        }),
+      })
+      if (!planRes.ok) {
+        const d = await planRes.json()
+        throw new Error(d.error ?? "Gagal mencatat gabungan")
+      }
+      if (!shipsNow) {
+        // Nothing to send yet. The pairing holds them together and the ongkir
+        // is already settled on her invoice.
+        onSuccess()
+        return
+      }
+
       const res = await fetch("/api/sheets/ship", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1902,8 +1846,14 @@ function MergeShipConfirmModal({
                     <span className="font-semibold">Rp {combinedOngkir.toLocaleString("id-ID")}</span>
                   </div>
                   <div className="text-xs text-faint mt-1">
-                    Ongkir ditagih sekali untuk paket gabungan. Diskon ongkir gabungan otomatis diterapkan ke invoice.
+                    Ongkir ditagih sekali untuk paket gabungan. Selisihnya otomatis masuk ke invoice.
                   </div>
+                  {!shipsNow && checkedGroups.length >= 2 && (
+                    <div className="text-xs text-amber-700 mt-1.5">
+                      Ada trip yang barangnya belum lengkap. Gabungannya dicatat sekarang dan ongkirnya langsung
+                      disesuaikan — paketnya berangkat setelah semuanya tiba.
+                    </div>
+                  )}
                 </div>
 
                 {!canConfirm && (
@@ -1958,7 +1908,12 @@ function MergeShipConfirmModal({
                 disabled={shipping || !canConfirm}
                 className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 transition-colors disabled:opacity-50"
               >
-                {shipping ? "Mengirim…" : "Konfirmasi Gabung & Kirim"}
+                {/* The button says which of the two will happen, because the
+                    difference matters: one sends a box today, the other
+                    promises one later. */}
+                {shipping
+                  ? (shipsNow ? "Mengirim…" : "Menyimpan…")
+                  : shipsNow ? "Konfirmasi Gabung & Kirim" : "Gabung — tunggu sisanya"}
               </button>
             </>
           )}

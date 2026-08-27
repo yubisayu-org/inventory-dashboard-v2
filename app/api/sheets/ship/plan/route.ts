@@ -70,8 +70,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, adjustment })
   } catch (err) {
     // A refused plan — the parcel already shipped, no order on the trip — is
-    // something the person can act on, not a server fault.
-    const message = err instanceof Error ? err.message : "Failed to record the plan"
+    // something the person can act on, not a server fault. Its reason arrives
+    // as a bare code from ShippingPrefError, which is fine in a log and no use
+    // at all on a screen.
+    const raw = err instanceof Error ? err.message : "Failed to record the plan"
+    const message = {
+      shipped: "Paketnya sudah dikirim — tidak bisa diubah lagi",
+      unknown: "Tidak ada pesanan di trip ini",
+      unpaid: "Pesanan ini belum lunas",
+      "part-shipped": "Sebagian paketnya sudah dikirim",
+    }[raw] ?? raw
     console.error("Failed to record parcel plan:", err)
     return NextResponse.json({ error: message }, { status: 400 })
   }
