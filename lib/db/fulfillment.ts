@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto"
-import { refundForReduction, type MarkReduction } from "./mark-refunds"
+import { refundForReduction, invoiceTotalsNow, type MarkReduction } from "./mark-refunds"
 import { reconcileParcelPlan } from "./parcel-plan"
 import sql from "../db-pool"
 import { normalizeId, normalizeCustomer, tsToString, splitExtraOngkir, parcelPlanExtra } from "./helpers"
@@ -1251,12 +1251,16 @@ export async function recordNotReceived(
   let cancelledUnits = 0
   let inHandUnits = 0
   const reductions: MarkReduction[] = []
+  // Before anything moves: what each of them is billed today. The refund is
+  // capped by the difference this mark makes to that, which is how the ongkir
+  // riding on the removed goods comes back with them.
+  const totalsBefore = await invoiceTotalsNow(data.event)
   await sql.begin(async (tx) => {
     await tx`SELECT set_config('app.actor', ${actor ?? ""}, true)`
     for (const { item: o, allocated } of allocations) {
       cancelledUnits += allocated
       inHandUnits += Math.min(allocated, Math.max(0, o.unitBuy - o.unitShip))
-      reductions.push({ customer: o.customer, unitsRemoved: allocated, unitPrice: o.unitPrice })
+      reductions.push({ customer: o.customer, unitsRemoved: allocated })
       await reduceOrderRefundOnly({ orderId: o.id, qty: allocated }, tx)
     }
     if (data.mode === "broken" || data.mode === "missing") {
@@ -1289,16 +1293,21 @@ export async function recordNotReceived(
     cancelled: null,
   }
   const reason = REASON_FOR[data.mode]
-  // After the commit: what is owed depends on the invoice as it now stands.
-  const refunds = reason
-    ? await refundForReduction(data.event, reason, data.productName, reductions, actor, data.receivedItem)
-    : []
 
   // Fewer units means a different parcel plan, whether or not anyone is
-  // splitting: what is invoiced has changed underneath it.
+  // splitting: what is invoiced has changed underneath it. Before the refund is
+  // priced, not after -- it moves the invoice too, and a refund settled against
+  // a total that is about to change is settled against the wrong one.
   for (const customer of [...new Set(reductions.map((r) => r.customer))]) {
     await reconcileParcelPlan(customer, data.event)
   }
+
+  // Now the invoice has finished moving: what is owed depends on where it
+  // landed, and on how far it fell.
+  const refunds = reason
+    ? await refundForReduction(
+        data.event, reason, data.productName, reductions, totalsBefore, actor, data.receivedItem)
+    : []
 
   const excessUnits = data.mode === "cancelled" ? inHandUnits : data.qty
   return { cancelledUnits, excessUnits, refunds }
