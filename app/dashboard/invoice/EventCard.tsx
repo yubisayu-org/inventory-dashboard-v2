@@ -2,13 +2,11 @@
 
 import { useState } from "react"
 import { displayIg, fmt } from "@/lib/format"
-import type { CustomerDetail, InvoiceEvent, InvoiceOrderLine } from "@/lib/db"
+import type { CustomerDetail, InvoiceEvent } from "@/lib/db"
 import { useResizableColumns } from "@/hooks/useResizableColumns"
 import InvoiceSummary from "@/components/InvoiceSummary"
 import { CustomerInfoModal } from "./CustomerInfoModal"
 import { InvoiceMessageActions } from "./InvoiceMessageActions"
-import { CancelOrderFromInvoiceModal } from "./CancelOrderFromInvoiceModal"
-import { CancelWholeOrderModal } from "./CancelWholeOrderModal"
 import { AddAdjustmentFromInvoiceModal } from "./AddAdjustmentFromInvoiceModal"
 
 export function EventCard({
@@ -23,8 +21,6 @@ export function EventCard({
   onMutated?: () => void
 }) {
   const [infoOpen, setInfoOpen] = useState(false)
-  const [cancelLine, setCancelLine] = useState<InvoiceOrderLine | null>(null)
-  const [cancelAll, setCancelAll] = useState(false)
   const [addAdjOpen, setAddAdjOpen] = useState(false)
   const { eta, status, shipments, showShipments, orders, totals } = event
   const { widths, startResize } = useResizableColumns({ order: 220, unit: 60, price: 100, subtotal: 100, ready: 60, refund: 56 })
@@ -58,18 +54,6 @@ export function EventCard({
           <div className="flex flex-wrap items-center gap-2 text-sm text-white">
             <span className="font-medium">{event.eventId}</span>
             {eta && <span className="text-white/70">• {eta}</span>}
-            <span className="flex-1" />
-            {/* The whole order at once, for a customer who has gone quiet.
-                Cancelling her five lines one at a time is five confirmations
-                and a half-cancelled order if anything interrupts. */}
-            <button
-              type="button"
-              onClick={() => setCancelAll(true)}
-              title="Batalkan seluruh pesanan customer ini di trip ini"
-              className="text-white/60 hover:text-white text-xs font-medium transition-colors"
-            >
-              Batalkan semua
-            </button>
           </div>
           {status && (
             <div className="text-xs text-white/80">
@@ -125,21 +109,7 @@ export function EventCard({
                 <td className="px-4 py-2 text-right">{r.price}</td>
                 <td className="px-4 py-2 text-right">{r.subtotal}</td>
                 <td className="px-4 py-2 text-right">{r.unitArrive}</td>
-                <td className="px-2 py-2">
-                  <div className="flex items-center justify-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setCancelLine(r)}
-                      title="Cancel this order (customer backed out) — removes the line, refunds if paid, returns stock to Inventory"
-                      className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-faint hover:text-red-500 transition-all"
-                    >
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="12" cy="12" r="10" />
-                        <path d="m4.9 4.9 14.2 14.2" />
-                      </svg>
-                    </button>
-                  </div>
-                </td>
+                <td className="px-2 py-2" />
               </tr>
             ))}
             <tr className="font-semibold bg-cream">
@@ -177,19 +147,6 @@ export function EventCard({
               </div>
               <div className="text-xs text-faint tabular-nums mt-0.5">Ready {r.unitArrive}</div>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={() => setCancelLine(r)}
-                title="Cancel this order (customer backed out) — removes the line, refunds if paid, returns stock to Inventory"
-                className="text-faint hover:text-red-500 transition-colors"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="10" />
-                  <path d="m4.9 4.9 14.2 14.2" />
-                </svg>
-              </button>
-            </div>
           </div>
         ))}
         <div className="px-4 py-3 flex items-center justify-between gap-3 bg-cream font-semibold">
@@ -213,27 +170,6 @@ export function EventCard({
 
       {/* Invoice summary */}
       <InvoiceSummary event={event} actions={<InvoiceMessageActions event={event} whatsapp={customerDetail?.whatsapp} customer={customer} />} />
-
-      {cancelAll && (
-        <CancelWholeOrderModal
-          event={event}
-          customer={customer}
-          onClose={() => setCancelAll(false)}
-          onCancelled={() => { setCancelAll(false); onMutated?.() }}
-        />
-      )}
-
-      {/* Cancel-order modal — customer backed out of this line */}
-      {cancelLine && (
-        <CancelOrderFromInvoiceModal
-          line={cancelLine}
-          event={event.eventId}
-          customer={displayIg(customer)}
-          productName={cancelLine.productName || (cancelLine.order ?? "").replace(/ x \d+$/, "")}
-          onClose={() => setCancelLine(null)}
-          onCancelled={() => { setCancelLine(null); onMutated?.() }}
-        />
-      )}
 
       {/* Add Adjustment modal — triggered from the Total row */}
       {addAdjOpen && (
