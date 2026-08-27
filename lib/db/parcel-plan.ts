@@ -315,7 +315,11 @@ export async function recordChargedWeight(
 
     // Same rule as every other automatic change, and it matters more here:
     // this one lands after her parcel has already left.
-    const template = NOTICE_TEMPLATES.find((t) => t.key === "inbox_ongkir_reweighed")!
+    // Lighter than estimated is money back, not a charge — and it needs no
+    // apology.
+    const template = NOTICE_TEMPLATES.find((t) => t.key === (amount > 0
+      ? "inbox_ongkir_reweighed"
+      : "inbox_ongkir_reweighed_less"))!
     const tokens = {
       "{event}": s.event,
       "{customer}": s.customer,

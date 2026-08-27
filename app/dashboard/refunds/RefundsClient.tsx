@@ -15,7 +15,9 @@ import SearchableSelect from "@/components/SearchableSelect"
 import { InvoiceDetailDrawer } from "@/app/dashboard/invoice/InvoiceDetailDrawer"
 import { useMessageTemplates } from "@/hooks/useMessageTemplates"
 import { fillTemplate, DEFAULT_TEMPLATES } from "@/lib/message-templates"
-import { causeLineFor, fillNotice, REFUND_CAUSES } from "@/lib/notice-templates"
+import {
+  causeLineFor, fillNotice, REFUND_CAUSES, MANUAL_REFUND_CAUSES, NOTICE_TEMPLATES,
+} from "@/lib/notice-templates"
 
 const INPUT_CLASS =
   "border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
@@ -516,8 +518,10 @@ export default function RefundsClient() {
     setEditRow(null)
   }
 
-  function handleCreated(created: RefundRow) {
-    setRows((prev) => [created, ...prev])
+  function handleCreated() {
+    // Reloaded rather than pushed on: the refund is written by the notice
+    // path, which answers with an id, and the row it made is the truth.
+    fetchRows()
     setTab("pending")
   }
 
@@ -656,7 +660,7 @@ export default function RefundsClient() {
             <CreateRefundCard
               events={options?.events ?? []}
               reasonOptions={reasonOptions}
-              onCreated={(row) => { handleCreated(row); setMobileCreating(false); window.scrollTo({ top: 0, behavior: "smooth" }) }}
+              onCreated={() => { handleCreated(); setMobileCreating(false); window.scrollTo({ top: 0, behavior: "smooth" }) }}
               onClose={() => setMobileCreating(false)}
             />
           </div>
@@ -686,18 +690,34 @@ function CreateRefundCard({
 }: {
   events: string[]
   reasonOptions: { value: string; label: string }[]
-  onCreated: (row: RefundRow) => void
+  /** The notice route returns an id, not a row, so the list reloads. */
+  onCreated: () => void
   onClose: () => void
 }) {
   const [form, setForm] = useState({
     event: "",
     customer: "",
-    reason: "overpayment" as RefundReason,
+    reason: "goodwill" as RefundReason,
     refundAmount: "",
     note: "",
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // The same wording a marked refund sends, filled from what is typed here, so
+  // one customer cannot receive two different explanations of the same thing.
+  const cause = MANUAL_REFUND_CAUSES.find((c) => c.key === form.reason)
+  const template = NOTICE_TEMPLATES.find((t) => t.key === "inbox_refund_offered")!
+  const tokens = {
+    "{customer}": form.customer.trim(),
+    "{event}": form.event,
+    "{refundAmount}": formatRp(Number(form.refundAmount) || 0),
+    "{itemsList}": form.note.trim() || "pesanan Anda",
+    "{cause}": "",
+  }
+  const causeLine = cause ? fillNotice(causeLineFor(cause, { items: form.note.trim() }), tokens) : ""
+  const noticeTitle = fillNotice(template.title, tokens)
+  const noticeBody = fillNotice(template.body, { ...tokens, "{cause}": causeLine })
 
   function field<K extends keyof typeof form>(key: K) {
     return {
@@ -712,21 +732,29 @@ function CreateRefundCard({
     setSaving(true)
     setError(null)
     try {
-      const res = await fetch("/api/sheets/refunds", {
+      // Through the notice, so a refund written by hand tells her the same way
+      // a marked one does. She never reads an adjustment or a refund's own
+      // description — the notice is the only surface that explains itself, and
+      // creating one silently was the difference between these two routes.
+      const res = await fetch("/api/sheets/invoice/notice", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           event: form.event,
           customer: form.customer.trim(),
-          reason: form.reason,
-          refundAmount: Number(form.refundAmount),
-          note: form.note.trim(),
+          title: noticeTitle,
+          body: noticeBody,
+          refund: {
+            cause: form.reason,
+            amount: Number(form.refundAmount),
+            items: form.note.trim(),
+          },
         }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "Failed to create")
-      setForm({ event: "", customer: "", reason: "overpayment", refundAmount: "", note: "" })
-      onCreated(data.row)
+      setForm({ event: "", customer: "", reason: "goodwill", refundAmount: "", note: "" })
+      onCreated()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create")
     } finally {
@@ -751,12 +779,16 @@ function CreateRefundCard({
         </label>
         <label className="flex flex-col gap-1">
           <span className="text-xs font-medium text-muted">Reason</span>
+          {/* Only the reasons nobody can mark. Sold out, damaged, missing and
+              wrong deliveries are made on the Shopping or Arrival List, where
+              one action reduces the order, writes the refund and sends the
+              notice — offering them here invites a second refund for the same
+              thing, on an order still claiming units she will never get. */}
           <SearchableSelect
             value={form.reason}
             onChange={(v) => setForm((f) => ({ ...f, reason: v }))}
-            options={reasonOptions}
-            placeholder="Select or type…"
-            allowNewValue
+            options={MANUAL_REFUND_CAUSES.map((c) => ({ value: c.key, label: reasonLabel(c.key) }))}
+            placeholder="Select…"
             disabled={saving}
           />
         </label>
@@ -775,9 +807,23 @@ function CreateRefundCard({
       </div>
 
       <label className="flex flex-col gap-1">
-        <span className="text-xs font-medium text-muted">Note <span className="font-normal text-faint">(optional)</span></span>
-        <textarea {...field("note")} disabled={saving} rows={2} placeholder="Additional context…" className={`${INPUT_CLASS} w-full resize-none`} />
+        <span className="text-xs font-medium text-muted">
+          What it is for <span className="font-normal text-faint">(she reads this)</span>
+        </span>
+        <textarea {...field("note")} disabled={saving} rows={2} placeholder="mis. keterlambatan 3 minggu" className={`${INPUT_CLASS} w-full resize-none`} />
       </label>
+
+      {/* Shown before it goes, because it goes: a refund made here now sends
+          the customer the same notice a marked one does. */}
+      {Number(form.refundAmount) > 0 && form.event && (
+        <div className="rounded-lg border border-purple-200 bg-purple-50 p-3">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-purple-700 mb-1.5">
+            Yang dia terima
+          </div>
+          <div className="text-sm font-semibold text-foreground">{noticeTitle}</div>
+          <p className="text-xs text-muted-strong whitespace-pre-wrap mt-1 leading-relaxed">{noticeBody}</p>
+        </div>
+      )}
 
       {error && <p className="text-xs text-red-500">{error}</p>}
 
@@ -786,7 +832,7 @@ function CreateRefundCard({
           Cancel
         </button>
         <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors">
-          {saving ? "Creating…" : "Create"}
+          {saving ? "Mengirim…" : "Create & tell her"}
         </button>
       </div>
     </form>
