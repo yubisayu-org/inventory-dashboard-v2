@@ -65,6 +65,9 @@ function collapseMerged(rows: ShippingRecord[]): DisplayShipment[] {
       shippingId: primary.shippingId,
       invoicing: lines.join("\n"),
       weightEstimation: sorted.reduce((s, x) => s + x.weightEstimation, 0),
+      // A merge group ships as one parcel, and only its primary row carries
+      // weight — so a correction on that row is the group's correction.
+      weightCharged: sorted.find((s) => s.weightCharged !== null)?.weightCharged ?? null,
       ongkirTotal: sorted.reduce((s, x) => s + x.ongkirTotal, 0),
       trackingNumber: sorted.find((s) => s.trackingNumber)?.trackingNumber ?? "",
       // temp_address is replicated across every row in a merge group so
@@ -392,6 +395,110 @@ function EditResiModal({
   )
 }
 
+// ─── EditWeightModal ──────────────────────────────────────────────────────
+//
+// The estimate is what the invoice billed. This records what the courier
+// actually charged, which is only worth typing when the two disagree — leave
+// it blank and nothing is stored, which is most parcels.
+//
+// It confirms before saving because it changes what a customer owes, and does
+// so after her parcel has already gone.
+
+function EditWeightModal({
+  record,
+  onClose,
+  onSaved,
+}: {
+  record: DisplayShipment
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [value, setValue] = useState(record.weightCharged === null ? "" : String(record.weightCharged))
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => { inputRef.current?.focus() }, [])
+  useModalDismiss(onClose)
+
+  const typed = value.trim()
+  const charged = typed === "" ? null : Number(typed)
+  const difference = charged === null ? 0 : (charged - record.weightEstimation) * (record.ongkir || 0)
+
+  async function handleSave() {
+    if (charged !== null && (!Number.isInteger(charged) || charged < 1)) {
+      setError("Berat harus bilangan bulat kilogram")
+      return
+    }
+    if (charged === record.weightCharged) { onClose(); return }
+    if (difference !== 0 && !confirm(
+      difference > 0
+        ? `Tagihan ${displayIg(record.customer).toUpperCase()} bertambah Rp ${difference.toLocaleString("id-ID")}. Lanjutkan?`
+        : `Tagihan ${displayIg(record.customer).toUpperCase()} berkurang Rp ${(-difference).toLocaleString("id-ID")}. Lanjutkan?`,
+    )) return
+
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await fetch("/api/sheets/shipments", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rowNumber: record.rowNumber, weightCharged: charged }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? "Failed")
+      onSaved()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal menyimpan")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl w-full max-w-sm flex flex-col gap-3 p-5" onClick={(e) => e.stopPropagation()}>
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">Berat ditagih kurir</h3>
+          <p className="text-xs text-muted mt-1">
+            {record.event} · {displayIg(record.customer)} · estimasi{" "}
+            <span className="font-semibold text-foreground">{record.weightEstimation} kg</span>
+          </p>
+        </div>
+        <input
+          ref={inputRef}
+          type="number"
+          min="1"
+          step="1"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") onClose() }}
+          placeholder="Kosongkan jika sesuai estimasi"
+          className="w-full px-3 py-2 rounded-lg border border-cream-border text-sm tabular-nums"
+        />
+        {difference !== 0 && (
+          <p className={`text-xs ${difference > 0 ? "text-red-700" : "text-green-700"}`}>
+            {difference > 0 ? "Ongkir tambahan" : "Ongkir berkurang"}{" "}
+            <span className="font-semibold tabular-nums">Rp {Math.abs(difference).toLocaleString("id-ID")}</span>
+            {" "}— pelanggan akan diberi tahu.
+          </p>
+        )}
+        {error && <p className="text-xs text-red-500">{error}</p>}
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm">Batal</button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="px-4 py-2 rounded-lg bg-brand text-white text-sm disabled:opacity-50"
+          >
+            {saving ? "Menyimpan…" : "Simpan"}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── EditTempAddressModal ─────────────────────────────────────────────────
 
 function EditTempAddressModal({
@@ -523,6 +630,7 @@ export default function ShipmentsClient() {
   const [printingPdf, setPrintingPdf] = useState(false)
   const [labelRecord, setLabelRecord] = useState<DisplayShipment | null>(null)
   const [editResiRecord, setEditResiRecord] = useState<DisplayShipment | null>(null)
+  const [editWeightRecord, setEditWeightRecord] = useState<DisplayShipment | null>(null)
   const [invoiceCustomer, setInvoiceCustomer] = useState<string | null>(null)
   const [editTempRecord, setEditTempRecord] = useState<DisplayShipment | null>(null)
   // Bound the default fetch to recent shipments so the payload stays small as
@@ -709,11 +817,40 @@ export default function ShipmentsClient() {
         accessorKey: "weightEstimation",
         header: "Berat",
         filterFn: "numeric",
-        size: 90,
+        size: 120,
         meta: { align: "right" },
-        cell: ({ getValue }) => (
-          <span className="whitespace-nowrap">{fmt(getValue<number>())} kg</span>
-        ),
+        cell: ({ row }) => {
+          const record = row.original
+          const corrected = record.weightCharged !== null
+          return (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setEditWeightRecord(record) }}
+              className="group flex items-center justify-end gap-1.5 w-full text-right"
+              title={corrected
+                ? `Berat dikoreksi — estimasi ${fmt(record.weightEstimation)} kg, ditagih kurir ${fmt(record.weightCharged!)} kg`
+                : "Koreksi berat jika kurir menagih berbeda"}
+            >
+              {/* Beside the figure, where the temporary-address marker already
+                  sits. Only a corrected row carries it — which is what makes
+                  the corrected one findable while scanning. */}
+              {corrected && (
+                <span className="inline-flex items-center justify-center w-[18px] h-[18px] rounded bg-red-50 text-red-700 shrink-0">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 3v18" /><path d="M5 7h14" />
+                    <path d="m3 12 2-5 2 5a2 2 0 0 1-4 0z" /><path d="m17 12 2-5 2 5a2 2 0 0 1-4 0z" />
+                  </svg>
+                </span>
+              )}
+              <span className="whitespace-nowrap">
+                {corrected && (
+                  <span className="text-faint line-through mr-1">{fmt(record.weightEstimation)}</span>
+                )}
+                {fmt(corrected ? record.weightCharged! : record.weightEstimation)} kg
+              </span>
+            </button>
+          )
+        },
       },
       {
         accessorKey: "ongkirTotal",
@@ -1003,6 +1140,13 @@ export default function ShipmentsClient() {
       )}
       {labelRecord && (
         <LabelModal record={labelRecord} onClose={() => setLabelRecord(null)} />
+      )}
+      {editWeightRecord && (
+        <EditWeightModal
+          record={editWeightRecord}
+          onClose={() => setEditWeightRecord(null)}
+          onSaved={() => { setEditWeightRecord(null); load() }}
+        />
       )}
       {editResiRecord && (
         <EditResiModal
