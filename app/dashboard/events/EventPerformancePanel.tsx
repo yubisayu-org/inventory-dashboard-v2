@@ -18,7 +18,7 @@ export default function EventPerformancePanel({ perf }: { perf: EventPerformance
   const profitPositive = perf.netProfit >= 0
 
   return (
-    <div className="flex flex-col gap-4 pt-4 pr-4 pb-4 pl-[38px] md:pl-4">
+    <div className="flex flex-col gap-4 pt-4 pr-4 pb-4 pl-[38px] md:pl-[calc(var(--dg-indent,0px)+1rem)]">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {/* Fulfillment */}
         <StatGroup title="Fulfillment" accent="sm:border-l-brand">

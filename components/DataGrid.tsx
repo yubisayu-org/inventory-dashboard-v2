@@ -19,7 +19,7 @@ import {
   type PaginationState,
   type OnChangeFn,
 } from "@tanstack/react-table"
-import { Fragment, useState, useRef, useEffect, useCallback, useMemo } from "react"
+import { Fragment, useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from "react"
 import SearchInput from "./SearchInput"
 import DateRangeField, { type DateRange } from "./DateRangeField"
 
@@ -262,6 +262,28 @@ export default function DataGrid<T>({
   renderExpandedRow,
 }: DataGridProps<T>) {
   // Client-side state (ignored when serverSide is provided)
+  // How far in the first real column starts, in pixels.
+  //
+  // Not a number anybody can write down. The grid is a fixed-layout table whose
+  // column widths sum to less than the space available, so the browser scales
+  // every one of them up to fill it -- the caret column included. It is wider
+  // than the 2rem its header asks for, by a factor that moves with the
+  // viewport. Panels that indented by a guess sat visibly off the row above.
+  //
+  // So it is measured and published as a custom property, and the panels align
+  // to it while their backgrounds still span the whole card.
+  const caretRef = useRef<HTMLTableCellElement>(null)
+  const [caretWidth, setCaretWidth] = useState(0)
+  useLayoutEffect(() => {
+    const el = caretRef.current
+    if (!el) return
+    const measure = () => setCaretWidth(el.getBoundingClientRect().width)
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [renderExpandedRow])
+
   const [sorting, setSorting] = useState<SortingState>(initialSorting ?? [])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [internalColumnVisibility, setInternalColumnVisibility] = useState<VisibilityState>(initialVisibility ?? {})
@@ -423,7 +445,7 @@ export default function DataGrid<T>({
             <thead>
               {table.getHeaderGroups().map((hg) => (
                 <tr key={hg.id} className={`text-left text-xs text-muted border-b border-cream-border bg-surface-muted/80 ${boldUppercaseHeader ? "uppercase" : ""}`}>
-                  {renderExpandedRow && <th className="pl-3 pr-0 py-3 w-8" />}
+                  {renderExpandedRow && <th ref={caretRef} className="pl-3 pr-0 py-3 w-8" />}
                   {enableRowSelection && (
                     <th className="pl-4 pr-2 py-3 w-10">
                       <input
@@ -512,9 +534,11 @@ export default function DataGrid<T>({
                   </tr>
                   {isExpanded && renderExpandedRow && (
                     <tr className="border-b border-cream-border bg-white">
-                      <td className="p-0" />
-                      {enableRowSelection && <td className="p-0" />}
-                      <td colSpan={table.getVisibleLeafColumns().length} className="p-0">
+                      <td
+                        colSpan={table.getVisibleLeafColumns().length + 1 + (enableRowSelection ? 1 : 0)}
+                        className="p-0"
+                        style={{ "--dg-indent": `${caretWidth}px` } as React.CSSProperties}
+                      >
                         {renderExpandedRow(row.original)}
                       </td>
                     </tr>

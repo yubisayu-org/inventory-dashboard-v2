@@ -421,8 +421,8 @@ function ExpandedInvoice({
       {/* Order lines */}
       <table className="w-full text-sm">
         <thead>
-          <tr className="text-left text-xs text-muted border-b border-cream-border">
-            <th className="px-4 py-2 font-medium">Order</th>
+          <tr className="text-left text-xs text-muted border-b border-cream-border bg-surface-muted/80">
+            <th className="pl-[calc(var(--dg-indent,0px)+1rem)] pr-4 py-2 font-medium">Order</th>
             <th className="px-4 py-2 font-medium text-right w-20">Unit</th>
             <th className="px-4 py-2 font-medium text-right w-28">Price</th>
             <th className="px-4 py-2 font-medium text-right w-28">Subtotal</th>
@@ -432,7 +432,7 @@ function ExpandedInvoice({
         <tbody>
           {[...ev.orders].reverse().map((r, i) => (
             <tr key={i} className="border-b border-cream-border">
-              <td className="px-4 py-2">{r.productName || r.order}</td>
+              <td className="pl-[calc(var(--dg-indent,0px)+1rem)] pr-4 py-2">{r.productName || r.order}</td>
               <td className="px-4 py-2 text-right tabular-nums">{r.unit}</td>
               <td className="px-4 py-2 text-right tabular-nums">{r.price}</td>
               <td className="px-4 py-2 text-right tabular-nums">{r.subtotal}</td>
@@ -446,8 +446,7 @@ function ExpandedInvoice({
       <InvoiceSummary
         event={ev}
         actions={<InvoiceMessageActions event={ev} whatsapp={result.customerDetail?.whatsapp} customer={result.customer} />}
-        leftPadding="pl-4"
-        tinted={false}
+        leftPadding="pl-[calc(var(--dg-indent,0px)+1rem)]"
       />
     </div>
   )
