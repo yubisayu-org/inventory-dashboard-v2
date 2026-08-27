@@ -730,7 +730,10 @@ function CustomerCard({
         {splitError && (
           <div className="px-5 py-2 text-xs text-red-700 bg-red-50 border-b border-cream-border">{splitError}</div>
         )}
-        {(c.totalToShip > 0 || totalHold > 0) && (
+        {/* A declared split whose early box has gone has nothing left to ship
+            until the rest lands — but it is still declared, and hiding every
+            control left it stuck that way with no way out. */}
+        {(c.totalToShip > 0 || totalHold > 0 || c.splitRequested) && (
           <div className="shrink-0 flex items-center gap-3">
             {c.totalToShip > 0 && (
               <div className="flex flex-col items-end gap-1">
@@ -802,6 +805,17 @@ function CustomerCard({
                   </button>
                 </div>
               </div>
+            )}
+            {c.totalToShip === 0 && c.splitRequested && (
+              <button
+                type="button"
+                onClick={() => postPlan("unsplit", [c.event])}
+                disabled={splitBusy}
+                title="Batalkan kirim duluan — ongkir tambahannya ikut dihapus"
+                className="px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-xs font-medium hover:bg-surface-muted disabled:opacity-50 transition-colors"
+              >
+                {splitBusy ? "…" : "Cancel Split"}
+              </button>
             )}
             {totalHold > 0 && (
               <div className="flex flex-col items-end gap-1">
