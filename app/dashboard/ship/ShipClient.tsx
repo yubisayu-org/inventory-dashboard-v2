@@ -730,12 +730,18 @@ function CustomerCard({
         {splitError && (
           <div className="px-5 py-2 text-xs text-red-700 bg-red-50 border-b border-cream-border">{splitError}</div>
         )}
-        {(c.totalToShip > 0 || totalHold > 0) && (
+        {/* A running split keeps its controls with an empty bench: its early box
+            has gone, a fee is charged, and the remainder is still owed. The
+            card is being tracked, not acted on, and Ship says so by being
+            greyed rather than absent. */}
+        {(c.totalToShip > 0 || totalHold > 0 || c.splitRequested) && (
           <div className="shrink-0 flex items-center gap-3">
-            {c.totalToShip > 0 && (
+            {(c.totalToShip > 0 || c.splitRequested) && (
               <div className="flex flex-col items-end gap-1">
                 <div className="flex items-center gap-1.5">
-                  <CopyConfirmMessageButton customer={c} className="px-3 py-1.5 rounded-lg border border-cream-border hover:bg-surface-muted" />
+                  {c.totalToShip > 0 && (
+                    <CopyConfirmMessageButton customer={c} className="px-3 py-1.5 rounded-lg border border-cream-border hover:bg-surface-muted" />
+                  )}
                   <button
                     type="button"
                     onClick={() => postHoldAction("hold", `Hold this packing list for ${displayIg(c.customer).toUpperCase()} · ${c.event}?`)}
@@ -772,12 +778,15 @@ function CustomerCard({
                     // A declared split whose fee is unpaid holds the parcel.
                     // That is the whole order of events the shop asked for:
                     // she settles the extra ongkir, then the box goes.
-                    disabled={holdBusy || splitBusy || (c.splitRequested && !paymentClear)}
+                    disabled={holdBusy || splitBusy || c.totalToShip === 0
+                      || (c.splitRequested && !paymentClear)}
                     // What it costs, on the control that does it. A strip
                     // saying the same thing an inch away made the card busy
                     // for a fact most cards do not have to act on.
                     title={
-                      c.splitRequested
+                      c.totalToShip === 0
+                        ? "Menunggu sisanya tiba — kotak pertama sudah berangkat"
+                        : c.splitRequested
                         ? c.splitExtraOngkir > 0
                           ? `Ongkir tambahan Rp ${c.splitExtraOngkir.toLocaleString("id-ID")} — `
                             + (paymentClear ? "lunas, siap dikirim" : "menunggu pembayaran")

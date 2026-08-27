@@ -109,11 +109,7 @@ function buildShipGroups(
     const ongkirPerKg = ongkirMap.get(`${customerKey}|${event}`) ?? 0
 
     // Arrival-first status: compare arrived vs ordered units per line.
-    // On the bench now, not ever. A unit that arrived and then left in an
-    // early parcel is not something waiting to be packed, and counting it kept
-    // a card in Tiba Sebagian with nothing on it to do — the work is waiting on
-    // the courier, which is what Belum Tiba means.
-    const anyArrived = orders.some((o) => o.unitArrive > o.unitShip)
+    const anyArrived = orders.some((o) => o.unitArrive > 0)
     const allArrived = orders.every((o) => o.unitArrive >= o.unit)
     // Default "unpaid" when no payment row exists (e.g. a customer who never had
     // orders/payments tied to this event yet) — keeps physically-ready cards
@@ -124,10 +120,14 @@ function buildShipGroups(
     const paymentClear = paymentStatus === "paid" || paymentStatus === "overpaid" || paymentStatus === "void"
     // "hold" wins over ready/shipped when any unit is parked — the customer
     // asked to wait, so we surface that even if some other units already went out.
-    // She asked for the arrived part to go early. That outranks "partial",
-    // which is a card you skip — this one is a card with work on it.
-    // The wish, not its current effect: a parked card has no toShip, and it is
-    // still an order she asked to send early.
+    //
+    // A declared split outranks "partial", and does so whether or not there is
+    // anything on the bench today. The wish, not its current effect: once the
+    // early box has gone the card has no toShip and is still a split running —
+    // a fee is charged and a remainder is owed. Kirim Duluan is where that is
+    // tracked. Requiring toShip here scattered the leftovers into Tiba
+    // Sebagian, a tab that means "stock is here, decide", where they had
+    // nothing to decide.
     const askedSplit = splitAsked.has(`${customerKey}|${event}`)
     // A pairing outranks every other status: the pair is the unit of work, and
     // the Gabung tab is the only place it can be acted on. Being held is not a
@@ -142,7 +142,7 @@ function buildShipGroups(
     const status: ShipStatus = bundled ? "paired" : !anyArrived
       ? "not_arrived"
       : !allArrived
-        ? (totalHold > 0 ? "hold" : askedSplit && totalToShip > 0 ? "split_requested" : "partial")
+        ? (totalHold > 0 ? "hold" : askedSplit ? "split_requested" : "partial")
         : totalHold > 0
           ? "hold"
           : totalToShip > 0
