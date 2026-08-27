@@ -7,6 +7,9 @@ export interface SelectOption {
   label: string
   /** Secondary text shown alongside the label (e.g. store name for items) */
   meta?: string
+  /** Drawn immediately after the label — a mark about this option, not a
+   *  control. The meta stays at the far right. */
+  badge?: ReactNode
 }
 
 interface Props {
@@ -30,9 +33,6 @@ interface Props {
   /** Fired on every keystroke, before anything is committed. For a caller that
    *  has to react to what is being typed rather than to what was chosen. */
   onQueryChange?: (query: string) => void
-  /** Rendered inside the trigger, left of the clear and chevron. A badge about
-   *  the current value -- not a control. */
-  adornment?: ReactNode
 }
 
 export default function SearchableSelect({
@@ -48,7 +48,6 @@ export default function SearchableSelect({
   searchMeta = false,
   dense = false,
   onQueryChange,
-  adornment,
 }: Props) {
   const selectedLabel = useMemo(
     () => options.find((o) => o.value === value)?.label ?? (allowNewValue ? value : ""),
@@ -355,15 +354,8 @@ export default function SearchableSelect({
         disabled={disabled}
         readOnly={!searchable}
         autoComplete="off"
-        className={`w-full border border-cream-border rounded-lg px-3 bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${showInlineClear ? (adornment ? "pr-20" : "pr-14") : (adornment ? "pr-14" : "pr-8")} ${!searchable ? "cursor-pointer" : ""} ${dense ? "h-[34px] py-0 text-xs" : "h-10 text-sm"}`}
+        className={`w-full border border-cream-border rounded-lg px-3 bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${showInlineClear ? "pr-14" : "pr-8"} ${!searchable ? "cursor-pointer" : ""} ${dense ? "h-[34px] py-0 text-xs" : "h-10 text-sm"}`}
       />
-      {adornment && (
-        <span
-          className={`absolute top-1/2 -translate-y-1/2 flex items-center pointer-events-none ${showInlineClear ? "right-14" : "right-8"}`}
-        >
-          {adornment}
-        </span>
-      )}
       {showInlineClear && (
         <button
           type="button"
@@ -494,6 +486,7 @@ export default function SearchableSelect({
                     key={`${opt.value}-${i}`}
                     label={opt.label}
                     meta={opt.meta}
+                    badge={opt.badge}
                     highlighted={highlightIdx === idx}
                     selected={value === opt.value}
                     onSelect={() => selectOption(opt.value)}
@@ -560,6 +553,7 @@ const ChipItem = memo(function ChipItem({
 const OptionItem = memo(function OptionItem({
   label,
   meta,
+  badge,
   highlighted,
   selected,
   onSelect,
@@ -567,6 +561,7 @@ const OptionItem = memo(function OptionItem({
 }: {
   label: string
   meta?: string
+  badge?: ReactNode
   highlighted: boolean
   selected: boolean
   onSelect: () => void
@@ -593,7 +588,10 @@ const OptionItem = memo(function OptionItem({
             : "text-foreground hover:bg-brand-light"
       } ${className ?? ""}`}
     >
-      <span>{label}</span>
+      <span className="flex items-center gap-1.5 min-w-0">
+        <span className="truncate">{label}</span>
+        {badge}
+      </span>
       {meta && (
         <span className="ml-2 shrink-0 text-xs text-faint">{meta}</span>
       )}

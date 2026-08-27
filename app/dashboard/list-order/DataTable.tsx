@@ -16,7 +16,7 @@ import DataGrid, {
   type PaginationState,
   type RowSelectionState,
 } from "@/components/DataGrid"
-import { useHitAndRun, handleKey } from "@/hooks/useHitAndRun"
+import { useHitAndRun, handleKey, marksFor } from "@/hooks/useHitAndRun"
 import { HitAndRunFlag } from "@/components/HitAndRunFlag"
 import SearchableSelect from "@/components/SearchableSelect"
 import SearchInput from "@/components/SearchInput"
@@ -992,10 +992,21 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
   const [confirmPriceOpen, setConfirmPriceOpen] = useState(false)
+  // Same question as the add form asks: is this somebody who has walked away
+  // from an order before.
+  const { marks } = useHitAndRun()
 
   const customerOptions = useMemo(
-    () => (options?.customers ?? []).map((c) => ({ value: c, label: displayIg(c), meta: options?.customerMobiles?.[c] || undefined })),
-    [options],
+    () => (options?.customers ?? []).map((c) => {
+      const stamps = marks.get(handleKey(c))
+      return {
+        value: c,
+        label: displayIg(c),
+        meta: options?.customerMobiles?.[c] || undefined,
+        badge: stamps?.length ? <HitAndRunFlag stamps={stamps} /> : undefined,
+      }
+    }),
+    [options, marks],
   )
   const itemOptions = useMemo(
     // Inactive products are hidden from the Order-input item picker only.
@@ -1341,7 +1352,6 @@ function AddOrderForm({ options, onOrderAdded, onCancel }: {
   // a warning that waits for blur arrives after the decision it was meant to
   // inform.
   const [typing, setTyping] = useState<Record<string, string>>({})
-  const stampsFor = (name: string) => marks.get(handleKey(name ?? "")) ?? []
   const [fixedItem, setFixedItem] = useState("")
   const [lines, setLines] = useState([newAddLine()])
   const byItem = mode === "byItem"
@@ -1349,8 +1359,16 @@ function AddOrderForm({ options, onOrderAdded, onCancel }: {
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null)
 
   const customerOptions = useMemo(
-    () => (options?.customers ?? []).map((c) => ({ value: c, label: displayIg(c), meta: options?.customerMobiles?.[c] || undefined })),
-    [options],
+    () => (options?.customers ?? []).map((c) => {
+      const stamps = marks.get(handleKey(c))
+      return {
+        value: c,
+        label: displayIg(c),
+        meta: options?.customerMobiles?.[c] || undefined,
+        badge: stamps?.length ? <HitAndRunFlag stamps={stamps} /> : undefined,
+      }
+    }),
+    [options, marks],
   )
   const itemOptions = useMemo(
     // Inactive products are hidden from the Order-input item picker only.
@@ -1371,12 +1389,11 @@ function AddOrderForm({ options, onOrderAdded, onCancel }: {
     const seen = new Set<string>()
     const out: { who: string; stamps: string[] }[] = []
     for (const name of names) {
-      const key = handleKey(name ?? "")
-      if (!key || seen.has(key)) continue
-      const stamps = marks.get(key)
-      if (!stamps?.length) continue
-      seen.add(key)
-      out.push({ who: name, stamps })
+      for (const m of marksFor(marks, name ?? "")) {
+        if (!m.exact || seen.has(m.who)) continue
+        seen.add(m.who)
+        out.push({ who: m.who, stamps: m.stamps })
+      }
     }
     return out
   }, [byItem, lines, customer, marks, typing])
@@ -1482,7 +1499,6 @@ function AddOrderForm({ options, onOrderAdded, onCancel }: {
               value={customer}
               onChange={(v) => { setCustomer(v); setFeedback(null) }}
               onQueryChange={(q) => setTyping((t) => ({ ...t, main: q }))}
-              adornment={<HitAndRunFlag stamps={stampsFor(typing.main ?? customer)} />}
               options={customerOptions}
               placeholder="Search or type new customer..."
               allowNewValue
@@ -1527,7 +1543,6 @@ function AddOrderForm({ options, onOrderAdded, onCancel }: {
                       value={line.customer}
                       onChange={(v) => updateLine(line.id, "customer", v)}
                       onQueryChange={(q) => setTyping((t) => ({ ...t, [`l${line.id}`]: q }))}
-                      adornment={<HitAndRunFlag stamps={stampsFor(typing[`l${line.id}`] ?? line.customer)} />}
                       options={customerOptions}
                       placeholder="Search or type new customer..."
                       allowNewValue

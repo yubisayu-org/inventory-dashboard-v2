@@ -36,3 +36,33 @@ export function useHitAndRun(): {
 export function handleKey(customer: string): string {
   return customer.trim().toLowerCase().replace(/@/g, "")
 }
+
+/**
+ * Who the text in a customer field might be, and what they carry.
+ *
+ * An exact handle is the answer when there is one. Otherwise it is a partial
+ * handle -- somebody is still typing -- so a prefix match stands in, because a
+ * warning that waits for the last character arrives after the name is already
+ * chosen. Three characters minimum: "a" matches half the book and would cry
+ * wolf on every order.
+ *
+ * Returns whom it matched, so an inexact hit can say whose mark it is rather
+ * than implying it belongs to what was typed.
+ */
+export function marksFor(
+  marks: Map<string, string[]>,
+  text: string,
+): { who: string; stamps: string[]; exact: boolean }[] {
+  const key = handleKey(text)
+  if (!key) return []
+
+  const hit = marks.get(key)
+  if (hit?.length) return [{ who: key, stamps: hit, exact: true }]
+
+  if (key.length < 3) return []
+  const out: { who: string; stamps: string[]; exact: boolean }[] = []
+  for (const [who, stamps] of marks) {
+    if (who.startsWith(key) && stamps.length) out.push({ who, stamps, exact: false })
+  }
+  return out
+}

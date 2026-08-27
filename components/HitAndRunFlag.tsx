@@ -12,8 +12,8 @@ export function HitAndRunFlag({ stamps }: { stamps: string[] | undefined }) {
   return (
     <span
       title={stamps.join("\n")}
-      aria-label={`Pernah kabur: ${stamps.join(", ")}`}
-      className="inline-grid place-items-center w-[17px] h-[17px] shrink-0 rounded border border-amber-300 bg-amber-50 text-amber-700 text-[10px] leading-none cursor-help"
+      aria-label={stamps.join(", ")}
+      className="shrink-0 text-amber-600 text-xs leading-none cursor-help"
     >
       ⚑
     </span>
