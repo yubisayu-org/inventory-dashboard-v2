@@ -1,5 +1,6 @@
 import sql from "../db-pool"
 import { refundForReduction, type MarkReduction } from "./mark-refunds"
+import { reconcileParcelPlan } from "./parcel-plan"
 import { allocateFifo } from "../fifo-fill"
 import type { DBExecutor } from "./actor"
 
@@ -405,6 +406,12 @@ export async function markProductOutOfStock(data: {
     SELECT name FROM products WHERE id = ${data.productId}`
   const refunds = await refundForReduction(
     data.event, "unavailable", product?.name ?? "the item", reductions, actor)
+
+  // Same reason as the arrival paths: the order shrank, so what the parcels
+  // will weigh — and what the invoice already billed — no longer agree.
+  for (const customer of [...new Set(reductions.map((r) => r.customer))]) {
+    await reconcileParcelPlan(customer, data.event)
+  }
 
   return { reducedOrderIds, reducedUnits, refunds }
 }

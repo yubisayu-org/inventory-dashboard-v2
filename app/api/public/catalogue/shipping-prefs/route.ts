@@ -9,6 +9,7 @@ import {
   isShipMode,
   ShippingPrefError,
 } from "@/lib/db/shipping-prefs"
+import { reconcileParcelPlan } from "@/lib/db/parcel-plan"
 
 // The customer's shipping choices for her own events. The customer id comes
 // from the verified session and nowhere else; every guard — paid, not shipped,
@@ -72,9 +73,19 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "mode must be wait, split or hold" }, { status: 400, headers: corsHeaders() })
       }
       await setShippingMode(customer.id, event, body.mode)
+      // Her choice changes what the parcels will be, exactly as the shop's
+      // does. Same reconciler, same arithmetic — only set_by differs.
+      await reconcileParcelPlan(customer.instagramId, event)
     } else if (action === "merge") {
       const events = Array.isArray(body.events) ? body.events.map((e) => String(e)) : []
+      const previous = (await getShippingPrefs(customer.id))
+        .filter((p) => p.mergeKey).map((p) => p.event)
       await setMergeGroup(customer.id, events)
+      // Every trip the merge touched, including one it just released: an
+      // orphaned partner is priced as its own parcel again.
+      for (const event of new Set([...events, ...previous])) {
+        await reconcileParcelPlan(customer.instagramId, event)
+      }
     } else if (action === "address") {
       const event = String(body.event ?? "").trim()
       const address = String(body.address ?? "")

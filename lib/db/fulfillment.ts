@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { refundForReduction, type MarkReduction } from "./mark-refunds"
+import { reconcileParcelPlan } from "./parcel-plan"
 import sql from "../db-pool"
 import { normalizeId, normalizeCustomer, tsToString, splitExtraOngkir, parcelPlanExtra } from "./helpers"
 import { allocateFifo } from "../fifo-fill"
@@ -1255,6 +1256,14 @@ export async function markProductArrived(data: {
     })
   }
 
+  // The plan moved: what travels now versus later has just changed, and a
+  // stale fee is a wrong invoice. Priced per customer this arrival touched,
+  // never the whole event — another customer's adjustment is not its business.
+  // After the transaction, because the reconciler prices what is now true.
+  for (const customer of [...new Set(allocations.map(({ item }) => item.customer))]) {
+    await reconcileParcelPlan(customer, data.event)
+  }
+
   return { filledOrderIds, unassignedUnits }
 }
 
@@ -1376,6 +1385,12 @@ export async function recordNotReceived(
   const refunds = reason
     ? await refundForReduction(data.event, reason, data.productName, reductions, actor, data.receivedItem)
     : []
+
+  // Fewer units means a different parcel plan, whether or not anyone is
+  // splitting: what is invoiced has changed underneath it.
+  for (const customer of [...new Set(reductions.map((r) => r.customer))]) {
+    await reconcileParcelPlan(customer, data.event)
+  }
 
   const excessUnits = data.mode === "cancelled" ? inHandUnits : data.qty
   return { cancelledUnits, excessUnits, refunds }
