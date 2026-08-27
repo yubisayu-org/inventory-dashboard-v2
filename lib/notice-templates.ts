@@ -16,6 +16,9 @@ export type NoticeKey =
   | "inbox_payment_confirmed"
   | "inbox_waiting_payment"
   | "inbox_delayed"
+  | "inbox_ongkir_extra"
+  | "inbox_ongkir_credit"
+  | "inbox_ongkir_reweighed"
   | "inbox_custom"
 
 export interface NoticeTemplate {
@@ -48,6 +51,33 @@ export const NOTICE_TEMPLATES: NoticeTemplate[] = [
       "{cause} That is {refundAmount} owed back to you.\n\n"
       + "Open the order to say whether to keep it on your account for next time, or have "
       + "us transfer it to your bank.",
+  },
+  {
+    key: "inbox_ongkir_extra",
+    label: "Extra shipping fee",
+    title: "Ongkir tambahan {amount} · {event}",
+    body:
+      "Sebagian pesanan Anda sudah tiba dan akan kami kirim lebih dulu. Karena menjadi dua paket, "
+      + "ada tambahan ongkir {amount} yang perlu diselesaikan sebelum paket berangkat.",
+  },
+  {
+    key: "inbox_ongkir_credit",
+    label: "Shipping discount",
+    title: "Diskon ongkir {amount} · {event}",
+    body:
+      "Pesanan Anda kami gabung menjadi satu paket, sehingga ongkir berkurang {amount}. "
+      + "Tagihan Anda sudah kami sesuaikan.",
+  },
+  {
+    key: "inbox_ongkir_reweighed",
+    label: "Courier weighed it heavier",
+    title: "Ongkir tambahan {amount} · {event}",
+    // Apologetic on purpose: she is being charged after her parcel left, for
+    // something she did not cause and could not have known.
+    body:
+      "Paket Anda ditimbang {chargedKg} kg oleh kurir, sedangkan estimasi kami {estimatedKg} kg. "
+      + "Selisihnya menambah ongkir {amount} pada tagihan {event}.\n\n"
+      + "Mohon maaf atas ketidaknyamanannya — berat sebenarnya baru diketahui setelah paket ditimbang.",
   },
   {
     key: "inbox_payment_confirmed",
@@ -210,6 +240,9 @@ export const NOTICE_TOKENS = [
   "{refundAmount}",
   "{itemsList}",
   "{receivedItem}",
+  "{amount}",
+  "{chargedKg}",
+  "{estimatedKg}",
   "{cause}",
 ] as const
 
@@ -253,6 +286,9 @@ export const NOTICE_TOKENS_FOR: Record<NoticeKey, string[]> = {
   inbox_payment_confirmed: ["{customer}", "{event}", "{total}"],
   inbox_waiting_payment: ["{customer}", "{event}", "{total}", "{outstanding}"],
   inbox_delayed: ["{customer}", "{event}"],
+  inbox_ongkir_extra: ["{customer}", "{event}", "{amount}"],
+  inbox_ongkir_credit: ["{customer}", "{event}", "{amount}"],
+  inbox_ongkir_reweighed: ["{customer}", "{event}", "{amount}", "{chargedKg}", "{estimatedKg}"],
   inbox_custom: [...NOTICE_TOKENS],
 }
 

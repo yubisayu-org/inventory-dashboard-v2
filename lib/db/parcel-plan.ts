@@ -1,6 +1,8 @@
 import sql from "../db-pool"
 import type { DBExecutor } from "./actor"
 import { normalizeId, parcelPlanExtra } from "./helpers"
+import { sendInvoiceNotice } from "./notices"
+import { fillNotice, NOTICE_TEMPLATES } from "../notice-templates"
 
 export type PlanRow = { description: string; amount: number }
 
@@ -24,8 +26,33 @@ export function planAdjustment(extra: number, partnerEvent: string | null): Plan
   }
 }
 
-/** The reconciler's own rows, minus the weight-correction one it also owns. */
-const PLAN_ROW_FILTER = "description NOT LIKE 'Selisih ongkir JNE%'"
+const rupiah = (n: number) => `Rp ${new Intl.NumberFormat("id-ID").format(Math.abs(n))}`
+
+/**
+ * Tell her what changed, and why.
+ *
+ * Load-bearing rather than courteous: she never sees an adjustment's
+ * description. The WhatsApp invoice adds every adjustment into one "Biaya
+ * Lainnya" line and her catalogue page reads three aggregates from a view
+ * where adjustments are not readable at all. Without this she sees a number
+ * that grew and has to ask.
+ */
+async function announce(
+  event: string,
+  customer: string,
+  row: PlanRow,
+  db: DBExecutor,
+): Promise<void> {
+  const key = row.amount > 0 ? "inbox_ongkir_extra" : "inbox_ongkir_credit"
+  const template = NOTICE_TEMPLATES.find((t) => t.key === key)!
+  const tokens = { "{event}": event, "{customer}": customer, "{amount}": rupiah(row.amount) }
+  await sendInvoiceNotice({
+    event,
+    customer,
+    title: fillNotice(template.title, tokens),
+    body: fillNotice(template.body, tokens),
+  }, db)
+}
 
 /**
  * Make the system's adjustment equal what this customer's plan now costs.
@@ -128,6 +155,7 @@ export async function reconcileParcelPlan(
     await db`
       INSERT INTO adjustments (event, customer, description, amount, auto)
       VALUES (${event}, ${customer}, ${wanted.description}, ${wanted.amount}, true)`
+    await announce(event, customer, wanted, db)
     return wanted
   }
   if (existing.amount !== wanted.amount || existing.description !== wanted.description) {
@@ -135,8 +163,9 @@ export async function reconcileParcelPlan(
       UPDATE adjustments
          SET description = ${wanted.description}, amount = ${wanted.amount}, updated_at = NOW()
        WHERE id = ${existing.id}`
+    // Only when the figure actually moved. This runs on every arrival, and
+    // telling her the same thing four times is worse than not telling her.
+    if (existing.amount !== wanted.amount) await announce(event, customer, wanted, db)
   }
   return wanted
 }
-
-export { PLAN_ROW_FILTER }
