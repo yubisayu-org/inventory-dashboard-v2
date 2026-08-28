@@ -90,7 +90,7 @@ const ACTIVE_TABS: { key: TabKey; label: string }[] = [
  * task. Put it there and you learn to skim the one list that must not be
  * skimmed. Here it is an observation until you say otherwise.
  */
-function ToCheckPanel({ rows, error, promoting, onPromote, onRetry, search, onSearchChange }: {
+function ToCheckPanel({ rows, error, promoting, onPromote, onRetry, search, onSearchChange, onOpenInvoice }: {
   rows: OverpaymentToCheck[] | null
   error: string
   promoting: string
@@ -98,6 +98,8 @@ function ToCheckPanel({ rows, error, promoting, onPromote, onRetry, search, onSe
   onRetry: () => void
   search: string
   onSearchChange: (value: string) => void
+  /** Show me the trip this gap is on, before I decide it is a refund. */
+  onOpenInvoice: (row: OverpaymentToCheck) => void
 }) {
   const columns = useMemo<ColumnDef<OverpaymentToCheck, unknown>[]>(() => [
     {
@@ -105,8 +107,26 @@ function ToCheckPanel({ rows, error, promoting, onPromote, onRetry, search, onSe
       header: "Customer",
       size: 180,
       filterFn: "textContains",
-      cell: ({ getValue }) => (
-        <span className="font-medium text-foreground">{displayIg(getValue<string>())}</span>
+      cell: ({ row, getValue }) => (
+        <span className="flex items-center gap-1.5 min-w-0">
+          <span className="font-medium text-foreground truncate">{displayIg(getValue<string>())}</span>
+          {/* Every row here is a question -- is this gap a refund, or is it
+              rounding, or a payment nobody ticked. The answer is on the
+              invoice, and this opens it at the trip in question rather than at
+              her oldest one. */}
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onOpenInvoice(row.original) }}
+            title={`Open ${row.original.event} on her invoice`}
+            aria-label={`Open ${row.original.event} on her invoice`}
+            className="shrink-0 text-faint hover:text-brand transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+              <path d="M14 2v6h6" /><path d="M8 13h8" /><path d="M8 17h5" />
+            </svg>
+          </button>
+        </span>
       ),
     },
     {
@@ -320,6 +340,8 @@ export default function RefundsClient() {
   const [editRow, setEditRow] = useState<RefundRow | null>(null)
   /** Everything one customer is owed on one trip, open in the group sheet. */
   const [groupSheet, setGroupSheet] = useState<RefundRow[] | null>(null)
+  /** Her whole invoice, opened at one trip, to answer "is this really a refund". */
+  const [invoiceFor, setInvoiceFor] = useState<{ customer: string; event: string } | null>(null)
   const [eventFilter, setEventFilter] = useState("")
   // Owned here rather than by each grid: the tabs swap the data underneath and
   // remount the table, which would drop whatever was typed. Looking for one
@@ -716,6 +738,7 @@ export default function RefundsClient() {
           onRetry={fetchToCheck}
           search={search}
           onSearchChange={setSearch}
+          onOpenInvoice={(r) => setInvoiceFor({ customer: r.customer, event: r.event })}
         />
       ) : (
       <div className="mt-3">
@@ -884,6 +907,14 @@ export default function RefundsClient() {
             />
           </div>
         </div>
+      )}
+
+      {invoiceFor && (
+        <InvoiceDetailDrawer
+          customer={invoiceFor.customer}
+          focusEvent={invoiceFor.event}
+          onClose={() => setInvoiceFor(null)}
+        />
       )}
 
       {groupSheet && (
@@ -2518,7 +2549,9 @@ function RefundDetailModal({
     {showFullInvoice && (
       // Wrapper raises the drawer (z-40) above this refund modal (z-50).
       <div className="relative z-[60]">
-        <InvoiceDetailDrawer customer={row.customer} onClose={() => setShowFullInvoice(false)} />
+        {/* Landed on the trip this refund is about, same as the To check tab. */}
+        <InvoiceDetailDrawer customer={row.customer} focusEvent={row.event}
+          onClose={() => setShowFullInvoice(false)} />
       </div>
     )}
     </>

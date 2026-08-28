@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { displayIg } from "@/lib/format"
 import type { InvoiceResult } from "@/lib/db"
 import { useModalDismiss } from "@/hooks/useModalDismiss"
@@ -10,9 +10,19 @@ import { EventCard } from "./EventCard"
 
 export function InvoiceDetailDrawer({
   customer,
+  focusEvent,
   onClose,
 }: {
   customer: string
+  /**
+   * The trip to land on.
+   *
+   * A customer with eight trips opens at the oldest, and the one being asked
+   * about is somewhere below the fold -- so the drawer answers a question
+   * nobody asked and makes you hunt for the one you did. Named here, it is
+   * scrolled to and outlined when the invoice arrives.
+   */
+  focusEvent?: string
   onClose: () => void
 }) {
   const [loading, setLoading] = useState(true)
@@ -23,6 +33,14 @@ export function InvoiceDetailDrawer({
   const [reloadKey, setReloadKey] = useState(0)
 
   useModalDismiss(onClose)
+
+  // After the render that first shows the cards, not on mount: the element does
+  // not exist until the fetch lands.
+  const focusRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!focusEvent || !result) return
+    focusRef.current?.scrollIntoView({ block: "start", behavior: "smooth" })
+  }, [focusEvent, result])
 
   useEffect(() => {
     let cancelled = false
@@ -97,13 +115,23 @@ export function InvoiceDetailDrawer({
           {result && result.events.length > 0 && (
             <div className="flex flex-col gap-4">
               {result.events.map((ev) => (
-                <EventCard
+                <div
                   key={ev.eventId}
-                  event={ev}
-                  customer={result.customer}
-                  customerDetail={result.customerDetail}
-                  onMutated={() => setReloadKey((k) => k + 1)}
-                />
+                  ref={ev.eventId === focusEvent ? focusRef : undefined}
+                  // Outlined rather than scrolled-to-and-abandoned: after a
+                  // smooth scroll through eight trips, "which one was I looking
+                  // for" is a real question.
+                  className={ev.eventId === focusEvent
+                    ? "rounded-xl ring-2 ring-brand/40 ring-offset-2 ring-offset-cream"
+                    : undefined}
+                >
+                  <EventCard
+                    event={ev}
+                    customer={result.customer}
+                    customerDetail={result.customerDetail}
+                    onMutated={() => setReloadKey((k) => k + 1)}
+                  />
+                </div>
               ))}
             </div>
           )}
