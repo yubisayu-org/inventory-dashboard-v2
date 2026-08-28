@@ -13,6 +13,10 @@ export type ShipMode = "wait" | "split" | "hold"
 export type ShippingPref = {
   event: string
   mode: ShipMode
+  /** Who chose it. Her page can then say the shop arranged this rather than
+   *  showing her a decision she does not remember making -- while still
+   *  letting her undo it, which is the point of showing it at all. */
+  setBy: SetBy
   mergeKey: string | null
   tempAddress: string | null
   /** The Biteship area chosen alongside it, when there is one. */
@@ -32,6 +36,7 @@ export function isShipMode(v: unknown): v is ShipMode {
 type PrefRow = {
   event: string
   mode: ShipMode
+  set_by: SetBy
   merge_key: string | null
   temp_address: string | null
   temp_area_id: string | null
@@ -41,6 +46,7 @@ type PrefRow = {
 const toPref = (r: PrefRow): ShippingPref => ({
   event: r.event,
   mode: r.mode,
+  setBy: r.set_by,
   mergeKey: r.merge_key,
   tempAddress: r.temp_address,
   tempAreaId: r.temp_area_id,
@@ -52,7 +58,7 @@ export async function getShippingPrefs(
   db: postgres.Sql | DBExecutor = sql,
 ): Promise<ShippingPref[]> {
   const rows = await db<PrefRow[]>`
-    SELECT event, mode, merge_key, temp_address, temp_area_id, temp_area_name
+    SELECT event, mode, set_by, merge_key, temp_address, temp_area_id, temp_area_name
       FROM customer_shipping_prefs
      WHERE customer_id = ${customerId}
   `
@@ -367,7 +373,7 @@ export async function shippingPrefsForCustomer(
 ): Promise<ShippingPref[]> {
   const key = normalizeId(instagramId)
   const rows = await db<PrefRow[]>`
-    SELECT sp.event, sp.mode, sp.merge_key, sp.temp_address, sp.temp_area_id, sp.temp_area_name
+    SELECT sp.event, sp.mode, sp.set_by, sp.merge_key, sp.temp_address, sp.temp_area_id, sp.temp_area_name
       FROM customer_shipping_prefs sp
       JOIN customers c ON c.id = sp.customer_id
      WHERE lower(replace(c.instagram_id, '@', '')) = ${key}

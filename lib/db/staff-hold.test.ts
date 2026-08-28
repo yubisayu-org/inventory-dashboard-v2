@@ -117,3 +117,26 @@ test("the shop can still park what is left of a part-shipped card", async () => 
     /part-shipped/,
   )
 })
+
+test("a hold says who set it, both ways round", async () => {
+  // Her page shows the hold and lets her lift it -- but only if it can say the
+  // shop arranged it. Without that she is looking at a decision she does not
+  // remember making.
+  const EV3 = `${TAG}_EV3`
+  await sql`INSERT INTO events (name, warehouse_id) SELECT ${EV3}, id FROM warehouses ORDER BY id LIMIT 1`
+  await sql`
+    INSERT INTO payments (event, customer, amount, is_checked, kind)
+    VALUES (${EV3}, ${WHO}, 10000000, true, 'deposit')`
+  await orderFor(EV3, 2)
+
+  await setShippingMode(custId, EV3, "hold", sql, "shop")
+  let pref = (await getShippingPrefs(custId)).find((p) => p.event === EV3)
+  assert.equal(pref?.mode, "hold")
+  assert.equal(pref?.setBy, "shop", "hers to see, and hers to undo")
+
+  // She changes her mind and lifts it. It becomes her decision.
+  await setShippingMode(custId, EV3, "wait", sql, "customer")
+  pref = (await getShippingPrefs(custId)).find((p) => p.event === EV3)
+  assert.equal(pref?.mode, "wait")
+  assert.equal(pref?.setBy, "customer")
+})
