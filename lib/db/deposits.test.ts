@@ -94,6 +94,10 @@ test("a plain pending refund still goes back to pending when part-applied", asyn
   // Unchanged for the case the old behaviour was written for: a claim that is
   // part settled is still a claim.
   //
+  // A goods refund, deliberately: an overpayment's amount is read from her
+  // balance now, so a fixture with no real overpayment has nothing to apply.
+  // The rule under test is about status, not about where the figure comes from.
+  //
   // Its own trip, because the database allows only one active overpayment
   // refund per customer per event.
   const EV4 = `${TAG}_FOURTH`
@@ -103,7 +107,7 @@ test("a plain pending refund still goes back to pending when part-applied", asyn
     VALUES (${EV4}, ${WHO}, ${productId}, 500000, 1)`
   const [r] = await sql<{ id: number }[]>`
     INSERT INTO refunds (event, customer, reason, refund_amount, status)
-    VALUES (${EV4}, ${WHO}, 'overpayment', 5000, 'pending') RETURNING id`
+    VALUES (${EV4}, ${WHO}, 'unavailable', 5000, 'pending') RETURNING id`
   await applyRefundAsCredit(r.id, NEXT, 2000, "tester")
   const [row] = await sql<{ status: string }[]>`SELECT status FROM refunds WHERE id = ${r.id}`
   assert.equal(row.status, "pending")

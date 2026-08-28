@@ -536,40 +536,9 @@ function mapRefundRow(r: Record<string, unknown>): RefundRow {
     note: (r.note as string) ?? "",
     hasAppliedCredit: Boolean(r.has_applied_credit),
     appliedCreditAmount: (r.applied_credit_amount as number) ?? 0,
-    liveOverpayment: null,
     createdAt: tsToString(r.created_at as Date | null | undefined),
     updatedAt: tsToString(r.updated_at as Date | null | undefined),
   }
-}
-
-const ACTIVE_REFUND_STATUSES: RefundStatus[] = ["pending", "awaiting_bank_info", "ready_to_refund"]
-
-/**
- * Attach `liveOverpayment` to the refunds the auto-reconcile can't keep in sync:
- * active overpayment refunds that already have credit applied. Those are frozen
- * (money moved → human review), so if the invoice later changed, their stored
- * amount is stale. We recompute the live overpayment only for that small set
- * (reusing getPaymentStatus, scoped per event) and flag rows where it differs.
- */
-async function attachStaleReview(rows: RefundRow[]): Promise<RefundRow[]> {
-  const flaggable = rows.filter(
-    (r) => r.reason === "overpayment" && r.hasAppliedCredit && ACTIVE_REFUND_STATUSES.includes(r.status),
-  )
-  if (flaggable.length === 0) return rows
-
-  const events = [...new Set(flaggable.map((r) => r.event))]
-  const statusRows = (await Promise.all(events.map((ev) => getPaymentStatus(ev)))).flat()
-  const overpayByPair = new Map<string, number>()
-  for (const s of statusRows) overpayByPair.set(`${s.customer}|${s.event}`, s.totalPaid - s.invoiceTotal)
-
-  const flagged = new Set(flaggable)
-  return rows.map((r) => {
-    if (!flagged.has(r)) return r
-    const live = overpayByPair.get(`${normalizeId(r.customer)}|${r.event}`)
-    // Only surface it when it actually differs from what's stored — an in-sync
-    // credit-applied refund needs no review.
-    return live !== undefined && live !== r.refundAmount ? { ...r, liveOverpayment: live } : r
-  })
 }
 
 export async function getRefunds(filters?: { event?: string; status?: string; customer?: string }): Promise<RefundRow[]> {
