@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { updateRefund, executeRefund, executeRefundGroup, deleteRefund, applyRefundAsCredit, undoRefundCredit, withActor } from "@/lib/db"
+import { updateRefund, executeRefund, executeRefundGroup, keepRefundOnAccount, deleteRefund, applyRefundAsCredit, undoRefundCredit, withActor } from "@/lib/db"
 import type { RefundStatus } from "@/lib/db"
 
 const VALID_STATUSES: RefundStatus[] = [
@@ -60,6 +60,12 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       const result = await executeRefundGroup(
         ordered, transferReference.trim(), account.trim(), session.user.email, bank)
       return NextResponse.json({ success: true, ...result })
+    }
+
+    // She said keep it. No target order, no money moved -- a deposit.
+    if (action === "keep_on_account") {
+      await keepRefundOnAccount(refundId, session.user.email)
+      return NextResponse.json({ success: true })
     }
 
     if (action === "apply_credit") {

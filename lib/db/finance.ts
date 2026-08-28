@@ -889,6 +889,64 @@ export async function executeRefundGroup(
   })
 }
 
+/**
+ * She said keep it: park the refund on her account as a deposit.
+ *
+ * The same state her own choice on the catalogue produces -- status
+ * applied_to_next_order with the money still on the row and no payment written
+ * -- reachable from the dashboard, because she is as likely to say it in a DM
+ * as to press it. Without this the only honest thing to do was leave the refund
+ * Pending, which reads as "we owe her and have not paid yet" and keeps
+ * appearing on the Pending tab as work nobody is going to do.
+ *
+ * Deliberately names no target order: she may not have one yet, and which
+ * future order it lands on is the shop's decision when that order exists.
+ * applyRefundAsCredit is what actually moves it.
+ *
+ * The amount freezes here. A pending overpayment reads from her balance, and a
+ * balance moves; a deposit is a fixed sum on her account, and the moment she
+ * says "keep it" the money stops being a claim on that trip. Frozen at what is
+ * owed right now -- the live figure, less what her other open refunds claim --
+ * so the deposit banner offers exactly what she is owed rather than whatever
+ * the row happened to be written with.
+ */
+export async function keepRefundOnAccount(refundId: number, actor?: string | null): Promise<void> {
+  await sql.begin(async (tx) => {
+    await tx`SELECT set_config('app.actor', ${actor ?? ""}, true)`
+    const [refund] = await tx`SELECT * FROM refunds WHERE id = ${refundId} FOR UPDATE`
+    if (!refund) throw new Error("Refund not found")
+    if (refund.status === "refunded") throw new Error("This one has already been sent to her bank")
+    if (refund.status === "cancelled") throw new Error("This refund was cancelled")
+    if (refund.status === "applied_to_next_order") throw new Error("It is already on her account")
+
+    let amount = refund.refund_amount as number
+    if (isLiveAmount({ reason: refund.reason as string, status: refund.status as string })) {
+      const [live] = (await tx`
+        SELECT balance FROM live_balances
+         WHERE event = ${refund.event as string}
+           AND customer = lower(replace(${refund.customer as string}, '@', ''))
+      `) as unknown as { balance: number }[]
+      const claimed = await otherOpenClaims(tx, {
+        id: refundId, event: refund.event as string, customer: refund.customer as string,
+      })
+      amount = Math.max(0, (live?.balance ?? 0) - claimed)
+    }
+    if (!(amount > 0)) throw new Error("There is nothing owed on this refund to keep")
+
+    // Her bank details come off with it: they were collected to send money to,
+    // and money is no longer being sent. Her own choice on the catalogue clears
+    // them for the same reason.
+    await tx`
+      UPDATE refunds
+         SET status = 'applied_to_next_order',
+             refund_amount = ${amount},
+             bank_name = '', bank_account_number = '', bank_account_holder = '',
+             updated_at = NOW()
+       WHERE id = ${refundId}
+    `
+  })
+}
+
 export async function deleteRefund(id: number, db: DBExecutor = sql): Promise<void> {
   await db`DELETE FROM refunds WHERE id = ${id} AND status != 'refunded'`
 }

@@ -1713,6 +1713,24 @@ function RefundDetailModal({
 
   // Reverses the credit payments and reopens — for when it was applied to the
   // wrong order (or by mistake). Restores the full overpayment.
+  /**
+   * She said keep it, in a DM rather than by pressing it herself.
+   *
+   * Parks the money on her account with no target order named: the same state
+   * her own choice on the catalogue produces, and the one the deposit banner
+   * on her next invoice looks for. Until this existed the only honest thing to
+   * do was leave the refund Pending, which reads as "we owe her and have not
+   * paid yet" and sits on the Pending tab as work nobody means to do.
+   */
+  async function handleKeepOnAccount() {
+    const ok = await patch({ action: "keep_on_account" })
+    if (ok) onUpdated({
+      ...row,
+      status: "applied_to_next_order",
+      bankName: "", bankAccountNumber: "", bankAccountHolder: "",
+    })
+  }
+
   async function handleUndoCredit() {
     const ok = await patch({ action: "undo_credit" })
     if (ok) onUpdated({
@@ -2296,6 +2314,23 @@ function RefundDetailModal({
                   )}
                 </button>
               </div>
+              {/* No target order yet -- and there need not be one. The money
+                  waits on her account until an order of hers can take it. */}
+              {!isCreditPromised(row) && (
+                <div className="flex items-center justify-between gap-2 pb-1">
+                  <p className="text-[11px] text-muted">
+                    She just wants it kept? No order needs to exist yet.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleKeepOnAccount}
+                    disabled={saving}
+                    className="shrink-0 px-2.5 py-1 rounded-lg border border-purple-300 text-purple-700 text-[11px] font-semibold hover:bg-purple-50 disabled:opacity-50 transition-colors"
+                  >
+                    Keep on her account
+                  </button>
+                </div>
+              )}
               {showCredit && (
               <div className="flex flex-col gap-3">
               {isCreditPromised(row) && (
