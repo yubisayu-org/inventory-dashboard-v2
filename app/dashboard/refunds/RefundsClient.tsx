@@ -2274,14 +2274,16 @@ function RefundDetailModal({
           </button>
           {/* One button, doing whichever thing Settings → Communication says
               this shop does with a refund message. */}
+          {/* Drawn, not named: the word would be set here while the behaviour
+              is set in Settings, and only the word is on screen. */}
           <MessageButton
             kind="refund"
+            variant="icon"
             message={waMessageText}
             whatsapp={whatsapp}
             disabled={!templates}
-            className="px-2 py-1 rounded border border-cream-border text-[11px] text-muted-strong hover:border-brand hover:text-brand transition-colors shrink-0 disabled:opacity-50"
-            copyLabel="Copy"
-            sendLabel="WhatsApp"
+            copyLabel="Copy the refund message"
+            sendLabel="Send the refund message on WhatsApp"
           />
         </div>
       </div>
