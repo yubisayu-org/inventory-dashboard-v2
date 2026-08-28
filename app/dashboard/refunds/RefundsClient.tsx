@@ -327,7 +327,6 @@ function statusColor(row: RefundRow): string {
 
 // ─── Main component ──────────────────────────────────────────────────────────
 
-const CREDIT_PANEL_ID = "refund-credit-panel"
 
 export default function RefundsClient() {
   const options = useSheetOptions()
@@ -346,6 +345,8 @@ export default function RefundsClient() {
   const [groupSheet, setGroupSheet] = useState<RefundRow[] | null>(null)
   /** Her whole invoice, opened at one trip, to answer "is this really a refund". */
   const [invoiceFor, setInvoiceFor] = useState<{ customer: string; event: string } | null>(null)
+  /** The one refund about to be moved onto another of her orders. */
+  const [creditFor, setCreditFor] = useState<RefundRow | null>(null)
   const [eventFilter, setEventFilter] = useState("")
   // Owned here rather than by each grid: the tabs swap the data underneath and
   // remount the table, which would drop whatever was typed. Looking for one
@@ -574,10 +575,22 @@ export default function RefundsClient() {
       size: 360,
       filterFn: "textContains",
       cell: ({ row, getValue }) => {
-        const members = (row.original as GroupRow).members
-        return members
-          ? <span className="font-medium text-foreground">{members.length} refunds</span>
-          : <span className="text-muted-strong">{getValue<string>()}</span>
+        const r = row.original as GroupRow
+        if (r.members) return <span className="font-medium text-foreground">{r.members.length} refunds</span>
+        // What it is actually about, on the row itself. A refund folded into a
+        // group already showed its goods when opened; one standing on its own
+        // showed only "Item Unavailable", which names a kind of problem and not
+        // the thing -- and made you open a sheet to answer a question the list
+        // could have answered.
+        const items = r.note.split("\n").map((l) => l.trim()).filter(Boolean)
+        return (
+          <div className="min-w-0">
+            <div className="text-muted-strong truncate">{getValue<string>()}</div>
+            {items.map((l, i) => (
+              <div key={i} title={l} className="text-xs text-faint leading-snug truncate">{l}</div>
+            ))}
+          </div>
+        )
       },
     },
     {
@@ -633,19 +646,43 @@ export default function RefundsClient() {
       meta: { align: "right" },
       cell: ({ row }) => {
         const r = row.original as GroupRow
-        // Nothing here is going to a bank: she chose to keep it, and it moves
-        // by being applied to an order, one at a time.
-        if (tab === DEPOSITS) return null
-        const all = [...(r.members ?? [r]), ...openSiblings(r)].filter(isOpenRefund)
-        if (all.length < 2) return null
+        // Applying a credit is a single refund's move -- a group cannot do it
+        // together, because each one lands on an order of its own.
+        const creditable = !r.members
+          && r.status !== "refunded" && r.status !== "cancelled"
+          && r.refundAmount > 0
+        const all = r.members || tab !== DEPOSITS
+          ? [...(r.members ?? [r]), ...openSiblings(r)].filter(isOpenRefund)
+          : []
+        // Nothing in Deposits is going to a bank: she chose to keep it, and it
+        // moves by being applied to an order.
+        const payable = tab !== DEPOSITS && all.length >= 2
+        if (!creditable && !payable) return null
         return (
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); setGroupSheet(all) }}
-            className="px-2 py-1 rounded-lg border border-brand text-brand text-xs font-semibold hover:bg-brand-light whitespace-nowrap"
-          >
-            Pay all ({all.length})
-          </button>
+          <div className="flex items-center justify-end gap-1">
+            {creditable && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setCreditFor(r) }}
+                title="Apply as credit to another order"
+                aria-label="Apply as credit to another order"
+                className="shrink-0 p-1 rounded text-purple-400 hover:text-purple-700 transition-colors"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2 10h20" />
+                </svg>
+              </button>
+            )}
+            {payable && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setGroupSheet(all) }}
+                className="px-2 py-1 rounded-lg border border-brand text-brand text-xs font-semibold hover:bg-brand-light whitespace-nowrap"
+              >
+                Pay all ({all.length})
+              </button>
+            )}
+          </div>
         )
       },
     },
@@ -913,6 +950,14 @@ export default function RefundsClient() {
         </div>
       )}
 
+      {creditFor && (
+        <ApplyCreditModal
+          row={creditFor}
+          onApplied={(updated) => { setCreditFor(null); handleUpdated(updated) }}
+          onClose={() => setCreditFor(null)}
+        />
+      )}
+
       {invoiceFor && (
         <InvoiceDetailDrawer
           customer={invoiceFor.customer}
@@ -954,6 +999,180 @@ export default function RefundsClient() {
         />
       )}
     </>
+  )
+}
+
+// ─── Apply as credit ─────────────────────────────────────────────────────────
+
+/**
+ * Move a refund onto another of her orders instead of sending it.
+ *
+ * Its own window, reached from the row. It used to be a panel inside the
+ * refund sheet, open at every step of every refund whether or not anybody was
+ * crediting anything -- one of two cards you scrolled past to reach the thing
+ * you came for.
+ *
+ * No cash moves: it writes a pair of credit payments, minus on the trip she
+ * overpaid and plus on the trip you name, so her invoice there reads as paid by
+ * that much. Undo lives in the sheet, where a credit already applied is
+ * something to reverse rather than something to do.
+ */
+function ApplyCreditModal({
+  row,
+  onApplied,
+  onClose,
+}: {
+  row: RefundRow
+  onApplied: (updated: RefundRow) => void
+  onClose: () => void
+}) {
+  const [events, setEvents] = useState<InvoiceEvent[] | null>(null)
+  const [target, setTarget] = useState("")
+  const [amount, setAmount] = useState("")
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let live = true
+    fetchJson<InvoiceResult>(`/api/sheets/invoice?customer=${encodeURIComponent(row.customer)}`)
+      .then((d) => { if (live) setEvents(d.events) })
+      .catch(() => { if (live) setEvents([]) })
+    return () => { live = false }
+  }, [row.customer])
+
+  // Only orders that owe something. Crediting a settled one does not settle it
+  // -- it makes her overpaid there instead, and moves the problem.
+  const targets = (events ?? []).filter(
+    (ev) => ev.eventId !== row.event && ev.invoice.sisaPelunasan > 0,
+  )
+  const chosen = targets.find((ev) => ev.eventId === target)
+  const amt = Math.round(Number(amount)) || 0
+  const owed = chosen ? Math.max(0, chosen.invoice.sisaPelunasan) : 0
+  const excess = chosen && amt > owed ? amt - owed : 0
+
+  async function apply() {
+    if (!target) { setError("Pick an order"); return }
+    if (!(amt > 0)) { setError("Enter an amount"); return }
+    if (amt > row.refundAmount) { setError(`More than the ${formatRp(row.refundAmount)} on this refund`); return }
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/sheets/refunds/${row.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "apply_credit", targetEvent: target, amount: amt }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? "Failed to apply")
+      const remaining = Math.max(0, row.refundAmount - amt)
+      onApplied({
+        ...row,
+        refundAmount: remaining,
+        appliedCreditAmount: (row.appliedCreditAmount ?? 0) + amt,
+        status: remaining <= 0 ? "applied_to_next_order" : "pending",
+        hasAppliedCredit: true,
+        note: remaining <= 0
+          ? `Applied as credit to ${target}`
+          : `Applied ${formatRp(amt)} as credit to ${target}; ${formatRp(remaining)} left`,
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to apply")
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4 py-6" onClick={onClose}>
+      <div
+        className="bg-white rounded-xl border border-cream-border shadow-xl w-full max-w-md flex flex-col gap-4 p-5"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold text-foreground">
+              Apply {formatRp(row.refundAmount)} as credit
+            </div>
+            <div className="text-xs text-faint mt-0.5">
+              {displayIg(row.customer)} · from {row.event} · {reasonLabel(row.reason)}
+            </div>
+          </div>
+          <button type="button" onClick={onClose} className="text-faint hover:text-brand transition-colors shrink-0">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+
+        <p className="text-xs text-purple-700 bg-purple-50 border border-purple-200 rounded-lg px-2.5 py-2">
+          No cash moves. It leaves {row.event} and counts as payment on the order you pick.
+        </p>
+
+        {events === null ? (
+          <p className="text-xs text-muted">Loading her orders…</p>
+        ) : targets.length === 0 ? (
+          <p className="text-xs text-muted-strong">
+            {events.filter((ev) => ev.eventId !== row.event).length === 0
+              ? "She has no other orders. Create her next one first, or keep this on her account."
+              : "Her other orders are all settled, so there is nothing here to pay off. Keep it on her account until she has one that owes something."}
+          </p>
+        ) : (
+          <>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-muted">Order to credit</span>
+              <select
+                value={target}
+                disabled={saving}
+                onChange={(e) => {
+                  const id = e.target.value
+                  setTarget(id)
+                  const tgt = targets.find((ev) => ev.eventId === id)
+                  setAmount(id ? String(Math.min(row.refundAmount, Math.max(0, tgt?.invoice.sisaPelunasan ?? 0))) : "")
+                }}
+                className={`${INPUT_CLASS} w-full`}
+              >
+                <option value="">Select an order…</option>
+                {targets.map((ev) => (
+                  <option key={ev.eventId} value={ev.eventId}>
+                    {ev.eventId} — owes {formatRp(Math.max(0, ev.invoice.sisaPelunasan))}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-muted">
+                Amount <span className="text-faint font-normal">(max {formatRp(row.refundAmount)})</span>
+              </span>
+              <input
+                type="number" min="1" max={row.refundAmount} value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                disabled={saving || !target}
+                className={`${INPUT_CLASS} w-full`}
+              />
+            </label>
+            {excess > 0 && (
+              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2">
+                ⚠ {formatRp(amt)} is more than {chosen!.eventId} owes ({formatRp(owed)}). The extra{" "}
+                <span className="font-semibold">{formatRp(excess)}</span> resurfaces as a new overpayment there —
+                no money is lost, but it will not fully clear.
+              </p>
+            )}
+          </>
+        )}
+
+        {error && <p className="text-xs text-red-600">{error}</p>}
+
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onClose} disabled={saving}
+            className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-muted-strong hover:bg-cream">
+            Cancel
+          </button>
+          <button type="button" onClick={apply} disabled={saving || !target || !(amt > 0)}
+            className="px-4 py-1.5 rounded-lg bg-purple-600 text-white text-sm font-medium hover:bg-purple-700 disabled:opacity-50">
+            {saving ? "Applying…" : "Apply credit"}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -1690,7 +1909,6 @@ function RefundDetailModal({
   // Open on a promised credit: applying it is the only reason this refund is
   // still on the list.
   const [showCredit, setShowCredit] = useState(() => isCreditPromised(row))
-  const [creditTarget, setCreditTarget] = useState("")
   /**
    * The orders this credit could actually pay off.
    *
@@ -1703,7 +1921,6 @@ function RefundDetailModal({
    * Same rule the "Outstanding elsewhere" banner above already follows, which
    * listed only trips that owe while this dropdown listed everything.
    */
-  const [creditAmount, setCreditAmount] = useState("")
 
   useEffect(() => {
     let cancelled = false
@@ -1723,11 +1940,6 @@ function RefundDetailModal({
       .finally(() => { if (!cancelled) setInvoiceLoading(false) })
     return () => { cancelled = true }
   }, [row.customer, row.event])
-
-  const creditTargets = useMemo(
-    () => customerEvents.filter((ev) => ev.eventId !== row.event && ev.invoice.sisaPelunasan > 0),
-    [customerEvents, row.event],
-  )
 
   // A promised credit is deliberately NOT read-only: closing it is what left it
   // with no way to be applied once the customer's next order finally existed.
@@ -1770,28 +1982,6 @@ function RefundDetailModal({
   async function handleStatusChange(status: RefundStatus) {
     const ok = await patch({ status })
     if (ok) onUpdated({ ...row, status })
-  }
-
-  async function handleApplyCredit() {
-    if (!creditTarget) { setError("Pick a target order"); return }
-    const amt = Math.round(Number(creditAmount))
-    if (!Number.isFinite(amt) || amt <= 0) { setError("Enter a valid amount"); return }
-    if (amt > row.refundAmount) { setError(`Amount exceeds the overpayment (${formatRp(row.refundAmount)})`); return }
-    const ok = await patch({ action: "apply_credit", targetEvent: creditTarget, amount: amt })
-    if (ok) {
-      const remaining = row.refundAmount - amt
-      onUpdated({
-        ...row,
-        refundAmount: Math.max(0, remaining),
-        appliedCreditAmount: (row.appliedCreditAmount ?? 0) + amt,
-        status: remaining <= 0 ? "applied_to_next_order" : "pending",
-        hasAppliedCredit: true,
-        note: remaining <= 0
-          ? `Applied as credit to ${creditTarget}`
-          : `Applied ${formatRp(amt)} as credit to ${creditTarget}; ${formatRp(remaining)} overpayment remaining`,
-      })
-      setShowCredit(false); setCreditTarget(""); setCreditAmount("")
-    }
   }
 
   // Reverses the credit payments and reopens — for when it was applied to the
@@ -2134,17 +2324,7 @@ function RefundDetailModal({
             <button
               type="button"
               disabled={saving}
-              onClick={() => {
-                const top = owedElsewhere[0]
-                setCreditTarget(top.event)
-                setCreditAmount(String(Math.min(row.refundAmount, top.amount) || row.refundAmount))
-                setShowCredit(true)
-                // The panel this fills sits below the fold. Without this the
-                // click reads as having done nothing at all.
-                requestAnimationFrame(() =>
-                  document.getElementById(CREDIT_PANEL_ID)?.scrollIntoView({ behavior: "smooth", block: "center" }),
-                )
-              }}
+              onClick={() => setShowCredit(true)}
               className="ml-auto shrink-0 px-2.5 py-1 rounded-md text-xs font-medium bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 transition-colors"
             >
               Apply {formatRp(Math.min(row.refundAmount, owedElsewhere[0].amount))} to {owedElsewhere[0].event}
@@ -2319,205 +2499,29 @@ function RefundDetailModal({
             </div>
           )}
 
-          {/* Edit amount & note — off the main path, one click away */}
+          {/* The note, and nothing around it.
+              This was a card with a header, a toggle and an amount field that
+              could not be edited any more -- three pieces of furniture around
+              one textarea, on every step of every refund. What the note SAYS is
+              on the row now, so the reason to open this is to change it. */}
           {!isReadOnly && (
-            <div className="flex flex-col gap-2 p-3 rounded-lg bg-surface-muted border border-cream-border">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-xs font-medium text-muted-strong">Note</div>
-                <button
-                  type="button"
-                  onClick={() => setShowEdit((v) => !v)}
-                  title={showEdit ? "Hide" : "Edit"}
-                  className="inline-flex items-center justify-center w-6 h-6 rounded border border-cream-border text-muted hover:bg-surface-sunken transition-colors shrink-0"
-                >
-                  {showEdit ? (
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-                  ) : (
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
-                    </svg>
-                  )}
-                </button>
-              </div>
-              {showEdit && (
-                <div className="flex flex-col gap-3">
-                  {/* The amount is set when the refund is made -- computed by
-                      the mark, read from her balance, or typed into the
-                      composer. There is no fourth kind, so there is no box. */}
-                  <p className="text-[11px] text-faint">
-                    <span className="font-medium text-muted">{formatRp(row.refundAmount)}</span>{" "}
-                    {amountIsLive
-                      ? `is what she is overpaid right now, less what her other open refunds on ${row.event} already claim. It follows her invoice.`
-                      : "was set when this refund was made. To refund a different figure, cancel this one and make it again."}
-                  </p>
-                  {row.appliedCreditAmount > 0 && !isFullyAppliedAsCredit(row) && (
-                    <p className="text-[11px] text-faint -mt-2">
-                      {formatRp(row.appliedCreditAmount)} already applied as credit elsewhere — the amount above is what's still left to refund.
-                    </p>
-                  )}
-                  <label className="flex flex-col gap-1">
-                    <span className="text-xs font-medium text-muted">Note</span>
-                    <textarea
-                      value={note}
-                      onChange={(e) => setNote(e.target.value)}
-                      disabled={saving}
-                      rows={2}
-                      className={`${INPUT_CLASS} w-full resize-none`}
-                    />
-                  </label>
-                  <div className="flex justify-end">
-                    <button onClick={handleSaveEdit} disabled={saving} className="text-xs px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
-                      {saving ? "Saving…" : "Save"}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-muted">Note</span>
+              <textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                onBlur={() => { if (note !== row.note) handleSaveEdit() }}
+                disabled={saving}
+                rows={2}
+                placeholder="Anything worth remembering about this one"
+                className={`${INPUT_CLASS} w-full resize-none`}
+              />
+            </label>
           )}
           {isReadOnly && row.note && (
             <p className="text-xs text-muted"><span className="font-medium text-faint">Note:</span> {row.note}</p>
           )}
 
-          {/* Apply as credit — pick which of the customer's other orders to credit */}
-          {!isReadOnly && (
-            <div id={CREDIT_PANEL_ID} className="flex flex-col gap-2 p-3 rounded-lg bg-surface-muted border border-cream-border">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-xs font-medium text-muted-strong">Apply as credit</div>
-                <button
-                  type="button"
-                  onClick={() => setShowCredit((v) => !v)}
-                  title={showCredit ? "Hide" : "Apply as credit"}
-                  className="inline-flex items-center justify-center w-6 h-6 rounded border border-cream-border text-muted hover:bg-surface-sunken transition-colors shrink-0"
-                >
-                  {showCredit ? (
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-                  ) : (
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-                  )}
-                </button>
-              </div>
-              {/* No target order yet -- and there need not be one. The money
-                  waits on her account until an order of hers can take it. */}
-              {!isCreditPromised(row) && (
-                <div className="flex items-center justify-between gap-2 pb-1">
-                  <p className="text-[11px] text-muted">
-                    She just wants it kept? No order needs to exist yet.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={handleKeepOnAccount}
-                    disabled={saving}
-                    className="shrink-0 px-2.5 py-1 rounded-lg border border-purple-300 text-purple-700 text-[11px] font-semibold hover:bg-purple-50 disabled:opacity-50 transition-colors"
-                  >
-                    Keep on her account
-                  </button>
-                </div>
-              )}
-              {showCredit && (
-              <div className="flex flex-col gap-3">
-              {isCreditPromised(row) && (
-                <div className="text-xs text-purple-800 font-medium">
-                  {displayIg(row.customer)} asked to keep this as credit. Nothing has moved yet — it waits here until
-                  one of their orders can take it.
-                </div>
-              )}
-              <div className="text-xs text-purple-700">
-                Move up to <span className="font-bold">{formatRp(row.refundAmount)}</span> of overpayment credit to
-                another order for <span className="font-medium">{displayIg(row.customer)}</span>. No cash moves — it
-                leaves this order and counts as payment on the chosen one.
-              </div>
-              {creditTargets.length === 0 ? (
-                <p className="text-xs text-purple-600">
-                  {customerEvents.filter((ev) => ev.eventId !== row.event).length === 0
-                    ? "This customer has no other orders to credit. Create their next order first, then apply the credit."
-                    : "Her other orders are all settled, so there is nothing here to pay off. Credit it once she has an order that owes something — or keep it on her account."}
-                </p>
-              ) : (
-                <>
-                  <label className="flex flex-col gap-1">
-                    <span className="text-xs font-medium text-purple-800">Target order (event)</span>
-                    <select
-                      value={creditTarget}
-                      onChange={(e) => {
-                        const id = e.target.value
-                        setCreditTarget(id)
-                        // Default the amount to what the target owes, capped at
-                        // the overpayment — so the common case fully settles the
-                        // target without over-crediting it.
-                        const tgt = creditTargets.find((ev) => ev.eventId === id)
-                        const owed = Math.max(0, tgt?.invoice.sisaPelunasan ?? 0)
-                        // No `|| row.refundAmount` fallback: it existed for a
-                        // target owing nothing, where Math.min gives 0, and it
-                        // prefilled the WHOLE refund onto a settled order --
-                        // turning it into a fresh overpayment. Settled orders
-                        // are no longer offered, so there is nothing left for
-                        // that fallback to rescue.
-                        setCreditAmount(id ? String(Math.min(row.refundAmount, owed)) : "")
-                      }}
-                      disabled={saving}
-                      className={`${INPUT_CLASS} w-full`}
-                    >
-                      <option value="">Select an order…</option>
-                      {creditTargets.map((ev) => (
-                        <option key={ev.eventId} value={ev.eventId}>
-                          {ev.eventId} — owes {formatRp(Math.max(0, ev.invoice.sisaPelunasan))}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="flex flex-col gap-1">
-                    <span className="text-xs font-medium text-purple-800">Amount to apply (max {formatRp(row.refundAmount)})</span>
-                    <input
-                      type="number"
-                      min="1"
-                      max={row.refundAmount}
-                      value={creditAmount}
-                      onChange={(e) => setCreditAmount(e.target.value)}
-                      disabled={saving || !creditTarget}
-                      className={`${INPUT_CLASS} w-full`}
-                    />
-                  </label>
-                  {(() => {
-                    // Warn (but don't block) when the chosen amount exceeds what
-                    // the target owes: the excess resurfaces as a fresh
-                    // overpayment on that order rather than fully clearing.
-                    const tgt = customerEvents.find((ev) => ev.eventId === creditTarget)
-                    const amt = Math.round(Number(creditAmount)) || 0
-                    if (!tgt || amt <= 0) return null
-                    const owed = Math.max(0, tgt.invoice.sisaPelunasan)
-                    if (amt <= owed) return null
-                    const excess = amt - owed
-                    return (
-                      <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2">
-                        ⚠ {formatRp(amt)} is more than {tgt.eventId} owes ({formatRp(owed)}). The extra{" "}
-                        <span className="font-semibold">{formatRp(excess)}</span> will resurface as a new overpayment
-                        on {tgt.eventId} — no money is lost, but it won't fully clear there.
-                      </p>
-                    )
-                  })()}
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handleApplyCredit}
-                      disabled={saving || !creditTarget || !(Math.round(Number(creditAmount)) > 0)}
-                      className="px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-medium hover:bg-purple-700 disabled:opacity-50 transition-colors"
-                    >
-                      {saving ? "Applying…" : "Apply Credit"}
-                    </button>
-                    <button
-                      onClick={() => { setShowCredit(false); setCreditTarget(""); setCreditAmount("") }}
-                      disabled={saving}
-                      className="px-3 py-2 rounded-lg border border-purple-200 text-purple-700 text-sm hover:bg-purple-100 disabled:opacity-50 transition-colors"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </>
-              )}
-              </div>
-              )}
-            </div>
-          )}
         </div>
 
         {/* Footer — Delete (when editable) on the left, Cancel + primary CTA right */}
@@ -2550,6 +2554,16 @@ function RefundDetailModal({
         </div>
       </div>
     </div>
+    {showCredit && (
+      // Same window the row opens. Two ways in, one implementation -- the panel
+      // that used to live inside this sheet was the second one.
+      <ApplyCreditModal
+        row={row}
+        onApplied={(updated) => { setShowCredit(false); onUpdated(updated) }}
+        onClose={() => setShowCredit(false)}
+      />
+    )}
+
     {showFullInvoice && (
       // Wrapper raises the drawer (z-40) above this refund modal (z-50).
       <div className="relative z-[60]">
