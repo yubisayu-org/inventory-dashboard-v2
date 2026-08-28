@@ -350,19 +350,25 @@ export async function setTempAddress(
   event: string,
   input: { address: string; areaId?: string | null; areaName?: string | null },
   db: DBExecutor = sql,
+  /** Who recorded it. The shop writing down what she said on WhatsApp is not
+   *  the customer choosing from her own page. */
+  setBy: SetBy = "customer",
 ): Promise<void> {
+  // The payment bar is a rule about customers, and a redirect is usually asked
+  // for early -- before the trip is settled, often before anything has arrived.
+  // Refusing the shop there would refuse it exactly when it is useful.
   const reason = await ineligibleReason(customerId, event, db)
-  if (reason) throw new ShippingPrefError(reason)
+  if (blocks(reason, setBy)) throw new ShippingPrefError(reason!)
 
   const value = input.address.trim() ? input.address.trim() : null
   const areaId = value && input.areaId?.trim() ? input.areaId.trim() : null
   const areaName = value && areaId && input.areaName?.trim() ? input.areaName.trim() : null
   await db`
-    INSERT INTO customer_shipping_prefs (customer_id, event, temp_address, temp_area_id, temp_area_name)
-    VALUES (${customerId}, ${event}, ${value}, ${areaId}, ${areaName})
+    INSERT INTO customer_shipping_prefs (customer_id, event, temp_address, temp_area_id, temp_area_name, set_by)
+    VALUES (${customerId}, ${event}, ${value}, ${areaId}, ${areaName}, ${setBy})
     ON CONFLICT (customer_id, event)
     DO UPDATE SET temp_address = ${value}, temp_area_id = ${areaId},
-                  temp_area_name = ${areaName}, updated_at = NOW()
+                  temp_area_name = ${areaName}, set_by = ${setBy}, updated_at = NOW()
   `
 }
 

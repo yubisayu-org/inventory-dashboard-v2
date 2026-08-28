@@ -86,3 +86,24 @@ test("the shipment keeps where the box actually went", async () => {
   assert.equal(rows[0].temp_address, "Rumah ibu, Jl. Melati 4",
     "clearing the request must not lose the record of the delivery")
 })
+
+test("the shop can record a redirect she asked for by message", async () => {
+  // She says it on WhatsApp, weeks before anything arrives. Written down here
+  // it waits on the trip like one she set herself -- badge, seeded sheet, and
+  // spent by the box that uses it.
+  const EV3 = `${TAG}_EV3`
+  await sql`INSERT INTO events (name, warehouse_id) SELECT ${EV3}, id FROM warehouses ORDER BY id LIMIT 1`
+  const id = await lineFor(EV3)
+
+  // Deliberately unpaid: this is early, which is the whole point. Her own page
+  // is barred here; the shop writing down what she said is not.
+  await assert.rejects(
+    () => setTempAddress(custId, EV3, { address: "Kos Melati 3B" }, sql, "customer"),
+    /unpaid/,
+  )
+  await setTempAddress(custId, EV3, { address: "Kos Melati 3B" }, sql, "shop")
+  assert.equal(await addressOn(EV3), "Kos Melati 3B")
+
+  await ship(EV3, id, 2, "Kos Melati 3B")
+  assert.equal(await addressOn(EV3), null, "spent by the parcel, however it was recorded")
+})

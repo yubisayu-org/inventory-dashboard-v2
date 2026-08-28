@@ -1,5 +1,6 @@
 "use client"
 
+import { RequestedAddressModal } from "./RequestedAddressModal"
 import { displayIg } from "@/lib/format"
 import TableSkeleton from "@/components/TableSkeleton"
 import SelectionActionBar from "@/components/SelectionActionBar"
@@ -585,6 +586,7 @@ function CustomerCard({
   const [expanded, setExpanded] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [holdBusy, setHoldBusy] = useState(false)
+  const [addressOpen, setAddressOpen] = useState(false)
   const [holdError, setHoldError] = useState<string | null>(null)
   const [splitBusy, setSplitBusy] = useState(false)
   const [splitError, setSplitError] = useState<string | null>(null)
@@ -703,11 +705,20 @@ function CustomerCard({
             {/* Visible on the card, not only inside the modal: a redirected
                 parcel that is only discoverable by opening the ship dialog is
                 one bulk print away from going to the wrong house. */}
-            {c.requestedAddress && (
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
-                Alamat lain diminta
-              </span>
-            )}
+            <button
+              type="button"
+              onClick={() => setAddressOpen(true)}
+              title={c.requestedAddress
+                ? `Paket ini ke:\n${c.requestedAddress}`
+                : "Catat alamat lain yang dia minta untuk paket ini"}
+              className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium transition-colors ${
+                c.requestedAddress
+                  ? "bg-purple-100 text-purple-700 hover:bg-purple-200"
+                  : "border border-dashed border-cream-border text-faint hover:border-brand hover:text-brand"
+              }`}
+            >
+              {c.requestedAddress ? "Alamat lain diminta" : "+ Alamat lain"}
+            </button>
             {totalHold > 0 && c.status !== "hold" && (
               <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE.hold.cls}`}>
                 {STATUS_BADGE.hold.label}
@@ -918,8 +929,12 @@ function CustomerCard({
         ))}
       </div>
 
-      {/* Collapsible address */}
-      {customerDetail?.dataDiri && (
+      {/* Collapsible address. It showed the profile address and nothing else,
+          under a badge announcing she had asked for a different one -- so the
+          card said "Alamat lain diminta" and then printed the address the
+          parcel was not going to. Where it is actually going comes first now,
+          and the profile address stays underneath as the thing it replaces. */}
+      {(customerDetail?.dataDiri || c.requestedAddress) && (
         <div className="border-t border-cream-border">
           <button
             type="button"
@@ -942,13 +957,47 @@ function CustomerCard({
             </svg>
           </button>
           {expanded && (
-            <div className="px-5 pb-4">
-              <pre className="whitespace-pre-wrap font-sans text-sm text-foreground leading-relaxed">
-                {customerDetail.dataDiri}
-              </pre>
+            <div className="px-5 pb-4 flex flex-col gap-3">
+              {c.requestedAddress && (
+                <div className="rounded-lg border border-purple-200 bg-purple-50 px-3 py-2">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-purple-700 mb-0.5">
+                    Diminta untuk paket ini
+                  </div>
+                  <pre className="whitespace-pre-wrap font-sans text-sm text-foreground leading-relaxed">
+                    {c.requestedAddress}
+                  </pre>
+                  {c.requestedOtherArea && (
+                    <div className="text-[11px] text-amber-700 mt-1">
+                      Area berbeda dari alamat profilnya — ongkirnya mungkin tidak sama.
+                    </div>
+                  )}
+                </div>
+              )}
+              {customerDetail?.dataDiri && (
+                <div>
+                  {c.requestedAddress && (
+                    <div className="text-[11px] font-medium text-faint mb-0.5">Alamat profil</div>
+                  )}
+                  <pre className={`whitespace-pre-wrap font-sans text-sm leading-relaxed ${
+                    c.requestedAddress ? "text-muted" : "text-foreground"
+                  }`}>
+                    {customerDetail.dataDiri}
+                  </pre>
+                </div>
+              )}
             </div>
           )}
         </div>
+      )}
+
+      {addressOpen && (
+        <RequestedAddressModal
+          customer={c.customer}
+          event={c.event}
+          current={c.requestedAddress}
+          onClose={() => setAddressOpen(false)}
+          onSaved={() => { setAddressOpen(false); onRefresh() }}
+        />
       )}
     </div>
   )
