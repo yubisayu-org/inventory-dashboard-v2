@@ -194,9 +194,11 @@ export async function setShippingMode(
   const reason = await ineligibleReason(customerId, event, db)
   if (blocks(reason, setBy)) throw new ShippingPrefError(reason!)
 
-  // A half-shipped event cannot be held: the queue and the parcel that already
-  // left would disagree about what is outstanding.
-  if (mode === "hold" && (await shippedUnits(customerId, event, db)) > 0) {
+  // A half-shipped event cannot be held by the customer: the queue and the
+  // parcel that already left would disagree about what is outstanding. The shop
+  // parks the remainder of a part-shipped card as a matter of course, and did
+  // so before this went through here at all.
+  if (mode === "hold" && setBy === "customer" && (await shippedUnits(customerId, event, db)) > 0) {
     throw new ShippingPrefError("part-shipped")
   }
 
@@ -220,6 +222,30 @@ export async function setShippingMode(
     // to "wait" stays invisibly held, and the shop never sees the order again.
     await releasePackingList({ customer: customer.instagram_id, event })
   }
+}
+
+/**
+ * Forget a stored hold, leaving everything else in the row alone.
+ *
+ * Releasing used to free the units and stop there. The wish stayed on file, and
+ * reapplyHoldsForArrival reads the wish on every arrival -- so the next box to
+ * land re-parked an order somebody had deliberately released, hours later,
+ * through an action that looked unrelated.
+ *
+ * Only the mode is touched. A merge_key sits in the same row and parks the
+ * parcel for a different reason; clearing that would un-pair the trips and take
+ * the merge discount off her invoice with it.
+ */
+export async function clearHoldMode(
+  customerId: number,
+  event: string,
+  db: DBExecutor = sql,
+): Promise<void> {
+  await db`
+    UPDATE customer_shipping_prefs
+       SET mode = 'wait', updated_at = NOW()
+     WHERE customer_id = ${customerId} AND event = ${event} AND mode = 'hold'
+  `
 }
 
 /**
