@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { fmt } from "@/lib/format"
+import { AccountCreditIcon } from "@/components/AccountCreditIcon"
 import type { HeldDeposit } from "@/lib/db"
 
 /**
@@ -123,7 +124,7 @@ export function DepositBanner({
           and the row's own would do the identical thing, differently worded. */}
       {deposits.length > 1 && (
         <div className="flex items-center gap-2.5 pb-2 border-b border-green-200">
-          <span className="text-green-700 text-sm leading-none">💰</span>
+          <span className="text-green-700 leading-none shrink-0"><AccountCreditIcon size={15} /></span>
           <div className="flex-1 min-w-0 text-xs">
             <div className="text-foreground">
               <b className="tabular-nums">Rp {fmt(total)}</b> on her account, from{" "}
@@ -149,7 +150,7 @@ export function DepositBanner({
         const over = d.amount > outstanding
         return (
           <div key={d.refundId} className="flex items-start gap-2.5">
-            <span className="text-green-700 text-sm leading-none mt-0.5">💰</span>
+            <span className="text-green-700 leading-none shrink-0 mt-0.5"><AccountCreditIcon size={15} /></span>
             <div className="flex-1 min-w-0 text-xs">
               <div className="text-foreground">
                 She has <b className="tabular-nums">Rp {fmt(d.amount)}</b> on her account from{" "}

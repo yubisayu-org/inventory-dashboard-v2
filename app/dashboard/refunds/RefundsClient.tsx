@@ -19,6 +19,7 @@ import { InvoiceDetailDrawer } from "@/app/dashboard/invoice/InvoiceDetailDrawer
 import { useMessageTemplates } from "@/hooks/useMessageTemplates"
 import { useCustomerWhatsApp } from "@/hooks/useCustomerWhatsApp"
 import { MessageButton } from "@/components/MessageButton"
+import { AccountCreditIcon } from "@/components/AccountCreditIcon"
 import { fillTemplate, DEFAULT_TEMPLATES } from "@/lib/message-templates"
 import {
   causeLineFor, fillNotice, REFUND_CAUSES, MANUAL_REFUND_CAUSES, NOTICE_TEMPLATES,
@@ -668,9 +669,7 @@ export default function RefundsClient() {
                 aria-label="Apply as credit to another order"
                 className="shrink-0 p-1 rounded text-purple-400 hover:text-purple-700 transition-colors"
               >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2 10h20" />
-                </svg>
+                <AccountCreditIcon />
               </button>
             )}
             {payable && (
@@ -2346,7 +2345,33 @@ function RefundDetailModal({
           </div>
         </div>
 
+        {/* Invoice — one line, expandable. Was a 6-row block eating the modal.
+            Hidden on mobile: the open-invoice icon in the header covers it there. */}
+        <div className="hidden md:block shrink-0 border-b border-cream-border">
+          {invoiceLoading ? (
+            <div className="px-6 py-2.5 text-xs text-faint">Loading invoice…</div>
+          ) : invoiceError ? (
+            <div className="px-6 py-2.5 text-xs text-red-500">{invoiceError}</div>
+          ) : invoiceEvent ? (
+            <button
+              type="button"
+              onClick={() => setShowFullInvoice(true)}
+              className="w-full flex items-center justify-between gap-2 px-6 py-2.5 text-xs hover:bg-surface-muted/60 transition-colors"
+            >
+              <span className="text-muted">
+                Invoice <span className="font-semibold text-foreground tabular-nums">{formatRp(invoiceEvent.invoice.total)}</span>
+                {" · "}Paid <span className="font-semibold text-foreground tabular-nums">{formatRp(invoiceEvent.invoice.pembayaran)}</span>
+              </span>
+            </button>
+          ) : null}
+        </div>
+
         {/* Outstanding elsewhere.
+            Below the invoice line, not above it. The header names her and this
+            trip, and the invoice line is that trip's money -- a band between
+            them cut one thought in half. What she owes on OTHER trips is the
+            third beat, and the last thing read before acting.
+
             One line, whether she owes on one trip or twelve. It used to print
             every debt inline -- twelve amounts in a run cannot be compared, the
             step began halfway down the sheet, and the button chose her largest
@@ -2380,27 +2405,6 @@ function RefundDetailModal({
             </button>
           </div>
         )}
-
-        {/* Invoice — one line, expandable. Was a 6-row block eating the modal.
-            Hidden on mobile: the open-invoice icon in the header covers it there. */}
-        <div className="hidden md:block shrink-0 border-b border-cream-border">
-          {invoiceLoading ? (
-            <div className="px-6 py-2.5 text-xs text-faint">Loading invoice…</div>
-          ) : invoiceError ? (
-            <div className="px-6 py-2.5 text-xs text-red-500">{invoiceError}</div>
-          ) : invoiceEvent ? (
-            <button
-              type="button"
-              onClick={() => setShowFullInvoice(true)}
-              className="w-full flex items-center justify-between gap-2 px-6 py-2.5 text-xs hover:bg-surface-muted/60 transition-colors"
-            >
-              <span className="text-muted">
-                Invoice <span className="font-semibold text-foreground tabular-nums">{formatRp(invoiceEvent.invoice.total)}</span>
-                {" · "}Paid <span className="font-semibold text-foreground tabular-nums">{formatRp(invoiceEvent.invoice.pembayaran)}</span>
-              </span>
-            </button>
-          ) : null}
-        </div>
 
         {/* Pipeline position (cash flow only — terminal side-tracks skip it) */}
         {!isReadOnly && <StepIndicator status={row.status} />}

@@ -1,6 +1,7 @@
 "use client"
 
 import { fmt } from "@/lib/format"
+import { AccountCreditIcon } from "./AccountCreditIcon"
 import type { HeldDeposit } from "@/lib/db"
 
 /**
@@ -18,9 +19,9 @@ export function DepositFlag({ deposits }: { deposits: HeldDeposit[] | undefined 
     <span
       title={`Deposit belum dipakai:\n${detail}`}
       aria-label={`Deposit Rp ${fmt(total)}`}
-      className="shrink-0 text-green-700 text-xs leading-none cursor-help"
+      className="shrink-0 text-green-700 leading-none cursor-help inline-flex"
     >
-      💰
+      <AccountCreditIcon size={14} />
     </span>
   )
 }
