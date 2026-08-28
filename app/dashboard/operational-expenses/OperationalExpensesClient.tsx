@@ -69,9 +69,16 @@ function calcRate(idr: number, foreign: number): number {
   return Math.round(((Number(idr) || 0) / foreign) * 100) / 100
 }
 
-/** Infers a row's currency from its stored kurs: 1 = paid in IDR, otherwise the
- *  event's foreign currency (or "FX" if the event has no country recorded). */
+/** What the row was paid in.
+ *
+ *  Stored, since migration 117. Before that it was only ever inferred — kurs of
+ *  1 meant IDR, anything else meant the event's currency — and an expense with
+ *  no event had nothing to infer from, so it opened as "FX" however carefully
+ *  the currency had been chosen. Rate is a ratio, so USD and CNY are
+ *  indistinguishable after the fact; there is nothing to backfill those rows
+ *  with, and they keep the old guess. */
 function inferCurrency(row: OperationalExpenseRow, events: EventOption[]): string {
+  if (row.currency?.trim()) return row.currency.trim()
   if (Number(row.rate) === 1) return IDR
   return events.find((e) => e.name === row.event)?.currency || "FX"
 }
@@ -899,6 +906,9 @@ function AddExpenseForm({
           isSettled: draft.isSettled,
           method: draft.method.trim(),
           remarks: "",
+          // Kept, not recomputed later: the rate cannot say which currency it
+          // converted from.
+          currency: draft.currency.trim(),
         }),
       })
       const json = await res.json()
@@ -1151,6 +1161,7 @@ function EditExpenseModal({
           isSettled: draft.isSettled,
           method: draft.method.trim(),
           remarks: row.remarks,
+          currency: draft.currency.trim(),
         }),
       })
       const json = await res.json()

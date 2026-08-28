@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import sql from "@/lib/db-pool"
 import { requireSession, requireRole } from "@/lib/api"
 import { updateFormRow, updateFormRowStage2, updateFormRowStage3, updateOrderOwnerCell, reapplyHoldsForArrival, updateOrderNote, updateOrderReceipt, updateOrderDispatchReceipt, deleteFormRow, returnOrderUnitsToExcess, withActor } from "@/lib/db"
 import { strandedBoughtUnits, bankStrandedBoughtUnits } from "@/lib/db/orders"
@@ -7,11 +8,26 @@ import type { DBExecutor } from "@/lib/db/actor"
 type Params = { params: Promise<{ row: string }> }
 
 /** Signals a save that would leave bought units attached to nothing. */
+class AlreadyShipped extends Error {
+  constructor(readonly shipped: number) {
+    super(`${shipped} unit(s) have already shipped`)
+    this.name = "AlreadyShipped"
+  }
+}
+
 class StrandedUnits extends Error {
   constructor(readonly count: number) {
     super(`${count} bought unit(s) would belong to no order`)
     this.name = "StrandedUnits"
   }
+}
+
+/** Units already gone. Nothing at this door may take an order below them. */
+async function shippedUnits(rowNumber: number, tx: DBExecutor): Promise<number> {
+  const [row] = (await tx`
+    SELECT COALESCE(unit_ship, 0) AS unit_ship FROM orders WHERE id = ${rowNumber}
+  `) as unknown as { unit_ship: number }[]
+  return Number(row?.unit_ship ?? 0)
 }
 
 async function strandedAfterEdit(rowNumber: number, tx: DBExecutor): Promise<number> {
@@ -37,6 +53,9 @@ export async function PUT(req: NextRequest, { params }: Params) {
   try {
     const body = await req.json()
     const stage = String(body.stage ?? "1")
+    // Why the order shrank. Both answers shelve the units; they are different
+    // facts, and the one nobody records is the one nobody can reconstruct.
+    const cause = body.cause === "customer_changed_mind" ? "customer_changed_mind" : "staff_mistake"
 
     if (stage === "2") {
       // Owner only
@@ -93,7 +112,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
         const stranded = await strandedAfterEdit(rowNumber, tx)
         if (stranded === 0) return 0
         if (body.bankStranded !== true) throw new StrandedUnits(stranded)
-        const { banked } = await bankStrandedBoughtUnits(rowNumber, tx)
+        const { banked } = await bankStrandedBoughtUnits(rowNumber, tx, cause)
         return banked
       })
       return NextResponse.json({ success: true, banked: bankedCell })
@@ -151,6 +170,13 @@ export async function PUT(req: NextRequest, { params }: Params) {
         return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
       }
       const banked = await withActor(session.user.email, async (tx) => {
+        // A parcel that has gone is not an order that can be shrunk. Whatever
+        // the reason, the goods are with her and what is owed for them is a
+        // refund's business -- this is the edit that quietly un-billed
+        // Rp 5.721.000 of delivered goods.
+        const gone = await shippedUnits(rowNumber, tx)
+        if (Number(unit) < gone) throw new AlreadyShipped(gone)
+
         await updateFormRow(rowNumber, {
           event: String(event),
           customer: String(customer),
@@ -177,6 +203,15 @@ export async function PUT(req: NextRequest, { params }: Params) {
     // Not a failure — a question. The edit is refused until somebody says what
     // happened to the units, and the transaction has already rolled back, so
     // nothing was half-saved while asking.
+    if (err instanceof AlreadyShipped) {
+      return NextResponse.json(
+        {
+          error: `${err.shipped} unit sudah dikirim, jadi pesanannya tidak bisa dikurangi. `
+            + `Barangnya ada di customer — kalau uangnya perlu kembali, itu refund.`,
+        },
+        { status: 409 },
+      )
+    }
     if (err instanceof StrandedUnits) {
       return NextResponse.json(
         { error: "stranded_units", stranded: err.count },
@@ -202,6 +237,41 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   }
 
   try {
+    // Deleting an order that money has already been spent on is worse than
+    // shrinking one. A shrink strands the bought units -- findable, and now
+    // guarded -- but a delete takes the row with them, so nothing records that
+    // the units were ever ordered, bought or dispatched. They simply stop
+    // existing on paper while sitting in a box.
+    //
+    // Refused rather than banked automatically: reducing the quantity is the
+    // door that asks why and puts the stock on the shelf under the right
+    // reason, and it keeps the row. There is no answer this endpoint could
+    // guess on the caller's behalf.
+    const [row] = (await sql`
+      SELECT COALESCE(unit_buy, 0) AS bought, COALESCE(unit_ship, 0) AS shipped
+        FROM orders WHERE id = ${rowNumber}
+    `) as unknown as { bought: number; shipped: number }[]
+
+    if (row && Number(row.shipped) > 0) {
+      return NextResponse.json(
+        {
+          error: `${row.shipped} unit already shipped, so this order cannot be deleted. `
+            + `The goods are with the customer — if money needs to go back, that is a refund.`,
+        },
+        { status: 409 },
+      )
+    }
+    if (row && Number(row.bought) > 0) {
+      return NextResponse.json(
+        {
+          error: `${row.bought} unit already bought for this order, so deleting it would lose `
+            + `the stock. Set the quantity to 0 instead — that asks why and puts the units into `
+            + `Inventory.`,
+        },
+        { status: 409 },
+      )
+    }
+
     await withActor(session.user.email, (tx) => deleteFormRow(rowNumber, tx))
     return NextResponse.json({ success: true })
   } catch (err) {

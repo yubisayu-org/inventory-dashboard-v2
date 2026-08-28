@@ -5,6 +5,7 @@ import { displayIg, fmt } from "@/lib/format"
 import type { CustomerDetail, InvoiceEvent } from "@/lib/db"
 import { useResizableColumns } from "@/hooks/useResizableColumns"
 import InvoiceSummary from "@/components/InvoiceSummary"
+import { DepositBanner } from "./DepositBanner"
 import { CustomerInfoModal } from "./CustomerInfoModal"
 import { InvoiceMessageActions } from "./InvoiceMessageActions"
 import { AddAdjustmentFromInvoiceModal } from "./AddAdjustmentFromInvoiceModal"
@@ -167,6 +168,15 @@ export function EventCard({
           </div>
         </div>
       </div>
+
+      {/* Money she has already given you, above the total that would otherwise
+          ask for it again. */}
+      <DepositBanner
+        customer={customer}
+        event={event.eventId}
+        outstanding={event.invoice.sisaPelunasan}
+        onApplied={() => onMutated?.()}
+      />
 
       {/* Invoice summary */}
       <InvoiceSummary event={event} actions={<InvoiceMessageActions event={event} whatsapp={customerDetail?.whatsapp} customer={customer} />} />

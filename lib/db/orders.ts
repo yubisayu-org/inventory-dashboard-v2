@@ -190,6 +190,10 @@ export async function getDuplicateFormRowsPaginated(opts: {
   event?: string
   customer?: string
   items?: string
+  /** Purchase receipt, matched on the front of the code. */
+  receipt?: string
+  /** The box a parcel travelled in, matched on the front of the code. */
+  dispatchReceipt?: string
   note?: string
   dateFrom?: string
   dateTo?: string
@@ -204,7 +208,8 @@ export async function getDuplicateFormRowsPaginated(opts: {
    */
   skipCount?: boolean
 }): Promise<PaginatedFormRows> {
-  const { page, pageSize, search, event, customer, items, note, dateFrom, dateTo, newestFirst, skipCount } = opts
+  const { page, pageSize, search, event, customer, items, receipt, dispatchReceipt,
+          note, dateFrom, dateTo, newestFirst, skipCount } = opts
   const offset = (page - 1) * pageSize
 
   const conditions: string[] = []
@@ -223,6 +228,24 @@ export async function getDuplicateFormRowsPaginated(opts: {
   if (items) {
     params.push(`%${items.toLowerCase()}%`)
     conditions.push(`lower(p.name) LIKE $${params.length}`)
+  }
+  // The two receipts are not the same kind of thing, and the production data
+  // says so plainly.
+  //
+  // A purchase receipt is however the shopping trip was described -- "chiko 25
+  // mar", "31jan - sea", "tbo 31jan" -- so the useful part is as often in the
+  // middle as at the front. Substring.
+  if (receipt) {
+    params.push(`%${receipt.toLowerCase()}%`)
+    conditions.push(`lower(COALESCE(o.receipt, '')) LIKE $${params.length}`)
+  }
+  // A dispatch receipt is a code: HC, HC/KS-2601, CJI-06. Its prefix is the
+  // question worth asking -- "HC" means every hand-carry box, "HC/KS" means
+  // that route's -- and matching from the front leaves room for an index,
+  // which a leading wildcard never can.
+  if (dispatchReceipt) {
+    params.push(`${dispatchReceipt.toLowerCase()}%`)
+    conditions.push(`lower(COALESCE(o.dispatch_receipt, '')) LIKE $${params.length}`)
   }
   // Note presence filter: "has" = non-empty note, "none" = blank/null.
   if (note === "has") {
@@ -250,7 +273,7 @@ export async function getDuplicateFormRowsPaginated(opts: {
   const SORT_COLUMNS: Record<string, string> = {
     event: "o.event", customer: "o.customer", items: "p.name",
     unit: "o.unit", unitPrice: "o.unit_price", note: "o.note", createdAt: "o.created_at",
-    unitBuy: "o.unit_buy", receipt: "o.receipt",
+    unitBuy: "o.unit_buy", receipt: "o.receipt", dispatchReceipt: "o.dispatch_receipt",
     unitArrive: "o.unit_arrive", unitShip: "o.unit_ship", unitHold: "o.unit_hold",
     unitDispatch: "o.unit_dispatch",
     updatedAt: "o.updated_at",
@@ -398,6 +421,14 @@ export function strandedBoughtUnits(unit: number, unitBuy: number): number {
 export async function bankStrandedBoughtUnits(
   orderId: number,
   db: DBExecutor = sql,
+  /**
+   * Why the order shrank. Both answers put the units on the shelf -- the stock
+   * exists either way -- but they are different facts about the same box, and
+   * a month later "we bought two by accident" and "she changed her mind" are
+   * not the same story. Written on the Inventory row and on the order's own
+   * note, so whoever reads either one is told which.
+   */
+  cause: "staff_mistake" | "customer_changed_mind" = "staff_mistake",
 ): Promise<{ banked: number }> {
   const rows = (await db`
     SELECT o.event, o.unit, o.unit_buy, o.unit_dispatch, o.receipt, p.name AS product_name
@@ -417,16 +448,25 @@ export async function bankStrandedBoughtUnits(
   if (banked === 0) return { banked: 0 }
 
   const dispatched = Math.min(banked, Math.max(0, (Number(r.unit_dispatch) || 0) - unit))
+  // overbuy is the shop buying more than it needed; customer_cancelled is her
+  // deciding she did not want it. Both already exist as reasons.
+  const reason = cause === "customer_changed_mind" ? "customer_cancelled" : "overbuy"
   await db`
-    INSERT INTO excess_purchase (event, items, unit_buy, receipt, unit_dispatch)
+    INSERT INTO excess_purchase (event, items, unit_buy, receipt, unit_dispatch, reason)
     VALUES (${r.event}, ${r.product_name}, ${banked}, ${r.receipt ?? ""},
-            ${dispatched > 0 ? dispatched : null})`
+            ${dispatched > 0 ? dispatched : null}, ${reason})`
 
-  // The units are the shelf's now, so the order stops claiming them.
+  // The units are the shelf's now, so the order stops claiming them -- and the
+  // line says why it shrank, because the number alone will not remember.
+  const stamp = cause === "customer_changed_mind"
+    ? `${banked} unit ke Inventory — customer batal`
+    : `${banked} unit ke Inventory — salah input`
   await db`
     UPDATE orders
        SET unit_buy = ${unit},
            unit_dispatch = LEAST(COALESCE(unit_dispatch, 0), ${unit}),
+           note = CASE WHEN COALESCE(note, '') = '' THEN ${stamp}
+                       ELSE note || ' · ' || ${stamp} END,
            updated_at = NOW()
      WHERE id = ${orderId}`
 
@@ -889,17 +929,36 @@ export async function getExcessPurchasePaginated(opts: {
 }
 
 /**
- * Zero the given order lines (unit + unit_buy + unit_dispatch + unit_arrive → 0),
- * keeping the rows for history so they drop off the shopping/dispatch/arrival
- * lists. Used when an order can't be fulfilled (wrong/broken delivery): each
- * invoice drops, so the existing overpayment materialization auto-creates a
- * refund for any customer who already paid. Returns rows affected.
+ * Cancel the given order lines down to what has already shipped, keeping the
+ * rows for history so they drop off the shopping/dispatch/arrival lists. Used
+ * when an order can't be fulfilled (wrong/broken/missing delivery, or a
+ * customer cancelling): each invoice drops, so the existing overpayment
+ * materialization auto-creates a refund for anyone who had paid.
+ *
+ * "Down to what has shipped", not to zero. Zeroing outright is what this did,
+ * and a line whose parcel had already gone came off the invoice with it: the
+ * bill is SUM(unit_price * unit), so the goods left and the charge for them
+ * vanished. Ten lines in production went out that way, worth Rp 5.721.000,
+ * every one of those customers showing settled against a bill that did not
+ * include what they had received.
+ *
+ * Everything nearby already knew this. cancelOrderUnits floors unit_buy at
+ * unit_ship, reduceOrderRefundOnly does the same, and recordCustomerCancellation
+ * computes the stock it reclaims as unit_buy - unit_ship -- then called this
+ * and undid its own care.
+ *
+ * A line with nothing shipped still goes to zero, exactly as before. A line
+ * with a shipped unit keeps that unit, because she has it and owes for it.
  */
 export async function cancelOrderLines(orderIds: number[], db: DBExecutor = sql): Promise<number> {
   if (orderIds.length === 0) return 0
   const res = await db`
     UPDATE orders
-    SET unit = 0, unit_buy = 0, unit_dispatch = 0, unit_arrive = 0, updated_at = NOW()
+    SET unit          = COALESCE(unit_ship, 0),
+        unit_buy      = COALESCE(unit_ship, 0),
+        unit_dispatch = LEAST(COALESCE(unit_dispatch, 0), COALESCE(unit_ship, 0)),
+        unit_arrive   = LEAST(COALESCE(unit_arrive, 0), COALESCE(unit_ship, 0)),
+        updated_at    = NOW()
     WHERE id = ANY(${orderIds})
   `
   return res.count

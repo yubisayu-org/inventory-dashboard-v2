@@ -384,6 +384,13 @@ export async function markProductOutOfStock(data: {
   const reducedOrderIds: number[] = []
   const reductions: MarkReduction[] = []
   let reducedUnits = 0
+  // Same reason as the arrival path: the measurement is across her whole
+  // invoice, so each reduction needs its own ceiling or concurrent marks claim
+  // one another's goods.
+  const [prod] = (await sql`
+    SELECT COALESCE(gram, 0)::int AS gram FROM products WHERE id = ${data.productId}
+  `) as unknown as { gram: number }[]
+  const gramPerUnit = prod?.gram ?? 0
   // Before anything moves -- the refund is capped by how far this mark drops
   // each invoice, so the ongkir leaving with the goods leaves in one movement.
   const totalsBefore = await invoiceTotalsNow(data.event)
@@ -393,7 +400,7 @@ export async function markProductOutOfStock(data: {
     for (const { item: o, allocated } of allocations) {
       if (allocated <= 0) continue
       reducedOrderIds.push(o.id)
-      reductions.push({ customer: o.customer, unitsRemoved: allocated })
+      reductions.push({ customer: o.customer, unitsRemoved: allocated, unitPrice: o.unitPrice, gramPerUnit })
       reducedUnits += allocated
       await tx`
         UPDATE orders

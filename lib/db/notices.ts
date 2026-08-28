@@ -22,6 +22,17 @@ export interface NoticeRefund {
   affectedUnits?: number
   /** The items in words, for the refund's own note. */
   items?: string
+  /**
+   * Add to the customer's existing pending refund for this trip and cause
+   * rather than opening another one.
+   *
+   * Marks arrive one product at a time, and five unavailable items used to
+   * become five refunds: five payouts to make, five things to tick off, and
+   * five rows racing to price themselves against the same invoice. One row per
+   * customer per cause grows instead, and the notice each mark sends carries
+   * the running total -- so the last message she reads is the whole story.
+   */
+  mergePending?: boolean
 }
 
 export interface NoticeInput {
@@ -54,16 +65,60 @@ export async function sendInvoiceNotice(
     if (!REFUND_REASONS.includes(cause)) throw new Error("Unknown refund reason")
     if (!Number.isFinite(amount) || amount <= 0) throw new Error("A refund needs an amount")
 
-    const created = await createRefund({
-      event: input.event,
-      customer: input.customer,
-      reason: cause,
-      refundAmount: Math.round(amount),
-      orderId: input.refund.orderId ?? null,
-      affectedUnits: input.refund.affectedUnits ?? 0,
-      note: input.refund.items ?? "",
-    }, db)
-    refundId = created.id
+    const items = input.refund.items ?? ""
+
+    // Serialised on the customer and cause before anything is read, because
+    // FOR UPDATE cannot lock a row that does not exist yet: five marks landing
+    // together would each find no pending refund and each open one. The lock is
+    // held to the end of this transaction, so the second mark waits and then
+    // sees what the first wrote.
+    if (input.refund.mergePending) {
+      const scope = `${input.event}|${input.customer.trim().toLowerCase().replace(/@/g, "")}|${cause}`
+      await db`SELECT pg_advisory_xact_lock(hashtext(${scope}))`
+    }
+
+    const [open] = input.refund.mergePending
+      ? ((await db`
+          SELECT id, refund_amount::int AS amount, affected_units, note
+            FROM refunds
+           WHERE event = ${input.event}
+             AND lower(replace(customer, '@', '')) = lower(replace(${input.customer}, '@', ''))
+             AND reason = ${cause}
+             AND status = 'pending'
+           ORDER BY id
+           LIMIT 1
+           FOR UPDATE
+        `) as unknown as { id: number; amount: number; affected_units: number; note: string }[])
+      : []
+
+    if (open) {
+      // The note grows into a list, and never repeats a line: marking the same
+      // product twice is a correction, not a second item.
+      const lines = String(open.note ?? "").split("\n").map((l) => l.trim()).filter(Boolean)
+      for (const line of items.split("\n").map((l) => l.trim()).filter(Boolean)) {
+        if (!lines.includes(line)) lines.push(line)
+      }
+      await db`
+        UPDATE refunds
+           SET refund_amount = refund_amount + ${Math.round(amount)},
+               affected_units = COALESCE(affected_units, 0) + ${input.refund.affectedUnits ?? 0},
+               note = ${lines.join("\n")},
+               updated_at = NOW()
+         WHERE id = ${open.id}
+      `
+      refundId = open.id
+    } else {
+      const created = await createRefund({
+        event: input.event,
+        customer: input.customer,
+        reason: cause,
+        refundAmount: Math.round(amount),
+        orderId: input.refund.orderId ?? null,
+        affectedUnits: input.refund.affectedUnits ?? 0,
+        note: items,
+      }, db)
+      refundId = created.id
+    }
   }
 
   await notifyCustomer(input.customer, { title, body }, db)

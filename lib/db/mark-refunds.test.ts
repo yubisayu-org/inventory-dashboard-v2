@@ -52,8 +52,8 @@ test("only the customer who paid is refunded", async () => {
   // Both orders shrink to zero. The unpaid one simply owes less.
   await sql`UPDATE orders SET unit = 0 WHERE event = ${EVENT}`
   const made = await refundForReduction(EVENT, "unavailable", "Test Product", [
-    { customer: PAID, unitsRemoved: 1 },
-    { customer: UNPAID, unitsRemoved: 1 },
+    { customer: PAID, unitsRemoved: 1, unitPrice: 100000, gramPerUnit: 0 },
+    { customer: UNPAID, unitsRemoved: 1, unitPrice: 100000, gramPerUnit: 0 },
   ], before, "tester")
 
   assert.equal(made.length, 1, "one refund, not two")
