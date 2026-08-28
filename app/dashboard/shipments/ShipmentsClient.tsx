@@ -8,6 +8,8 @@ import { generateShippingLabel, generateMultipleShippingLabels } from "@/lib/shi
 import type { ShippingLabelParams } from "@/lib/shipping-label"
 import { useModalDismiss } from "@/hooks/useModalDismiss"
 import { copyToClipboard } from "@/lib/clipboard"
+import { useMessageDelivery } from "@/hooks/useMessageDelivery"
+import { waLink } from "@/lib/message-delivery"
 import { buildShipmentConfirmMessage } from "@/lib/shipment-message"
 import { useMessageTemplates } from "@/hooks/useMessageTemplates"
 import { useBusinessProfile } from "@/hooks/useBusinessProfile"
@@ -112,6 +114,7 @@ function MergedIcon({ count }: { count: number }) {
 function CopyShipmentMessageButton({ record }: { record: DisplayShipment }) {
   const [state, setState] = useState<CopyState>({ status: "idle" })
   const templates = useMessageTemplates()
+  const toWhatsApp = useMessageDelivery().shipment === "whatsapp"
   const businessProfile = useBusinessProfile()
 
   useEffect(() => {
@@ -126,8 +129,10 @@ function CopyShipmentMessageButton({ record }: { record: DisplayShipment }) {
     setState({ status: "loading" })
     try {
       // Skip the customer fetch when the shipment carries its own temp address —
-      // we already have the address we need on the row.
-      const detail = record.tempAddress
+      // we already have the address we need on the row. Unless the message is
+      // going to WhatsApp, which needs her number, and the row does not carry
+      // one.
+      const detail = record.tempAddress && !toWhatsApp
         ? null
         : await fetch(`/api/sheets/customer?id=${encodeURIComponent(record.customer)}`)
             .then((r) => (r.ok ? r.json() : null))
@@ -142,6 +147,10 @@ function CopyShipmentMessageButton({ record }: { record: DisplayShipment }) {
         // "[event]" so the customer can tell which event each item came from.
         items: record.invoicing.split("\n").filter(Boolean),
       }, templates?.shipment, businessProfile?.publicSiteUrl)
+      if (toWhatsApp) {
+        const win = window.open(waLink(detail?.whatsapp, message), "_blank", "noopener")
+        if (win) { setState({ status: "idle" }); return }
+      }
       await copyToClipboard(message)
       setState({ status: "copied" })
     } catch (err) {
@@ -161,7 +170,8 @@ function CopyShipmentMessageButton({ record }: { record: DisplayShipment }) {
       type="button"
       onClick={handleClick}
       disabled={status === "loading" || !templates || !businessProfile}
-      title={status === "error" ? state.message : "Copy pesan konfirmasi pengiriman"}
+      title={status === "error" ? state.message
+        : toWhatsApp ? "Kirim pesan konfirmasi lewat WhatsApp" : "Copy pesan konfirmasi pengiriman"}
       className={`p-1 transition-colors rounded disabled:opacity-50 ${
         status === "copied" ? "text-green-600"
         : status === "error" ? "text-red-500"

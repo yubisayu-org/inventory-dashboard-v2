@@ -2,6 +2,8 @@
 
 import { RequestedAddressModal } from "./RequestedAddressModal"
 import { MessageButton } from "@/components/MessageButton"
+import { useMessageDelivery } from "@/hooks/useMessageDelivery"
+import { waLink } from "@/lib/message-delivery"
 import { displayIg } from "@/lib/format"
 import TableSkeleton from "@/components/TableSkeleton"
 import SelectionActionBar from "@/components/SelectionActionBar"
@@ -492,10 +494,19 @@ type CopyState =
   | { status: "copied" }
   | { status: "error"; message: string }
 
+/**
+ * The row's own confirmation button.
+ *
+ * Builds the message on press rather than up front, so it cannot be a link --
+ * WhatsApp is opened after the message exists. Same setting as the sheet's
+ * button: this is the same message, and two controls for one message obeying
+ * different rules is exactly the confusion the setting removes.
+ */
 function CopyConfirmMessageButton({ customer: c, className }: { customer: ShipCustomer; className?: string }) {
   const [state, setState] = useState<CopyState>({ status: "idle" })
   const templates = useMessageTemplates()
   const businessProfile = useBusinessProfile()
+  const toWhatsApp = useMessageDelivery().shipment === "whatsapp"
 
   useEffect(() => {
     if (state.status === "idle") return
@@ -516,6 +527,12 @@ function CopyConfirmMessageButton({ customer: c, className }: { customer: ShipCu
         dataDiri: c.customerDetail?.dataDiri ?? "",
         items: confirmMessageItems(c),
       }, templates?.shipment, businessProfile?.publicSiteUrl)
+      if (toWhatsApp) {
+        const win = window.open(waLink(c.customerDetail?.whatsapp, message), "_blank", "noopener")
+        // A blocked pop-up must not swallow the press: copying is the fallback,
+        // and the tick says what happened.
+        if (win) { setState({ status: "idle" }); return }
+      }
       await copyToClipboard(message)
       setState({ status: "copied" })
     } catch (err) {
@@ -535,7 +552,8 @@ function CopyConfirmMessageButton({ customer: c, className }: { customer: ShipCu
       type="button"
       onClick={handleClick}
       disabled={status === "loading" || !templates || !businessProfile}
-      title={status === "error" ? state.message : "Copy pesan konfirmasi pengiriman"}
+      title={status === "error" ? state.message
+        : toWhatsApp ? "Kirim pesan konfirmasi lewat WhatsApp" : "Copy pesan konfirmasi pengiriman"}
       className={`${className ?? "p-1 rounded"} inline-flex items-center justify-center transition-colors disabled:opacity-50 ${
         status === "copied" ? "text-green-600"
         : status === "error" ? "text-red-500"
