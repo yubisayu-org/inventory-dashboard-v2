@@ -764,7 +764,7 @@ export default function ShipmentsClient() {
         accessorKey: "shippingId",
         header: "ID",
         filterFn: "textContains",
-        size: 80,
+        size: 70,
         cell: ({ getValue }) => (
           <span className="font-mono text-xs text-muted">{getValue<string>()}</span>
         ),
@@ -776,7 +776,7 @@ export default function ShipmentsClient() {
         // Wide enough for one full event code ("LSKR202603") plus the " +"
         // separator and the cell's px-4 padding, so a merged row breaks one
         // event per line instead of mid-name.
-        size: 160,
+        size: 120,
         cell: ({ row, getValue }) => (
           // A merged shipment joins its events with ", ", which wraps to one
           // line per token in a narrow column — four rows for a two-event merge.
@@ -794,7 +794,7 @@ export default function ShipmentsClient() {
         accessorKey: "customer",
         header: "Customer",
         filterFn: "textContains",
-        size: 180,
+        size: 150,
         cell: ({ row }) => {
           const r = row.original
           return (
@@ -834,7 +834,7 @@ export default function ShipmentsClient() {
         accessorKey: "customerName",
         header: "Name",
         filterFn: "textContains",
-        size: 160,
+        size: 130,
         cell: ({ getValue }) => {
           const v = getValue<string>()
           return <span className={`line-clamp-2 ${v ? "" : "text-faint"}`}>{v || "—"}</span>
@@ -844,7 +844,7 @@ export default function ShipmentsClient() {
         accessorKey: "invoicing",
         header: "Items",
         filterFn: "textContains",
-        size: 220,
+        size: 200,
         enableSorting: false,
         cell: ({ getValue }) => (
           <span className="whitespace-pre-wrap font-sans text-xs text-muted-strong leading-relaxed max-w-[200px] line-clamp-2">
@@ -856,7 +856,7 @@ export default function ShipmentsClient() {
         accessorKey: "weightEstimation",
         header: "Berat",
         filterFn: "numeric",
-        size: 120,
+        size: 92,
         meta: { align: "right" },
         cell: ({ row }) => {
           const record = row.original
@@ -895,7 +895,7 @@ export default function ShipmentsClient() {
         accessorKey: "ongkirTotal",
         header: "Ongkir",
         filterFn: "numeric",
-        size: 130,
+        size: 112,
         meta: { align: "right" },
         // What the parcel cost once a corrected weight has been recorded. The
         // stored total is the estimate made at ship time, and leaving it on
@@ -934,17 +934,18 @@ export default function ShipmentsClient() {
         accessorKey: "trackingNumber",
         header: "Resi",
         filterFn: "textContains",
-        size: 200,
+        size: 140,
         cell: ({ row }) => {
           const record = row.original
           return (
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); setEditResiRecord(record) }}
-              className="group flex items-center gap-1.5 text-left"
+              className="group flex items-center gap-1.5 text-left min-w-0 w-full"
+              title={record.trackingNumber || "Belum diisi"}
             >
               <span
-                className={`text-xs ${record.trackingNumber ? "text-foreground font-mono" : "text-faint italic"}`}
+                className={`text-xs truncate ${record.trackingNumber ? "text-foreground font-mono" : "text-faint italic"}`}
               >
                 {record.trackingNumber || "Belum diisi"}
               </span>
@@ -994,7 +995,7 @@ export default function ShipmentsClient() {
         header: "",
         enableSorting: false,
         enableHiding: false,
-        size: 72,
+        size: 92,
         cell: ({ row }) => (
           <div className="flex items-center gap-1">
             <CopyShipmentMessageButton record={row.original} />
