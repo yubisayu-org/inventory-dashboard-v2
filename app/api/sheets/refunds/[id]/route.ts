@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { updateRefund, executeRefund, deleteRefund, applyRefundAsCredit, undoRefundCredit, withActor } from "@/lib/db"
+import { updateRefund, executeRefund, executeRefundGroup, deleteRefund, applyRefundAsCredit, undoRefundCredit, withActor } from "@/lib/db"
 import type { RefundStatus } from "@/lib/db"
 
 const VALID_STATUSES: RefundStatus[] = [
@@ -33,6 +33,25 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       }
       await executeRefund(refundId, transferReference.trim(), account.trim(), session.user.email)
       return NextResponse.json({ success: true })
+    }
+
+    // Several refunds, one transfer. The id in the URL is the row that was
+    // open; refundIds is what to pay, and it must include that row.
+    if (action === "execute_group") {
+      const { transferReference, account, refundIds } = data
+      if (!transferReference?.trim()) {
+        return NextResponse.json({ error: "transferReference is required" }, { status: 400 })
+      }
+      if (!account?.trim()) {
+        return NextResponse.json({ error: "account is required" }, { status: 400 })
+      }
+      const ids = Array.isArray(refundIds)
+        ? refundIds.filter((n: unknown) => Number.isInteger(n)) as number[]
+        : []
+      // The open row leads: its bank details are the ones that were checked.
+      const ordered = [refundId, ...ids.filter((n) => n !== refundId)]
+      const result = await executeRefundGroup(ordered, transferReference.trim(), account.trim(), session.user.email)
+      return NextResponse.json({ success: true, ...result })
     }
 
     if (action === "apply_credit") {

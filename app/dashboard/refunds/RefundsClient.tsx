@@ -647,7 +647,14 @@ export default function RefundsClient() {
         <RefundDetailModal
           row={editRow}
           accounts={options?.accounts ?? []}
+          siblings={rows.filter((r) =>
+            r.id !== editRow.id
+            && r.event === editRow.event
+            && normalizeId(r.customer) === normalizeId(editRow.customer)
+            && (r.status === "pending" || r.status === "awaiting_bank_info" || r.status === "ready_to_refund")
+            && r.refundAmount > 0)}
           onUpdated={handleUpdated}
+          onGroupPaid={() => { setEditRow(null); fetchRows() }}
           onDeleted={() => handleDeleted(editRow.id)}
           onClose={() => setEditRow(null)}
         />
@@ -1021,14 +1028,20 @@ function StepIndicator({ status }: { status: RefundStatus }) {
 function RefundDetailModal({
   row,
   accounts,
+  siblings,
   onUpdated,
+  onGroupPaid,
   onDeleted,
   onClose,
 }: {
   row: RefundRow
   /** OUR bank names (BCA/JAGO/...) for the execute step's Account picker. */
   accounts: string[]
+  /** Her other unpaid refunds on this same trip, offered in the same transfer. */
+  siblings: RefundRow[]
   onUpdated: (updated: RefundRow) => void
+  /** Several rows changed at once, so the list reloads rather than patching. */
+  onGroupPaid: () => void
   onDeleted: () => void
   onClose: () => void
 }) {
@@ -1037,6 +1050,9 @@ function RefundDetailModal({
   const [bankAccountHolder, setBankAccountHolder] = useState(row.bankAccountHolder)
   const [transferRef, setTransferRef] = useState(row.transferReference)
   const [refundAccount, setRefundAccount] = useState("")
+  // Ticked by default: if she is owed three things on one trip, the normal
+  // answer is one transfer for all three. Untick what is not being sent yet.
+  const [payWith, setPayWith] = useState<Set<number>>(() => new Set(siblings.map((s) => s.id)))
   const [note, setNote] = useState(row.note)
   const [refundAmount, setRefundAmount] = useState(String(row.refundAmount))
   const [saving, setSaving] = useState(false)
@@ -1176,6 +1192,17 @@ function RefundDetailModal({
   async function handleExecute() {
     if (!transferRef.trim()) { setError("Transfer reference is required"); return }
     if (!refundAccount.trim()) { setError("Pick the account the refund was sent from"); return }
+    const also = siblings.filter((s) => payWith.has(s.id)).map((s) => s.id)
+    if (also.length > 0) {
+      const ok = await patch({
+        action: "execute_group",
+        transferReference: transferRef.trim(),
+        account: refundAccount.trim(),
+        refundIds: [row.id, ...also],
+      })
+      if (ok) onGroupPaid()
+      return
+    }
     const ok = await patch({ action: "execute", transferReference: transferRef.trim(), account: refundAccount.trim() })
     if (ok) onUpdated({ ...row, status: "refunded", transferReference: transferRef.trim() })
   }
@@ -1335,6 +1362,9 @@ function RefundDetailModal({
     }
   }
 
+  const groupTotal = row.refundAmount
+    + siblings.filter((s) => payWith.has(s.id)).reduce((n, s) => n + s.refundAmount, 0)
+
   // One always-visible primary action per step, pinned in the footer — the old
   // layout buried each step's CTA inside a scroll area with no scroll affordance.
   const primaryAction =
@@ -1360,7 +1390,7 @@ function RefundDetailModal({
         disabled={saving || !transferRef.trim() || !refundAccount.trim()}
         className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
       >
-        {saving ? "Processing…" : "Refund"}
+        {saving ? "Processing…" : groupTotal > row.refundAmount ? `Refund ${formatRp(groupTotal)}` : "Refund"}
       </button>
     ) : null
 
@@ -1597,6 +1627,49 @@ function RefundDetailModal({
                   className={`${INPUT_CLASS} w-full`}
                 />
               </label>
+
+              {/* One trip can owe her three separate things. They stay three
+                  rows, because each is its own explanation — but they need not
+                  be three trips to the banking app. */}
+              {siblings.length > 0 && (
+                <div className="flex flex-col gap-1.5 pt-2 border-t border-cream-border">
+                  <div className="text-xs font-medium text-muted-strong">
+                    Pay together <span className="text-faint font-normal">· same trip, same account</span>
+                  </div>
+                  <label className="flex items-center justify-between gap-2 px-2 py-1 rounded-lg bg-white text-xs">
+                    <span className="flex items-center gap-2 min-w-0">
+                      <input type="checkbox" checked disabled className="accent-brand" />
+                      <span className="truncate text-muted-strong">{reasonLabel(row.reason)}</span>
+                    </span>
+                    <span className="tabular-nums text-foreground shrink-0">{formatRp(row.refundAmount)}</span>
+                  </label>
+                  {siblings.map((s) => (
+                    <label key={s.id} className="flex items-center justify-between gap-2 px-2 py-1 rounded-lg bg-white text-xs cursor-pointer">
+                      <span className="flex items-center gap-2 min-w-0">
+                        <input
+                          type="checkbox"
+                          checked={payWith.has(s.id)}
+                          disabled={saving}
+                          onChange={(e) => setPayWith((prev) => {
+                            const next = new Set(prev)
+                            if (e.target.checked) next.add(s.id)
+                            else next.delete(s.id)
+                            return next
+                          })}
+                          className="accent-brand"
+                        />
+                        <span className="truncate text-muted-strong">{reasonLabel(s.reason)}</span>
+                        <span className="text-faint shrink-0">{STATUS_LABELS[s.status]}</span>
+                      </span>
+                      <span className="tabular-nums text-foreground shrink-0">{formatRp(s.refundAmount)}</span>
+                    </label>
+                  ))}
+                  <div className="flex items-center justify-between text-xs pt-1">
+                    <span className="text-muted">One transfer, one reference</span>
+                    <span className="tabular-nums font-semibold text-foreground">{formatRp(groupTotal)}</span>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
