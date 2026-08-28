@@ -1,3 +1,4 @@
+import sql from "../db-pool"
 import { getPaymentStatus } from "./finance"
 import { withActor } from "./actor"
 import { sendInvoiceNotice } from "./notices"
@@ -5,10 +6,15 @@ import { normalizeId } from "./helpers"
 import { owed } from "./refund-owed"
 import { causeLineFor, fillNotice, NOTICE_TEMPLATES, REFUND_CAUSES } from "../notice-templates"
 
-/** One customer's share of a mark: how many of their units went. */
+/** One customer's share of a mark: how many of their units went, and what
+ *  those units were worth on their own. */
 export type MarkReduction = {
   customer: string
   unitsRemoved: number
+  /** Price per unit on the line these came off. */
+  unitPrice: number
+  /** Grams per unit, for the ongkir those units were carrying. */
+  gramPerUnit: number
 }
 
 /**
@@ -60,6 +66,18 @@ export async function refundForReduction(
   // them normalized. Compare normalized or match nothing.
   const byCustomer = new Map(statuses.map((s) => [normalizeId(s.customer), s]))
 
+  // Her ongkir rate for this trip, so a reduction's own maximum cost can be
+  // worked out without asking the invoice.
+  const [rateRow] = (await sql`
+    SELECT COALESCE(cwo.ongkos_kirim, 0)::int AS rate
+      FROM events e
+      JOIN customer_warehouse_ongkir cwo ON cwo.warehouse_id = e.warehouse_id
+      JOIN customers c ON c.id = cwo.customer_id
+     WHERE e.name = ${event}
+       AND lower(replace(c.instagram_id, '@', '')) = ${normalizeId(reductions[0].customer)}
+  `) as unknown as { rate: number }[]
+  const ongkirRate = rateRow?.rate ?? 0
+
   const cause = REFUND_CAUSES.find((c) => c.key === reason)
   const template = NOTICE_TEMPLATES.find((t) => t.key === "inbox_refund_offered")!
 
@@ -71,7 +89,21 @@ export async function refundForReduction(
     if (!status) continue
     // What the reduction cost her: goods, the ongkir those goods were bearing,
     // and anything the same change moved. Measured, not reconstructed.
-    const cost = (totalsBefore.get(key) ?? status.invoiceTotal) - status.invoiceTotal
+    const measured = (totalsBefore.get(key) ?? status.invoiceTotal) - status.invoiceTotal
+    // ...but never more than this reduction could possibly have cost on its
+    // own. The measurement is a before-and-after on her whole invoice, and
+    // marks do not run one at a time: five products marked in the same instant
+    // each read an invoice the other four had already reduced, and each claimed
+    // the lot. One customer was written five refunds totalling Rp 3.473.000
+    // against a surplus of Rp 795.000.
+    //
+    // The ceiling is this reduction's own goods plus, at most, the ongkir for
+    // its own weight. A single mark stays exactly as it was -- the measurement
+    // is the smaller number, and the ongkir still comes back with the goods --
+    // while concurrent marks can no longer count each other's.
+    const ownGoods = r.unitsRemoved * r.unitPrice
+    const ownOngkir = ongkirRate * Math.ceil((r.unitsRemoved * r.gramPerUnit) / 1000)
+    const cost = Math.min(measured, ownGoods + ownOngkir)
     const amount = owed(cost, status.totalPaid, status.invoiceTotal)
     if (amount <= 0) continue
 

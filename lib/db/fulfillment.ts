@@ -1291,6 +1291,14 @@ export async function recordNotReceived(
   let cancelledUnits = 0
   let inHandUnits = 0
   const reductions: MarkReduction[] = []
+  // What one of these units is worth, and weighs. The refund is measured from
+  // her invoice, but bounded by this reduction's own cost -- marks do not run
+  // one at a time, and a measurement taken across a shared invoice will happily
+  // count a neighbouring mark's goods as its own.
+  const [prod] = (await sql`
+    SELECT COALESCE(gram, 0)::int AS gram FROM products WHERE id = ${data.productId}
+  `) as unknown as { gram: number }[]
+  const gramPerUnit = prod?.gram ?? 0
   // Before anything moves: what each of them is billed today. The refund is
   // capped by the difference this mark makes to that, which is how the ongkir
   // riding on the removed goods comes back with them.
@@ -1300,7 +1308,7 @@ export async function recordNotReceived(
     for (const { item: o, allocated } of allocations) {
       cancelledUnits += allocated
       inHandUnits += Math.min(allocated, Math.max(0, o.unitBuy - o.unitShip))
-      reductions.push({ customer: o.customer, unitsRemoved: allocated })
+      reductions.push({ customer: o.customer, unitsRemoved: allocated, unitPrice: o.unitPrice, gramPerUnit })
       await reduceOrderRefundOnly({ orderId: o.id, qty: allocated }, tx)
     }
     if (data.mode === "broken" || data.mode === "missing") {
