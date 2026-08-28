@@ -1026,6 +1026,11 @@ function ApplyCreditModal({
   onApplied: (updated: RefundRow) => void
   onClose: () => void
 }) {
+  // Two answers to one question. Onto an order now, or onto her account for
+  // later -- and the second is the only answer available when she has no order
+  // that owes anything, which is exactly when this window looks like a dead
+  // end.
+  const alreadyKept = isCreditPromised(row)
   const [events, setEvents] = useState<InvoiceEvent[] | null>(null)
   const [target, setTarget] = useState("")
   const [amount, setAmount] = useState("")
@@ -1049,6 +1054,36 @@ function ApplyCreditModal({
   const amt = Math.round(Number(amount)) || 0
   const owed = chosen ? Math.max(0, chosen.invoice.sisaPelunasan) : 0
   const excess = chosen && amt > owed ? amt - owed : 0
+
+  /**
+   * She said keep it: park it on her account with no target order named.
+   *
+   * Reachable from here because this window is where the money's destination
+   * is decided, and "not an order yet" is one of the destinations. It was a
+   * button in the panel this window replaced, and cutting the panel took it
+   * with it -- for two commits it existed and could not be pressed.
+   */
+  async function keepOnAccount() {
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/sheets/refunds/${row.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "keep_on_account" }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? "Failed to keep it on her account")
+      onApplied({
+        ...row,
+        status: "applied_to_next_order",
+        bankName: "", bankAccountNumber: "", bankAccountHolder: "",
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to keep it on her account")
+      setSaving(false)
+    }
+  }
 
   async function apply() {
     if (!target) { setError("Pick an order"); return }
@@ -1161,15 +1196,24 @@ function ApplyCreditModal({
 
         {error && <p className="text-xs text-red-600">{error}</p>}
 
-        <div className="flex justify-end gap-2">
-          <button type="button" onClick={onClose} disabled={saving}
-            className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-muted-strong hover:bg-cream">
-            Cancel
-          </button>
-          <button type="button" onClick={apply} disabled={saving || !target || !(amt > 0)}
-            className="px-4 py-1.5 rounded-lg bg-purple-600 text-white text-sm font-medium hover:bg-purple-700 disabled:opacity-50">
-            {saving ? "Applying…" : "Apply credit"}
-          </button>
+        <div className="flex items-center justify-between gap-2 pt-1 border-t border-cream-border">
+          {!alreadyKept ? (
+            <button type="button" onClick={keepOnAccount} disabled={saving}
+              title="No order needs to exist yet"
+              className="px-2.5 py-1.5 rounded-lg border border-purple-300 text-purple-700 text-xs font-semibold hover:bg-purple-50 disabled:opacity-50 transition-colors">
+              Keep on her account
+            </button>
+          ) : <span className="text-[11px] text-faint">Already on her account.</span>}
+          <div className="flex gap-2">
+            <button type="button" onClick={onClose} disabled={saving}
+              className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-muted-strong hover:bg-cream">
+              Cancel
+            </button>
+            <button type="button" onClick={apply} disabled={saving || !target || !(amt > 0)}
+              className="px-4 py-1.5 rounded-lg bg-purple-600 text-white text-sm font-medium hover:bg-purple-700 disabled:opacity-50">
+              {saving ? "Applying…" : "Apply credit"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -1899,7 +1943,6 @@ function RefundDetailModal({
   // Collapsed-by-default sections keep the modal short enough to never scroll
   // in the common case — the old layout hid half the workflow below the fold.
   const [showMessage, setShowMessage] = useState(false)
-  const [showEdit, setShowEdit] = useState(false)
   // Opens the full invoice as a drawer over this modal instead of navigating
   // away to /dashboard/invoice, so the refund list keeps its place.
   const [showFullInvoice, setShowFullInvoice] = useState(false)
@@ -1986,24 +2029,6 @@ function RefundDetailModal({
 
   // Reverses the credit payments and reopens — for when it was applied to the
   // wrong order (or by mistake). Restores the full overpayment.
-  /**
-   * She said keep it, in a DM rather than by pressing it herself.
-   *
-   * Parks the money on her account with no target order named: the same state
-   * her own choice on the catalogue produces, and the one the deposit banner
-   * on her next invoice looks for. Until this existed the only honest thing to
-   * do was leave the refund Pending, which reads as "we owe her and have not
-   * paid yet" and sits on the Pending tab as work nobody means to do.
-   */
-  async function handleKeepOnAccount() {
-    const ok = await patch({ action: "keep_on_account" })
-    if (ok) onUpdated({
-      ...row,
-      status: "applied_to_next_order",
-      bankName: "", bankAccountNumber: "", bankAccountHolder: "",
-    })
-  }
-
   async function handleUndoCredit() {
     const ok = await patch({ action: "undo_credit" })
     if (ok) onUpdated({
@@ -2042,10 +2067,7 @@ function RefundDetailModal({
 
   async function handleSaveEdit() {
     const ok = await patch({ note })
-    if (ok) {
-      onUpdated({ ...row, note })
-      setShowEdit(false)
-    }
+    if (ok) onUpdated({ ...row, note })
   }
 
   async function handleDelete() {
