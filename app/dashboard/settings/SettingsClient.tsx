@@ -338,7 +338,12 @@ function BusinessProfileSection() {
             <h3 className="text-xs font-semibold text-foreground">Communication</h3>
             <p className="text-[10px] text-faint">
               Each message screen shows one button, and this is what it does. Copy puts the text on
-              the clipboard for a DM; WhatsApp opens her chat with it already written.
+              the clipboard for a DM; WhatsApp opens her chat with it already written.{" "}
+              {/* The Save is at the top of this card, far enough up to be missed
+                  from down here -- and a dropdown that looks committed the
+                  moment it is changed is the kind of setting that quietly does
+                  not apply. */}
+              <span className="text-muted">Press Save at the top of this card to keep the change.</span>
             </p>
           </div>
           <div className="grid md:grid-cols-3 gap-3">
