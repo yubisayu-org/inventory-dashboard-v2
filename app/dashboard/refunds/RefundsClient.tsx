@@ -2349,6 +2349,18 @@ function RefundDetailModal({
             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${statusColor(row)}`}>
               {statusLabel(row)}
             </span>
+            {/* Leaving is not one of the things you can DO to a refund, and it
+                was taking a quarter of a footer that had four controls in it.
+                Top right, where every other sheet in this app puts it. */}
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              title="Close"
+              className="text-faint hover:text-brand transition-colors shrink-0"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+            </button>
           </div>
         </div>
 
@@ -2574,14 +2586,6 @@ function RefundDetailModal({
                 step is asking you to do.
                 The word follows the setting rather than being written here, so
                 it cannot say Copy while Settings says WhatsApp. */}
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={saving}
-              className="px-3 py-2 rounded-lg border border-cream-border text-muted-strong text-sm whitespace-nowrap hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
-            >
-              Cancel
-            </button>
             {/* The other thing you can do with this money.
                 It was a button inside a warning band -- a notice carrying a
                 control, which is neither. Here it is what it actually is: the
@@ -2593,7 +2597,10 @@ function RefundDetailModal({
                 type="button"
                 onClick={() => setShowCredit(true)}
                 disabled={saving}
-                className="px-3 py-2 rounded-lg border border-purple-200 text-purple-700 text-sm font-semibold whitespace-nowrap hover:bg-purple-50 disabled:opacity-50 transition-colors"
+                // The message button's own style. Both are things you can do
+                // here that are not the step's primary act; dressing one of
+                // them differently made it look like a second primary.
+                className="px-3 py-2 rounded-lg border border-cream-border text-muted-strong text-sm whitespace-nowrap hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
               >
                 Apply as credit
               </button>
