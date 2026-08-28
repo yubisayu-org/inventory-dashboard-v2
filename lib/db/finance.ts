@@ -3,6 +3,7 @@ import { normalizeId, tsToString, normalizeCustomer } from "./helpers"
 import { getInvoiceForCustomer } from "./invoice"
 import type { DBExecutor } from "./actor"
 import type { PaymentRow, AdjustmentRow, RefundRow, RefundReason, RefundStatus } from "./types"
+import { isLiveAmount } from "./live-refund"
 
 // ─── Payments ──────────────────────────────────────────────────────────────
 
@@ -499,13 +500,31 @@ export async function deleteAdjustment(rowNumber: number, db: DBExecutor = sql):
 
 // ─── Refunds ─────────────────────────────────────────────────────────────────
 
+/**
+ * What the row is worth right now.
+ *
+ * A refund still being decided reads her balance: the stored number was true
+ * when it was written and stops being true the moment anything on the trip
+ * moves. Floored at zero — a customer who now owes money is not owed a
+ * negative refund, she is owed nothing.
+ *
+ * Everything else keeps what is stored. See lib/db/live-refund.ts for which is
+ * which, and why.
+ */
+function liveAmount(r: Record<string, unknown>): number {
+  const stored = (r.refund_amount as number) ?? 0
+  if (!isLiveAmount({ reason: r.reason as string, status: r.status as string })) return stored
+  const balance = r.live_balance as number | null | undefined
+  return balance == null ? stored : Math.max(0, balance)
+}
+
 function mapRefundRow(r: Record<string, unknown>): RefundRow {
   return {
     id: r.id as number,
     event: r.event as string,
     customer: r.customer as string,
     reason: r.reason as RefundReason,
-    refundAmount: r.refund_amount as number,
+    refundAmount: liveAmount(r),
     status: r.status as RefundStatus,
     bankName: (r.bank_name as string) ?? "",
     bankAccountNumber: (r.bank_account_number as string) ?? "",
@@ -575,11 +594,16 @@ export async function getRefunds(filters?: { event?: string; status?: string; cu
     `SELECT r.*,
             EXISTS (SELECT 1 FROM payments p WHERE p.refund_id = r.id AND p.kind = 'credit') AS has_applied_credit,
             (SELECT COALESCE(SUM(p.amount), 0)::int FROM payments p
-             WHERE p.refund_id = r.id AND p.kind = 'credit' AND p.amount > 0) AS applied_credit_amount
-     FROM refunds r ${where} ORDER BY r.created_at DESC`,
+             WHERE p.refund_id = r.id AND p.kind = 'credit' AND p.amount > 0) AS applied_credit_amount,
+            lb.balance AS live_balance
+     FROM refunds r
+     LEFT JOIN live_balances lb
+            ON lb.event = r.event
+           AND lb.customer = lower(replace(r.customer, '@', ''))
+     ${where} ORDER BY r.created_at DESC`,
     params,
   )
-  return attachStaleReview(rows.map(mapRefundRow))
+  return rows.map(mapRefundRow)
 }
 
 /** Every reason value ever used, so the reason picker's autocomplete keeps
