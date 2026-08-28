@@ -1087,37 +1087,24 @@ function ArriveModal({
 }) {
   const [qty, setQty] = useState(String(item.totalPending))
   // "arrive" = normal receipt; "wrong" = different SKU sent; "broken" = arrived
-  // damaged/unsellable; "cancelled" = customer backed out after we already
-  // bought it (correct item, no delivery problem). Wrong, broken & cancelled
-  // all cancel + refund the picked orders; wrong and cancelled additionally
-  // log ready stock (the received SKU, or the already-bought units).
-  const [mode, setMode] = useState<"arrive" | "wrong" | "broken" | "missing" | "cancelled">("arrive")
+  // damaged/unsellable; "missing" = never turned up. All three are delivery
+  // problems: they cancel + refund the picked orders, and wrong additionally
+  // logs the received SKU as ready stock.
+  //
+  // A customer changing her mind is not a delivery problem and no longer lives
+  // here -- the invoice line's own Cancel does that, where the shipped guard,
+  // the quantity, the notice and the returned stock all sit together.
+  const [mode, setMode] = useState<"arrive" | "wrong" | "broken" | "missing">("arrive")
   const [receivedItem, setReceivedItem] = useState("")
   // Which waiting customer orders to cancel on a wrong/broken delivery —
   // default all of them (the expected item won't be fulfilled).
   const [cancelIds, setCancelIds] = useState<Set<number>>(() => new Set(item.orders.map((o) => o.id)))
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  // Receipt tagging the returned-to-inventory stock on a customer cancellation.
-  // Defaults to the checked orders' customer usernames (tracks the checkboxes
-  // until the operator edits it).
-  const [receipt, setReceipt] = useState("")
-  const [receiptTouched, setReceiptTouched] = useState(false)
 
   const quantityArrived = Math.max(0, Number(qty) || 0)
   const preview = computeFill(item.orders, quantityArrived)
 
-  // Distinct usernames of the currently-checked orders, joined — the default
-  // receipt for the customer-cancelled path.
-  const cancelledCustomers = useMemo(() => {
-    const seen = new Set<string>()
-    const names: string[] = []
-    for (const o of item.orders) {
-      if (cancelIds.has(o.id) && !seen.has(o.customer)) { seen.add(o.customer); names.push(o.customer) }
-    }
-    return names.join(", ")
-  }, [item.orders, cancelIds])
-  const receiptValue = receiptTouched ? receipt : cancelledCustomers
   // Wrong-product needs a received SKU that differs from the expected one.
   const wrongValid = receivedItem.trim() !== "" && receivedItem !== item.productName
 
@@ -1194,26 +1181,6 @@ function ArriveModal({
         })
         const data = await res.json()
         if (!res.ok) throw new Error(data.error ?? "Failed to record missing units")
-      } else if (mode === "cancelled") {
-        if (cancelIds.size === 0) { setSaveError("Pick at least one order to cancel."); return }
-        // Customer backed out after we already bought their item — it's
-        // correct, sellable stock, not broken or missing. Log the
-        // already-bought units to Inventory as ready stock and cancel the
-        // chosen orders. No refund is raised here: a cancellation is the
-        // customer's own doing and has its own flow.
-        const res = await fetch("/api/sheets/arrival-list", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "customer_cancelled",
-            event: item.event,
-            productName: item.productName,
-            receipt: receiptValue,
-            cancelOrderIds: [...cancelIds],
-          }),
-        })
-        const data = await res.json()
-        if (!res.ok) throw new Error(data.error ?? "Failed to record cancellation")
       } else {
         if (quantityArrived < 1) { setSaveError("Enter how many units arrived."); return }
         const res = await fetch("/api/sheets/arrival-list", {
@@ -1271,7 +1238,6 @@ function ArriveModal({
               ["wrong", "Wrong"],
               ["broken", "Broken"],
               ["missing", "Missing"],
-              ["cancelled", "Cancelled"],
             ] as const).map(([m, label]) => {
               const active = mode === m
               const activeCls = m === "arrive" ? "bg-blue-600 text-white" : "bg-yellow-500 text-white"
@@ -1282,10 +1248,7 @@ function ArriveModal({
                   onClick={() => {
                     setMode(m)
                     setSaveError(null)
-                    // "Cancelled" is almost always a single customer, not the
-                    // whole waiting list — start empty instead of defaulting
-                    // to the all-selected behavior the delivery-problem modes use.
-                    setCancelIds(m === "cancelled" ? new Set() : new Set(item.orders.map((o) => o.id)))
+                    setCancelIds(new Set(item.orders.map((o) => o.id)))
                   }}
                   className={`flex-1 px-2 py-1.5 whitespace-nowrap transition-colors ${active ? `${activeCls} font-medium` : "bg-white text-muted-strong hover:bg-cream"}`}
                 >
@@ -1296,19 +1259,17 @@ function ArriveModal({
           </div>
         </div>
 
-        {/* Missing and Cancelled derive their qty from the checked orders below
-            (pending / unit_buy) instead of a typed count — shown here read-only
+        {/* Missing derives its qty from the checked orders below (pending)
+            instead of a typed count — shown here read-only
             so the row layout matches Wrong/Broken/Arrived OK. */}
         <div className="flex flex-col gap-1.5">
           <label className="text-xs font-medium text-muted">
-            {mode === "wrong" ? "Units received (wrong product)" : mode === "broken" ? "Units broken" : mode === "missing" ? "Units missing" : mode === "cancelled" ? "Units cancelled" : "Units arrived"}{" "}
+            {mode === "wrong" ? "Units received (wrong product)" : mode === "broken" ? "Units broken" : mode === "missing" ? "Units missing" : "Units arrived"}{" "}
             <span className="text-faint">(pending: {item.totalPending})</span>
           </label>
-          {mode === "missing" || mode === "cancelled" ? (
+          {mode === "missing" ? (
             <div className="border border-cream-border rounded-lg px-3 py-2 text-sm bg-cream/50 text-muted tabular-nums">
-              {mode === "missing"
-                ? item.orders.filter((o) => cancelIds.has(o.id)).reduce((s, o) => s + o.pending, 0)
-                : item.orders.filter((o) => cancelIds.has(o.id)).reduce((s, o) => s + o.unitBuy, 0)}{" "}
+              {item.orders.filter((o) => cancelIds.has(o.id)).reduce((s, o) => s + o.pending, 0)}{" "}
               <span className="text-faint">(from checked orders below)</span>
             </div>
           ) : (
@@ -1359,7 +1320,7 @@ function ArriveModal({
                       <span className="truncate text-muted-strong">{displayIg(o.customer)}</span>
                     </span>
                     <span className="text-faint tabular-nums shrink-0">
-                      {mode === "cancelled" ? o.unitBuy : o.pending}×
+                      {o.pending}×
                     </span>
                   </label>
                 ))}
@@ -1369,26 +1330,9 @@ function ArriveModal({
                   ? "Broken units are logged to Inventory (flagged “broken”, not sellable). "
                   : mode === "missing"
                   ? "Missing units are logged to Inventory (flagged “missing”, not sellable) so the loss is on the record. "
-                  : mode === "cancelled"
-                  ? `The units already bought for checked orders (${item.orders.filter((o) => cancelIds.has(o.id)).reduce((s, o) => s + o.unitBuy, 0)} total) are logged to Inventory as ready stock, assignable to the next customer who wants this item. `
                   : ""}
                 Only the quantity above comes off, taken from the checked orders — unpaid ones first, so paid customers keep theirs. Whoever loses units is refunded if they had paid. Unchecked orders stay pending.
               </p>
-              {mode === "cancelled" && (
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-medium text-yellow-700">
-                    Inventory receipt <span className="text-faint font-normal">(tags the returned stock)</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={receiptValue}
-                    onChange={(e) => { setReceipt(e.target.value); setReceiptTouched(true) }}
-                    disabled={saving}
-                    placeholder="e.g. customer username"
-                    className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
-                  />
-                </div>
-              )}
             </div>
           </>
         )}
@@ -1455,9 +1399,9 @@ function ArriveModal({
             onClick={handleSubmit}
             disabled={
               saving ||
-              (mode !== "missing" && mode !== "cancelled" && quantityArrived < 1) ||
+              (mode !== "missing" && quantityArrived < 1) ||
               (mode === "wrong" && !wrongValid) ||
-              ((mode === "missing" || mode === "cancelled") && cancelIds.size === 0)
+              (mode === "missing" && cancelIds.size === 0)
             }
             className={`px-4 py-1.5 rounded-lg text-white text-sm font-medium disabled:opacity-50 transition-colors ${mode === "arrive" ? "bg-blue-600 hover:bg-blue-700" : "bg-yellow-600 hover:bg-yellow-700"}`}
           >
@@ -1469,9 +1413,7 @@ function ArriveModal({
                   ? "Log broken & cancel"
                   : mode === "missing"
                     ? "Mark missing & cancel"
-                    : mode === "cancelled"
-                      ? "Log to inventory & cancel"
-                      : "Mark arrived"}
+                    : "Mark arrived"}
           </button>
         </div>
       </div>
@@ -1481,7 +1423,7 @@ function ArriveModal({
 
 // ─── Not Received panel (bulk delivery problems) ─────────────────────────────
 
-type NotReceivedMode = "wrong" | "broken" | "missing" | "cancelled"
+type NotReceivedMode = "wrong" | "broken" | "missing"
 
 function NotReceivedPanel({
   items,
@@ -1587,7 +1529,6 @@ function NotReceivedPanel({
     ["wrong", "Wrong"],
     ["broken", "Broken"],
     ["missing", "Missing"],
-    ["cancelled", "Cancelled"],
   ]
 
   return (

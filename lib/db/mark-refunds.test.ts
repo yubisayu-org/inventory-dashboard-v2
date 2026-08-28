@@ -118,27 +118,6 @@ test("a missing parcel refunds the customer who paid, as shipping_loss", async (
   assert.equal(rows[0].reason, "shipping_loss")
 })
 
-test("a customer cancellation creates no refund here", async () => {
-  // Their own doing, and the cancellation flow already handles it.
-  const EV = `${TAG}_CANC`
-  const who = `${TAG}_canc_paid`
-  await sql`INSERT INTO events (name, warehouse_id) SELECT ${EV}, id FROM warehouses ORDER BY id LIMIT 1`
-  await sql`INSERT INTO customers (instagram_id) VALUES (${who})`
-  await sql`
-    INSERT INTO orders (event, customer, product_id, unit_price, unit, unit_buy, unit_dispatch)
-    VALUES (${EV}, ${who}, ${productId}, 100000, 2, 2, 2)`
-  await sql`
-    INSERT INTO payments (event, customer, amount, is_checked, kind)
-    VALUES (${EV}, ${who}, 200000, true, 'deposit')`
-
-  const [prod] = await sql<{ name: string }[]>`SELECT name FROM products WHERE id = ${productId}`
-  const result = await recordNotReceived(
-    { event: EV, productId, productName: prod.name, qty: 1, mode: "cancelled" }, "tester")
-
-  assert.equal(result.refunds.length, 0)
-  assert.equal((await getRefunds({ event: EV })).length, 0)
-})
-
 test("picking whose order it comes off still removes only the marked quantity", async () => {
   // The Arrival List has two ways to mark the same thing: name a quantity, or
   // pick whose orders it comes off. The picking one used to cancel each chosen

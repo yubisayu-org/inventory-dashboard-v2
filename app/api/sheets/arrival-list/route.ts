@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireOwner } from "@/lib/api"
-import { getArrivalList, getExcessArrivalPending, markProductArrived, recordCustomerCancellation, recordNotReceived, renameDispatchReceipt, withActor } from "@/lib/db"
+import { getArrivalList, getExcessArrivalPending, markProductArrived, recordNotReceived, renameDispatchReceipt, withActor } from "@/lib/db"
 import { withServerTiming } from "@/lib/server-timing"
 
 async function handleGET(req: NextRequest) {
@@ -133,34 +133,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, ...result })
     }
 
-    // Customer-cancelled path: the item is correct and already bought, but the
-    // customer backed out (misunderstanding, changed their mind). Log the
-    // already-bought units to inventory as ready stock (reason=customer_cancelled,
-    // assignable to the next order) and cancel the chosen orders (refunds
-    // auto-materialize if paid).
-    if (body.action === "customer_cancelled") {
-      const { event, productName, receipt } = body
-      const cancelOrderIds = Array.isArray(body.cancelOrderIds)
-        ? body.cancelOrderIds.filter((n: unknown) => Number.isInteger(n)) as number[]
-        : []
-      if (!event || !productName || cancelOrderIds.length === 0) {
-        return NextResponse.json(
-          { error: "event, productName and at least one order to cancel are required" },
-          { status: 400 },
-        )
-      }
-      const result = await withActor(session.user.email, (tx) =>
-        recordCustomerCancellation({ event, productName, cancelOrderIds, receipt: typeof receipt === "string" ? receipt : undefined }, tx),
-      )
-      return NextResponse.json({ success: true, ...result })
-    }
-
     // Bulk "Not Received": record a delivery problem against `qty` units of one
     // product, allocated across its waiting orders by priority (recordNotReceived
     // runs its own transaction + actor).
     if (body.action === "not_received") {
       const { event, productId, productName, qty, mode, receivedItem } = body
-      const validModes = ["wrong", "broken", "missing", "cancelled"]
+      const validModes = ["wrong", "broken", "missing"]
       if (!event || !productId || !productName || typeof qty !== "number" || qty < 1 || !validModes.includes(mode)) {
         return NextResponse.json(
           { error: "event, productId, productName, qty (>=1) and a valid mode are required" },

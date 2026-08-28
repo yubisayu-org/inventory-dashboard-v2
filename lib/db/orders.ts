@@ -1,6 +1,8 @@
 import sql from "../db-pool"
 import { tsToString, normalizeCustomer } from "./helpers"
 import { fetchPaidStatusMap, compareOrderPriority } from "./shopping-list"
+import { notifyCustomer } from "./announcements"
+import { NOTICE_TEMPLATES, fillNotice } from "../notice-templates"
 import type { DBExecutor } from "./actor"
 import type { SheetOptions, ItemOption, OrderRow, FormRow, ExcessRow, ExcessReason, PurchaseUpdate, ArriveUpdate, DispatchUpdate, ExcessDispatchUpdate, ExcessArriveUpdate } from "./types"
 
@@ -943,9 +945,8 @@ export async function getExcessPurchasePaginated(opts: {
  * include what they had received.
  *
  * Everything nearby already knew this. cancelOrderUnits floors unit_buy at
- * unit_ship, reduceOrderRefundOnly does the same, and recordCustomerCancellation
- * computes the stock it reclaims as unit_buy - unit_ship -- then called this
- * and undid its own care.
+ * unit_ship and reduceOrderRefundOnly does the same -- then this one undid
+ * their care.
  *
  * A line with nothing shipped still goes to zero, exactly as before. A line
  * with a shipped unit keeps that unit, because she has it and owes for it.
@@ -1073,49 +1074,6 @@ export async function recordMissingArrival(
 }
 
 /**
- * Customer cancelled an order we'd already bought (misunderstanding, changed
- * their mind, etc.) — unlike wrong/broken/missing, the item itself is correct:
- * it's real, sellable stock that just lost its buyer. Log the still-in-hand
- * bought units for the chosen order lines to Inventory as ready stock
- * (reason=customer_cancelled, assignable to the next customer who wants it) and
- * cancel those orders (refunds auto-materialize if paid).
- *
- * The returned quantity is `unit_buy - unit_ship` (already-shipped units are
- * gone, so they aren't re-added to stock), read from the orders themselves
- * rather than trusted from the client. For the arrival-list callers nothing is
- * shipped yet, so this is simply their unit_buy.
- */
-export async function recordCustomerCancellation(
-  data: { event: string; productName: string; cancelOrderIds: number[]; receipt?: string },
-  db: DBExecutor = sql,
-): Promise<{ cancelledOrders: number; excessUnits: number }> {
-  if (data.cancelOrderIds.length === 0) return { cancelledOrders: 0, excessUnits: 0 }
-
-  const [{ total }] = await db`
-    SELECT COALESCE(SUM(GREATEST(0, unit_buy - COALESCE(unit_ship, 0))), 0)::int AS total
-    FROM orders
-    WHERE id = ANY(${data.cancelOrderIds})
-  `
-  const excessUnits = total as number
-
-  if (excessUnits > 0) {
-    await appendExcessPurchase(
-      [{
-        event: data.event,
-        items: data.productName,
-        unitBuy: excessUnits,
-        receipt: data.receipt ?? "",
-        reason: "customer_cancelled",
-      }],
-      db,
-    )
-  }
-
-  const cancelledOrders = await cancelOrderLines(data.cancelOrderIds, db)
-  return { cancelledOrders, excessUnits }
-}
-
-/**
  * Cancel `qty` units of a single order line rather than the whole line —
  * the invoice's per-line "Cancel Order" action, for when only part of what a
  * customer ordered falls through. Reduces `unit` by qty; `unit_buy` drops by
@@ -1137,7 +1095,8 @@ export async function cancelOrderUnits(
   db: DBExecutor = sql,
 ): Promise<{ excessUnits: number; remainingUnit: number }> {
   const [order] = await db`
-    SELECT unit, unit_buy, unit_ship FROM orders WHERE id = ${data.orderId} FOR UPDATE
+    SELECT unit, unit_buy, unit_ship, unit_price, customer
+      FROM orders WHERE id = ${data.orderId} FOR UPDATE
   `
   if (!order) throw new Error("Order not found")
 
@@ -1197,6 +1156,27 @@ export async function cancelOrderUnits(
       WHERE id = ${data.orderId} AND position(${stamp} in note) = 0
     `
   }
+
+  // She asked for this, so she hears it from the shop rather than noticing a
+  // smaller invoice later. In the same transaction as the cancellation: a line
+  // that vanished with nobody told, or a customer told about a line that did
+  // not vanish, are both worse than the whole thing failing.
+  //
+  // Sent whether or not money moves. An unpaid order simply costs less, and
+  // that is still news.
+  const unitPrice = (order.unit_price as number) ?? 0
+  const template = NOTICE_TEMPLATES.find((t) => t.key === "inbox_order_cancelled")!
+  const tokens = {
+    "{customer}": order.customer as string,
+    "{event}": data.event,
+    "{itemsList}": `- ${data.productName} × ${data.qty}`
+      + (unitPrice > 0 ? ` — Rp ${new Intl.NumberFormat("id-ID").format(unitPrice * data.qty)}` : ""),
+    "{amount}": `Rp ${new Intl.NumberFormat("id-ID").format(unitPrice * data.qty)}`,
+  }
+  await notifyCustomer(order.customer as string, {
+    title: fillNotice(template.title, tokens),
+    body: fillNotice(template.body, tokens),
+  }, db)
 
   return { excessUnits, remainingUnit }
 }
