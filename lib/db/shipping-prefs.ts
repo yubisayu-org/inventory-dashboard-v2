@@ -231,25 +231,45 @@ export async function setShippingMode(
 }
 
 /**
- * Forget a stored hold, leaving everything else in the row alone.
+ * Let a held order go: free the units and forget the wish, together.
  *
- * Releasing used to free the units and stop there. The wish stayed on file, and
- * reapplyHoldsForArrival reads the wish on every arrival -- so the next box to
- * land re-parked an order somebody had deliberately released, hours later,
- * through an action that looked unrelated.
+ * Coming out of hold is two facts, not one. `unit_hold` parks the units off the
+ * packing list, and `mode = 'hold'` is a standing instruction that outlives the
+ * moment it was given -- reapplyHoldsForArrival reads it on every arrival, so
+ * anything that lands afterwards is parked again.
  *
- * Only the mode is touched. A merge_key sits in the same row and parks the
- * parcel for a different reason; clearing that would un-pair the trips and take
- * the merge discount off her invoice with it.
+ * These used to be two calls, and the caller had to remember both. Releasing
+ * once did only the first: the units came free, the order came back on the
+ * packing list, and it looked finished -- then the next box to land re-parked
+ * the lot, hours later, through an action nobody would connect to the release.
+ * The second half was added to fix exactly that, which left a pair that must
+ * always be called together and a half that still works on its own.
+ *
+ * One call now. Her own "wait" goes through setShippingMode and always did
+ * both; this is the same thing for the shop, which additionally skips the
+ * eligibility check -- the shop must be able to let a parcel go whatever the
+ * queue thinks of it.
+ *
+ * The row's mode is only touched where it says `hold`. A merge_key lives in the
+ * same row and parks the parcel for a different reason; clearing that would
+ * un-pair the trips and take the merge discount off her invoice with it.
+ *
+ * The packing list is freed unconditionally, even where there is no prefs row
+ * to clear: a hold set before any of this existed still has units to release.
  */
-export async function clearHoldMode(
-  customerId: number,
+export async function releaseHold(
+  customerId: number | null,
+  customer: string,
   event: string,
   db: DBExecutor = sql,
+  /** Who let it go. The shop releasing is not the customer changing her mind. */
+  setBy: SetBy = "shop",
 ): Promise<void> {
+  await releasePackingList({ customer, event }, db)
+  if (customerId == null) return
   await db`
     UPDATE customer_shipping_prefs
-       SET mode = 'wait', updated_at = NOW()
+       SET mode = 'wait', set_by = ${setBy}, updated_at = NOW()
      WHERE customer_id = ${customerId} AND event = ${event} AND mode = 'hold'
   `
 }

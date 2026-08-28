@@ -1,7 +1,7 @@
 import { test, before, after } from "node:test"
 import assert from "node:assert/strict"
 import sql from "../db-pool"
-import { setShippingMode, clearHoldMode } from "./shipping-prefs"
+import { setShippingMode, releaseHold } from "./shipping-prefs"
 import { reapplyHoldsForArrival, releasePackingList } from "./fulfillment"
 
 // Her story, end to end: she is overseas, five items on one order, boxes land
@@ -72,9 +72,8 @@ test("a hold survives every box that lands after it", async () => {
 })
 
 test("she comes home, it is released, and the four are shippable", async () => {
-  // The staff door, which is two halves: free the units, then forget the wish.
-  await releasePackingList({ customer: WHO, event: EVENT })
-  await clearHoldMode(customerId, EVENT)
+  // The staff door: one call that frees the units and forgets the wish.
+  await releaseHold(customerId, WHO, EVENT)
   assert.deepEqual(await state(), { arrive: 4, hold: 0, mode: "wait" })
 })
 
@@ -86,8 +85,9 @@ test("the fifth box does not put it back on hold", async () => {
     "released stays released")
 })
 
-test("releasing without forgetting the wish is the bug", async () => {
-  // The same release with only the first half done. It looks finished -- the
+test("freeing the units alone is what releaseHold exists to prevent", async () => {
+  // What a release used to be, and what it would silently become again if
+  // anyone reached for releasePackingList on its own. It looks finished -- the
   // units are free and the order is back on the packing list -- and then the
   // next box to land re-parks everything, hours later, through an action
   // nobody would connect to the release.
