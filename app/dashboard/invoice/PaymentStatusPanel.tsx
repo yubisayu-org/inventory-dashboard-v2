@@ -11,6 +11,7 @@ import { AddAdjustmentFromInvoiceModal } from "./AddAdjustmentFromInvoiceModal"
 import { InvoiceMessageActions } from "./InvoiceMessageActions"
 import { CancelOrderFromInvoiceModal } from "./CancelOrderFromInvoiceModal"
 import { CancelWholeOrderModal } from "./CancelWholeOrderModal"
+import { DepositBanner } from "./DepositBanner"
 import { HitAndRunFlag } from "@/components/HitAndRunFlag"
 import { useHitAndRun, handleKey } from "@/hooks/useHitAndRun"
 
@@ -506,6 +507,13 @@ function ExpandedInvoice({
           ))}
         </tbody>
       </table>
+
+      <DepositBanner
+        customer={customer}
+        event={ev.eventId}
+        outstanding={ev.invoice.sisaPelunasan}
+        onApplied={reload}
+      />
 
       {/* Summary + message actions */}
       <InvoiceSummary
