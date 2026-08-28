@@ -108,15 +108,36 @@ export async function refundForReduction(
     if (amount <= 0) continue
 
     const items = `${itemsLabel} × ${r.unitsRemoved}`
+
+    // What she is owed for this trip and this cause once this mark lands, not
+    // what this mark alone came to. She is told a running total because a
+    // running total is what she will be paid: one refund, grown by each mark,
+    // rather than one per product.
+    const [openRow] = (await sql`
+      SELECT refund_amount::int AS amount, note FROM refunds
+       WHERE event = ${event}
+         AND lower(replace(customer, '@', '')) = ${key}
+         AND reason = ${reason}
+         AND status = 'pending'
+       ORDER BY id LIMIT 1
+    `) as unknown as { amount: number; note: string }[]
+
+    const runningTotal = (openRow?.amount ?? 0) + amount
+    const soFar = String(openRow?.note ?? "").split("\n").map((l) => l.trim()).filter(Boolean)
+    if (!soFar.includes(items)) soFar.push(items)
+    const itemsList = soFar.join("\n")
+
     const tokens = {
       "{customer}": r.customer,
       "{event}": event,
-      "{refundAmount}": `Rp ${new Intl.NumberFormat("id-ID").format(amount)}`,
-      "{itemsList}": items,
+      "{refundAmount}": `Rp ${new Intl.NumberFormat("id-ID").format(runningTotal)}`,
+      "{itemsList}": itemsList,
       "{receivedItem}": receivedItem ?? "",
       "{cause}": "",
     }
-    const causeLine = cause ? fillNotice(causeLineFor(cause, { items, receivedItem }), tokens) : ""
+    const causeLine = cause
+      ? fillNotice(causeLineFor(cause, { items: itemsList, receivedItem }), tokens)
+      : ""
 
     // withActor opens the transaction and stamps app.actor; sendInvoiceNotice
     // writes the refund and the notice inside it. Same shape the invoice
@@ -126,7 +147,7 @@ export async function refundForReduction(
       customer: r.customer,
       title: fillNotice(template.title, tokens),
       body: fillNotice(template.body, { ...tokens, "{cause}": causeLine }),
-      refund: { cause: reason, amount, affectedUnits: r.unitsRemoved, items },
+      refund: { cause: reason, amount, affectedUnits: r.unitsRemoved, items, mergePending: true },
     }, tx))
     if (refundId) made.push({ customer: r.customer, amount, refundId })
   }
