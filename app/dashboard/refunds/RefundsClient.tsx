@@ -29,6 +29,8 @@ const REASON_LABELS: Record<string, string> = {
   unavailable: "Item Unavailable",
   shipping_loss: "Lost in Shipping",
   damaged: "Damaged",
+  wrong_item: "Wrong Item",
+  customer_cancelled: "Customer Cancelled",
   goodwill: "Goodwill",
   quality: "Quality",
   other: "Other",

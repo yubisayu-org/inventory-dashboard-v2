@@ -129,35 +129,3 @@ test("cancelOrderUnits will not take a line below what shipped", async () => {
   assert.equal(r.unit, 1)
   assert.equal(r.unit_ship, 1)
 })
-
-test("cancelling tells her, in the same breath", async () => {
-  // She asked for it, so she hears it from the shop rather than noticing a
-  // smaller invoice later.
-  const id = await line(0)          // 3 ordered, nothing shipped
-  await cancelOrderUnits({ orderId: id, qty: 2, event: EV, productName: "Bucket Hat with String" })
-
-  const [note] = await sql<{ title: string; body: string }[]>`
-    SELECT title, body FROM announcements an
-      JOIN customers c ON c.id = an.customer_id
-     WHERE c.instagram_id = ${WHO} ORDER BY an.id DESC LIMIT 1`
-  assert.match(note.title, new RegExp(EV))
-  assert.match(note.body, /Bucket Hat with String × 2/, "what came off")
-  assert.match(note.body, /Rp 200\.000/, "and what it takes off her bill")
-})
-
-test("a refused cancellation tells her nothing", async () => {
-  // The guard throws before the notice is written, so a message about a line
-  // that did not move cannot escape.
-  const id = await line(1)
-  const before = await sql<{ n: string }[]>`
-    SELECT count(*) AS n FROM announcements an JOIN customers c ON c.id = an.customer_id
-     WHERE c.instagram_id = ${WHO}`
-  await assert.rejects(
-    () => cancelOrderUnits({ orderId: id, qty: 3, event: EV, productName: "x" }),
-    /already shipped/,
-  )
-  const after = await sql<{ n: string }[]>`
-    SELECT count(*) AS n FROM announcements an JOIN customers c ON c.id = an.customer_id
-     WHERE c.instagram_id = ${WHO}`
-  assert.equal(after[0].n, before[0].n)
-})

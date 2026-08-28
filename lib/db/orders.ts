@@ -1,8 +1,6 @@
 import sql from "../db-pool"
 import { tsToString, normalizeCustomer } from "./helpers"
 import { fetchPaidStatusMap, compareOrderPriority } from "./shopping-list"
-import { notifyCustomer } from "./announcements"
-import { NOTICE_TEMPLATES, fillNotice } from "../notice-templates"
 import type { DBExecutor } from "./actor"
 import type { SheetOptions, ItemOption, OrderRow, FormRow, ExcessRow, ExcessReason, PurchaseUpdate, ArriveUpdate, DispatchUpdate, ExcessDispatchUpdate, ExcessArriveUpdate } from "./types"
 
@@ -453,12 +451,16 @@ export async function bankStrandedBoughtUnits(
   // overbuy is the shop buying more than it needed; customer_cancelled is her
   // deciding she did not want it. Both already exist as reasons.
   const reason = cause === "customer_changed_mind" ? "customer_cancelled" : "overbuy"
-  // Whose order it fell off. The reason says what happened; without the handle
-  // nobody can tell which of that trip's customers it happened to, and a shelf
-  // full of "Overbuy" rows answers no question anyone actually asks. The order's
-  // own receipt wins where it has one -- that is a real parcel number, and the
-  // allocation screens group on it.
-  const receipt = (r.receipt ?? "").trim() || (r.customer ?? "")
+  // Whose order it fell off, and which answer put it here.
+  //
+  // The reason column says overbuy or customer_cancelled, which is the same
+  // distinction the dialog asks for -- but nothing said whose order it was, and
+  // a shelf full of "Overbuy" rows answers no question anyone actually asks. A
+  // real parcel number keeps its place at the front, untouched, because the
+  // allocation screens read it; the handle and the answer follow it.
+  const causeLabel = cause === "customer_changed_mind" ? "customer ask" : "staff correction"
+  const receipt = [(r.receipt ?? "").trim(), r.customer ?? "", causeLabel]
+    .filter(Boolean).join(" · ")
   await db`
     INSERT INTO excess_purchase (event, items, unit_buy, receipt, unit_dispatch, reason)
     VALUES (${r.event}, ${r.product_name}, ${banked}, ${receipt},
@@ -1086,6 +1088,10 @@ export async function recordMissingArrival(
  * whichever is smaller of qty and the still-in-hand bought units
  * (unit_buy - unit_ship), so it never falls below what's already shipped.
  * That reclaimed portion is logged to Inventory (reason=customer_cancelled).
+ * Moves the order and nothing else. Pricing the refund and telling her are
+ * cancelOrderLineForCustomer's job, after this commits -- what she is owed
+ * depends on the invoice as it stands once the units are off it.
+ *
  * qty === the full unit count behaves like a full-line cancel, except
  * unit_buy lands on unit_ship instead of being force-zeroed — correct even
  * when part of the line already shipped, unlike the bulk cancelOrderLines
@@ -1101,8 +1107,7 @@ export async function cancelOrderUnits(
   db: DBExecutor = sql,
 ): Promise<{ excessUnits: number; remainingUnit: number }> {
   const [order] = await db`
-    SELECT unit, unit_buy, unit_ship, unit_price, customer
-      FROM orders WHERE id = ${data.orderId} FOR UPDATE
+    SELECT unit, unit_buy, unit_ship FROM orders WHERE id = ${data.orderId} FOR UPDATE
   `
   if (!order) throw new Error("Order not found")
 
@@ -1163,27 +1168,6 @@ export async function cancelOrderUnits(
       WHERE id = ${data.orderId} AND position(${stamp} in note) = 0
     `
   }
-
-  // She asked for this, so she hears it from the shop rather than noticing a
-  // smaller invoice later. In the same transaction as the cancellation: a line
-  // that vanished with nobody told, or a customer told about a line that did
-  // not vanish, are both worse than the whole thing failing.
-  //
-  // Sent whether or not money moves. An unpaid order simply costs less, and
-  // that is still news.
-  const unitPrice = (order.unit_price as number) ?? 0
-  const template = NOTICE_TEMPLATES.find((t) => t.key === "inbox_order_cancelled")!
-  const tokens = {
-    "{customer}": order.customer as string,
-    "{event}": data.event,
-    "{itemsList}": `- ${data.productName} × ${data.qty}`
-      + (unitPrice > 0 ? ` — Rp ${new Intl.NumberFormat("id-ID").format(unitPrice * data.qty)}` : ""),
-    "{amount}": `Rp ${new Intl.NumberFormat("id-ID").format(unitPrice * data.qty)}`,
-  }
-  await notifyCustomer(order.customer as string, {
-    title: fillNotice(template.title, tokens),
-    body: fillNotice(template.body, tokens),
-  }, db)
 
   return { excessUnits, remainingUnit }
 }

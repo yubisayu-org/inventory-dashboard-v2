@@ -278,6 +278,18 @@ export const REFUND_CAUSES: RefundCause[] = [
       + "Mohon maaf, ini luput dari pemeriksaan kami.",
   },
   {
+    key: "customer_cancelled",
+    fromMark: true,
+    label: "She asked to cancel it",
+    needsItems: true,
+    // Her own doing, and the sentence says so without making it sound like a
+    // fault of hers or of ours. The refund beside it is the whole point: money
+    // she had already sent for something she is no longer getting.
+    line: "As you asked, we have taken {itemsList} off your order for {event}.",
+    waLine: "Sesuai permintaan Anda, barang berikut kami keluarkan dari pesanan:\n{itemsList}",
+    waLineWithout: "Sesuai permintaan Anda, ada barang yang kami keluarkan dari pesanan.",
+  },
+  {
     key: "goodwill",
     label: "Goodwill",
     line: "A goodwill refund from us on {event}.",

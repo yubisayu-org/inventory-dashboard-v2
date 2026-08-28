@@ -3,6 +3,7 @@
 import { useState } from "react"
 import type { InvoiceOrderLine } from "@/lib/db"
 import { useModalDismiss } from "@/hooks/useModalDismiss"
+import { fmt } from "@/lib/format"
 
 // ─── Cancel order from invoice modal ─────────────────────────────────────────
 //
@@ -37,6 +38,8 @@ export function CancelOrderFromInvoiceModal({
   // Actual units returned to Inventory, filled from the server response so the
   // done-state reflects already-shipped units being excluded.
   const [returnedUnits, setReturnedUnits] = useState<number | null>(null)
+  // What was filed on her behalf, if she had paid for what just came off.
+  const [refunded, setRefunded] = useState(0)
 
   const qtyNum = Math.round(Number(qty)) || 0
   const qtyValid = qtyNum >= 1 && qtyNum <= line.unit
@@ -65,6 +68,11 @@ export function CancelOrderFromInvoiceModal({
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "Failed to cancel order")
       setReturnedUnits(typeof data.excessUnits === "number" ? data.excessUnits : 0)
+      setRefunded(
+        Array.isArray(data.refunds)
+          ? data.refunds.reduce((n: number, r: { amount?: number }) => n + (r.amount ?? 0), 0)
+          : 0,
+      )
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to cancel order")
       setSaving(false)
@@ -103,7 +111,9 @@ export function CancelOrderFromInvoiceModal({
               {returnedUnits! > 0
                 ? `${returnedUnits} unit${returnedUnits === 1 ? "" : "s"} returned to Inventory. `
                 : "No stock returned to Inventory. "}
-              A refund appears on the Refunds page if this order was already paid.
+              {refunded > 0
+                ? `A refund of Rp ${fmt(refunded)} is on the Refunds page, and she has been told.`
+                : "Nothing was owed back, so no refund was filed. She has been told."}
             </p>
             <button
               type="button"
