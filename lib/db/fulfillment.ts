@@ -460,6 +460,40 @@ export async function getShipOrdersFiltered(opts: {
   }
 }
 
+/**
+ * Retire a redirect once the parcel it was for has gone.
+ *
+ * "Kirim ke rumah ibu saya" is about one box, not about the trip. Nothing used
+ * to end it, so the request outlived the parcel: the next box's sheet opened
+ * with the toggle already on and her mother's address filled in, under a card
+ * still badged "Alamat lain diminta". Everything on screen said she wanted it
+ * again, and the second box followed the first.
+ *
+ * Only when the parcel actually used it. Ship to her profile instead and the
+ * request was not honoured, so it stands.
+ *
+ * The address is not lost: shipments.temp_address keeps where that box really
+ * went, which is the record worth having afterwards.
+ */
+async function clearHonouredRedirect(
+  customer: string,
+  events: string[],
+  used: string | null,
+  db: DBExecutor,
+): Promise<void> {
+  if (!used?.trim() || events.length === 0) return
+  await db`
+    UPDATE customer_shipping_prefs p
+       SET temp_address = NULL, temp_area_id = NULL, temp_area_name = NULL,
+           updated_at = NOW()
+      FROM customers c
+     WHERE c.id = p.customer_id
+       AND p.event = ANY(${events})
+       AND lower(replace(c.instagram_id, '@', '')) = ${normalizeId(customer)}
+       AND p.temp_address IS NOT NULL
+  `
+}
+
 export async function shipCustomerOrders(params: ShipOrdersParams, actor?: string | null): Promise<{ shippingId: string }> {
   const { customer, event, orders, weightKg, ongkirPerKg, tempAddress, force } = params
   // Empty-string and undefined both mean "no override" — store NULL so the
@@ -520,6 +554,8 @@ export async function shipCustomerOrders(params: ShipOrdersParams, actor?: strin
                              WHERE p.event = ${event}
                                AND lower(replace(c.instagram_id, '@', '')) = ${normalizeId(customer)})`
     }
+
+    await clearHonouredRedirect(customer, [event], tempAddressValue, tx)
 
     // Her inbox, in the same transaction: a parcel that shipped without a
     // notice, or a notice about a parcel that did not, are both worse than
@@ -668,6 +704,10 @@ export async function shipMergedCustomerOrders(params: ShipMergedParams, actor?:
            AND customer_id IN (SELECT id FROM customers
                                 WHERE lower(replace(instagram_id, '@', '')) = ${custKey})`
     }
+
+    // One box, one address: whichever of these trips asked for it, the request
+    // has now been met and should not seed the next parcel.
+    await clearHonouredRedirect(customer, events, tempAddressValue, tx)
 
     const units = groups.reduce((n, g) => n + g.orders.reduce((m, o) => m + o.toShip, 0), 0)
     await notifyCustomer(customer, {
