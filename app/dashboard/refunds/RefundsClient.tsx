@@ -308,8 +308,8 @@ export default function RefundsClient() {
   const [creating, setCreating] = useState(false)
   const [mobileCreating, setMobileCreating] = useState(false)
   const [editRow, setEditRow] = useState<RefundRow | null>(null)
-  /** The refunds a single transfer is about to settle, or null. */
-  const [payGroup, setPayGroup] = useState<RefundRow[] | null>(null)
+  /** Everything one customer is owed on one trip, open in the group sheet. */
+  const [groupSheet, setGroupSheet] = useState<RefundRow[] | null>(null)
   const [eventFilter, setEventFilter] = useState("")
   // Owned here rather than by each grid: the tabs swap the data underneath and
   // remount the table, which would drop whatever was typed. Looking for one
@@ -583,7 +583,7 @@ export default function RefundsClient() {
         return (
           <button
             type="button"
-            onClick={(e) => { e.stopPropagation(); setPayGroup(all) }}
+            onClick={(e) => { e.stopPropagation(); setGroupSheet(all) }}
             className="px-2 py-1 rounded-lg border border-brand text-brand text-xs font-semibold hover:bg-brand-light whitespace-nowrap"
           >
             Pay all ({all.length})
@@ -700,9 +700,14 @@ export default function RefundsClient() {
           toolbarExtraAfterColumns
           hideRowCount
           getRowId={(row) => String(row.id)}
-          // A parent opens rather than drills: its own drawer would edit one
-          // member while showing the group's total.
-          onRowClick={(row) => { if (!(row as GroupRow).members) setEditRow(row) }}
+          // A group opens the group sheet: her account, her message and the
+          // transfer are the customer's, not any one refund's. The caret still
+          // opens the list in place, for reading without acting.
+          onRowClick={(row) => {
+            const g = row as GroupRow
+            if (!g.members) { setEditRow(row); return }
+            setGroupSheet([...g.members, ...openSiblings(g)].filter(isOpenRefund))
+          }}
           canExpandRow={(row) => Boolean((row as GroupRow).members)}
           // Laid out on the header's own measured widths, so a member's reason
           // sits under Reason and its amount under Amount. A detail row that
@@ -845,12 +850,15 @@ export default function RefundsClient() {
         </div>
       )}
 
-      {payGroup && (
-        <PayTogetherModal
-          refunds={payGroup}
+      {groupSheet && (
+        <RefundGroupSheet
+          refunds={groupSheet}
           accounts={options?.accounts ?? []}
-          onClose={() => setPayGroup(null)}
-          onPaid={() => { setPayGroup(null); fetchRows() }}
+          onClose={() => setGroupSheet(null)}
+          onChanged={() => { setGroupSheet(null); fetchRows() }}
+          // The things that really are one refund's own -- its note, its
+          // credit, cancelling it -- stay in its own sheet.
+          onOpenOne={(r) => { setGroupSheet(null); setEditRow(r) }}
         />
       )}
 
@@ -865,7 +873,11 @@ export default function RefundsClient() {
             && (r.status === "pending" || r.status === "awaiting_bank_info" || r.status === "ready_to_refund")
             && r.refundAmount > 0)}
           onUpdated={handleUpdated}
-          onGroupPaid={() => { setEditRow(null); fetchRows() }}
+          onOpenGroup={() => {
+            const all = rows.filter((r) => pairKey(r) === pairKey(editRow) && isOpenRefund(r))
+            setEditRow(null)
+            setGroupSheet(all)
+          }}
           onDeleted={() => handleDeleted(editRow.id)}
           onClose={() => setEditRow(null)}
         />
@@ -874,32 +886,35 @@ export default function RefundsClient() {
   )
 }
 
-// ─── Pay together ────────────────────────────────────────────────────────────
+// ─── The group sheet ─────────────────────────────────────────────────────────
 
 /**
- * Settle several of one customer's refunds on one trip with a single transfer.
+ * Everything one customer is owed on one trip, in one sheet.
  *
- * The rows stay split, because each is its own explanation and a report that
- * cannot tell damaged from unavailable teaches nobody anything. None of that is
- * a reason to open the banking app three times.
+ * The refunds stay separate rows because each is its own explanation. What is
+ * NOT separate is the customer: she has one bank account, she gets one message,
+ * and she gets one transfer. Opening three sheets to say the same three things
+ * to the same person is how she ends up with three WhatsApp messages about one
+ * trip, and how one of the three gets forgotten.
  *
- * Reached from the Pending tab, which means none of these rows has necessarily
- * been through the bank-info step -- so the account is asked for here, prefilled
- * from whichever of her refunds already carries it. Sending into a blank is
- * refused: the step it skips exists because somebody had to ask her, and she
- * had to answer.
+ * So the shared half sits at the top -- her account, the message, the transfer
+ * -- and the refunds are listed below it, each opening to its own sheet for the
+ * things that really are its own: the note, the credit, cancelling it.
  */
-function PayTogetherModal({
+function RefundGroupSheet({
   refunds,
   accounts,
   onClose,
-  onPaid,
+  onChanged,
+  onOpenOne,
 }: {
   refunds: RefundRow[]
   accounts: string[]
   onClose: () => void
-  onPaid: () => void
+  onChanged: () => void
+  onOpenOne: (row: RefundRow) => void
 }) {
+  const templates = useMessageTemplates()
   const known = refunds.find((r) => r.bankAccountNumber?.trim())
   const [bankName, setBankName] = useState(known?.bankName ?? "")
   const [bankAccountNumber, setBankAccountNumber] = useState(known?.bankAccountNumber ?? "")
@@ -909,11 +924,114 @@ function PayTogetherModal({
   const [picked, setPicked] = useState<Set<number>>(() => new Set(refunds.map((r) => r.id)))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showMessage, setShowMessage] = useState(false)
+  const [copied, setCopied] = useState(false)
 
+  const who = refunds[0].customer
+  const event = refunds[0].event
   const chosen = refunds.filter((r) => picked.has(r.id))
   const total = chosen.reduce((n, r) => n + displayAmount(r), 0)
-  const ready = chosen.length > 0 && bankAccountNumber.trim() !== ""
+  const canSend = chosen.length > 0 && bankAccountNumber.trim() !== ""
     && account.trim() !== "" && transferRef.trim() !== ""
+
+  /**
+   * One message for the lot.
+   *
+   * Each refund keeps its own sentence -- "we could not buy", "lost in
+   * shipping", "arrived damaged" are different things to be told -- and they
+   * stack under one figure, which is what she will actually receive. Sending
+   * them separately makes three messages that each look like the whole story.
+   *
+   * The items come from each refund's own note, which is where a mark writes
+   * them as it goes. An overpayment has no items and its sentence does not want
+   * any.
+   */
+  const waMessageText = useMemo(() => {
+    const causeText = chosen.map((r) => {
+      const cause = REFUND_CAUSES.find((c) => c.key === r.reason)
+      const items = r.reason === "overpayment"
+        ? ""
+        : r.note.split("\n").map((l) => l.trim()).filter(Boolean).map((l) => `- ${l}`).join("\n")
+      if (!cause) return ""
+      return fillNotice(causeLineFor(cause, { items }, "whatsapp"), {
+        "{event}": event,
+        "{itemsList}": items,
+        "{receivedItem}": "",
+      })
+    }).filter(Boolean).join("\n\n")
+
+    const allItems = chosen
+      .filter((r) => r.reason !== "overpayment")
+      .flatMap((r) => r.note.split("\n").map((l) => l.trim()).filter(Boolean))
+      .map((l) => `- ${l}`)
+      .join("\n")
+
+    const vars = {
+      customer: who,
+      event,
+      itemsList: allItems,
+      receivedItem: "",
+      cause: causeText,
+      refundAmount: formatRp(total),
+    }
+    return allItems
+      ? fillTemplate(templates?.refund_specific ?? DEFAULT_TEMPLATES.refund_specific, vars)
+      : fillTemplate(templates?.refund_generic ?? DEFAULT_TEMPLATES.refund_generic, vars)
+  }, [chosen, who, event, total, templates])
+
+  async function copyMessage() {
+    try {
+      await navigator.clipboard.writeText(waMessageText)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      setError("Failed to copy")
+    }
+  }
+
+  /**
+   * Her account, saved onto every refund at once and onto her customer record.
+   *
+   * One account receives the money, so asking three times is asking once,
+   * badly. Rows already at the transfer step are moved along with the rest.
+   */
+  async function saveBank() {
+    if (!bankAccountNumber.trim()) { setError("An account number is required"); return }
+    setSaving(true)
+    setError(null)
+    try {
+      for (const r of refunds) {
+        const res = await fetch(`/api/sheets/refunds/${r.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            status: "ready_to_refund",
+            bankName: bankName.trim(),
+            bankAccountNumber: bankAccountNumber.trim(),
+            bankAccountHolder: bankAccountHolder.trim(),
+          }),
+        })
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}))
+          throw new Error(d.error ?? "Failed to save her account")
+        }
+      }
+      await fetch("/api/sheets/customer", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          instagramId: who,
+          bankName: bankName.trim(),
+          bankAccountNumber: bankAccountNumber.trim(),
+          bankAccountHolder: bankAccountHolder.trim(),
+        }),
+      }).catch(() => {})
+      onChanged()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save her account")
+      setSaving(false)
+    }
+  }
 
   async function send() {
     setSaving(true)
@@ -934,23 +1052,11 @@ function PayTogetherModal({
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error ?? "Failed to pay these refunds")
-      // Her account, remembered, so the next one prefills instead of asking.
-      await fetch("/api/sheets/customer", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          instagramId: chosen[0].customer,
-          bankName: bankName.trim(),
-          bankAccountNumber: bankAccountNumber.trim(),
-          bankAccountHolder: bankAccountHolder.trim(),
-        }),
-      }).catch(() => {})
       if (Array.isArray(data.skipped) && data.skipped.length > 0) {
         setError(`${data.skipped.length} of them had nothing owed any more and were left alone.`)
         setSaving(false)
-        return
       }
-      onPaid()
+      onChanged()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to pay these refunds")
       setSaving(false)
@@ -960,98 +1066,144 @@ function PayTogetherModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6" onClick={onClose}>
       <div
-        className="bg-white rounded-xl border border-cream-border shadow-xl w-full max-w-md flex flex-col gap-4 p-5 max-h-[88vh] overflow-y-auto"
+        className="bg-white rounded-xl border border-cream-border shadow-xl w-full max-w-lg flex flex-col max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
       >
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <div className="text-sm font-semibold text-foreground">
-              Pay {displayIg(refunds[0].customer)} together
+        <div className="flex items-start justify-between gap-3 p-5 pb-3 border-b border-cream-border">
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-foreground truncate">{displayIg(who)}</div>
+            <div className="text-xs text-faint mt-0.5">
+              {event} · {refunds.length} refunds · <span className="tabular-nums font-medium text-muted-strong">{formatRp(total)}</span>
             </div>
-            <div className="text-xs text-faint mt-0.5">{refunds[0].event} · one transfer, one reference</div>
           </div>
           <button type="button" onClick={onClose} className="text-faint hover:text-brand transition-colors shrink-0">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
           </button>
         </div>
 
-        <div className="flex flex-col gap-1">
-          {refunds.map((r) => (
-            <label key={r.id} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg bg-surface-muted text-xs cursor-pointer">
-              <input
-                type="checkbox"
-                checked={picked.has(r.id)}
+        <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-4">
+          {/* What she is owed, and what each of them is about. Ticking decides
+              what this transfer settles; opening one goes to its own sheet for
+              the note, the credit, and cancelling it. */}
+          <div className="flex flex-col gap-1">
+            {refunds.map((r) => (
+              <div key={r.id} className="flex items-start gap-2.5 px-2 py-2 rounded-lg bg-surface-muted">
+                <input
+                  type="checkbox"
+                  checked={picked.has(r.id)}
+                  disabled={saving}
+                  onChange={(e) => setPicked((prev) => {
+                    const next = new Set(prev)
+                    if (e.target.checked) next.add(r.id)
+                    else next.delete(r.id)
+                    return next
+                  })}
+                  className="accent-brand mt-0.5"
+                />
+                <button
+                  type="button"
+                  onClick={() => onOpenOne(r)}
+                  className="flex-1 min-w-0 text-left"
+                >
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-sm font-medium text-foreground">{reasonLabel(r.reason)}</span>
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${statusColor(r)}`}>
+                      {statusLabel(r)}
+                    </span>
+                  </div>
+                  {r.note.split("\n").map((l) => l.trim()).filter(Boolean).map((l, i) => (
+                    <div key={i} className="text-xs text-faint leading-snug">{l}</div>
+                  ))}
+                </button>
+                <span className="tabular-nums text-sm font-semibold text-foreground shrink-0">
+                  {formatRp(displayAmount(r))}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {/* Her account — one, whatever she is owed it for. */}
+          <div className="flex flex-col gap-2 p-3 rounded-lg bg-surface-muted border border-cream-border">
+            <div className="text-xs font-medium text-muted-strong">Her account</div>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-muted">Bank</span>
+                <input value={bankName} onChange={(e) => setBankName(e.target.value)} disabled={saving}
+                  placeholder="e.g. BCA" className={`${INPUT_CLASS} w-full`} />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-muted">Account number <span className="text-brand">*</span></span>
+                <input value={bankAccountNumber} onChange={(e) => setBankAccountNumber(e.target.value)} disabled={saving}
+                  placeholder="e.g. 1234567890" className={`${INPUT_CLASS} w-full`} />
+              </label>
+              <label className="flex flex-col gap-1 col-span-2">
+                <span className="text-xs font-medium text-muted">Account holder</span>
+                <input value={bankAccountHolder} onChange={(e) => setBankAccountHolder(e.target.value)} disabled={saving}
+                  placeholder="Full name on the account" className={`${INPUT_CLASS} w-full`} />
+              </label>
+            </div>
+            <div className="flex justify-end">
+              <button type="button" onClick={saveBank} disabled={saving || !bankAccountNumber.trim()}
+                className="text-xs px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
+                Save to all {refunds.length}
+              </button>
+            </div>
+          </div>
+
+          {/* One message, one figure, every reason inside it. */}
+          <div className="flex flex-col gap-2 p-3 rounded-lg bg-surface-muted border border-cream-border">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-xs font-medium text-muted-strong">Message · one for all {chosen.length}</div>
+              <div className="flex items-center gap-1.5">
+                <button type="button" onClick={() => setShowMessage((v) => !v)}
+                  className="text-xs px-2 py-1 rounded border border-cream-border text-muted hover:bg-surface-sunken">
+                  {showMessage ? "Hide" : "Preview"}
+                </button>
+                <button type="button" onClick={copyMessage} disabled={!templates}
+                  className="text-xs px-2 py-1 rounded border border-cream-border text-muted hover:bg-surface-sunken disabled:opacity-50">
+                  {copied ? "Copied" : "Copy"}
+                </button>
+              </div>
+            </div>
+            {showMessage && (
+              <pre className="text-[11px] text-muted-strong whitespace-pre-wrap font-sans bg-white rounded-lg border border-cream-border p-2 max-h-56 overflow-y-auto">
+                {waMessageText}
+              </pre>
+            )}
+          </div>
+
+          {/* One transfer. */}
+          <div className="flex flex-col gap-2 p-3 rounded-lg bg-surface-muted border border-cream-border">
+            <div className="text-xs font-medium text-muted-strong">Transfer</div>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-muted">Sent from account <span className="text-brand">*</span></span>
+              <SearchableSelect
+                value={account}
+                onChange={setAccount}
+                options={accounts.map((a) => ({ value: a, label: a }))}
+                placeholder="Which of our accounts sent it…"
+                allowNewValue
                 disabled={saving}
-                onChange={(e) => setPicked((prev) => {
-                  const next = new Set(prev)
-                  if (e.target.checked) next.add(r.id)
-                  else next.delete(r.id)
-                  return next
-                })}
-                className="accent-brand"
               />
-              <span className="flex-1 min-w-0 truncate text-muted-strong">{reasonLabel(r.reason)}</span>
-              <span className="text-faint shrink-0">{statusLabel(r)}</span>
-              <span className="tabular-nums font-semibold text-foreground shrink-0">{formatRp(displayAmount(r))}</span>
             </label>
-          ))}
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-muted">Transfer reference <span className="text-brand">*</span></span>
+              <input value={transferRef} onChange={(e) => setTransferRef(e.target.value)} disabled={saving}
+                placeholder="e.g. TRF20260828-014" className={`${INPUT_CLASS} w-full`} />
+            </label>
+          </div>
+
+          {error && <p className="text-xs text-brand font-medium">{error}</p>}
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-muted-strong">Her bank</span>
-            <input value={bankName} onChange={(e) => setBankName(e.target.value)} disabled={saving}
-              placeholder="e.g. BCA" className={`${INPUT_CLASS} w-full`} />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-muted-strong">Account number <span className="text-brand">*</span></span>
-            <input value={bankAccountNumber} onChange={(e) => setBankAccountNumber(e.target.value)} disabled={saving}
-              placeholder="e.g. 1234567890" className={`${INPUT_CLASS} w-full`} />
-          </label>
-          <label className="flex flex-col gap-1 col-span-2">
-            <span className="text-xs font-medium text-muted-strong">Account holder</span>
-            <input value={bankAccountHolder} onChange={(e) => setBankAccountHolder(e.target.value)} disabled={saving}
-              placeholder="Full name on the account" className={`${INPUT_CLASS} w-full`} />
-          </label>
-        </div>
-        {!known && (
-          <p className="text-[11px] text-faint -mt-2">
-            None of these refunds has her account on it yet. Ask her before sending.
-          </p>
-        )}
-
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-muted-strong">Sent from account <span className="text-brand">*</span></span>
-          <SearchableSelect
-            value={account}
-            onChange={setAccount}
-            options={accounts.map((a) => ({ value: a, label: a }))}
-            placeholder="Which of our accounts sent it…"
-            allowNewValue
-            disabled={saving}
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-muted-strong">Transfer reference <span className="text-brand">*</span></span>
-          <input value={transferRef} onChange={(e) => setTransferRef(e.target.value)} disabled={saving}
-            placeholder="e.g. TRF20260828-014" className={`${INPUT_CLASS} w-full`} />
-        </label>
-
-        <div className="flex items-baseline justify-between pt-2 border-t border-cream-border text-sm">
-          <span className="text-muted">One transfer</span>
-          <span className="tabular-nums font-semibold text-foreground">{formatRp(total)}</span>
-        </div>
-        {error && <p className="text-xs text-brand font-medium">{error}</p>}
-
-        <div className="flex justify-end gap-2">
-          <button type="button" onClick={onClose} disabled={saving}
-            className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-muted-strong hover:bg-cream">
-            Cancel
-          </button>
-          <button type="button" onClick={send} disabled={!ready || saving}
-            className="px-4 py-1.5 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-dark disabled:opacity-50">
+        <div className="flex items-center justify-between gap-3 p-4 border-t border-cream-border">
+          <span className="text-xs text-muted">
+            {chosen.length} of {refunds.length} · one reference
+          </span>
+          <button type="button" onClick={send} disabled={!canSend || saving}
+            className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-dark disabled:opacity-50">
             {saving ? "Sending…" : `Refund ${formatRp(total)}`}
           </button>
         </div>
@@ -1427,7 +1579,7 @@ function RefundDetailModal({
   accounts,
   siblings,
   onUpdated,
-  onGroupPaid,
+  onOpenGroup,
   onDeleted,
   onClose,
 }: {
@@ -1437,8 +1589,8 @@ function RefundDetailModal({
   /** Her other unpaid refunds on this same trip, offered in the same transfer. */
   siblings: RefundRow[]
   onUpdated: (updated: RefundRow) => void
-  /** Several rows changed at once, so the list reloads rather than patching. */
-  onGroupPaid: () => void
+  /** Take the whole trip's worth to the group sheet, where paying lives. */
+  onOpenGroup: () => void
   onDeleted: () => void
   onClose: () => void
 }) {
@@ -1447,9 +1599,6 @@ function RefundDetailModal({
   const [bankAccountHolder, setBankAccountHolder] = useState(row.bankAccountHolder)
   const [transferRef, setTransferRef] = useState(row.transferReference)
   const [refundAccount, setRefundAccount] = useState("")
-  // Ticked by default: if she is owed three things on one trip, the normal
-  // answer is one transfer for all three. Untick what is not being sent yet.
-  const [payWith, setPayWith] = useState<Set<number>>(() => new Set(siblings.map((s) => s.id)))
   const [note, setNote] = useState(row.note)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -1588,17 +1737,6 @@ function RefundDetailModal({
   async function handleExecute() {
     if (!transferRef.trim()) { setError("Transfer reference is required"); return }
     if (!refundAccount.trim()) { setError("Pick the account the refund was sent from"); return }
-    const also = siblings.filter((s) => payWith.has(s.id)).map((s) => s.id)
-    if (also.length > 0) {
-      const ok = await patch({
-        action: "execute_group",
-        transferReference: transferRef.trim(),
-        account: refundAccount.trim(),
-        refundIds: [row.id, ...also],
-      })
-      if (ok) onGroupPaid()
-      return
-    }
     const ok = await patch({ action: "execute", transferReference: transferRef.trim(), account: refundAccount.trim() })
     if (ok) onUpdated({ ...row, status: "refunded", transferReference: transferRef.trim() })
   }
@@ -1762,9 +1900,6 @@ function RefundDetailModal({
     }
   }
 
-  const groupTotal = row.refundAmount
-    + siblings.filter((s) => payWith.has(s.id)).reduce((n, s) => n + s.refundAmount, 0)
-
   // One always-visible primary action per step, pinned in the footer — the old
   // layout buried each step's CTA inside a scroll area with no scroll affordance.
   const primaryAction =
@@ -1790,7 +1925,7 @@ function RefundDetailModal({
         disabled={saving || !transferRef.trim() || !refundAccount.trim()}
         className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
       >
-        {saving ? "Processing…" : groupTotal > row.refundAmount ? `Refund ${formatRp(groupTotal)}` : "Refund"}
+        {saving ? "Processing…" : "Refund"}
       </button>
     ) : null
 
@@ -2028,46 +2163,19 @@ function RefundDetailModal({
                 />
               </label>
 
-              {/* One trip can owe her three separate things. They stay three
-                  rows, because each is its own explanation — but they need not
-                  be three trips to the banking app. */}
               {siblings.length > 0 && (
-                <div className="flex flex-col gap-1.5 pt-2 border-t border-cream-border">
-                  <div className="text-xs font-medium text-muted-strong">
-                    Pay together <span className="text-faint font-normal">· same trip, same account</span>
-                  </div>
-                  <label className="flex items-center justify-between gap-2 px-2 py-1 rounded-lg bg-white text-xs">
-                    <span className="flex items-center gap-2 min-w-0">
-                      <input type="checkbox" checked disabled className="accent-brand" />
-                      <span className="truncate text-muted-strong">{reasonLabel(row.reason)}</span>
-                    </span>
-                    <span className="tabular-nums text-foreground shrink-0">{formatRp(row.refundAmount)}</span>
-                  </label>
-                  {siblings.map((s) => (
-                    <label key={s.id} className="flex items-center justify-between gap-2 px-2 py-1 rounded-lg bg-white text-xs cursor-pointer">
-                      <span className="flex items-center gap-2 min-w-0">
-                        <input
-                          type="checkbox"
-                          checked={payWith.has(s.id)}
-                          disabled={saving}
-                          onChange={(e) => setPayWith((prev) => {
-                            const next = new Set(prev)
-                            if (e.target.checked) next.add(s.id)
-                            else next.delete(s.id)
-                            return next
-                          })}
-                          className="accent-brand"
-                        />
-                        <span className="truncate text-muted-strong">{reasonLabel(s.reason)}</span>
-                        <span className="text-faint shrink-0">{STATUS_LABELS[s.status]}</span>
-                      </span>
-                      <span className="tabular-nums text-foreground shrink-0">{formatRp(s.refundAmount)}</span>
-                    </label>
-                  ))}
-                  <div className="flex items-center justify-between text-xs pt-1">
-                    <span className="text-muted">One transfer, one reference</span>
-                    <span className="tabular-nums font-semibold text-foreground">{formatRp(groupTotal)}</span>
-                  </div>
+                <div className="flex items-center gap-2 pt-2 border-t border-cream-border">
+                  <p className="flex-1 text-[11px] text-muted">
+                    She is owed {siblings.length} more on {row.event}. Paying them together is one
+                    transfer and one message.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={onOpenGroup}
+                    className="shrink-0 px-2.5 py-1 rounded-lg border border-brand text-brand text-[11px] font-semibold hover:bg-brand-light"
+                  >
+                    Open all {siblings.length + 1}
+                  </button>
                 </div>
               )}
             </div>
