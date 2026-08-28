@@ -2,6 +2,7 @@ import sql from "../db-pool"
 import type { DBExecutor } from "./actor"
 import { getPaymentStatus } from "./finance"
 import { normalizeId } from "./helpers"
+import { isLiveAmount } from "./live-refund"
 import { uncovered } from "./refund-residual"
 
 /**
@@ -30,17 +31,29 @@ export type OverpaymentToCheck = {
  * Keying on the raw value matches nothing, and the failure is silent and points
  * the wrong way: every covered overpayment looks uncovered.
  */
-async function refundedByPair(db: DBExecutor): Promise<Map<string, number>> {
-  const rows = await db<{ event: string; cust_key: string; total: string }[]>`
+type Cover = { total: number; hasLive: boolean }
+
+async function refundedByPair(db: DBExecutor): Promise<Map<string, Cover>> {
+  const rows = await db<{ event: string; cust_key: string; total: string; reason: string; status: string }[]>`
     SELECT event,
            lower(replace(customer, '@', '')) AS cust_key,
-           SUM(refund_amount) AS total
+           refund_amount AS total,
+           reason,
+           status
       FROM refunds
      WHERE status <> 'cancelled'
-     GROUP BY event, lower(replace(customer, '@', ''))
   `
-  const m = new Map<string, number>()
-  for (const r of rows) m.set(`${r.event}|${r.cust_key}`, Number(r.total))
+  const m = new Map<string, Cover>()
+  for (const r of rows) {
+    const key = `${r.event}|${r.cust_key}`
+    const cur = m.get(key) ?? { total: 0, hasLive: false }
+    // A live refund's stored figure is decorative -- its amount is read from
+    // her balance. Summing it would make a covered overpayment look uncovered
+    // and offer the same money a second time, so its presence is the cover.
+    if (isLiveAmount({ reason: r.reason, status: r.status })) cur.hasLive = true
+    else cur.total += Number(r.total)
+    m.set(key, cur)
+  }
   return m
 }
 
@@ -51,7 +64,11 @@ export async function listOverpaymentsToCheck(
 
   const out: OverpaymentToCheck[] = []
   for (const s of statuses) {
-    const refundedSoFar = refunded.get(`${s.event}|${normalizeId(s.customer)}`) ?? 0
+    const cover = refunded.get(`${s.event}|${normalizeId(s.customer)}`)
+    // Somebody is already dealing with this one, and it is worth whatever she
+    // is overpaid by -- there is no remainder to check.
+    if (cover?.hasLive) continue
+    const refundedSoFar = cover?.total ?? 0
     const gap = uncovered(s.totalPaid, s.invoiceTotal, [refundedSoFar])
     if (gap <= 0) continue
     out.push({

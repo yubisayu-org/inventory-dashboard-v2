@@ -142,3 +142,35 @@ test("a refund covers its customer when the handle was stored with capitals", as
   await sql`DELETE FROM events WHERE name = ${CAPS_EVENT}`
   await sql`DELETE FROM customers WHERE instagram_id = ${CAPS}`
 })
+
+test("an open overpayment refund covers the trip, whatever its stored figure says", async () => {
+  // Its amount is live now, so the stored column is decorative. Summing it
+  // would make a covered overpayment look uncovered and offer the same money a
+  // second time — here the row says Rp 1 against an overpayment of 50.000.
+  const [r] = await sql<{ id: number }[]>`
+    INSERT INTO refunds (event, customer, reason, refund_amount, status)
+    VALUES (${EVENT}, ${HANDLE}, 'overpayment', 1, 'pending') RETURNING id`
+
+  const rows = await listOverpaymentsToCheck()
+  assert.equal(
+    rows.some((o) => o.event === EVENT), false,
+    "already has a refund open — not something to check again",
+  )
+
+  await sql`DELETE FROM refunds WHERE id = ${r.id}`
+  const after = await listOverpaymentsToCheck()
+  assert.ok(after.some((o) => o.event === EVENT), "and it is back once the refund is gone")
+})
+
+test("a goods refund still covers only what it says", async () => {
+  // Its figure is a price, so it is summed as before: 20.000 off a 50.000
+  // overpayment leaves 30.000 to check.
+  const [r] = await sql<{ id: number }[]>`
+    INSERT INTO refunds (event, customer, reason, refund_amount, status)
+    VALUES (${EVENT}, ${HANDLE}, 'unavailable', 20000, 'pending') RETURNING id`
+
+  const row = (await listOverpaymentsToCheck()).find((o) => o.event === EVENT)
+  assert.equal(row?.uncovered, 30000)
+
+  await sql`DELETE FROM refunds WHERE id = ${r.id}`
+})
