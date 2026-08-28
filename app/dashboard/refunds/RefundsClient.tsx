@@ -17,6 +17,8 @@ import EventSelect from "@/components/EventSelect"
 import SearchableSelect from "@/components/SearchableSelect"
 import { InvoiceDetailDrawer } from "@/app/dashboard/invoice/InvoiceDetailDrawer"
 import { useMessageTemplates } from "@/hooks/useMessageTemplates"
+import { useCustomerWhatsApp } from "@/hooks/useCustomerWhatsApp"
+import { MessageButton } from "@/components/MessageButton"
 import { fillTemplate, DEFAULT_TEMPLATES } from "@/lib/message-templates"
 import {
   causeLineFor, fillNotice, REFUND_CAUSES, MANUAL_REFUND_CAUSES, NOTICE_TEMPLATES,
@@ -928,9 +930,9 @@ function RefundGroupSheet({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showMessage, setShowMessage] = useState(false)
-  const [copied, setCopied] = useState(false)
 
   const who = refunds[0].customer
+  const whatsapp = useCustomerWhatsApp(who)
   const event = refunds[0].event
   const chosen = refunds.filter((r) => picked.has(r.id))
   const total = chosen.reduce((n, r) => n + displayAmount(r), 0)
@@ -981,16 +983,6 @@ function RefundGroupSheet({
       ? fillTemplate(templates?.refund_specific ?? DEFAULT_TEMPLATES.refund_specific, vars)
       : fillTemplate(templates?.refund_generic ?? DEFAULT_TEMPLATES.refund_generic, vars)
   }, [chosen, who, event, total, templates])
-
-  async function copyMessage() {
-    try {
-      await navigator.clipboard.writeText(waMessageText)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch {
-      setError("Failed to copy")
-    }
-  }
 
   /**
    * Her account, saved onto every refund at once and onto her customer record.
@@ -1164,10 +1156,15 @@ function RefundGroupSheet({
                   className="text-xs px-2 py-1 rounded border border-cream-border text-muted hover:bg-surface-sunken">
                   {showMessage ? "Hide" : "Preview"}
                 </button>
-                <button type="button" onClick={copyMessage} disabled={!templates}
-                  className="text-xs px-2 py-1 rounded border border-cream-border text-muted hover:bg-surface-sunken disabled:opacity-50">
-                  {copied ? "Copied" : "Copy"}
-                </button>
+                <MessageButton
+                  kind="refund"
+                  message={waMessageText}
+                  whatsapp={whatsapp}
+                  disabled={!templates}
+                  className="text-xs px-2 py-1 rounded border border-cream-border text-muted-strong hover:border-brand hover:text-brand transition-colors disabled:opacity-50"
+                  copyLabel="Copy"
+                  sendLabel="WhatsApp"
+                />
               </div>
             </div>
             {showMessage && (
@@ -1895,7 +1892,7 @@ function RefundDetailModal({
   const waMessageText = itemsList
     ? fillTemplate(templates?.refund_specific ?? DEFAULT_TEMPLATES.refund_specific, waVars)
     : fillTemplate(templates?.refund_generic ?? DEFAULT_TEMPLATES.refund_generic, waVars)
-  const waMessage = encodeURIComponent(waMessageText)
+  const whatsapp = useCustomerWhatsApp(row.customer)
 
   async function handleCopyMessage() {
     try {
@@ -1960,36 +1957,17 @@ function RefundDetailModal({
               </svg>
             )}
           </button>
-          <button
-            type="button"
-            onClick={handleCopyMessage}
+          {/* One button, doing whichever thing Settings → Communication says
+              this shop does with a refund message. */}
+          <MessageButton
+            kind="refund"
+            message={waMessageText}
+            whatsapp={whatsapp}
             disabled={!templates}
-            title={copied ? "Copied" : "Copy message"}
-            className="inline-flex items-center justify-center w-6 h-6 rounded border border-cream-border text-muted hover:bg-surface-sunken transition-colors shrink-0 disabled:opacity-50"
-          >
-            {copied ? (
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M20 6 9 17l-5-5" />
-              </svg>
-            ) : (
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="9" y="9" width="13" height="13" rx="2" />
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-              </svg>
-            )}
-          </button>
-          <a
-            href={`https://wa.me/?text=${waMessage}`}
-            target="_blank"
-            rel="noreferrer"
-            onClick={(e) => { if (!templates) e.preventDefault() }}
-            title="Open in WhatsApp"
-            className={`inline-flex items-center justify-center w-6 h-6 rounded border border-cream-border text-muted hover:bg-surface-sunken transition-colors shrink-0 ${templates ? "" : "opacity-50 pointer-events-none"}`}
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.44 1.32 4.94L2.05 22l5.29-1.38a9.9 9.9 0 0 0 4.7 1.2h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.85 9.85 0 0 0 12.04 2zm5.8 14.16c-.24.68-1.2 1.25-1.96 1.41-.52.11-1.2.2-3.5-.75-2.94-1.22-4.83-4.2-4.98-4.4-.15-.19-1.2-1.59-1.2-3.04 0-1.44.75-2.15 1.02-2.45.24-.26.55-.36.79-.36.2 0 .38.01.55.01.18.01.42-.07.65.5.24.6.82 2.06.89 2.21.07.15.12.33.02.53-.1.19-.15.31-.29.48-.15.17-.31.38-.44.51-.15.15-.3.31-.13.6.17.29.75 1.24 1.62 2.01 1.11.99 2.05 1.3 2.34 1.44.29.15.46.13.63-.08.17-.2.72-.84.92-1.13.19-.29.39-.24.65-.14.27.09 1.7.8 1.99.95.29.15.48.22.55.35.07.13.07.75-.17 1.43z" />
-            </svg>
-          </a>
+            className="px-2 py-1 rounded border border-cream-border text-[11px] text-muted-strong hover:border-brand hover:text-brand transition-colors shrink-0 disabled:opacity-50"
+            copyLabel="Copy"
+            sendLabel="WhatsApp"
+          />
         </div>
       </div>
       {showMessage ? (

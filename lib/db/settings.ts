@@ -3,6 +3,7 @@ import type { DBExecutor } from "./actor"
 import { DEFAULT_TEMPLATES, TEMPLATE_KEYS, type TemplateKey } from "../message-templates"
 import { NOTICE_KEYS, type NoticeKey, type NoticeOverride } from "../notice-templates"
 import { DEFAULT_BUSINESS_PROFILE, type BusinessProfile } from "../business-profile"
+import { normalizeDelivery } from "../message-delivery"
 import { DEFAULT_PRODUCT_DEFAULTS, type ProductDefaults } from "../product-defaults"
 import { toPricingMethod } from "../pricing"
 
@@ -85,7 +86,8 @@ export async function updateNoticeTemplate(
 
 export async function getBusinessProfile(): Promise<BusinessProfile> {
   const [row] = await sql`
-    SELECT bank_account_holder, bank_account_lines, owner_name, store_name, phone_number, public_site_url
+    SELECT bank_account_holder, bank_account_lines, owner_name, store_name, phone_number,
+           public_site_url, message_delivery
     FROM business_profile WHERE id = 1
   `
   if (!row) return DEFAULT_BUSINESS_PROFILE
@@ -96,13 +98,15 @@ export async function getBusinessProfile(): Promise<BusinessProfile> {
     storeName: row.store_name as string,
     phoneNumber: row.phone_number as string,
     publicSiteUrl: row.public_site_url as string,
+    messageDelivery: normalizeDelivery(row.message_delivery),
   }
 }
 
 export async function updateBusinessProfile(data: BusinessProfile, db: DBExecutor = sql): Promise<void> {
   await db`
-    INSERT INTO business_profile (id, bank_account_holder, bank_account_lines, owner_name, store_name, phone_number, public_site_url, updated_at)
-    VALUES (1, ${data.bankAccountHolder}, ${data.bankAccountLines}, ${data.ownerName}, ${data.storeName}, ${data.phoneNumber}, ${data.publicSiteUrl}, NOW())
+    INSERT INTO business_profile (id, bank_account_holder, bank_account_lines, owner_name, store_name, phone_number, public_site_url, message_delivery, updated_at)
+    VALUES (1, ${data.bankAccountHolder}, ${data.bankAccountLines}, ${data.ownerName}, ${data.storeName}, ${data.phoneNumber}, ${data.publicSiteUrl},
+            ${sql.json(normalizeDelivery(data.messageDelivery))}, NOW())
     ON CONFLICT (id) DO UPDATE SET
       bank_account_holder = EXCLUDED.bank_account_holder,
       bank_account_lines = EXCLUDED.bank_account_lines,
@@ -110,6 +114,7 @@ export async function updateBusinessProfile(data: BusinessProfile, db: DBExecuto
       store_name = EXCLUDED.store_name,
       phone_number = EXCLUDED.phone_number,
       public_site_url = EXCLUDED.public_site_url,
+      message_delivery = EXCLUDED.message_delivery,
       updated_at = NOW()
   `
 }
