@@ -173,6 +173,8 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
     if (!confirm("Delete this order? This cannot be undone.")) return
     try {
       const res = await fetch(`/api/sheets/duplicate-form/${rowNumber}`, { method: "DELETE" })
+      // A refusal carries its own reason -- bought or shipped units -- and that
+      // sentence says what to do instead. Do not flatten it.
       if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? "Failed to delete") }
       setEditingRow(null)
       await refreshRef.current()

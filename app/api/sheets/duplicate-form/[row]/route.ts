@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import sql from "@/lib/db-pool"
 import { requireSession, requireRole } from "@/lib/api"
 import { updateFormRow, updateFormRowStage2, updateFormRowStage3, updateOrderOwnerCell, reapplyHoldsForArrival, updateOrderNote, updateOrderReceipt, updateOrderDispatchReceipt, deleteFormRow, returnOrderUnitsToExcess, withActor } from "@/lib/db"
 import { strandedBoughtUnits, bankStrandedBoughtUnits } from "@/lib/db/orders"
@@ -236,6 +237,41 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   }
 
   try {
+    // Deleting an order that money has already been spent on is worse than
+    // shrinking one. A shrink strands the bought units -- findable, and now
+    // guarded -- but a delete takes the row with them, so nothing records that
+    // the units were ever ordered, bought or dispatched. They simply stop
+    // existing on paper while sitting in a box.
+    //
+    // Refused rather than banked automatically: reducing the quantity is the
+    // door that asks why and puts the stock on the shelf under the right
+    // reason, and it keeps the row. There is no answer this endpoint could
+    // guess on the caller's behalf.
+    const [row] = (await sql`
+      SELECT COALESCE(unit_buy, 0) AS bought, COALESCE(unit_ship, 0) AS shipped
+        FROM orders WHERE id = ${rowNumber}
+    `) as unknown as { bought: number; shipped: number }[]
+
+    if (row && Number(row.shipped) > 0) {
+      return NextResponse.json(
+        {
+          error: `${row.shipped} unit already shipped, so this order cannot be deleted. `
+            + `The goods are with the customer — if money needs to go back, that is a refund.`,
+        },
+        { status: 409 },
+      )
+    }
+    if (row && Number(row.bought) > 0) {
+      return NextResponse.json(
+        {
+          error: `${row.bought} unit already bought for this order, so deleting it would lose `
+            + `the stock. Set the quantity to 0 instead — that asks why and puts the units into `
+            + `Inventory.`,
+        },
+        { status: 409 },
+      )
+    }
+
     await withActor(session.user.email, (tx) => deleteFormRow(rowNumber, tx))
     return NextResponse.json({ success: true })
   } catch (err) {
