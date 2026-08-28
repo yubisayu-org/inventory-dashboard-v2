@@ -1194,8 +1194,23 @@ function RefundDetailModal({
     .filter(Boolean)
   const named = [...noteLines]
   if (itemsCause?.needsItems) {
+    // A note may name items in full, or abbreviate them: "Cooling Towel,
+    // Bucket Hat, Simple Cap — 5 item" is how a person summarises five marks
+    // merged into one refund, and none of the real product names starts with
+    // it. Matching whole lines appended every item again and she was sent the
+    // list twice.
+    //
+    // So compare fragments. A note line is cut on commas and dashes, and a
+    // fragment of four characters or more that appears inside a product name
+    // counts as having named it. Short fragments are ignored: "Cap" would
+    // swallow "Simple Cap" and hide it.
+    const fragments = noteLines
+      .flatMap((l) => l.split(/[,;·—–-]|\s×\s/))
+      .map((f) => f.trim().toLowerCase())
+      .filter((f) => f.length > 3)
     for (const item of unavailableItems) {
-      const already = named.some((l) => l.toLowerCase().startsWith(item.toLowerCase()))
+      const name = item.toLowerCase()
+      const already = fragments.some((f) => name.includes(f) || f.includes(name))
       if (!already) named.push(item)
     }
   }
