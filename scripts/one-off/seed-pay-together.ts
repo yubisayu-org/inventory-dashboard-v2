@@ -66,16 +66,17 @@ async function main() {
     INSERT INTO payments (event, customer, amount, account, is_checked, kind, remarks)
     VALUES (${event.name}, ${TOGETHER}, 500000, 'BCA', true, 'deposit', 'seed: paid in full')`
 
-  // Marks write the item and the count into the note as they go, one line per
-  // item where several merged into the same refund. That is what a group opens
-  // to show, so the seed has to carry it.
+  // Marks write the item, the count and what each cost into the note as they
+  // go, one line per item where several merged into the same refund. That is
+  // what a group opens to show, so the seed has to carry it.
   const three: [string, number, string, string][] = [
     // All three at the same step, so they collapse into one row on the Pending
     // tab -- which is the thing to look at. lebihbayar below covers the other
     // shape, where what is owed is spread across steps.
-    ["unavailable", 160000, "pending", "Muji Bucket Hat with String × 1\nMuji Aroma Diffuser Small × 1"],
-    ["shipping_loss", 200000, "pending", "Muji Boston Bag 38L Greige × 2"],
-    ["damaged", 100000, "pending", "Muji Shoulder Bag 9L Beige × 1"],
+    ["unavailable", 160000, "pending",
+      "Muji Bucket Hat with String × 1 × Rp 90.000\nMuji Aroma Diffuser Small × 1 × Rp 70.000"],
+    ["shipping_loss", 200000, "pending", "Muji Boston Bag 38L Greige × 2 × Rp 100.000 = Rp 200.000"],
+    ["damaged", 100000, "pending", "Muji Shoulder Bag 9L Beige × 1 × Rp 100.000"],
   ]
   for (const [reason, amount, status, items] of three) {
     await sql`

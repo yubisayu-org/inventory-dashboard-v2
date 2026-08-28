@@ -225,3 +225,51 @@ test("the ongkir the missing goods were carrying comes back with them", async ()
     "the refund is the whole surplus -- no stray kilo waiting in To check",
   )
 })
+
+test("the note says what came off, how many, and what each cost", async () => {
+  // The note is the only record of a refund's goods -- the order line it came
+  // from is already reduced -- so a figure with nothing to check it against is
+  // a figure nobody trusts six weeks later.
+  const who = `${TAG}_priced`
+  const EV = `${TAG}_PRICED`
+  await sql`INSERT INTO events (name, warehouse_id) SELECT ${EV}, id FROM warehouses ORDER BY id LIMIT 1`
+  await sql`INSERT INTO customers (instagram_id) VALUES (${who})`
+  await sql`
+    INSERT INTO orders (event, customer, product_id, unit_price, unit)
+    VALUES (${EV}, ${who}, ${productId}, 100000, 2)`
+  await sql`
+    INSERT INTO payments (event, customer, amount, is_checked, kind)
+    VALUES (${EV}, ${who}, 200000, true, 'deposit')`
+
+  const before = await invoiceTotalsNow(EV)
+  await sql`UPDATE orders SET unit = 0 WHERE event = ${EV}`
+  await refundForReduction(EV, "unavailable", "Muji Boston Bag 38L Greige", [
+    { customer: who, unitsRemoved: 2, unitPrice: 100000, gramPerUnit: 0 },
+  ], before, "tester")
+
+  const [row] = await sql<{ note: string }[]>`
+    SELECT note FROM refunds WHERE event = ${EV}`
+  assert.equal(row.note, "Muji Boston Bag 38L Greige × 2 × Rp 100.000 = Rp 200.000")
+})
+
+test("a single unit does not print a sum of one thing", async () => {
+  const who = `${TAG}_one`
+  const EV = `${TAG}_ONE`
+  await sql`INSERT INTO events (name, warehouse_id) SELECT ${EV}, id FROM warehouses ORDER BY id LIMIT 1`
+  await sql`INSERT INTO customers (instagram_id) VALUES (${who})`
+  await sql`
+    INSERT INTO orders (event, customer, product_id, unit_price, unit)
+    VALUES (${EV}, ${who}, ${productId}, 160000, 1)`
+  await sql`
+    INSERT INTO payments (event, customer, amount, is_checked, kind)
+    VALUES (${EV}, ${who}, 160000, true, 'deposit')`
+
+  const before = await invoiceTotalsNow(EV)
+  await sql`UPDATE orders SET unit = 0 WHERE event = ${EV}`
+  await refundForReduction(EV, "damaged", "Muji Bucket Hat with String", [
+    { customer: who, unitsRemoved: 1, unitPrice: 160000, gramPerUnit: 0 },
+  ], before, "tester")
+
+  const [row] = await sql<{ note: string }[]>`SELECT note FROM refunds WHERE event = ${EV}`
+  assert.equal(row.note, "Muji Bucket Hat with String × 1 × Rp 160.000")
+})

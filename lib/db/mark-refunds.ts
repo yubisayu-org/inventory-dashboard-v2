@@ -107,7 +107,15 @@ export async function refundForReduction(
     const amount = owed(cost, status.totalPaid, status.invoiceTotal)
     if (amount <= 0) continue
 
-    const items = `${itemsLabel} × ${r.unitsRemoved}`
+    // What came off, how many, and what each cost. The note is the only record
+    // of a refund's goods -- the order line it came from is already reduced --
+    // so a figure that cannot be checked against anything is a figure nobody
+    // trusts six weeks later. The line total only where there is a sum to do.
+    const each = `Rp ${new Intl.NumberFormat("id-ID").format(r.unitPrice)}`
+    const items = r.unitsRemoved > 1
+      ? `${itemsLabel} × ${r.unitsRemoved} × ${each}`
+        + ` = Rp ${new Intl.NumberFormat("id-ID").format(r.unitPrice * r.unitsRemoved)}`
+      : `${itemsLabel} × ${r.unitsRemoved} × ${each}`
 
     // What she is owed for this trip and this cause once this mark lands, not
     // what this mark alone came to. She is told a running total because a
