@@ -1,6 +1,9 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
+import EventSelect from "@/components/EventSelect"
+import { useSheetOptions } from "@/hooks/useSheetOptions"
+import { displayIg } from "@/lib/format"
 
 type Announcement = {
   id: number
@@ -119,10 +122,15 @@ export default function AnnouncementsClient() {
         </div>
       )}
 
+      <TripNotice />
+
       <section className="rounded-xl border border-cream-border bg-white p-4 flex flex-col gap-3">
         <h2 className="text-sm font-semibold text-foreground">
           {editingId ? "Edit announcement" : "New announcement"}
         </h2>
+        <p className="text-[11px] text-faint -mt-1">
+          Seen by every customer. For news about one trip, use the box above.
+        </p>
 
         <div className="flex flex-col gap-1">
           <label htmlFor="ann-title" className="text-xs text-muted">
@@ -231,5 +239,162 @@ export default function AnnouncementsClient() {
         )}
       </section>
     </div>
+  )
+}
+
+// ─── Notice for one trip ─────────────────────────────────────────────────────
+
+type Recipient = { customer: string; units: number; unshipped: number }
+
+/**
+ * One notice, to everybody on one trip.
+ *
+ * The announcement below this reaches every customer there is, and the Send
+ * notice button on an invoice reaches exactly one. A cargo delay is neither:
+ * telling everybody includes people with no order on that trip, and telling
+ * them one at a time is forty invoices opened by hand.
+ *
+ * The list of who it reaches is shown before it is sent, not counted after.
+ * Forty notices is not a thing to undo.
+ */
+function TripNotice() {
+  const options = useSheetOptions()
+  const [event, setEvent] = useState("")
+  const [skipShipped, setSkipShipped] = useState(true)
+  const [title, setTitle] = useState("")
+  const [body, setBody] = useState("")
+  const [recipients, setRecipients] = useState<Recipient[] | null>(null)
+  const [showAll, setShowAll] = useState(false)
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState("")
+  const [sentTo, setSentTo] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (!event) { setRecipients(null); return }
+    let live = true
+    setError("")
+    fetch(`/api/announcements/event?event=${encodeURIComponent(event)}&skipShipped=${skipShipped ? "1" : "0"}`,
+      { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d: { recipients?: Recipient[]; error?: string }) => {
+        if (!live) return
+        if (d.error) setError(d.error)
+        else setRecipients(d.recipients ?? [])
+      })
+      .catch(() => { if (live) setError("Couldn't load who this would reach.") })
+    return () => { live = false }
+  }, [event, skipShipped])
+
+  const ready = Boolean(event) && title.trim() !== "" && body.trim() !== "" && (recipients?.length ?? 0) > 0
+
+  async function send() {
+    setSending(true)
+    setError("")
+    try {
+      const res = await fetch("/api/announcements/event", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event, title, body, skipShipped }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? "Failed to send")
+      setSentTo(data.sent ?? 0)
+      setTitle("")
+      setBody("")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to send")
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const shown = showAll ? recipients ?? [] : (recipients ?? []).slice(0, 8)
+
+  return (
+    <section className="rounded-xl border border-cream-border bg-white p-4 flex flex-col gap-3">
+      <div>
+        <h2 className="text-sm font-semibold text-foreground">Notice for one trip</h2>
+        <p className="text-[11px] text-faint">
+          Lands in the inbox of everyone who ordered on that trip, and nobody else. Use{" "}
+          <code className="bg-surface-sunken px-1 rounded">{"{event}"}</code> in the text and it
+          fills itself in.
+        </p>
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-3">
+        <div className="flex flex-col gap-1">
+          <span className="text-xs text-muted">Trip</span>
+          <EventSelect value={event} onChange={(v) => { setEvent(v); setSentTo(null) }}
+            events={options?.events ?? []} placeholder="Pick a trip" />
+        </div>
+        <label className="flex items-start gap-2 md:pt-6">
+          <input type="checkbox" checked={skipShipped} disabled={sending}
+            onChange={(e) => setSkipShipped(e.target.checked)} className="accent-brand mt-0.5" />
+          <span className="text-xs text-muted-strong">
+            Skip whoever already has their parcel
+            <span className="block text-[11px] text-faint">
+              Their box is not in that cargo, so a delay is not their news.
+            </span>
+          </span>
+        </label>
+      </div>
+
+      {event && recipients && (
+        <div className="rounded-lg border border-cream-border bg-surface-muted p-3 flex flex-col gap-1.5">
+          <div className="text-xs font-medium text-muted-strong">
+            {recipients.length === 0
+              ? "Nobody on this trip is waiting for anything."
+              : `Reaches ${recipients.length} customer${recipients.length === 1 ? "" : "s"}`}
+          </div>
+          {recipients.length > 0 && (
+            <>
+              <div className="flex flex-wrap gap-1.5">
+                {shown.map((r) => (
+                  <span key={r.customer}
+                    title={`${r.unshipped} of ${r.units} still to come`}
+                    className="text-[11px] px-2 py-0.5 rounded-full bg-white border border-cream-border text-muted-strong">
+                    {displayIg(r.customer)}
+                  </span>
+                ))}
+              </div>
+              {recipients.length > shown.length && (
+                <button type="button" onClick={() => setShowAll(true)}
+                  className="self-start text-[11px] text-brand hover:underline">
+                  Show the other {recipients.length - shown.length}
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      <div className="flex flex-col gap-1">
+        <label htmlFor="trip-title" className="text-xs text-muted">Title</label>
+        <input id="trip-title" className={inputCls} value={title} maxLength={MAX_TITLE}
+          onChange={(e) => { setTitle(e.target.value); setSentTo(null) }}
+          placeholder="{event} is running late" />
+      </div>
+      <div className="flex flex-col gap-1">
+        <label htmlFor="trip-body" className="text-xs text-muted">Message</label>
+        <textarea id="trip-body" className={`${inputCls} min-h-[90px] resize-y`} value={body}
+          maxLength={MAX_BODY}
+          onChange={(e) => { setBody(e.target.value); setSentTo(null) }}
+          placeholder="The cargo for {event} is held up at customs. Nothing is lost — we will tell you the moment it moves." />
+      </div>
+
+      {error && <p className="text-xs text-red-600">{error}</p>}
+      {sentTo !== null && (
+        <p className="text-xs text-green-700">
+          Sent to {sentTo} customer{sentTo === 1 ? "" : "s"}.
+        </p>
+      )}
+
+      <div className="flex justify-end">
+        <button type="button" onClick={send} disabled={!ready || sending}
+          className="text-xs font-medium px-3 py-1.5 rounded-lg bg-brand text-white hover:bg-brand-dark disabled:opacity-50 transition-colors">
+          {sending ? "Sending…" : `Send to ${recipients?.length ?? 0}`}
+        </button>
+      </div>
+    </section>
   )
 }
