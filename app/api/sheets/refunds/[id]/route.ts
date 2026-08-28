@@ -96,7 +96,6 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       bankAccountNumber: data.bankAccountNumber,
       bankAccountHolder: data.bankAccountHolder,
       transferReference: data.transferReference,
-      note: data.note,
     }, tx))
     return NextResponse.json({ success: true })
   } catch (err) {

@@ -1932,7 +1932,6 @@ function RefundDetailModal({
   const [bankAccountHolder, setBankAccountHolder] = useState(row.bankAccountHolder)
   const [transferRef, setTransferRef] = useState(row.transferReference)
   const [refundAccount, setRefundAccount] = useState("")
-  const [note, setNote] = useState(row.note)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
@@ -2066,11 +2065,6 @@ function RefundDetailModal({
   // Where this row's figure came from, which is the sentence to show in place
   // of the box that used to be here.
   const amountIsLive = isLiveAmount({ reason: row.reason, status: row.status })
-
-  async function handleSaveEdit() {
-    const ok = await patch({ note })
-    if (ok) onUpdated({ ...row, note })
-  }
 
   async function handleDelete() {
     if (!confirm("Delete this refund? This cannot be undone.")) return
@@ -2542,25 +2536,6 @@ function RefundDetailModal({
             </div>
           )}
 
-          {/* The note, and nothing around it.
-              This was a card with a header, a toggle and an amount field that
-              could not be edited any more -- three pieces of furniture around
-              one textarea, on every step of every refund. What the note SAYS is
-              on the row now, so the reason to open this is to change it. */}
-          {!isReadOnly && (
-            <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-muted">Note</span>
-              <textarea
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                onBlur={() => { if (note !== row.note) handleSaveEdit() }}
-                disabled={saving}
-                rows={2}
-                placeholder="Anything worth remembering about this one"
-                className={`${INPUT_CLASS} w-full resize-none`}
-              />
-            </label>
-          )}
           {isReadOnly && row.note && (
             <p className="text-xs text-muted"><span className="font-medium text-faint">Note:</span> {row.note}</p>
           )}

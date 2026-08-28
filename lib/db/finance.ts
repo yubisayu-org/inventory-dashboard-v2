@@ -673,12 +673,30 @@ export async function updateRefund(
     bankAccountNumber: string
     bankAccountHolder: string
     transferReference: string
-    note: string
+    /**
+     * Refused, like the amount, and for the same reason.
+     *
+     * A note is written when the refund is made: a mark writes the goods and
+     * what each cost, the composer writes what was picked. Nothing a person
+     * would want to add afterwards survives examination -- "she asked to keep
+     * it" is the deposit status, "she never sent her account" is the Bank Info
+     * step, "she kept it at half price" is a refund made again at the right
+     * figure, and "send it to her sister instead" is not something this shop
+     * does. Each of those is a state the row already carries, or a decision
+     * that belongs at creation.
+     *
+     * Left editable, the note becomes the place those facts are recorded
+     * INSTEAD of the field that means them, and then two things disagree.
+     */
+    note: never
   }>,
   db: DBExecutor = sql,
 ): Promise<void> {
   if (data.refundAmount !== undefined) {
     throw new Error("A refund's amount is set when it is made. Cancel it and make a new one.")
+  }
+  if (data.note !== undefined) {
+    throw new Error("A refund's note is written when it is made. Cancel it and make a new one.")
   }
 
   const fields: string[] = []
@@ -689,7 +707,6 @@ export async function updateRefund(
   if (data.bankAccountNumber !== undefined) { params.push(data.bankAccountNumber); fields.push(`bank_account_number = $${params.length}`) }
   if (data.bankAccountHolder !== undefined) { params.push(data.bankAccountHolder); fields.push(`bank_account_holder = $${params.length}`) }
   if (data.transferReference !== undefined) { params.push(data.transferReference); fields.push(`transfer_reference = $${params.length}`) }
-  if (data.note !== undefined) { params.push(data.note); fields.push(`note = $${params.length}`) }
 
   if (fields.length === 0) return
   params.push(id)

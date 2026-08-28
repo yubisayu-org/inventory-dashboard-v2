@@ -92,11 +92,12 @@ test("a refund already paid stops claiming anything", async () => {
   assert.equal(balance, 0, "500.000 in, 200.000 invoice, 300.000 sent back")
 })
 
-test("no refund's amount can be typed over, whatever kind it is", async () => {
-  // Every amount is computed or typed once, when the refund is made. Editing
-  // afterwards made a fourth kind of figure -- no reasoning attached, nothing
-  // to check it against. A wrong refund is cancelled and made again, which
-  // leaves a record instead of quietly replacing the number.
+test("neither the amount nor the note can be typed over afterwards", async () => {
+  // Both are written when the refund is made -- computed by a mark, read from
+  // her balance, or typed into the composer. Editing either afterwards makes a
+  // figure or a sentence with no reasoning attached and nothing to check it
+  // against. A wrong refund is cancelled and made again, which leaves a record
+  // instead of quietly replacing what it said.
   const kinds: [string, number][] = [["overpayment", 1], ["quality", 160000], ["unavailable", 50000]]
   for (const [reason, amount] of kinds) {
     const [r] = await sql<{ id: number }[]>`
@@ -108,11 +109,15 @@ test("no refund's amount can be typed over, whatever kind it is", async () => {
       /set when it is made/,
       reason,
     )
-    // The note is hers to write at any stage, and always was.
-    await updateRefund(r.id, { note: "asked her on WhatsApp" })
+    await assert.rejects(
+      // @ts-expect-error -- typed `never`; this is the runtime guard
+      () => updateRefund(r.id, { note: "she asked on WhatsApp" }),
+      /written when it is made/,
+      reason,
+    )
     const [row] = await sql<{ note: string; refund_amount: number }[]>`
       SELECT note, refund_amount::int FROM refunds WHERE id = ${r.id}`
-    assert.equal(row.note, "asked her on WhatsApp")
+    assert.equal(row.note, "", "the note it was made with, untouched")
     assert.equal(row.refund_amount, amount, `${reason} keeps its own figure`)
   }
 })
