@@ -678,6 +678,23 @@ export async function executeRefund(
 
   await sql.begin(async (tx) => {
     await tx`SELECT set_config('app.actor', ${actor ?? ""}, true)`
+
+    // Re-read at the moment of transfer, not when the screen was opened. This
+    // is the last point at which the figure can still be right, so it is the
+    // one that decides what leaves the bank -- and what the row freezes at.
+    let amount = refund.refund_amount as number
+    if (isLiveAmount({ reason: refund.reason as string, status: refund.status as string })) {
+      const [live] = (await tx`
+        SELECT balance FROM live_balances
+         WHERE event = ${refund.event as string}
+           AND customer = lower(replace(${refund.customer as string}, '@', ''))
+      `) as unknown as { balance: number }[]
+      amount = Math.max(0, live?.balance ?? 0)
+    }
+    if (!(amount > 0)) {
+      throw new Error("There is nothing owed on this refund any more")
+    }
+
     // `account` is OUR bank the refund was sent from (BCA/JAGO/...), matching
     // what the column means on every other payment row. The customer's
     // receiving bank details stay on the refunds row.
@@ -686,7 +703,7 @@ export async function executeRefund(
       VALUES (
         ${refund.event as string},
         ${refund.customer as string},
-        ${-(refund.refund_amount as number)},
+        ${-amount},
         ${account},
         true,
         ${`Refund: ${refund.reason}`},
@@ -698,6 +715,7 @@ export async function executeRefund(
     await tx`
       UPDATE refunds
       SET status             = 'refunded',
+          refund_amount      = ${amount},
           transfer_reference = ${transferReference},
           bank_name          = ${refund.bank_name as string},
           bank_account_number = ${refund.bank_account_number as string},
