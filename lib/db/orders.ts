@@ -421,6 +421,14 @@ export function strandedBoughtUnits(unit: number, unitBuy: number): number {
 export async function bankStrandedBoughtUnits(
   orderId: number,
   db: DBExecutor = sql,
+  /**
+   * Why the order shrank. Both answers put the units on the shelf -- the stock
+   * exists either way -- but they are different facts about the same box, and
+   * a month later "we bought two by accident" and "she changed her mind" are
+   * not the same story. Written on the Inventory row and on the order's own
+   * note, so whoever reads either one is told which.
+   */
+  cause: "staff_mistake" | "customer_changed_mind" = "staff_mistake",
 ): Promise<{ banked: number }> {
   const rows = (await db`
     SELECT o.event, o.unit, o.unit_buy, o.unit_dispatch, o.receipt, p.name AS product_name
@@ -440,16 +448,25 @@ export async function bankStrandedBoughtUnits(
   if (banked === 0) return { banked: 0 }
 
   const dispatched = Math.min(banked, Math.max(0, (Number(r.unit_dispatch) || 0) - unit))
+  // overbuy is the shop buying more than it needed; customer_cancelled is her
+  // deciding she did not want it. Both already exist as reasons.
+  const reason = cause === "customer_changed_mind" ? "customer_cancelled" : "overbuy"
   await db`
-    INSERT INTO excess_purchase (event, items, unit_buy, receipt, unit_dispatch)
+    INSERT INTO excess_purchase (event, items, unit_buy, receipt, unit_dispatch, reason)
     VALUES (${r.event}, ${r.product_name}, ${banked}, ${r.receipt ?? ""},
-            ${dispatched > 0 ? dispatched : null})`
+            ${dispatched > 0 ? dispatched : null}, ${reason})`
 
-  // The units are the shelf's now, so the order stops claiming them.
+  // The units are the shelf's now, so the order stops claiming them -- and the
+  // line says why it shrank, because the number alone will not remember.
+  const stamp = cause === "customer_changed_mind"
+    ? `${banked} unit ke Inventory — customer batal`
+    : `${banked} unit ke Inventory — salah input`
   await db`
     UPDATE orders
        SET unit_buy = ${unit},
            unit_dispatch = LEAST(COALESCE(unit_dispatch, 0), ${unit}),
+           note = CASE WHEN COALESCE(note, '') = '' THEN ${stamp}
+                       ELSE note || ' · ' || ${stamp} END,
            updated_at = NOW()
      WHERE id = ${orderId}`
 

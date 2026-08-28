@@ -938,11 +938,11 @@ async function putOrderEdit(
   rowNumber: number,
   payload: Record<string, unknown>,
 ): Promise<{ banked: number }> {
-  async function send(bankStranded?: boolean) {
+  async function send(extra?: Record<string, unknown>) {
     return await fetch(`/api/sheets/duplicate-form/${rowNumber}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(bankStranded === undefined ? payload : { ...payload, bankStranded }),
+      body: JSON.stringify(extra ? { ...payload, ...extra } : payload),
     })
   }
 
@@ -951,15 +951,26 @@ async function putOrderEdit(
     const d = await res.json()
     if (d.error === "stranded_units") {
       const n = Number(d.stranded) || 0
-      const ok = confirm(
-        `${n} unit sudah dibeli tapi tidak ada di pesanan ini.\n\n` +
-        `Unit itu akan dicatat ke Inventory sebagai stok siap dijual.\n\n` +
+      // Which of the two it was. Both shelve the units -- the stock is real
+      // either way -- but they are different facts, and the answer is written
+      // onto the Inventory row and the order's note. OK is the shop's own
+      // slip, Cancel is her changing her mind; anything else abandons the edit
+      // rather than saving it unexplained.
+      const mistake = confirm(
+        `${n} unit sudah dibeli tapi tidak ada di pesanan ini.\n` +
+        `Unit itu akan masuk Inventory sebagai stok siap dijual.\n\n` +
+        `Kenapa jumlahnya berkurang?\n\n` +
+        `OK  = salah input (dobel / salah ketik)\n` +
+        `Batal = customer berubah pikiran`,
+      )
+      const cause = mistake ? "staff_mistake" : "customer_changed_mind"
+      const sure = mistake || confirm(
+        `Customer berubah pikiran setelah barangnya dibeli.\n\n` +
+        `${n} unit tetap masuk Inventory dan dicatat sebagai pembatalan customer.\n\n` +
         `Lanjutkan?`,
       )
-      // Declining abandons the edit rather than saving it anyway: the whole
-      // point is that this state does not get written quietly.
-      if (!ok) throw new Error("Dibatalkan — tidak ada yang disimpan")
-      res = await send(true)
+      if (!sure) throw new Error("Dibatalkan — tidak ada yang disimpan")
+      res = await send({ bankStranded: true, cause })
     }
   }
   if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? "Failed to save") }
