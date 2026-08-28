@@ -640,6 +640,9 @@ export interface OperationalExpenseRow {
   category: ExpenseCategory
   /** Cost in the currency it was paid in (the "# VLS" column). */
   amountForeign: number
+  /** What that currency was. Null on rows added before it was recorded — the
+   *  screen falls back to inferring it, which is all those rows allow. */
+  currency: string | null
   /** IDR per unit of foreign currency (the "Kurs" column); 1 for IDR rows. */
   rate: number
   /** Cost in rupiah (the "IDR" column). */

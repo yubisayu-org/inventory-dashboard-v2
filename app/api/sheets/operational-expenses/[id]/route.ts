@@ -42,6 +42,9 @@ export async function PUT(req: NextRequest, { params }: Params) {
       isSettled: Boolean(body.isSettled),
       method: String(body.method ?? "").trim(),
       remarks: String(body.remarks ?? "").trim(),
+      // What she actually paid in. Inferring it afterwards cannot tell USD from
+      // CNY, and an expense with no event has no country to guess from.
+      currency: String(body.currency ?? "").trim() || null,
     }, tx))
 
     return NextResponse.json({ success: true })
