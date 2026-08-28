@@ -1941,7 +1941,9 @@ function RefundDetailModal({
   const [invoiceError, setInvoiceError] = useState<string | null>(null)
   // Collapsed-by-default sections keep the modal short enough to never scroll
   // in the common case — the old layout hid half the workflow below the fold.
-  const [showMessage, setShowMessage] = useState(false)
+  // Open at Pending: the message is the whole of that step, and a preview
+  // folded away is a step that looks like it has nothing in it.
+  const [showMessage, setShowMessage] = useState(row.status === "pending")
   // Opens the full invoice as a drawer over this modal instead of navigating
   // away to /dashboard/invoice, so the refund list keeps its place.
   const [showFullInvoice, setShowFullInvoice] = useState(false)
@@ -2222,7 +2224,7 @@ function RefundDetailModal({
         disabled={saving}
         className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
       >
-        Sent
+        Mark as sent
       </button>
     ) : row.status === "awaiting_bank_info" ? (
       <button
@@ -2266,19 +2268,6 @@ function RefundDetailModal({
               </svg>
             )}
           </button>
-          {/* One button, doing whichever thing Settings → Communication says
-              this shop does with a refund message. */}
-          {/* Drawn, not named: the word would be set here while the behaviour
-              is set in Settings, and only the word is on screen. */}
-          <MessageButton
-            kind="refund"
-            variant="icon"
-            message={waMessageText}
-            whatsapp={whatsapp}
-            disabled={!templates}
-            copyLabel="Copy the refund message"
-            sendLabel="Send the refund message on WhatsApp"
-          />
         </div>
       </div>
       {showMessage ? (
@@ -2559,6 +2548,23 @@ function RefundDetailModal({
             </button>
           ) : <span />}
           <div className="flex items-center gap-2">
+            {/* The act this step exists for, beside the button that records it
+                having happened. It was an icon in a row of icons inside the
+                card -- the smallest control on screen for the only thing the
+                step is asking you to do.
+                The word follows the setting rather than being written here, so
+                it cannot say Copy while Settings says WhatsApp. */}
+            {(row.status === "pending" || showMessagePanel) && (
+              <MessageButton
+                kind="refund"
+                message={waMessageText}
+                whatsapp={whatsapp}
+                disabled={!templates}
+                copyLabel="Message"
+                sendLabel="WhatsApp"
+                className="px-4 py-2 rounded-lg border border-brand text-brand text-sm font-semibold hover:bg-brand-light disabled:opacity-50 transition-colors"
+              />
+            )}
             <button
               type="button"
               onClick={onClose}
