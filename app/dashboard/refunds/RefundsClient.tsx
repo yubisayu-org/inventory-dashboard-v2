@@ -722,6 +722,17 @@ export default function RefundsClient() {
                       className="cursor-pointer hover:bg-white/70 transition-colors"
                     >
                       {layout.columnIds.map((id) => {
+                        // Repeated on every member, quieter than the parent's.
+                        // A detail row read on its own -- scrolled to, copied
+                        // out, pointed at on a screen -- should still say whose
+                        // it is and which trip, rather than depending on a line
+                        // that may be off the top of the screen.
+                        if (id === "customer") return (
+                          <td key={id} className="px-4 py-2 text-muted truncate">{displayIg(m.customer)}</td>
+                        )
+                        if (id === "event") return (
+                          <td key={id} className="px-4 py-2 text-faint truncate">{m.event}</td>
+                        )
                         if (id === "reason") return (
                           <td key={id} className="px-4 py-2 text-muted-strong truncate">{reasonLabel(m.reason)}</td>
                         )
