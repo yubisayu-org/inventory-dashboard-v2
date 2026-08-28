@@ -1184,6 +1184,16 @@ function ApplyCreditModal({
                 className={`${INPUT_CLASS} w-full`}
               />
             </label>
+            {/* The arithmetic the banner used to do silently, said out loud.
+                Which of the two cases you are in is the whole question when a
+                customer owes on twelve trips. */}
+            {chosen && amt > 0 && excess === 0 && (
+              <p className="text-[11px] text-muted">
+                {amt >= row.refundAmount
+                  ? `The whole refund goes to ${chosen.eventId}, which still owes ${formatRp(owed - amt)} after it.`
+                  : `${chosen.eventId} owes only ${formatRp(owed)}, so that is all it can take.`}
+              </p>
+            )}
             {excess > 0 && (
               <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2">
                 ⚠ {formatRp(amt)} is more than {chosen!.eventId} owes ({formatRp(owed)}). The extra{" "}
@@ -2003,6 +2013,10 @@ function RefundDetailModal({
         .sort((a, b) => b.amount - a.amount),
     [customerEvents, row.event],
   )
+  const owedTotal = useMemo(
+    () => owedElsewhere.reduce((n, t) => n + t.amount, 0),
+    [owedElsewhere],
+  )
 
 
   async function patch(body: object) {
@@ -2332,26 +2346,37 @@ function RefundDetailModal({
           </div>
         </div>
 
-        {/* Outstanding elsewhere — the credit offer, one click from taken. Only
-            where a credit can still be applied; a settled refund is history. */}
+        {/* Outstanding elsewhere.
+            One line, whether she owes on one trip or twelve. It used to print
+            every debt inline -- twelve amounts in a run cannot be compared, the
+            step began halfway down the sheet, and the button chose her largest
+            debt for you, offering "Rp 511.200 to LSJP202509" against a debt of
+            Rp 3.177.000, which reads as a mistake until you work out the figure
+            is capped by the refund rather than the debt.
+            The total and the count are the warning; the list is not, and it
+            already exists in the credit window, sorted, next to the amount
+            field. Only where a credit can still be applied -- a settled refund
+            is history. */}
         {!isReadOnly && owedElsewhere.length > 0 && (
-          <div className="shrink-0 flex flex-wrap items-center gap-x-2 gap-y-1.5 px-6 py-2.5 border-b border-purple-200 bg-purple-50">
-            <span className="text-xs text-purple-800">
-              <span className="font-semibold">Outstanding elsewhere</span> ·{" "}
-              {owedElsewhere.map((t, i) => (
-                <span key={t.event}>
-                  {i > 0 && ", "}
-                  <span className="font-bold tabular-nums">{formatRp(t.amount)}</span> on {t.event}
-                </span>
-              ))}
+          <div className="shrink-0 flex items-center gap-2.5 px-6 py-2 border-b border-purple-200 bg-purple-50">
+            <span aria-hidden="true" className="text-purple-700 shrink-0">⚠</span>
+            <span
+              className="flex-1 min-w-0 text-xs text-purple-800 truncate"
+              title={owedElsewhere.map((t) => `${formatRp(t.amount)} on ${t.event}`).join("\n")}
+            >
+              Owes <span className="font-bold tabular-nums">{formatRp(owedTotal)}</span> on{" "}
+              <span className="font-bold">
+                {owedElsewhere.length} other trip{owedElsewhere.length === 1 ? "" : "s"}
+              </span>
+              <span className="text-purple-600"> · don&apos;t send this back</span>
             </span>
             <button
               type="button"
               disabled={saving}
               onClick={() => setShowCredit(true)}
-              className="ml-auto shrink-0 px-2.5 py-1 rounded-md text-xs font-medium bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 transition-colors"
+              className="shrink-0 px-2.5 py-1 rounded-md text-xs font-semibold bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 transition-colors"
             >
-              Apply {formatRp(Math.min(row.refundAmount, owedElsewhere[0].amount))} to {owedElsewhere[0].event}
+              Apply as credit
             </button>
           </div>
         )}
