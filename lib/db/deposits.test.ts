@@ -108,3 +108,31 @@ test("a plain pending refund still goes back to pending when part-applied", asyn
   const [row] = await sql<{ status: string }[]>`SELECT status FROM refunds WHERE id = ${r.id}`
   assert.equal(row.status, "pending")
 })
+
+test("several deposits are returned oldest first, so the lot spends in that order", async () => {
+  // "Pakai semua" walks this list and stops when the invoice is covered. The
+  // order is the whole behaviour: a credit sitting since June should go before
+  // one from last week, or the old one never leaves her account.
+  const WHO2 = `${TAG}_many`
+  const A = `${TAG}_A`, B = `${TAG}_B`
+  await sql`INSERT INTO customers (instagram_id) VALUES (${WHO2})`
+  for (const e of [A, B]) {
+    await sql`INSERT INTO events (name, warehouse_id) SELECT ${e}, id FROM warehouses ORDER BY id LIMIT 1`
+    await sql`
+      INSERT INTO orders (event, customer, product_id, unit_price, unit)
+      VALUES (${e}, ${WHO2}, ${productId}, 500000, 1)`
+  }
+  // Written newest-first on purpose, with updated_at saying otherwise.
+  await sql`
+    INSERT INTO refunds (event, customer, reason, refund_amount, status, updated_at)
+    VALUES (${B}, ${WHO2}, 'unavailable', 2000, 'applied_to_next_order', NOW())`
+  await sql`
+    INSERT INTO refunds (event, customer, reason, refund_amount, status, updated_at)
+    VALUES (${A}, ${WHO2}, 'overpayment', 160000, 'applied_to_next_order', NOW() - INTERVAL '60 days')`
+
+  const held = await heldDeposits(WHO2)
+  assert.equal(held.length, 2)
+  assert.equal(held[0].fromEvent, A, "the older one leads")
+  assert.equal(held[1].fromEvent, B)
+  assert.equal(held.reduce((n, d) => n + d.amount, 0), 162000)
+})

@@ -30,7 +30,8 @@ export function DepositBanner({
   onApplied: () => void
 }) {
   const [deposits, setDeposits] = useState<HeldDeposit[]>([])
-  const [busy, setBusy] = useState<number | null>(null)
+  // A single refund id while one is being applied, "all" while the lot is.
+  const [busy, setBusy] = useState<number | "all" | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [nonce, setNonce] = useState(0)
 
@@ -50,20 +51,23 @@ export function DepositBanner({
     return () => { live = false }
   }, [customer, event, outstanding, nonce])
 
+  const send = useCallback(async (refundId: number, amount: number) => {
+    const res = await fetch(`/api/sheets/refunds/${refundId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "apply_credit", targetEvent: event, amount }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.error ?? "Gagal memakai deposit")
+  }, [event])
+
   const apply = useCallback(async (d: HeldDeposit) => {
     setBusy(d.refundId)
     setError(null)
     try {
       // Never more than she owes: the remainder stays on her account for the
       // next one rather than turning this invoice into a new overpayment.
-      const amount = Math.min(d.amount, outstanding)
-      const res = await fetch(`/api/sheets/refunds/${d.refundId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "apply_credit", targetEvent: event, amount }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data.error ?? "Gagal memakai deposit")
+      await send(d.refundId, Math.min(d.amount, outstanding))
       setNonce((n) => n + 1)
       onApplied()
     } catch (err) {
@@ -71,12 +75,75 @@ export function DepositBanner({
     } finally {
       setBusy(null)
     }
-  }, [event, outstanding, onApplied])
+  }, [send, outstanding, onApplied])
+
+  /**
+   * The lot, in one press.
+   *
+   * Oldest first, so a credit that has been sitting for months is spent before
+   * one from last week, and stopping as soon as the invoice is covered — a
+   * deposit bigger than the bill leaves its remainder on her account rather
+   * than turning this invoice into a new overpayment.
+   *
+   * Still one credit payment per deposit underneath: the trail afterwards says
+   * which trip paid for what, exactly as applying them by hand would.
+   */
+  const applyAll = useCallback(async () => {
+    setBusy("all")
+    setError(null)
+    let left = outstanding
+    try {
+      for (const d of deposits) {
+        if (left <= 0) break
+        const amount = Math.min(d.amount, left)
+        await send(d.refundId, amount)
+        left -= amount
+      }
+      setNonce((n) => n + 1)
+      onApplied()
+    } catch (err) {
+      // Whatever went through before the failure stands; the banner reloads to
+      // show what is left rather than pretending none of it happened.
+      setError(err instanceof Error ? err.message : "Gagal memakai deposit")
+      setNonce((n) => n + 1)
+      onApplied()
+    } finally {
+      setBusy(null)
+    }
+  }, [deposits, send, outstanding, onApplied])
 
   if (deposits.length === 0) return null
 
+  const total = deposits.reduce((n, d) => n + d.amount, 0)
+  const usableTotal = Math.min(total, outstanding)
+
   return (
     <div className="mx-4 my-3 rounded-lg border border-green-200 bg-green-50 p-3 flex flex-col gap-2">
+      {/* Only where there is more than one. With a single deposit this button
+          and the row's own would do the identical thing, differently worded. */}
+      {deposits.length > 1 && (
+        <div className="flex items-center gap-2.5 pb-2 border-b border-green-200">
+          <span className="text-green-700 text-sm leading-none">💰</span>
+          <div className="flex-1 min-w-0 text-xs">
+            <div className="text-foreground">
+              Total deposit <b className="tabular-nums">Rp {fmt(total)}</b> dari{" "}
+              {deposits.length} refund
+            </div>
+            <div className="text-muted-strong mt-0.5">
+              Dipakai dari yang paling lama dulu, berhenti kalau tagihannya sudah tertutup.
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={applyAll}
+            disabled={busy !== null}
+            className="shrink-0 px-2.5 py-1 rounded-lg bg-green-700 text-white text-[11px] font-medium hover:bg-green-800 disabled:opacity-50"
+          >
+            {busy === "all" ? "Memakai…" : `Pakai semua Rp ${fmt(usableTotal)}`}
+          </button>
+        </div>
+      )}
+
       {deposits.map((d) => {
         const usable = Math.min(d.amount, outstanding)
         const over = d.amount > outstanding
