@@ -1656,6 +1656,18 @@ function RefundDetailModal({
   // still on the list.
   const [showCredit, setShowCredit] = useState(() => isCreditPromised(row))
   const [creditTarget, setCreditTarget] = useState("")
+  /**
+   * The orders this credit could actually pay off.
+   *
+   * A settled order is not one of them. Crediting it does not settle anything
+   * -- it makes her overpaid there instead, which raises a fresh overpayment
+   * refund on that trip and moves the problem rather than ending it. Offering
+   * it as a choice invited exactly that, and the amount box prefilled the whole
+   * refund when you picked one.
+   *
+   * Same rule the "Outstanding elsewhere" banner above already follows, which
+   * listed only trips that owe while this dropdown listed everything.
+   */
   const [creditAmount, setCreditAmount] = useState("")
 
   useEffect(() => {
@@ -1676,6 +1688,11 @@ function RefundDetailModal({
       .finally(() => { if (!cancelled) setInvoiceLoading(false) })
     return () => { cancelled = true }
   }, [row.customer, row.event])
+
+  const creditTargets = useMemo(
+    () => customerEvents.filter((ev) => ev.eventId !== row.event && ev.invoice.sisaPelunasan > 0),
+    [customerEvents, row.event],
+  )
 
   // A promised credit is deliberately NOT read-only: closing it is what left it
   // with no way to be applied once the customer's next order finally existed.
@@ -2375,9 +2392,11 @@ function RefundDetailModal({
                 another order for <span className="font-medium">{displayIg(row.customer)}</span>. No cash moves — it
                 leaves this order and counts as payment on the chosen one.
               </div>
-              {customerEvents.filter((ev) => ev.eventId !== row.event).length === 0 ? (
+              {creditTargets.length === 0 ? (
                 <p className="text-xs text-purple-600">
-                  This customer has no other orders to credit. Create their next order first, then apply the credit.
+                  {customerEvents.filter((ev) => ev.eventId !== row.event).length === 0
+                    ? "This customer has no other orders to credit. Create their next order first, then apply the credit."
+                    : "Her other orders are all settled, so there is nothing here to pay off. Credit it once she has an order that owes something — or keep it on her account."}
                 </p>
               ) : (
                 <>
@@ -2391,24 +2410,25 @@ function RefundDetailModal({
                         // Default the amount to what the target owes, capped at
                         // the overpayment — so the common case fully settles the
                         // target without over-crediting it.
-                        const tgt = customerEvents.find((ev) => ev.eventId === id)
+                        const tgt = creditTargets.find((ev) => ev.eventId === id)
                         const owed = Math.max(0, tgt?.invoice.sisaPelunasan ?? 0)
-                        setCreditAmount(id ? String(Math.min(row.refundAmount, owed) || row.refundAmount) : "")
+                        // No `|| row.refundAmount` fallback: it existed for a
+                        // target owing nothing, where Math.min gives 0, and it
+                        // prefilled the WHOLE refund onto a settled order --
+                        // turning it into a fresh overpayment. Settled orders
+                        // are no longer offered, so there is nothing left for
+                        // that fallback to rescue.
+                        setCreditAmount(id ? String(Math.min(row.refundAmount, owed)) : "")
                       }}
                       disabled={saving}
                       className={`${INPUT_CLASS} w-full`}
                     >
                       <option value="">Select an order…</option>
-                      {customerEvents
-                        .filter((ev) => ev.eventId !== row.event)
-                        .map((ev) => {
-                          const owed = Math.max(0, ev.invoice.sisaPelunasan)
-                          return (
-                            <option key={ev.eventId} value={ev.eventId}>
-                              {ev.eventId} — {owed > 0 ? `owes ${formatRp(owed)}` : "fully paid"}
-                            </option>
-                          )
-                        })}
+                      {creditTargets.map((ev) => (
+                        <option key={ev.eventId} value={ev.eventId}>
+                          {ev.eventId} — owes {formatRp(Math.max(0, ev.invoice.sisaPelunasan))}
+                        </option>
+                      ))}
                     </select>
                   </label>
                   <label className="flex flex-col gap-1">
