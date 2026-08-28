@@ -260,6 +260,43 @@ export default function ExcessTable() {
         ),
       },
       {
+        // Where the stock physically is. Every row here counts as Inventory,
+        // but a unit still in a warehouse abroad cannot be handed to the next
+        // customer who wants it, and the table gave no way to tell them apart.
+        id: "whereabouts",
+        header: "Stok",
+        enableSorting: false,
+        enableColumnFilter: false,
+        size: 150,
+        cell: ({ row }) => {
+          const buy = row.original.unitBuy
+          const dispatched = row.original.unitDispatch ?? 0
+          const here = row.original.unitArrive ?? 0
+          // Three places a unit can be, counted from the far end back so the
+          // stages cannot overlap.
+          const transit = Math.max(0, dispatched - here)
+          const waiting = Math.max(0, buy - dispatched)
+          const parts: { n: number; label: string; cls: string }[] = [
+            { n: here, label: "siap", cls: "bg-green-50 text-green-700 border-green-200" },
+            { n: transit, label: "di jalan", cls: "bg-blue-50 text-blue-700 border-blue-200" },
+            { n: waiting, label: "belum dikirim", cls: "bg-surface-sunken text-muted border-cream-border" },
+          ].filter((p) => p.n > 0)
+          if (parts.length === 0) return <span className="text-faint">—</span>
+          return (
+            <div className="flex flex-wrap gap-1">
+              {parts.map((p) => (
+                <span
+                  key={p.label}
+                  className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[11px] font-medium whitespace-nowrap ${p.cls}`}
+                >
+                  {p.n} {p.label}
+                </span>
+              ))}
+            </div>
+          )
+        },
+      },
+      {
         accessorKey: "price",
         header: "Price",
         enableColumnFilter: false,
