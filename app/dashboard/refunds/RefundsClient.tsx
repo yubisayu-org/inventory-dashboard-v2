@@ -1946,6 +1946,8 @@ function RefundDetailModal({
   // Opens the full invoice as a drawer over this modal instead of navigating
   // away to /dashboard/invoice, so the refund list keeps its place.
   const [showFullInvoice, setShowFullInvoice] = useState(false)
+  /** The message, on a step that is not about writing it. */
+  const [showMessagePanel, setShowMessagePanel] = useState(false)
 
   // Apply-as-credit flow: the customer's other orders are the valid targets.
   const [customerEvents, setCustomerEvents] = useState<InvoiceEvent[]>([])
@@ -2302,6 +2304,21 @@ function RefundDetailModal({
             <div className="flex flex-wrap items-center gap-x-2">
               <span className="text-sm font-semibold text-foreground">{row.event}</span>
               <span className="text-sm text-faint truncate uppercase">{displayIg(row.customer)}</span>
+              {/* Still reachable at every step -- she may not have replied, and
+                  nudging her is the same message said again. */}
+              {row.status !== "pending" && !isReadOnly && (
+                <button
+                  type="button"
+                  onClick={() => setShowMessagePanel((v) => !v)}
+                  aria-label={showMessagePanel ? "Hide the message" : "Show the message"}
+                  title={showMessagePanel ? "Hide the message" : "Show the message"}
+                  className={`transition-colors shrink-0 ${showMessagePanel ? "text-brand" : "text-faint hover:text-brand"}`}
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                  </svg>
+                </button>
+              )}
               {invoiceEvent && (
                 <button
                   type="button"
@@ -2381,7 +2398,11 @@ function RefundDetailModal({
         <div className="flex-1 min-h-0 flex flex-col gap-3 md:gap-4 px-6 py-3 md:py-4 overflow-y-auto">
           {/* ── Current step ── */}
 
-          {row.status === "pending" && whatsAppCard}
+          {/* The step that composes and sends it. Elsewhere it is behind the
+              header's message button: Bank Info is for typing what she replied
+              with, and showing her the message again there is the sheet
+              answering a question nobody asked. */}
+          {(row.status === "pending" || showMessagePanel) && whatsAppCard}
 
           {row.status === "awaiting_bank_info" && (
             <div className="flex flex-col gap-3">
@@ -2417,8 +2438,6 @@ function RefundDetailModal({
                   />
                 </label>
               </div>
-              {/* Customer hasn't replied yet? Message tools stay one click away. */}
-              {whatsAppCard}
             </div>
           )}
 
