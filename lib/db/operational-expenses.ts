@@ -18,6 +18,7 @@ function mapExpenseRow(r: Record<string, unknown>): OperationalExpenseRow {
     description: (r.description as string) ?? "",
     category: (r.category as ExpenseCategory) ?? "Shop",
     amountForeign: Number(r.amount_foreign) || 0,
+    currency: (r.currency as string | null) ?? null,
     rate: Number(r.rate) || 0,
     amountIdr: (r.amount_idr as number) ?? 0,
     isSettled: Boolean(r.is_settled),
@@ -144,7 +145,7 @@ export async function getOperationalExpensesPaginated(opts: {
 
   const selectCols =
     `e.id, e.event, e.expense_date, e.description, e.category, ` +
-    `e.amount_foreign, e.rate, e.amount_idr, e.is_settled, e.method, ` +
+    `e.amount_foreign, e.rate, e.amount_idr, e.is_settled, e.method, e.currency, ` +
     `e.remarks, e.created_at, e.updated_at`
 
   const dataQuery = sql.unsafe(
@@ -213,15 +214,19 @@ export async function addOperationalExpense(data: {
   isSettled: boolean
   method: string
   remarks: string
+  /** Stored rather than inferred: rate is a ratio, so USD and CNY look alike
+   *  afterwards, and an expense with no event has no country to fall back on. */
+  currency?: string | null
 }, db: DBExecutor = sql): Promise<{ rowNumber: number }> {
   const [row] = await db`
     INSERT INTO operational_expenses
       (event, expense_date, description, category, amount_foreign, rate,
-       amount_idr, is_settled, method, remarks)
+       amount_idr, is_settled, method, remarks, currency)
     VALUES
       (${data.event || null}, ${data.expenseDate || null}, ${data.description},
        ${data.category}, ${data.amountForeign}, ${data.rate}, ${data.amountIdr},
-       ${data.isSettled}, ${data.method}, ${data.remarks})
+       ${data.isSettled}, ${data.method}, ${data.remarks},
+       ${data.currency?.trim() || null})
     RETURNING id
   `
   return { rowNumber: row.id }
@@ -240,6 +245,7 @@ export async function updateOperationalExpense(
     isSettled: boolean
     method: string
     remarks: string
+    currency?: string | null
   },
   db: DBExecutor = sql,
 ): Promise<void> {
@@ -249,7 +255,8 @@ export async function updateOperationalExpense(
         description = ${data.description}, category = ${data.category},
         amount_foreign = ${data.amountForeign}, rate = ${data.rate},
         amount_idr = ${data.amountIdr}, is_settled = ${data.isSettled},
-        method = ${data.method}, remarks = ${data.remarks}, updated_at = NOW()
+        method = ${data.method}, remarks = ${data.remarks},
+        currency = ${data.currency?.trim() || null}, updated_at = NOW()
     WHERE id = ${rowNumber}
   `
 }

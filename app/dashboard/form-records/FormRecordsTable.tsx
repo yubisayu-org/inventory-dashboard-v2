@@ -95,7 +95,7 @@ export default function FormRecordsTable({ role }: { role: Role | null }) {
 
   // -- Convert TanStack state → usePaginatedFetch params --
   const fetchFilters = useMemo(() => {
-    const f = { event: "", customer: "", items: "", dateFrom: "", dateTo: "" }
+    const f = { event: "", customer: "", items: "", receipt: "", dispatchReceipt: "", dateFrom: "", dateTo: "" }
     for (const cf of columnFilters) {
       // Date column carries a {from,to} range object, not a plain string.
       if (cf.id === "createdAt") {
@@ -222,7 +222,11 @@ export default function FormRecordsTable({ role }: { role: Role | null }) {
       accessorKey: "receipt",
       header: "Receipt",
       size: 140,
-      enableColumnFilter: false,
+      // Matched from the front, server-side: a receipt is a code, and its
+      // prefix is the useful question. The search box cannot answer this --
+      // it ORs a substring across five other columns, so "HC" there also
+      // returns whoever has "hc" in their handle.
+      filterFn: "textContains",
       cell: ({ row }) => isOwner
         ? <InlineTextCell value={row.original.receipt} onSave={(v) => handleSaveReceipt(row.original, v)} />
         : <span className={row.original.receipt ? "" : "text-faint"}>{row.original.receipt || "—"}</span>,
@@ -231,7 +235,7 @@ export default function FormRecordsTable({ role }: { role: Role | null }) {
       accessorKey: "dispatchReceipt",
       header: "Dispatch Receipt",
       size: 140,
-      enableColumnFilter: false,
+      filterFn: "textContains",
       cell: ({ row }) => isOwner
         ? <InlineTextCell value={row.original.dispatchReceipt} onSave={(v) => handleSaveDispatchReceipt(row.original, v)} />
         : <span className={row.original.dispatchReceipt ? "" : "text-faint"}>{row.original.dispatchReceipt || "—"}</span>,

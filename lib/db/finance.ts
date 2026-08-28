@@ -3,6 +3,7 @@ import { normalizeId, tsToString, normalizeCustomer } from "./helpers"
 import { getInvoiceForCustomer } from "./invoice"
 import type { DBExecutor } from "./actor"
 import type { PaymentRow, AdjustmentRow, RefundRow, RefundReason, RefundStatus } from "./types"
+import { isLiveAmount } from "./live-refund"
 
 // ─── Payments ──────────────────────────────────────────────────────────────
 
@@ -499,13 +500,31 @@ export async function deleteAdjustment(rowNumber: number, db: DBExecutor = sql):
 
 // ─── Refunds ─────────────────────────────────────────────────────────────────
 
+/**
+ * What the row is worth right now.
+ *
+ * A refund still being decided reads her balance: the stored number was true
+ * when it was written and stops being true the moment anything on the trip
+ * moves. Floored at zero — a customer who now owes money is not owed a
+ * negative refund, she is owed nothing.
+ *
+ * Everything else keeps what is stored. See lib/db/live-refund.ts for which is
+ * which, and why.
+ */
+function liveAmount(r: Record<string, unknown>): number {
+  const stored = (r.refund_amount as number) ?? 0
+  if (!isLiveAmount({ reason: r.reason as string, status: r.status as string })) return stored
+  const balance = r.live_balance as number | null | undefined
+  return balance == null ? stored : Math.max(0, balance)
+}
+
 function mapRefundRow(r: Record<string, unknown>): RefundRow {
   return {
     id: r.id as number,
     event: r.event as string,
     customer: r.customer as string,
     reason: r.reason as RefundReason,
-    refundAmount: r.refund_amount as number,
+    refundAmount: liveAmount(r),
     status: r.status as RefundStatus,
     bankName: (r.bank_name as string) ?? "",
     bankAccountNumber: (r.bank_account_number as string) ?? "",
@@ -517,40 +536,9 @@ function mapRefundRow(r: Record<string, unknown>): RefundRow {
     note: (r.note as string) ?? "",
     hasAppliedCredit: Boolean(r.has_applied_credit),
     appliedCreditAmount: (r.applied_credit_amount as number) ?? 0,
-    liveOverpayment: null,
     createdAt: tsToString(r.created_at as Date | null | undefined),
     updatedAt: tsToString(r.updated_at as Date | null | undefined),
   }
-}
-
-const ACTIVE_REFUND_STATUSES: RefundStatus[] = ["pending", "awaiting_bank_info", "ready_to_refund"]
-
-/**
- * Attach `liveOverpayment` to the refunds the auto-reconcile can't keep in sync:
- * active overpayment refunds that already have credit applied. Those are frozen
- * (money moved → human review), so if the invoice later changed, their stored
- * amount is stale. We recompute the live overpayment only for that small set
- * (reusing getPaymentStatus, scoped per event) and flag rows where it differs.
- */
-async function attachStaleReview(rows: RefundRow[]): Promise<RefundRow[]> {
-  const flaggable = rows.filter(
-    (r) => r.reason === "overpayment" && r.hasAppliedCredit && ACTIVE_REFUND_STATUSES.includes(r.status),
-  )
-  if (flaggable.length === 0) return rows
-
-  const events = [...new Set(flaggable.map((r) => r.event))]
-  const statusRows = (await Promise.all(events.map((ev) => getPaymentStatus(ev)))).flat()
-  const overpayByPair = new Map<string, number>()
-  for (const s of statusRows) overpayByPair.set(`${s.customer}|${s.event}`, s.totalPaid - s.invoiceTotal)
-
-  const flagged = new Set(flaggable)
-  return rows.map((r) => {
-    if (!flagged.has(r)) return r
-    const live = overpayByPair.get(`${normalizeId(r.customer)}|${r.event}`)
-    // Only surface it when it actually differs from what's stored — an in-sync
-    // credit-applied refund needs no review.
-    return live !== undefined && live !== r.refundAmount ? { ...r, liveOverpayment: live } : r
-  })
 }
 
 export async function getRefunds(filters?: { event?: string; status?: string; customer?: string }): Promise<RefundRow[]> {
@@ -575,11 +563,16 @@ export async function getRefunds(filters?: { event?: string; status?: string; cu
     `SELECT r.*,
             EXISTS (SELECT 1 FROM payments p WHERE p.refund_id = r.id AND p.kind = 'credit') AS has_applied_credit,
             (SELECT COALESCE(SUM(p.amount), 0)::int FROM payments p
-             WHERE p.refund_id = r.id AND p.kind = 'credit' AND p.amount > 0) AS applied_credit_amount
-     FROM refunds r ${where} ORDER BY r.created_at DESC`,
+             WHERE p.refund_id = r.id AND p.kind = 'credit' AND p.amount > 0) AS applied_credit_amount,
+            lb.balance AS live_balance
+     FROM refunds r
+     LEFT JOIN live_balances lb
+            ON lb.event = r.event
+           AND lb.customer = lower(replace(r.customer, '@', ''))
+     ${where} ORDER BY r.created_at DESC`,
     params,
   )
-  return attachStaleReview(rows.map(mapRefundRow))
+  return rows.map(mapRefundRow)
 }
 
 /** Every reason value ever used, so the reason picker's autocomplete keeps
@@ -654,6 +647,23 @@ export async function executeRefund(
 
   await sql.begin(async (tx) => {
     await tx`SELECT set_config('app.actor', ${actor ?? ""}, true)`
+
+    // Re-read at the moment of transfer, not when the screen was opened. This
+    // is the last point at which the figure can still be right, so it is the
+    // one that decides what leaves the bank -- and what the row freezes at.
+    let amount = refund.refund_amount as number
+    if (isLiveAmount({ reason: refund.reason as string, status: refund.status as string })) {
+      const [live] = (await tx`
+        SELECT balance FROM live_balances
+         WHERE event = ${refund.event as string}
+           AND customer = lower(replace(${refund.customer as string}, '@', ''))
+      `) as unknown as { balance: number }[]
+      amount = Math.max(0, live?.balance ?? 0)
+    }
+    if (!(amount > 0)) {
+      throw new Error("There is nothing owed on this refund any more")
+    }
+
     // `account` is OUR bank the refund was sent from (BCA/JAGO/...), matching
     // what the column means on every other payment row. The customer's
     // receiving bank details stay on the refunds row.
@@ -662,7 +672,7 @@ export async function executeRefund(
       VALUES (
         ${refund.event as string},
         ${refund.customer as string},
-        ${-(refund.refund_amount as number)},
+        ${-amount},
         ${account},
         true,
         ${`Refund: ${refund.reason}`},
@@ -674,6 +684,7 @@ export async function executeRefund(
     await tx`
       UPDATE refunds
       SET status             = 'refunded',
+          refund_amount      = ${amount},
           transfer_reference = ${transferReference},
           bank_name          = ${refund.bank_name as string},
           bank_account_number = ${refund.bank_account_number as string},
@@ -719,7 +730,18 @@ export async function applyRefundAsCredit(
     if (!refund) throw new Error("Refund not found")
     if (refund.status === "refunded") throw new Error("Already refunded as cash — cannot also apply as credit")
 
-    const remaining = refund.refund_amount as number
+    // What she is owed now, not what the row was written with. Moving a stale
+    // figure onto another trip spends money that is no longer there, and the
+    // credit payment makes it look deliberate afterwards.
+    let remaining = refund.refund_amount as number
+    if (isLiveAmount({ reason: refund.reason as string, status: refund.status as string })) {
+      const [live] = (await tx`
+        SELECT balance FROM live_balances
+         WHERE event = ${refund.event as string}
+           AND customer = lower(replace(${refund.customer as string}, '@', ''))
+      `) as unknown as { balance: number }[]
+      remaining = Math.max(0, live?.balance ?? 0)
+    }
     if (!(remaining > 0)) throw new Error("Nothing left to apply")
     if (amount > remaining) throw new Error(`Amount exceeds the overpayment (Rp ${remaining})`)
 
@@ -750,10 +772,20 @@ export async function applyRefundAsCredit(
     `
 
     const newRemaining = remaining - amount
+    // Spending part of a deposit is not a change of mind about the rest. She
+    // chose to keep the money on her account; taking Rp 1.000 of it to settle a
+    // Rp 161.000 invoice leaves Rp 1.000 still hers, still a deposit.
+    //
+    // Dropping it back to "pending" is right for a refund that was only ever a
+    // claim -- part paid, the remainder still queued -- but it hid the leftover
+    // from the invoice banner and the list marker, which look for deposits. The
+    // money the feature exists to surface would have gone quiet at exactly the
+    // moment it got small enough to forget.
+    const wasDeposit = refund.status === "applied_to_next_order"
     await tx`
       UPDATE refunds
       SET refund_amount = ${newRemaining},
-          status = ${newRemaining <= 0 ? "applied_to_next_order" : "pending"},
+          status = ${newRemaining <= 0 || wasDeposit ? "applied_to_next_order" : "pending"},
           note = ${newRemaining <= 0
             ? `Applied as credit to ${target}`
             : `Applied Rp ${amount} as credit to ${target}; Rp ${newRemaining} overpayment remaining`},

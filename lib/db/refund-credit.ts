@@ -15,8 +15,13 @@
  * when the customer's next order finally appeared there was no way left to
  * apply it.
  *
- * The difference is already in the row — a settled credit has been consumed
- * (`appliedCreditAmount`) and leaves nothing owed; a promise has neither.
+ * The difference is already in the row: a settled credit leaves nothing owed.
+ *
+ * It used to test `appliedCreditAmount` as well, because a partly applied
+ * credit dropped back to `pending` and this combination could not occur. It can
+ * now — spending part of a deposit leaves the rest a deposit — and a row with
+ * money still on it is still a promise, whether or not some of it has already
+ * been spent.
  */
 export interface CreditPromiseFields {
   status: string
@@ -27,7 +32,5 @@ export interface CreditPromiseFields {
 }
 
 export function isCreditPromised(row: CreditPromiseFields): boolean {
-  return row.status === "applied_to_next_order"
-    && row.refundAmount > 0
-    && row.appliedCreditAmount <= 0
+  return row.status === "applied_to_next_order" && row.refundAmount > 0
 }
