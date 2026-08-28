@@ -17,6 +17,7 @@ import DataGrid, {
   type RowSelectionState,
 } from "@/components/DataGrid"
 import { useHitAndRun, handleKey, marksFor } from "@/hooks/useHitAndRun"
+import { useShrinkCause, type ShrinkCause } from "./StrandedUnitsDialog"
 import { HitAndRunFlag } from "@/components/HitAndRunFlag"
 import SearchableSelect from "@/components/SearchableSelect"
 import SearchInput from "@/components/SearchInput"
@@ -180,6 +181,10 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
     }
   }, [])
 
+  // One dialog for the whole table: any cell that strands a bought unit asks
+  // the same question, in the same words.
+  const { ask: askCause, dialog: causeDialog } = useShrinkCause()
+
   // Owner-only inline cell edit. Optimistic local update on success so the
   // table doesn't have to round-trip a full refetch for every keystroke commit.
   // On failure, throws so the cell can revert its input to the previous value.
@@ -191,7 +196,7 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
     // Through the shared helper, so an inline cell asks the same question the
     // modal does: typing 4 into Buy on an order of 3 strands a unit exactly as
     // dropping the order to 2 would.
-    const { banked } = await putOrderEdit(rowNumber, { stage: "owner_cell", column, value })
+    const { banked } = await putOrderEdit(rowNumber, { stage: "owner_cell", column, value }, askCause)
     setRows((rs) => rs.map((r) => {
       if (r.rowNumber !== rowNumber) return r
       // Banking moves the surplus onto the shelf and off the order, so the
@@ -201,7 +206,7 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
         : column === "unit_dispatch" ? { unitDispatch: value }
         : { unitArrive: value }) }
     }))
-  }, [])
+  }, [askCause])
 
   const handleNoteSave = useCallback(async (rowNumber: number, value: string) => {
     const res = await fetch(`/api/sheets/duplicate-form/${rowNumber}`, {
@@ -647,6 +652,10 @@ export default function DataTable({ isOwner }: { isOwner: boolean }) {
           onDone={() => { setDuplicatingRow(null); refreshRef.current() }}
         />
       )}
+
+      {/* For the inline cells. The modal carries its own, since it can be open
+          over this one and each needs its own answer. */}
+      {causeDialog}
     </div>
   )
 }
@@ -937,6 +946,12 @@ function EditableTextCell({ value, onSave }: {
 async function putOrderEdit(
   rowNumber: number,
   payload: Record<string, unknown>,
+  /**
+   * How to ask why the order shrank. Resolves with the answer, or null to
+   * abandon the edit. Passed in rather than prompted here because the question
+   * is a dialog now, and a dialog lives in React while this does not.
+   */
+  askCause?: (units: number) => Promise<ShrinkCause | null>,
 ): Promise<{ banked: number }> {
   async function send(extra?: Record<string, unknown>) {
     return await fetch(`/api/sheets/duplicate-form/${rowNumber}`, {
@@ -951,25 +966,10 @@ async function putOrderEdit(
     const d = await res.json()
     if (d.error === "stranded_units") {
       const n = Number(d.stranded) || 0
-      // Which of the two it was. Both shelve the units -- the stock is real
-      // either way -- but they are different facts, and the answer is written
-      // onto the Inventory row and the order's note. OK is the shop's own
-      // slip, Cancel is her changing her mind; anything else abandons the edit
-      // rather than saving it unexplained.
-      const mistake = confirm(
-        `${n} unit sudah dibeli tapi tidak ada di pesanan ini.\n` +
-        `Unit itu akan masuk Inventory sebagai stok siap dijual.\n\n` +
-        `Kenapa jumlahnya berkurang?\n\n` +
-        `OK  = salah input (dobel / salah ketik)\n` +
-        `Batal = customer berubah pikiran`,
-      )
-      const cause = mistake ? "staff_mistake" : "customer_changed_mind"
-      const sure = mistake || confirm(
-        `Customer berubah pikiran setelah barangnya dibeli.\n\n` +
-        `${n} unit tetap masuk Inventory dan dicatat sebagai pembatalan customer.\n\n` +
-        `Lanjutkan?`,
-      )
-      if (!sure) throw new Error("Dibatalkan — tidak ada yang disimpan")
+      // Both answers shelve the units; the answer is the record, not the gate.
+      // Declining abandons the edit rather than saving it unexplained.
+      const cause = askCause ? await askCause(n) : null
+      if (!cause) throw new Error("Nothing was saved")
       res = await send({ bankStranded: true, cause })
     }
   }
@@ -1003,6 +1003,7 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
   const [confirmPriceOpen, setConfirmPriceOpen] = useState(false)
+  const { ask: askCause, dialog: causeDialog } = useShrinkCause()
   // Same question as the add form asks: is this somebody who has walked away
   // from an order before.
   const { marks } = useHitAndRun()
@@ -1059,7 +1060,7 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
         unitPrice: product?.price ?? 0,
         unit: Number(form.unit),
         note: form.note,
-      })
+      }, askCause)
 
       if (isOwner) {
         // Issue a single-column PUT per changed field via stage:"owner_cell".
@@ -1075,7 +1076,7 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
           pending.push({ column: "unit_arrive", value: unitArrive === "" ? null : Number(unitArrive) })
         }
         for (const p of pending) {
-          await putOrderEdit(row.rowNumber, { stage: "owner_cell", column: p.column, value: p.value })
+          await putOrderEdit(row.rowNumber, { stage: "owner_cell", column: p.column, value: p.value }, askCause)
         }
       }
 
@@ -1229,6 +1230,7 @@ function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {
         </div>
       </div>
     )}
+    {causeDialog}
     </>
   )
 }
