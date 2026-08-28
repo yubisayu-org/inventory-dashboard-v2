@@ -3,6 +3,7 @@ import assert from "node:assert/strict"
 import sql from "../db-pool"
 import {
   cancelOrderLines,
+  cancelOrderUnits,
   recordCustomerCancellation,
   recordMissingArrival,
   recordBrokenArrival,
@@ -100,4 +101,22 @@ test("the stock returned to Inventory still excludes what shipped", async () => 
     event: EV, productName: "banked", cancelOrderIds: [id],
   })
   assert.equal(excessUnits, 2, "3 bought, 1 gone, 2 back on the shelf")
+})
+
+test("cancelOrderUnits will not take a line below what shipped", async () => {
+  // The banked stock already excluded shipped units, but `unit` had no floor:
+  // cancelling all 3 of a line with 1 shipped left unit 0 against unit_ship 1,
+  // so she was billed nothing for goods she was holding. The screen hides the
+  // control there; the route did not.
+  const id = await line(1)          // 3 ordered, 3 bought, 1 shipped
+  await assert.rejects(
+    () => cancelOrderUnits({ orderId: id, qty: 3, event: EV, productName: "x" }),
+    /sudah dikirim/,
+  )
+
+  // Cancelling down to the shipped unit is still allowed — that is the truth.
+  await cancelOrderUnits({ orderId: id, qty: 2, event: EV, productName: "x" })
+  const r = await read(id)
+  assert.equal(r.unit, 1)
+  assert.equal(r.unit_ship, 1)
 })

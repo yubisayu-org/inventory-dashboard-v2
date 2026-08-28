@@ -1147,6 +1147,20 @@ export async function cancelOrderUnits(
 
   if (!(data.qty >= 1)) throw new Error("qty must be at least 1")
   if (data.qty > unit) throw new Error(`Cannot cancel more than the ${unit} units ordered`)
+  // A parcel that has gone cannot be un-ordered. The banked stock already
+  // excluded shipped units, but `unit` itself had no floor -- and the invoice
+  // is SUM(unit_price * unit), so cancelling 3 of a 3-unit line with 1 shipped
+  // billed her for nothing while she held the goods. That is how ten lines
+  // worth Rp 5.721.000 came off invoices.
+  //
+  // The screen already hides the control on a shipped line. This is the same
+  // rule where it cannot be skipped by calling the route directly.
+  if (unit - data.qty < unitShip) {
+    throw new Error(
+      `${unitShip} unit sudah dikirim, jadi tidak bisa dibatalkan. `
+      + `Barangnya ada di customer — kalau uangnya perlu kembali, itu refund.`,
+    )
+  }
 
   const excessUnits = Math.min(data.qty, Math.max(0, unitBuy - unitShip))
   const remainingUnit = unit - data.qty
