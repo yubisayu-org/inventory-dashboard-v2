@@ -912,17 +912,36 @@ export async function getExcessPurchasePaginated(opts: {
 }
 
 /**
- * Zero the given order lines (unit + unit_buy + unit_dispatch + unit_arrive → 0),
- * keeping the rows for history so they drop off the shopping/dispatch/arrival
- * lists. Used when an order can't be fulfilled (wrong/broken delivery): each
- * invoice drops, so the existing overpayment materialization auto-creates a
- * refund for any customer who already paid. Returns rows affected.
+ * Cancel the given order lines down to what has already shipped, keeping the
+ * rows for history so they drop off the shopping/dispatch/arrival lists. Used
+ * when an order can't be fulfilled (wrong/broken/missing delivery, or a
+ * customer cancelling): each invoice drops, so the existing overpayment
+ * materialization auto-creates a refund for anyone who had paid.
+ *
+ * "Down to what has shipped", not to zero. Zeroing outright is what this did,
+ * and a line whose parcel had already gone came off the invoice with it: the
+ * bill is SUM(unit_price * unit), so the goods left and the charge for them
+ * vanished. Ten lines in production went out that way, worth Rp 5.721.000,
+ * every one of those customers showing settled against a bill that did not
+ * include what they had received.
+ *
+ * Everything nearby already knew this. cancelOrderUnits floors unit_buy at
+ * unit_ship, reduceOrderRefundOnly does the same, and recordCustomerCancellation
+ * computes the stock it reclaims as unit_buy - unit_ship -- then called this
+ * and undid its own care.
+ *
+ * A line with nothing shipped still goes to zero, exactly as before. A line
+ * with a shipped unit keeps that unit, because she has it and owes for it.
  */
 export async function cancelOrderLines(orderIds: number[], db: DBExecutor = sql): Promise<number> {
   if (orderIds.length === 0) return 0
   const res = await db`
     UPDATE orders
-    SET unit = 0, unit_buy = 0, unit_dispatch = 0, unit_arrive = 0, updated_at = NOW()
+    SET unit          = COALESCE(unit_ship, 0),
+        unit_buy      = COALESCE(unit_ship, 0),
+        unit_dispatch = LEAST(COALESCE(unit_dispatch, 0), COALESCE(unit_ship, 0)),
+        unit_arrive   = LEAST(COALESCE(unit_arrive, 0), COALESCE(unit_ship, 0)),
+        updated_at    = NOW()
     WHERE id = ANY(${orderIds})
   `
   return res.count
