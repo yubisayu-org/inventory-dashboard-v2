@@ -482,7 +482,7 @@ export default function RefundsClient() {
     {
       accessorKey: "customer",
       header: "Customer",
-      size: 180,
+      size: 160,
       filterFn: "textContains",
       cell: ({ row }) => {
         const r = row.original
@@ -516,7 +516,10 @@ export default function RefundsClient() {
       // it is folded into. The cell shows the count instead.
       accessorFn: (r) => reasonLabel(r.reason),
       header: "Reason",
-      size: 150,
+      // Wide, because this is the column with sentences in it: expanded members
+      // print "Muji Boston Bag 38L Greige × 2 × Rp 100.000" here, one item per
+      // line, and a wrapped item name reads as two items.
+      size: 360,
       filterFn: "textContains",
       cell: ({ row, getValue }) => {
         const members = (row.original as GroupRow).members
@@ -529,7 +532,7 @@ export default function RefundsClient() {
       id: "amount",
       accessorFn: (r) => displayAmount(r),
       header: "Amount",
-      size: 150,
+      size: 130,
       filterFn: "numeric",
       meta: { align: "right" },
       cell: ({ getValue }) => (
@@ -540,7 +543,7 @@ export default function RefundsClient() {
       id: "status",
       accessorFn: (r) => statusLabel(r),
       header: "Status",
-      size: 150,
+      size: 140,
       filterFn: "textContains",
       cell: ({ row }) => {
         const members = (row.original as GroupRow).members
@@ -752,7 +755,7 @@ export default function RefundsClient() {
                           <td key={id} className="px-4 py-2 align-top">
                             <div className="text-muted-strong">{reasonLabel(m.reason)}</div>
                             {m.note.split("\n").map((l) => l.trim()).filter(Boolean).map((l, i) => (
-                              <div key={i} className="text-xs text-faint leading-snug">{l}</div>
+                              <div key={i} title={l} className="text-xs text-faint leading-snug truncate">{l}</div>
                             ))}
                           </td>
                         )
