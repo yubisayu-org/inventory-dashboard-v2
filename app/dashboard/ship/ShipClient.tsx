@@ -1612,10 +1612,22 @@ function MergeShipConfirmModal({
   }, [customer])
 
   const checkedGroups = (allGroups ?? []).filter((g) => checked.has(g.event))
-  // Everything picked has stock on the bench → one box, now. Anything still
-  // waiting → record that they travel together and let the ongkir follow; the
-  // box goes when the last of it lands.
-  const shipsNow = checkedGroups.length > 0 && checkedGroups.every((g) => unparkedToShip(g) > 0)
+
+  // Can a box go at all: every trip picked has something on the bench. Nothing
+  // ready anywhere means the only thing on offer is the pairing.
+  const canShipNow = checkedGroups.length > 0 && checkedGroups.every((g) => unparkedToShip(g) > 0)
+  // Is anything still coming. A trip with units ordered but not arrived is why
+  // waiting is worth offering: send now and the rest needs a second box, which
+  // is the second ongkir this merge exists to avoid.
+  const stillComing = checkedGroups.some((g) => g.orders.some((o) => o.unit > o.unitArrive))
+
+  // Both are possible when every trip has some stock and some of it is still
+  // coming, and then it is a decision rather than a deduction -- send a partial
+  // box today, or hold for one complete box. Default to holding: that is the
+  // cheaper of the two for her, and the one the merge was for.
+  // Only for the labels while a request is in flight; the act itself is told
+  // which it is.
+  const [sendNow, setSendNow] = useState(false)
   const customerDetail = allGroups?.[0]?.customerDetail ?? null
   const ongkirPerKg = allGroups?.[0]?.ongkirPerKg ?? 0
   const profileAddress = customerDetail?.dataDiri ?? ""
@@ -1662,8 +1674,12 @@ function MergeShipConfirmModal({
   const urlRef = useRef<string | null>(null)
   useEffect(() => () => { if (urlRef.current) URL.revokeObjectURL(urlRef.current) }, [])
 
-  async function handleConfirm() {
+  // The decision arrives as an argument, not from state: the buttons set it and
+  // call this in the same tick, and state read here would still be the previous
+  // answer -- the quiet kind of bug that ships a box somebody chose to hold.
+  async function handleConfirm(sendNowChoice: boolean) {
     if (!canConfirm) return
+    const shipsNow = canShipNow && sendNowChoice
     setShipping(true)
     setError(null)
     const effectiveAddress = useTempAddress ? tempAddress : profileAddress
@@ -1865,10 +1881,12 @@ function MergeShipConfirmModal({
                   <div className="text-xs text-faint mt-1">
                     Ongkir ditagih sekali untuk paket gabungan. Selisihnya otomatis masuk ke invoice.
                   </div>
-                  {!shipsNow && checkedGroups.length >= 2 && (
+                  {stillComing && checkedGroups.length >= 2 && (
                     <div className="text-xs text-amber-700 mt-1.5">
-                      Ada trip yang barangnya belum lengkap. Gabungannya dicatat sekarang dan ongkirnya langsung
-                      disesuaikan — paketnya berangkat setelah semuanya tiba.
+                      Ada trip yang barangnya belum lengkap.{" "}
+                      {canShipNow
+                        ? "Tunggu sisanya: satu box, ongkir sekali. Kirim sekarang: yang sudah tiba berangkat, sisanya butuh box kedua dan ongkirnya ditagih lagi."
+                        : "Gabungannya dicatat sekarang dan ongkirnya langsung disesuaikan — paketnya berangkat setelah semuanya tiba."}
                     </div>
                   )}
                 </div>
@@ -1919,18 +1937,32 @@ function MergeShipConfirmModal({
               >
                 Batal
               </button>
+              {/* Where both are possible it is a decision, not a deduction:
+                  some stock is on the bench and more is coming, so a box can
+                  go today or wait and go once. Sending now costs a second
+                  ongkir for the remainder, which is what the merge was for --
+                  so waiting leads, and shipping now is the quieter of the two.
+                  Where nothing is still coming there is only one thing to do
+                  and only one button to press. */}
+              {canConfirm && canShipNow && stillComing && (
+                <button
+                  type="button"
+                  onClick={() => { setSendNow(false); handleConfirm(false) }}
+                  disabled={shipping}
+                  className="px-3 py-1.5 rounded-lg border border-brand text-brand text-xs font-medium hover:bg-brand hover:text-white transition-colors disabled:opacity-50"
+                >
+                  {shipping && !sendNow ? "Menyimpan…" : "Gabung — tunggu sisanya"}
+                </button>
+              )}
               <button
                 type="button"
-                onClick={handleConfirm}
+                onClick={() => { setSendNow(true); handleConfirm(true) }}
                 disabled={shipping || !canConfirm}
                 className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 transition-colors disabled:opacity-50"
               >
-                {/* The button says which of the two will happen, because the
-                    difference matters: one sends a box today, the other
-                    promises one later. */}
                 {shipping
-                  ? (shipsNow ? "Mengirim…" : "Menyimpan…")
-                  : shipsNow ? "Konfirmasi Gabung & Kirim" : "Gabung — tunggu sisanya"}
+                  ? (canShipNow ? "Mengirim…" : "Menyimpan…")
+                  : canShipNow ? "Gabung & Kirim sekarang" : "Gabung — tunggu sisanya"}
               </button>
             </>
           )}
