@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { heldDeposits } from "@/lib/db"
+import { allHeldDeposits, heldDeposits } from "@/lib/db"
 
 /**
  * What this customer is holding that has not been spent.
@@ -15,11 +15,17 @@ export async function GET(req: NextRequest) {
   if (roleError) return roleError
 
   const customer = req.nextUrl.searchParams.get("customer")?.trim()
-  if (!customer) {
-    return NextResponse.json({ error: "customer is required" }, { status: 400 })
-  }
 
   try {
+    // Without a customer: everyone holding one, so a list can mark its rows
+    // from a single read rather than asking once per row.
+    if (!customer) {
+      const all = await allHeldDeposits()
+      return NextResponse.json(
+        { held: Object.fromEntries(all) },
+        { headers: { "Cache-Control": "no-store" } },
+      )
+    }
     return NextResponse.json(
       { deposits: await heldDeposits(customer) },
       { headers: { "Cache-Control": "no-store" } },

@@ -26,32 +26,46 @@ export type HeldDeposit = {
  * A credit that has been applied has a payment against it and nothing owing.
  */
 export async function heldDeposits(customer: string): Promise<HeldDeposit[]> {
-  const key = normalizeId(customer)
-  if (!key) return []
+  return (await allHeldDeposits()).get(normalizeId(customer)) ?? []
+}
 
+/**
+ * Everyone holding one, keyed by normalized handle.
+ *
+ * One query for a whole page. The Invoice list marks the customers who hold a
+ * deposit, and asking per row would turn one cheap read into one per customer
+ * on screen -- the same rule the hit-and-run marks follow.
+ */
+export async function allHeldDeposits(): Promise<Map<string, HeldDeposit[]>> {
   const rows = (await sql`
     SELECT r.id, r.event, r.status, r.refund_amount::int AS refund_amount, r.updated_at,
+           lower(replace(r.customer, '@', '')) AS cust,
            (SELECT COALESCE(SUM(p.amount), 0)::int FROM payments p
              WHERE p.refund_id = r.id AND p.kind = 'credit' AND p.amount > 0) AS applied_credit_amount
       FROM refunds r
-     WHERE lower(replace(r.customer, '@', '')) = ${key}
-       AND r.status = 'applied_to_next_order'
+     WHERE r.status = 'applied_to_next_order'
+       AND r.refund_amount > 0
      ORDER BY r.updated_at ASC
   `) as unknown as {
-    id: number; event: string; status: string
+    id: number; event: string; status: string; cust: string
     refund_amount: number; applied_credit_amount: number; updated_at: Date | null
   }[]
 
-  return rows
-    .filter((r) => isCreditPromised({
+  const out = new Map<string, HeldDeposit[]>()
+  for (const r of rows) {
+    if (!isCreditPromised({
       status: r.status,
       refundAmount: r.refund_amount,
       appliedCreditAmount: r.applied_credit_amount,
-    }))
-    .map((r) => ({
+    })) continue
+    const list = out.get(r.cust) ?? []
+    list.push({
       refundId: r.id,
       fromEvent: r.event,
       amount: r.refund_amount,
       since: r.updated_at ? r.updated_at.toISOString().slice(0, 10) : "",
-    }))
+    })
+    out.set(r.cust, list)
+  }
+  return out
 }

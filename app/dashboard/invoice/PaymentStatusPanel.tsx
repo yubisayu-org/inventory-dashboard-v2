@@ -14,6 +14,8 @@ import { CancelWholeOrderModal } from "./CancelWholeOrderModal"
 import { DepositBanner } from "./DepositBanner"
 import { HitAndRunFlag } from "@/components/HitAndRunFlag"
 import { useHitAndRun, handleKey } from "@/hooks/useHitAndRun"
+import { useDeposits } from "@/hooks/useDeposits"
+import { DepositFlag } from "@/components/DepositFlag"
 
 // ─── Payment Status Panel ────────────────────────────────────────────────────
 
@@ -58,6 +60,7 @@ export function PaymentStatusPanel({
   const invoiceCache = useRef(new Map<string, InvoiceResult>())
   // One fetch for the whole page; every row reads from it.
   const { marks, refresh: refreshMarks } = useHitAndRun()
+  const { held: deposits, refresh: refreshDeposits } = useDeposits()
 
   // Fetch every event's payment status once; the event picker filters client-side.
   const fetchRows = useCallback(async () => {
@@ -65,6 +68,7 @@ export function PaymentStatusPanel({
     setError(null)
     invoiceCache.current.clear()
     refreshMarks()
+    refreshDeposits()
     try {
       const res = await fetch(`/api/sheets/invoice/payment-status`, { cache: "no-store" })
       const data = await res.json()
@@ -76,7 +80,7 @@ export function PaymentStatusPanel({
     } finally {
       setLoading(false)
     }
-  }, [refreshMarks])
+  }, [refreshMarks, refreshDeposits])
 
   useEffect(() => { fetchRows() }, [fetchRows])
 
@@ -143,6 +147,7 @@ export function PaymentStatusPanel({
             {displayIg(row.original.customer)}
           </button>
           <HitAndRunFlag stamps={marks.get(handleKey(row.original.customer))} />
+          <DepositFlag deposits={deposits.get(handleKey(row.original.customer))} />
         </span>
       ),
     },
@@ -214,7 +219,7 @@ export function PaymentStatusPanel({
         </div>
       ),
     },
-  ], [onOpenCustomer, marks])
+  ], [onOpenCustomer, marks, deposits])
 
   const tabs: { key: StatusFilter; label: string; count: number }[] = [
     { key: "all", label: "All", count: rows.length },
@@ -512,6 +517,8 @@ function ExpandedInvoice({
         customer={customer}
         event={ev.eventId}
         outstanding={ev.invoice.sisaPelunasan}
+        // reload() drops this customer's cached invoice and calls onMutated,
+        // which refetches the rows and the page's deposit map with them.
         onApplied={reload}
       />
 
