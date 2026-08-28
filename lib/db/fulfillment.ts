@@ -862,6 +862,16 @@ export async function updateTrackingNumber(
   trackingNumber: string,
   db: DBExecutor = sql,
 ): Promise<void> {
+  // What it says now, and whose parcel it is. Read first: whether this is news
+  // depends on what was there before, and after the UPDATE that is gone.
+  const rows = (await db`
+    SELECT customer, event, COALESCE(tracking_number, '') AS tracking_number
+      FROM shipments
+     WHERE id = ${rowNumber}
+        OR merge_group = (SELECT merge_group FROM shipments WHERE id = ${rowNumber} AND merge_group IS NOT NULL)
+     ORDER BY id
+  `) as unknown as { customer: string; event: string; tracking_number: string }[]
+
   // For a merged ("Ship together") shipment the resi is shared, so setting it on
   // any row applies to every row in the same merge_group; otherwise just the row.
   await db`
@@ -870,6 +880,34 @@ export async function updateTrackingNumber(
     WHERE id = ${rowNumber}
        OR merge_group = (SELECT merge_group FROM shipments WHERE id = ${rowNumber} AND merge_group IS NOT NULL)
   `
+
+  /**
+   * Tell her, because the parcel notice deliberately could not.
+   *
+   * Shipping says the box has gone and that a number will appear later --
+   * whether a resi is ready to be seen is the shop's call. This is that call
+   * being made, so it is the moment she can be told.
+   *
+   * Once per box, not once per row: a merged shipment is several rows and one
+   * physical parcel, and three notices about one box is the shop talking to
+   * itself. Silent when nothing changed (a save that retyped the same number)
+   * and when the field is cleared -- an emptied resi is a correction in
+   * progress, not news she can act on.
+   */
+  const before = rows[0]
+  if (!before) return
+  const next = trackingNumber.trim()
+  const previous = before.tracking_number.trim()
+  if (!next || next === previous) return
+
+  const events = [...new Set(rows.map((r) => r.event))]
+  const where = events.length > 1 ? events.join(" and ") : events[0]
+  await notifyCustomer(before.customer, {
+    title: previous ? `Tracking number for ${where} changed` : `Tracking number for ${where}`,
+    body: previous
+      ? `Your parcel is now travelling under ${next}. The number we gave you before, ${previous}, no longer applies.`
+      : `Your parcel from ${where} is travelling under ${next}. You can follow it from your order.`,
+  }, db)
 }
 
 /**
