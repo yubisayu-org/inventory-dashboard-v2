@@ -761,7 +761,18 @@ export async function applyRefundAsCredit(
     if (!refund) throw new Error("Refund not found")
     if (refund.status === "refunded") throw new Error("Already refunded as cash — cannot also apply as credit")
 
-    const remaining = refund.refund_amount as number
+    // What she is owed now, not what the row was written with. Moving a stale
+    // figure onto another trip spends money that is no longer there, and the
+    // credit payment makes it look deliberate afterwards.
+    let remaining = refund.refund_amount as number
+    if (isLiveAmount({ reason: refund.reason as string, status: refund.status as string })) {
+      const [live] = (await tx`
+        SELECT balance FROM live_balances
+         WHERE event = ${refund.event as string}
+           AND customer = lower(replace(${refund.customer as string}, '@', ''))
+      `) as unknown as { balance: number }[]
+      remaining = Math.max(0, live?.balance ?? 0)
+    }
     if (!(remaining > 0)) throw new Error("Nothing left to apply")
     if (amount > remaining) throw new Error(`Amount exceeds the overpayment (Rp ${remaining})`)
 
