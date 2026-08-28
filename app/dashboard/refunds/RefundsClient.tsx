@@ -103,6 +103,15 @@ function ToCheckPanel({ rows, error, promoting, onPromote, onRetry, search, onSe
 }) {
   const columns = useMemo<ColumnDef<OverpaymentToCheck, unknown>[]>(() => [
     {
+      // Event first, matching every other tab. A column that moves when the
+      // tab changes makes you re-read a list you already know how to scan.
+      accessorKey: "event",
+      header: "Event",
+      size: 130,
+      filterFn: "textContains",
+      cell: ({ getValue }) => <span className="text-muted whitespace-nowrap">{getValue<string>()}</span>,
+    },
+    {
       accessorKey: "customer",
       header: "Customer",
       size: 180,
@@ -128,13 +137,6 @@ function ToCheckPanel({ rows, error, promoting, onPromote, onRetry, search, onSe
           </button>
         </span>
       ),
-    },
-    {
-      accessorKey: "event",
-      header: "Event",
-      size: 130,
-      filterFn: "textContains",
-      cell: ({ getValue }) => <span className="text-muted-strong">{getValue<string>()}</span>,
     },
     // Paid and invoiced sit beside the gap so a small difference can be
     // recognised as rounding without opening the invoice.
