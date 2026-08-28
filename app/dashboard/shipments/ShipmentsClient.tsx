@@ -794,7 +794,7 @@ export default function ShipmentsClient() {
         accessorKey: "customer",
         header: "Customer",
         filterFn: "textContains",
-        size: 150,
+        size: 156,
         cell: ({ row }) => {
           const r = row.original
           return (
@@ -844,7 +844,15 @@ export default function ShipmentsClient() {
         accessorKey: "invoicing",
         header: "Items",
         filterFn: "textContains",
-        size: 200,
+        // 150 is DataGrid's "no width given": the header cell gets no width
+        // attribute, so fixed layout hands this column all the leftover space.
+        //
+        // Without one such column the leftover is spread across every column
+        // in proportion, which quietly fattens the 92px action column into a
+        // 200px one -- and its two icons, sitting at the end of it, drift far
+        // from the row they belong to. Items is the right place for slack: it
+        // is the only column whose content is a sentence.
+        size: 150,
         enableSorting: false,
         cell: ({ getValue }) => (
           <span className="whitespace-pre-wrap font-sans text-xs text-muted-strong leading-relaxed max-w-[200px] line-clamp-2">
