@@ -2572,7 +2572,10 @@ function RefundDetailModal({
                 disabled={!templates}
                 copyLabel="Message"
                 sendLabel="WhatsApp"
-                className="px-4 py-2 rounded-lg border border-brand text-brand text-sm font-semibold hover:bg-brand-light disabled:opacity-50 transition-colors"
+                // Cancel's own style. The primary action is the filled one;
+                // two emphasised buttons side by side is neither of them
+                // leading.
+                className="px-4 py-2 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
               />
             )}
             {primaryAction}
