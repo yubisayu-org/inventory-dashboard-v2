@@ -1866,7 +1866,7 @@ function CreateRefundCard({
         <button type="button" onClick={onClose} disabled={saving} className="px-4 py-2 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
           Cancel
         </button>
-        <button type="submit" disabled={saving || !form.reason || (needsLines && pickedTotal <= 0)} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors">
+        <button type="submit" disabled={saving || !form.reason || (needsLines && pickedTotal <= 0)} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium whitespace-nowrap shrink-0 hover:bg-brand/90 disabled:opacity-50 transition-colors">
           {saving ? "Mengirim…" : "Create & send notice"}
         </button>
       </div>
@@ -1961,9 +1961,16 @@ function RefundDetailModal({
 
   // Apply-as-credit flow: the customer's other orders are the valid targets.
   const [customerEvents, setCustomerEvents] = useState<InvoiceEvent[]>([])
-  // Open on a promised credit: applying it is the only reason this refund is
-  // still on the list.
-  const [showCredit, setShowCredit] = useState(() => isCreditPromised(row))
+  /**
+   * Closed. It used to open itself on a promised credit -- back when it was a
+   * panel inside this sheet, and applying the credit was the only reason such a
+   * refund was still listed.
+   *
+   * It is a window now, so opening a deposit put two sheets on screen at once,
+   * one on top of the other, neither of them asked for. A window that opens
+   * itself is a different thing from a panel that starts unfolded.
+   */
+  const [showCredit, setShowCredit] = useState(false)
   /**
    * The orders this credit could actually pay off.
    *
@@ -2235,7 +2242,7 @@ function RefundDetailModal({
       <button
         onClick={() => handleStatusChange("awaiting_bank_info")}
         disabled={saving}
-        className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
+        className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium whitespace-nowrap shrink-0 hover:bg-brand/90 disabled:opacity-50 transition-colors"
       >
         Mark as sent
       </button>
@@ -2243,7 +2250,7 @@ function RefundDetailModal({
       <button
         onClick={handleSaveBankInfo}
         disabled={saving || !bankName || !bankAccountNumber || !bankAccountHolder}
-        className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
+        className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium whitespace-nowrap shrink-0 hover:bg-brand/90 disabled:opacity-50 transition-colors"
       >
         {saving ? "Saving…" : "Save"}
       </button>
@@ -2251,7 +2258,7 @@ function RefundDetailModal({
       <button
         onClick={handleExecute}
         disabled={saving || !transferRef.trim() || !refundAccount.trim()}
-        className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand/90 disabled:opacity-50 transition-colors"
+        className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium whitespace-nowrap shrink-0 hover:bg-brand/90 disabled:opacity-50 transition-colors"
       >
         {saving ? "Processing…" : "Refund"}
       </button>
@@ -2358,53 +2365,33 @@ function RefundDetailModal({
               onClick={() => setShowFullInvoice(true)}
               className="w-full flex items-center justify-between gap-2 px-6 py-2.5 text-xs hover:bg-surface-muted/60 transition-colors"
             >
-              <span className="text-muted">
-                Invoice <span className="font-semibold text-foreground tabular-nums">{formatRp(invoiceEvent.invoice.total)}</span>
-                {" · "}Paid <span className="font-semibold text-foreground tabular-nums">{formatRp(invoiceEvent.invoice.pembayaran)}</span>
+              <span className="flex min-w-0 gap-1.5 text-muted">
+                <span className="truncate">
+                  Invoice <span className="font-semibold text-foreground tabular-nums">{formatRp(invoiceEvent.invoice.total)}</span>
+                  {" · "}Paid <span className="font-semibold text-foreground tabular-nums">{formatRp(invoiceEvent.invoice.pembayaran)}</span>
+                </span>
+                {/* What her money is doing on OTHER trips, one clause further
+                    along the row that already says what it is doing on this
+                    one. It was a purple band of its own, which made a third
+                    horizontal strip in a stack that had two and pushed the step
+                    down a row whether or not it mattered that day.
+                    The total and the mark, nothing else: which trips and how
+                    many is what the hover is for, and it is the whole list with
+                    amounts either way. The row stays the same width whether she
+                    owes on one trip or twelve, which is what folding it in
+                    here was for. */}
+                {!isReadOnly && owedElsewhere.length > 0 && (
+                  <span
+                    className="truncate font-semibold text-purple-800"
+                    title={`Outstanding elsewhere:\n${owedElsewhere.map((t) => `${formatRp(t.amount)} on ${t.event}`).join("\n")}`}
+                  >
+                    {"· "}Owes <span className="tabular-nums">{formatRp(owedTotal)}</span> ⚠
+                  </span>
+                )}
               </span>
             </button>
           ) : null}
         </div>
-
-        {/* Outstanding elsewhere.
-            Below the invoice line, not above it. The header names her and this
-            trip, and the invoice line is that trip's money -- a band between
-            them cut one thought in half. What she owes on OTHER trips is the
-            third beat, and the last thing read before acting.
-
-            One line, whether she owes on one trip or twelve. It used to print
-            every debt inline -- twelve amounts in a run cannot be compared, the
-            step began halfway down the sheet, and the button chose her largest
-            debt for you, offering "Rp 511.200 to LSJP202509" against a debt of
-            Rp 3.177.000, which reads as a mistake until you work out the figure
-            is capped by the refund rather than the debt.
-            The total and the count are the warning; the list is not, and it
-            already exists in the credit window, sorted, next to the amount
-            field. Only where a credit can still be applied -- a settled refund
-            is history. */}
-        {!isReadOnly && owedElsewhere.length > 0 && (
-          <div className="shrink-0 flex items-center gap-2.5 px-6 py-2 border-b border-purple-200 bg-purple-50">
-            <span aria-hidden="true" className="text-purple-700 shrink-0">⚠</span>
-            <span
-              className="flex-1 min-w-0 text-xs text-purple-800 truncate"
-              title={owedElsewhere.map((t) => `${formatRp(t.amount)} on ${t.event}`).join("\n")}
-            >
-              Owes <span className="font-bold tabular-nums">{formatRp(owedTotal)}</span> on{" "}
-              <span className="font-bold">
-                {owedElsewhere.length} other trip{owedElsewhere.length === 1 ? "" : "s"}
-              </span>
-              <span className="text-purple-600"> · don&apos;t send this back</span>
-            </span>
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => setShowCredit(true)}
-              className="shrink-0 px-2.5 py-1 rounded-md text-xs font-semibold bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 transition-colors"
-            >
-              Apply as credit
-            </button>
-          </div>
-        )}
 
         {/* Pipeline position (cash flow only — terminal side-tracks skip it) */}
         {!isReadOnly && <StepIndicator status={row.status} />}
@@ -2576,7 +2563,11 @@ function RefundDetailModal({
               </svg>
             </button>
           ) : <span />}
-          <div className="flex items-center gap-2">
+          {/* One row, always. Four controls in a max-w-lg footer wrapped the
+              primary onto a line of its own, where it stops reading as the end
+              of the row and starts reading as an afterthought. Tighter gaps,
+              nothing allowed to wrap, and the primary can never shrink. */}
+          <div className="flex items-center gap-1.5 flex-nowrap min-w-0">
             {/* The act this step exists for, beside the button that records it
                 having happened. It was an icon in a row of icons inside the
                 card -- the smallest control on screen for the only thing the
@@ -2587,10 +2578,26 @@ function RefundDetailModal({
               type="button"
               onClick={onClose}
               disabled={saving}
-              className="px-4 py-2 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+              className="px-3 py-2 rounded-lg border border-cream-border text-muted-strong text-sm whitespace-nowrap hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
             >
               Cancel
             </button>
+            {/* The other thing you can do with this money.
+                It was a button inside a warning band -- a notice carrying a
+                control, which is neither. Here it is what it actually is: the
+                second of two ways this refund can end, beside the one that
+                sends it. Only where she owes somewhere, so an ordinary refund's
+                footer is unchanged. */}
+            {!isReadOnly && owedElsewhere.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowCredit(true)}
+                disabled={saving}
+                className="px-3 py-2 rounded-lg border border-purple-200 text-purple-700 text-sm font-semibold whitespace-nowrap hover:bg-purple-50 disabled:opacity-50 transition-colors"
+              >
+                Apply as credit
+              </button>
+            )}
             {/* Between leaving and recording it done, in the order the step is
                 worked: send it, then say you did. */}
             {(row.status === "pending" || showMessagePanel) && (
@@ -2604,7 +2611,7 @@ function RefundDetailModal({
                 // Cancel's own style. The primary action is the filled one;
                 // two emphasised buttons side by side is neither of them
                 // leading.
-                className="px-4 py-2 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+                className="px-3 py-2 rounded-lg border border-cream-border text-muted-strong text-sm whitespace-nowrap hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
               />
             )}
             {primaryAction}
