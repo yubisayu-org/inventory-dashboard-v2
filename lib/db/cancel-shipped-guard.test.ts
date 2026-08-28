@@ -120,7 +120,7 @@ test("cancelOrderUnits will not take a line below what shipped", async () => {
   const id = await line(1)          // 3 ordered, 3 bought, 1 shipped
   await assert.rejects(
     () => cancelOrderUnits({ orderId: id, qty: 3, event: EV, productName: "x" }),
-    /sudah dikirim/,
+    /already shipped/,
   )
 
   // Cancelling down to the shipped unit is still allowed — that is the truth.
@@ -154,7 +154,7 @@ test("a refused cancellation tells her nothing", async () => {
      WHERE c.instagram_id = ${WHO}`
   await assert.rejects(
     () => cancelOrderUnits({ orderId: id, qty: 3, event: EV, productName: "x" }),
-    /sudah dikirim/,
+    /already shipped/,
   )
   const after = await sql<{ n: string }[]>`
     SELECT count(*) AS n FROM announcements an JOIN customers c ON c.id = an.customer_id

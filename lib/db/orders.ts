@@ -1122,8 +1122,9 @@ export async function cancelOrderUnits(
   // rule where it cannot be skipped by calling the route directly.
   if (unit - data.qty < unitShip) {
     throw new Error(
-      `${unitShip} unit sudah dikirim, jadi tidak bisa dibatalkan. `
-      + `Barangnya ada di customer — kalau uangnya perlu kembali, itu refund.`,
+      `${unitShip} unit${unitShip === 1 ? " has" : "s have"} already shipped, `
+      + `so this line cannot be cancelled. She has the goods — if the money `
+      + `needs to go back, that is a refund.`,
     )
   }
 
