@@ -662,6 +662,20 @@ export async function updateRefund(
   }>,
   db: DBExecutor = sql,
 ): Promise<void> {
+  // An overpayment still being decided has no stored amount worth writing: it
+  // is read from her balance, and a figure typed here would be overwritten on
+  // the next read and ignored at the transfer. Refused rather than accepted and
+  // dropped, because a number that appears to save and then does not is worse
+  // than one that cannot be typed.
+  if (data.refundAmount !== undefined) {
+    const [current] = (await db`
+      SELECT reason, status FROM refunds WHERE id = ${id}
+    `) as unknown as { reason: string; status: string }[]
+    if (current && isLiveAmount({ reason: current.reason, status: current.status })) {
+      throw new Error("This refund follows her balance — its amount cannot be set by hand.")
+    }
+  }
+
   const fields: string[] = []
   const params: (string | number)[] = []
 

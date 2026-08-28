@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import type { InvoiceEvent, InvoiceOrderLine, InvoiceResult, RefundRow, RefundReason, RefundStatus, OverpaymentToCheck, OutstandingTrip } from "@/lib/db"
 import { normalizeId } from "@/lib/db/helpers"
 import { isCreditPromised } from "@/lib/db/refund-credit"
+import { isLiveAmount } from "@/lib/db/live-refund"
 import { REFUND_REASONS } from "@/lib/db/types"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import { useHitAndRun, handleKey } from "@/hooks/useHitAndRun"
@@ -1589,10 +1590,17 @@ function RefundDetailModal({
     if (ok) onUpdated({ ...row, status: "refunded", transferReference: transferRef.trim() })
   }
 
+  // Whether this row's amount is its own or her balance's. A live one has no
+  // number to edit -- what is shown is derived, and writing under it changes
+  // nothing anybody will ever see.
+  const amountIsLive = isLiveAmount({ reason: row.reason, status: row.status })
+
   async function handleSaveEdit() {
-    const ok = await patch({ note, refundAmount: Number(refundAmount) })
+    const ok = amountIsLive
+      ? await patch({ note })
+      : await patch({ note, refundAmount: Number(refundAmount) })
     if (ok) {
-      onUpdated({ ...row, note, refundAmount: Number(refundAmount) })
+      onUpdated({ ...row, note, refundAmount: amountIsLive ? row.refundAmount : Number(refundAmount) })
       setShowEdit(false)
     }
   }
@@ -2111,7 +2119,7 @@ function RefundDetailModal({
           {!isReadOnly && (
             <div className="flex flex-col gap-2 p-3 rounded-lg bg-surface-muted border border-cream-border">
               <div className="flex items-center justify-between gap-2">
-                <div className="text-xs font-medium text-muted-strong">Amount and note</div>
+                <div className="text-xs font-medium text-muted-strong">{amountIsLive ? "Note" : "Amount and note"}</div>
                 <button
                   type="button"
                   onClick={() => setShowEdit((v) => !v)}
@@ -2130,17 +2138,25 @@ function RefundDetailModal({
               </div>
               {showEdit && (
                 <div className="flex flex-col gap-3">
-                  <label className="flex flex-col gap-1">
-                    <span className="text-xs font-medium text-muted">Refund Amount (Rp)</span>
-                    <input
-                      type="number"
-                      min="1"
-                      value={refundAmount}
-                      onChange={(e) => setRefundAmount(e.target.value)}
-                      disabled={saving}
-                      className={`${INPUT_CLASS} w-full`}
-                    />
-                  </label>
+                  {amountIsLive ? (
+                    <p className="text-[11px] text-faint">
+                      <span className="font-medium text-muted">{formatRp(row.refundAmount)}</span> is what she is
+                      overpaid right now, less what her other open refunds on {row.event} already claim. It follows
+                      her invoice, so there is no figure here to set.
+                    </p>
+                  ) : (
+                    <label className="flex flex-col gap-1">
+                      <span className="text-xs font-medium text-muted">Refund Amount (Rp)</span>
+                      <input
+                        type="number"
+                        min="1"
+                        value={refundAmount}
+                        onChange={(e) => setRefundAmount(e.target.value)}
+                        disabled={saving}
+                        className={`${INPUT_CLASS} w-full`}
+                      />
+                    </label>
+                  )}
                   {row.appliedCreditAmount > 0 && !isFullyAppliedAsCredit(row) && (
                     <p className="text-[11px] text-faint -mt-2">
                       {formatRp(row.appliedCreditAmount)} already applied as credit elsewhere — the amount above is what's still left to refund.

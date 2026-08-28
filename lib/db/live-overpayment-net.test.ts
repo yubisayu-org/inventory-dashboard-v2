@@ -1,7 +1,7 @@
 import { test, before, after } from "node:test"
 import assert from "node:assert/strict"
 import sql from "../db-pool"
-import { getRefunds, executeRefund } from "./finance"
+import { getRefunds, executeRefund, updateRefund } from "./finance"
 import { createRefundFromOverpayment } from "./overpayments"
 import { refundForReduction, invoiceTotalsNow } from "./mark-refunds"
 
@@ -15,6 +15,9 @@ before(async () => {
   const [p] = await sql<{ id: number }[]>`SELECT id FROM products WHERE COALESCE(gram,0) = 0 ORDER BY id LIMIT 1`
   productId = p.id
   await sql`INSERT INTO events (name, warehouse_id) SELECT ${EVENT}, id FROM warehouses ORDER BY id LIMIT 1`
+  // A second trip, so the edit tests cannot collide with the constraint that
+  // allows one active overpayment per customer per trip.
+  await sql`INSERT INTO events (name, warehouse_id) SELECT ${`${TAG}_EV2`}, id FROM warehouses ORDER BY id LIMIT 1`
   await sql`INSERT INTO customers (instagram_id) VALUES (${WHO})`
   // Two units at 200.000, and she transferred 500.000 — 100.000 too much.
   const [o] = await sql<{ id: number }[]>`
@@ -87,4 +90,36 @@ test("a refund already paid stops claiming anything", async () => {
     SELECT balance::int FROM live_balances
      WHERE event = ${EVENT} AND customer = ${WHO}`
   assert.equal(balance, 0, "500.000 in, 200.000 invoice, 300.000 sent back")
+})
+
+test("a live amount cannot be typed over", async () => {
+  // It is read from her balance on every read and again at the transfer, so a
+  // figure typed here would be overwritten and ignored. Refused rather than
+  // accepted and dropped: a number that appears to save and then does not is
+  // worse than one that cannot be typed.
+  const [r] = await sql<{ id: number }[]>`
+    INSERT INTO refunds (event, customer, reason, refund_amount, status)
+    VALUES (${`${TAG}_EV2`}, ${WHO}, 'overpayment', 1, 'pending') RETURNING id`
+  await assert.rejects(
+    () => updateRefund(r.id, { refundAmount: 999999 }),
+    /follows her balance/,
+  )
+  // The note is hers to write at any stage, and always was.
+  await updateRefund(r.id, { note: "asked her on WhatsApp" })
+  const [row] = await sql<{ note: string; refund_amount: number }[]>`
+    SELECT note, refund_amount::int FROM refunds WHERE id = ${r.id}`
+  assert.equal(row.note, "asked her on WhatsApp")
+  assert.equal(row.refund_amount, 1, "and the stored figure is untouched")
+})
+
+test("a goods refund's amount is still its own to set", async () => {
+  // The Bucket Hat is Rp 160.000 whatever else happens on that trip, and she
+  // may be keeping it at a discount rather than sending it back for all of it.
+  const [r] = await sql<{ id: number }[]>`
+    INSERT INTO refunds (event, customer, reason, refund_amount, status)
+    VALUES (${`${TAG}_EV2`}, ${WHO}, 'quality', 160000, 'pending') RETURNING id`
+  await updateRefund(r.id, { refundAmount: 80000 })
+  const [row] = await sql<{ refund_amount: number }[]>`
+    SELECT refund_amount::int FROM refunds WHERE id = ${r.id}`
+  assert.equal(row.refund_amount, 80000)
 })
