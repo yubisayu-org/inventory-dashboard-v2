@@ -653,7 +653,22 @@ export async function updateRefund(
   id: number,
   data: Partial<{
     status: RefundStatus
-    refundAmount: number
+    /**
+     * Refused, always.
+     *
+     * Every amount in the system is either computed or typed once, at the
+     * moment the refund is made: a mark works out what the reduction cost her,
+     * an overpayment reads her balance, and a refund raised by hand takes the
+     * figure the composer was given -- which is where refunding less than the
+     * price belongs, because that is a decision about what is owed, not a
+     * correction of it.
+     *
+     * Editing afterwards made a fourth kind of amount, one with no reasoning
+     * attached and nothing to check it against. A wrong refund is cancelled or
+     * deleted and made again, which leaves a record of the change instead of
+     * quietly replacing the number.
+     */
+    refundAmount: never
     bankName: string
     bankAccountNumber: string
     bankAccountHolder: string
@@ -662,25 +677,14 @@ export async function updateRefund(
   }>,
   db: DBExecutor = sql,
 ): Promise<void> {
-  // An overpayment still being decided has no stored amount worth writing: it
-  // is read from her balance, and a figure typed here would be overwritten on
-  // the next read and ignored at the transfer. Refused rather than accepted and
-  // dropped, because a number that appears to save and then does not is worse
-  // than one that cannot be typed.
   if (data.refundAmount !== undefined) {
-    const [current] = (await db`
-      SELECT reason, status FROM refunds WHERE id = ${id}
-    `) as unknown as { reason: string; status: string }[]
-    if (current && isLiveAmount({ reason: current.reason, status: current.status })) {
-      throw new Error("This refund follows her balance — its amount cannot be set by hand.")
-    }
+    throw new Error("A refund's amount is set when it is made. Cancel it and make a new one.")
   }
 
   const fields: string[] = []
   const params: (string | number)[] = []
 
   if (data.status !== undefined) { params.push(data.status); fields.push(`status = $${params.length}`) }
-  if (data.refundAmount !== undefined) { params.push(data.refundAmount); fields.push(`refund_amount = $${params.length}`) }
   if (data.bankName !== undefined) { params.push(data.bankName); fields.push(`bank_name = $${params.length}`) }
   if (data.bankAccountNumber !== undefined) { params.push(data.bankAccountNumber); fields.push(`bank_account_number = $${params.length}`) }
   if (data.bankAccountHolder !== undefined) { params.push(data.bankAccountHolder); fields.push(`bank_account_holder = $${params.length}`) }

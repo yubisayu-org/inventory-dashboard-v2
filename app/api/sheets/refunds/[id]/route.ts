@@ -86,7 +86,6 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
     await withActor(session.user.email, (tx) => updateRefund(refundId, {
       status: data.status,
-      refundAmount: data.refundAmount !== undefined ? Number(data.refundAmount) : undefined,
       bankName: data.bankName,
       bankAccountNumber: data.bankAccountNumber,
       bankAccountHolder: data.bankAccountHolder,

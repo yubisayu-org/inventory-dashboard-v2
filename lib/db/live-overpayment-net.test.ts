@@ -92,34 +92,27 @@ test("a refund already paid stops claiming anything", async () => {
   assert.equal(balance, 0, "500.000 in, 200.000 invoice, 300.000 sent back")
 })
 
-test("a live amount cannot be typed over", async () => {
-  // It is read from her balance on every read and again at the transfer, so a
-  // figure typed here would be overwritten and ignored. Refused rather than
-  // accepted and dropped: a number that appears to save and then does not is
-  // worse than one that cannot be typed.
-  const [r] = await sql<{ id: number }[]>`
-    INSERT INTO refunds (event, customer, reason, refund_amount, status)
-    VALUES (${`${TAG}_EV2`}, ${WHO}, 'overpayment', 1, 'pending') RETURNING id`
-  await assert.rejects(
-    () => updateRefund(r.id, { refundAmount: 999999 }),
-    /follows her balance/,
-  )
-  // The note is hers to write at any stage, and always was.
-  await updateRefund(r.id, { note: "asked her on WhatsApp" })
-  const [row] = await sql<{ note: string; refund_amount: number }[]>`
-    SELECT note, refund_amount::int FROM refunds WHERE id = ${r.id}`
-  assert.equal(row.note, "asked her on WhatsApp")
-  assert.equal(row.refund_amount, 1, "and the stored figure is untouched")
-})
-
-test("a goods refund's amount is still its own to set", async () => {
-  // The Bucket Hat is Rp 160.000 whatever else happens on that trip, and she
-  // may be keeping it at a discount rather than sending it back for all of it.
-  const [r] = await sql<{ id: number }[]>`
-    INSERT INTO refunds (event, customer, reason, refund_amount, status)
-    VALUES (${`${TAG}_EV2`}, ${WHO}, 'quality', 160000, 'pending') RETURNING id`
-  await updateRefund(r.id, { refundAmount: 80000 })
-  const [row] = await sql<{ refund_amount: number }[]>`
-    SELECT refund_amount::int FROM refunds WHERE id = ${r.id}`
-  assert.equal(row.refund_amount, 80000)
+test("no refund's amount can be typed over, whatever kind it is", async () => {
+  // Every amount is computed or typed once, when the refund is made. Editing
+  // afterwards made a fourth kind of figure -- no reasoning attached, nothing
+  // to check it against. A wrong refund is cancelled and made again, which
+  // leaves a record instead of quietly replacing the number.
+  const kinds: [string, number][] = [["overpayment", 1], ["quality", 160000], ["unavailable", 50000]]
+  for (const [reason, amount] of kinds) {
+    const [r] = await sql<{ id: number }[]>`
+      INSERT INTO refunds (event, customer, reason, refund_amount, status)
+      VALUES (${`${TAG}_EV2`}, ${WHO}, ${reason}, ${amount}, 'pending') RETURNING id`
+    await assert.rejects(
+      // @ts-expect-error -- the field is typed `never`; this is the runtime guard
+      () => updateRefund(r.id, { refundAmount: 999999 }),
+      /set when it is made/,
+      reason,
+    )
+    // The note is hers to write at any stage, and always was.
+    await updateRefund(r.id, { note: "asked her on WhatsApp" })
+    const [row] = await sql<{ note: string; refund_amount: number }[]>`
+      SELECT note, refund_amount::int FROM refunds WHERE id = ${r.id}`
+    assert.equal(row.note, "asked her on WhatsApp")
+    assert.equal(row.refund_amount, amount, `${reason} keeps its own figure`)
+  }
 })

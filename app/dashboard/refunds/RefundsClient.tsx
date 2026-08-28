@@ -470,6 +470,16 @@ export default function RefundsClient() {
 
   const columns = useMemo<ColumnDef<RefundRow, unknown>[]>(() => [
     {
+      // Event first, as the Invoice page reads: the trip is what a row belongs
+      // to, and the caret sits beside it. Customer follows, which is what you
+      // scan within a trip.
+      accessorKey: "event",
+      header: "Event",
+      size: 130,
+      filterFn: "textContains",
+      cell: ({ getValue }) => <span className="text-muted whitespace-nowrap">{getValue<string>()}</span>,
+    },
+    {
       accessorKey: "customer",
       header: "Customer",
       size: 180,
@@ -499,13 +509,6 @@ export default function RefundsClient() {
           </div>
         )
       },
-    },
-    {
-      accessorKey: "event",
-      header: "Event",
-      size: 130,
-      filterFn: "textContains",
-      cell: ({ getValue }) => <span className="text-muted-strong">{getValue<string>()}</span>,
     },
     {
       id: "reason",
@@ -729,27 +732,38 @@ export default function RefundsClient() {
                         // it is and which trip, rather than depending on a line
                         // that may be off the top of the screen.
                         if (id === "customer") return (
-                          <td key={id} className="px-4 py-2 text-muted truncate">{displayIg(m.customer)}</td>
+                          <td key={id} className="px-4 py-2 align-top text-muted truncate">{displayIg(m.customer)}</td>
                         )
                         if (id === "event") return (
-                          <td key={id} className="px-4 py-2 text-faint truncate">{m.event}</td>
+                          <td key={id} className="px-4 py-2 align-top text-faint truncate">{m.event}</td>
                         )
+                        // What it is actually about. A mark writes the item and
+                        // the count into the note as it goes -- "Akachan Baby
+                        // Lotion 300ml × 1", one line per item where several
+                        // marks merged into the same refund -- and that is the
+                        // thing worth opening a group to read. The reason alone
+                        // says a kind of thing went wrong, not which.
                         if (id === "reason") return (
-                          <td key={id} className="px-4 py-2 text-muted-strong truncate">{reasonLabel(m.reason)}</td>
+                          <td key={id} className="px-4 py-2 align-top">
+                            <div className="text-muted-strong">{reasonLabel(m.reason)}</div>
+                            {m.note.split("\n").map((l) => l.trim()).filter(Boolean).map((l, i) => (
+                              <div key={i} className="text-xs text-faint leading-snug">{l}</div>
+                            ))}
+                          </td>
                         )
                         if (id === "amount") return (
-                          <td key={id} className="px-4 py-2 text-right tabular-nums font-semibold text-foreground">
+                          <td key={id} className="px-4 py-2 align-top text-right tabular-nums font-semibold text-foreground">
                             {formatRp(displayAmount(m))}
                           </td>
                         )
                         if (id === "status") return (
-                          <td key={id} className="px-4 py-2">
+                          <td key={id} className="px-4 py-2 align-top">
                             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${statusColor(m)}`}>
                               {statusLabel(m)}
                             </span>
                           </td>
                         )
-                        return <td key={id} className="px-4 py-2" />
+                        return <td key={id} className="px-4 py-2 align-top" />
                       })}
                     </tr>
                   ))}
@@ -1437,7 +1451,6 @@ function RefundDetailModal({
   // answer is one transfer for all three. Untick what is not being sent yet.
   const [payWith, setPayWith] = useState<Set<number>>(() => new Set(siblings.map((s) => s.id)))
   const [note, setNote] = useState(row.note)
-  const [refundAmount, setRefundAmount] = useState(String(row.refundAmount))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
@@ -1590,17 +1603,14 @@ function RefundDetailModal({
     if (ok) onUpdated({ ...row, status: "refunded", transferReference: transferRef.trim() })
   }
 
-  // Whether this row's amount is its own or her balance's. A live one has no
-  // number to edit -- what is shown is derived, and writing under it changes
-  // nothing anybody will ever see.
+  // Where this row's figure came from, which is the sentence to show in place
+  // of the box that used to be here.
   const amountIsLive = isLiveAmount({ reason: row.reason, status: row.status })
 
   async function handleSaveEdit() {
-    const ok = amountIsLive
-      ? await patch({ note })
-      : await patch({ note, refundAmount: Number(refundAmount) })
+    const ok = await patch({ note })
     if (ok) {
-      onUpdated({ ...row, note, refundAmount: amountIsLive ? row.refundAmount : Number(refundAmount) })
+      onUpdated({ ...row, note })
       setShowEdit(false)
     }
   }
@@ -2119,7 +2129,7 @@ function RefundDetailModal({
           {!isReadOnly && (
             <div className="flex flex-col gap-2 p-3 rounded-lg bg-surface-muted border border-cream-border">
               <div className="flex items-center justify-between gap-2">
-                <div className="text-xs font-medium text-muted-strong">{amountIsLive ? "Note" : "Amount and note"}</div>
+                <div className="text-xs font-medium text-muted-strong">Note</div>
                 <button
                   type="button"
                   onClick={() => setShowEdit((v) => !v)}
@@ -2138,25 +2148,15 @@ function RefundDetailModal({
               </div>
               {showEdit && (
                 <div className="flex flex-col gap-3">
-                  {amountIsLive ? (
-                    <p className="text-[11px] text-faint">
-                      <span className="font-medium text-muted">{formatRp(row.refundAmount)}</span> is what she is
-                      overpaid right now, less what her other open refunds on {row.event} already claim. It follows
-                      her invoice, so there is no figure here to set.
-                    </p>
-                  ) : (
-                    <label className="flex flex-col gap-1">
-                      <span className="text-xs font-medium text-muted">Refund Amount (Rp)</span>
-                      <input
-                        type="number"
-                        min="1"
-                        value={refundAmount}
-                        onChange={(e) => setRefundAmount(e.target.value)}
-                        disabled={saving}
-                        className={`${INPUT_CLASS} w-full`}
-                      />
-                    </label>
-                  )}
+                  {/* The amount is set when the refund is made -- computed by
+                      the mark, read from her balance, or typed into the
+                      composer. There is no fourth kind, so there is no box. */}
+                  <p className="text-[11px] text-faint">
+                    <span className="font-medium text-muted">{formatRp(row.refundAmount)}</span>{" "}
+                    {amountIsLive
+                      ? `is what she is overpaid right now, less what her other open refunds on ${row.event} already claim. It follows her invoice.`
+                      : "was set when this refund was made. To refund a different figure, cancel this one and make it again."}
+                  </p>
                   {row.appliedCreditAmount > 0 && !isFullyAppliedAsCredit(row) && (
                     <p className="text-[11px] text-faint -mt-2">
                       {formatRp(row.appliedCreditAmount)} already applied as credit elsewhere — the amount above is what's still left to refund.
