@@ -13,6 +13,10 @@ export type ShipMode = "wait" | "split" | "hold"
 export type ShippingPref = {
   event: string
   mode: ShipMode
+  /** Who chose it. Her page can then say the shop arranged this rather than
+   *  showing her a decision she does not remember making -- while still
+   *  letting her undo it, which is the point of showing it at all. */
+  setBy: SetBy
   mergeKey: string | null
   tempAddress: string | null
   /** The Biteship area chosen alongside it, when there is one. */
@@ -32,6 +36,7 @@ export function isShipMode(v: unknown): v is ShipMode {
 type PrefRow = {
   event: string
   mode: ShipMode
+  set_by: SetBy
   merge_key: string | null
   temp_address: string | null
   temp_area_id: string | null
@@ -41,6 +46,7 @@ type PrefRow = {
 const toPref = (r: PrefRow): ShippingPref => ({
   event: r.event,
   mode: r.mode,
+  setBy: r.set_by,
   mergeKey: r.merge_key,
   tempAddress: r.temp_address,
   tempAreaId: r.temp_area_id,
@@ -52,7 +58,7 @@ export async function getShippingPrefs(
   db: postgres.Sql | DBExecutor = sql,
 ): Promise<ShippingPref[]> {
   const rows = await db<PrefRow[]>`
-    SELECT event, mode, merge_key, temp_address, temp_area_id, temp_area_name
+    SELECT event, mode, set_by, merge_key, temp_address, temp_area_id, temp_area_name
       FROM customer_shipping_prefs
      WHERE customer_id = ${customerId}
   `
@@ -194,9 +200,11 @@ export async function setShippingMode(
   const reason = await ineligibleReason(customerId, event, db)
   if (blocks(reason, setBy)) throw new ShippingPrefError(reason!)
 
-  // A half-shipped event cannot be held: the queue and the parcel that already
-  // left would disagree about what is outstanding.
-  if (mode === "hold" && (await shippedUnits(customerId, event, db)) > 0) {
+  // A half-shipped event cannot be held by the customer: the queue and the
+  // parcel that already left would disagree about what is outstanding. The shop
+  // parks the remainder of a part-shipped card as a matter of course, and did
+  // so before this went through here at all.
+  if (mode === "hold" && setBy === "customer" && (await shippedUnits(customerId, event, db)) > 0) {
     throw new ShippingPrefError("part-shipped")
   }
 
@@ -220,6 +228,30 @@ export async function setShippingMode(
     // to "wait" stays invisibly held, and the shop never sees the order again.
     await releasePackingList({ customer: customer.instagram_id, event })
   }
+}
+
+/**
+ * Forget a stored hold, leaving everything else in the row alone.
+ *
+ * Releasing used to free the units and stop there. The wish stayed on file, and
+ * reapplyHoldsForArrival reads the wish on every arrival -- so the next box to
+ * land re-parked an order somebody had deliberately released, hours later,
+ * through an action that looked unrelated.
+ *
+ * Only the mode is touched. A merge_key sits in the same row and parks the
+ * parcel for a different reason; clearing that would un-pair the trips and take
+ * the merge discount off her invoice with it.
+ */
+export async function clearHoldMode(
+  customerId: number,
+  event: string,
+  db: DBExecutor = sql,
+): Promise<void> {
+  await db`
+    UPDATE customer_shipping_prefs
+       SET mode = 'wait', updated_at = NOW()
+     WHERE customer_id = ${customerId} AND event = ${event} AND mode = 'hold'
+  `
 }
 
 /**
@@ -318,19 +350,25 @@ export async function setTempAddress(
   event: string,
   input: { address: string; areaId?: string | null; areaName?: string | null },
   db: DBExecutor = sql,
+  /** Who recorded it. The shop writing down what she said on WhatsApp is not
+   *  the customer choosing from her own page. */
+  setBy: SetBy = "customer",
 ): Promise<void> {
+  // The payment bar is a rule about customers, and a redirect is usually asked
+  // for early -- before the trip is settled, often before anything has arrived.
+  // Refusing the shop there would refuse it exactly when it is useful.
   const reason = await ineligibleReason(customerId, event, db)
-  if (reason) throw new ShippingPrefError(reason)
+  if (blocks(reason, setBy)) throw new ShippingPrefError(reason!)
 
   const value = input.address.trim() ? input.address.trim() : null
   const areaId = value && input.areaId?.trim() ? input.areaId.trim() : null
   const areaName = value && areaId && input.areaName?.trim() ? input.areaName.trim() : null
   await db`
-    INSERT INTO customer_shipping_prefs (customer_id, event, temp_address, temp_area_id, temp_area_name)
-    VALUES (${customerId}, ${event}, ${value}, ${areaId}, ${areaName})
+    INSERT INTO customer_shipping_prefs (customer_id, event, temp_address, temp_area_id, temp_area_name, set_by)
+    VALUES (${customerId}, ${event}, ${value}, ${areaId}, ${areaName}, ${setBy})
     ON CONFLICT (customer_id, event)
     DO UPDATE SET temp_address = ${value}, temp_area_id = ${areaId},
-                  temp_area_name = ${areaName}, updated_at = NOW()
+                  temp_area_name = ${areaName}, set_by = ${setBy}, updated_at = NOW()
   `
 }
 
@@ -341,7 +379,7 @@ export async function shippingPrefsForCustomer(
 ): Promise<ShippingPref[]> {
   const key = normalizeId(instagramId)
   const rows = await db<PrefRow[]>`
-    SELECT sp.event, sp.mode, sp.merge_key, sp.temp_address, sp.temp_area_id, sp.temp_area_name
+    SELECT sp.event, sp.mode, sp.set_by, sp.merge_key, sp.temp_address, sp.temp_area_id, sp.temp_area_name
       FROM customer_shipping_prefs sp
       JOIN customers c ON c.id = sp.customer_id
      WHERE lower(replace(c.instagram_id, '@', '')) = ${key}

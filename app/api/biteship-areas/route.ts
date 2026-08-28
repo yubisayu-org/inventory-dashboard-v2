@@ -1,16 +1,21 @@
 import { NextRequest, NextResponse } from "next/server"
-import { requireSession, requireOwner } from "@/lib/api"
+import { requireSession, requireRole } from "@/lib/api"
 import { searchAreas, BiteshipNotConfiguredError } from "@/lib/biteship"
 
-// Staff-side area search, for setting a warehouse origin. Owner-only and
-// deliberately separate from the customer-facing /api/public/catalogue/areas:
-// same Biteship call, entirely different authorisation.
+// Staff-side area search: warehouse origins, and the receiving area for a
+// redirect recorded on the Packing List. Deliberately separate from the
+// customer-facing /api/public/catalogue/areas -- same Biteship call, entirely
+// different authorisation.
+//
+// Open to staff, not only the owner: it reads public postal areas and writes
+// nothing, and the people recording "kirim ke rumah ibu saya" are the ones
+// packing the boxes.
 
 export async function GET(req: NextRequest) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
-  const ownerError = requireOwner(session)
-  if (ownerError) return ownerError
+  const roleError = requireRole(session)
+  if (roleError) return roleError
 
   try {
     const areas = await searchAreas(req.nextUrl.searchParams.get("q") ?? "")

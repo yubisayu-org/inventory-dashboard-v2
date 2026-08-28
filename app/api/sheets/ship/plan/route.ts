@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
 import { withActor } from "@/lib/db"
-import { setShippingMode, setMergeGroup } from "@/lib/db/shipping-prefs"
+import { setShippingMode, setMergeGroup, setTempAddress } from "@/lib/db/shipping-prefs"
 import { reconcileParcelPlan } from "@/lib/db/parcel-plan"
 import sql from "@/lib/db-pool"
 
-const ACTIONS = ["split", "unsplit", "merge", "unmerge"] as const
+const ACTIONS = ["split", "unsplit", "merge", "unmerge", "address"] as const
 type Action = (typeof ACTIONS)[number]
 
 /**
@@ -46,6 +46,19 @@ export async function POST(req: NextRequest) {
        WHERE lower(replace(instagram_id, '@', '')) = lower(replace(${customer}, '@', ''))
     `) as unknown as { id: number }[]
     if (!row) return NextResponse.json({ error: "Unknown customer" }, { status: 404 })
+
+    // Where a parcel is going changes no plan and no price, so it neither
+    // reconciles nor returns an adjustment. She asks for it early -- often
+    // before anything has arrived -- and it waits on the trip until a box goes,
+    // which is what makes writing it down better than remembering it.
+    if (action === "address") {
+      const address = typeof body.address === "string" ? body.address : ""
+      const areaId = typeof body.areaId === "string" ? body.areaId : null
+      const areaName = typeof body.areaName === "string" ? body.areaName : null
+      await withActor(session.user.email, (tx) =>
+        setTempAddress(row.id, events[0], { address, areaId, areaName }, tx, "shop"))
+      return NextResponse.json({ success: true })
+    }
 
     const adjustment = await withActor(session.user.email, async (tx) => {
       if (action === "split") await setShippingMode(row.id, events[0], "split", tx, "shop")
