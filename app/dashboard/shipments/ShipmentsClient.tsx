@@ -773,10 +773,13 @@ export default function ShipmentsClient() {
         accessorKey: "event",
         header: "Event",
         filterFn: "textContains",
-        // Wide enough for one full event code ("LSKR202603") plus the " +"
-        // separator and the cell's px-4 padding, so a merged row breaks one
-        // event per line instead of mid-name.
-        size: 120,
+        // One full event code per line, and the whole point of the width.
+        // "LSKR202608" is ten characters, about 75px at this size; the cell's
+        // px-4 padding takes 32 of whatever is left, and a merged row adds a
+        // ", " and the merge icon on top. At 120 the last character wrapped,
+        // which broke a code in half -- and half a trip code reads as a
+        // different trip. 140 fits the widest code with the separator beside it.
+        size: 140,
         cell: ({ row, getValue }) => (
           // A merged shipment joins its events with ", ", which wraps to one
           // line per token in a narrow column — four rows for a two-event merge.

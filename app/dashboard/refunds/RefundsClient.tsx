@@ -64,13 +64,21 @@ const STATUS_COLORS: Record<RefundStatus, string> = {
 
 /** Not a refund status — a list of money owed that nobody has decided about. */
 const TO_CHECK = "to_check" as const
-type TabKey = RefundStatus | typeof TO_CHECK
+/** Money she chose to keep. Its own tab, for the reason below. */
+const DEPOSITS = "deposits" as const
+type TabKey = RefundStatus | typeof TO_CHECK | typeof DEPOSITS
 
 const ACTIVE_TABS: { key: TabKey; label: string }[] = [
   { key: TO_CHECK, label: "To check" },
   { key: "pending", label: "Pending" },
   { key: "awaiting_bank_info", label: "Bank Info" },
   { key: "ready_to_refund", label: "Transfer" },
+  // Not Pending, where these used to sit. Pending is a to-do list -- every row
+  // in it money you have decided to send, this week. A deposit is settled: she
+  // asked to keep it, nothing is owed to her bank, and there is nothing to do
+  // until an order of hers can take it. A list you work through should not
+  // contain things you cannot work on.
+  { key: DEPOSITS, label: "Deposits" },
   { key: "refunded", label: "Done" },
 ]
 
@@ -401,11 +409,11 @@ export default function RefundsClient() {
     return rows.filter((r) =>
       (tab === "refunded"
         ? doneStatuses.includes(r.status) && !isCreditPromised(r)
-        : tab === "pending"
-          // A promised credit is money still owed, so it belongs with the rest
-          // of what is owed rather than filed away as settled.
-          ? r.status === "pending" || isCreditPromised(r)
-          : r.status === tab) &&
+        : tab === DEPOSITS
+          ? isCreditPromised(r)
+          : tab === "pending"
+            ? r.status === "pending"
+            : r.status === tab) &&
       (!eventFilter || r.event === eventFilter),
     )
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -422,9 +430,14 @@ export default function RefundsClient() {
    */
   const tabGrouped = useMemo<GroupRow[]>(() => {
     if (tab === "refunded") return tabFiltered
+    // Deposits group by CUSTOMER, not by trip: what matters is how much of her
+    // money the shop is holding, and it does not matter which trips it came
+    // from. Everywhere else a group is one customer on one trip, because that
+    // is what one transfer settles.
+    const byCustomer = tab === DEPOSITS
     const by = new Map<string, RefundRow[]>()
     for (const r of tabFiltered) {
-      const k = pairKey(r)
+      const k = byCustomer ? normalizeId(r.customer) : pairKey(r)
       const list = by.get(k)
       if (list) list.push(r)
       else by.set(k, [r])
@@ -461,9 +474,9 @@ export default function RefundsClient() {
   )
 
   const counts = useMemo(() => {
-    const c: Partial<Record<RefundStatus | "done", number>> = {}
+    const c: Partial<Record<RefundStatus | "done" | "deposits", number>> = {}
     for (const r of rows) {
-      const key = isCreditPromised(r) ? "pending" : r.status
+      const key = isCreditPromised(r) ? "deposits" : r.status
       c[key] = (c[key] ?? 0) + 1
     }
     const done = (c.refunded ?? 0) + (c.applied_to_next_order ?? 0) + (c.cancelled ?? 0)
@@ -479,7 +492,18 @@ export default function RefundsClient() {
       header: "Event",
       size: 130,
       filterFn: "textContains",
-      cell: ({ getValue }) => <span className="text-muted whitespace-nowrap">{getValue<string>()}</span>,
+      cell: ({ row, getValue }) => {
+        const members = (row.original as GroupRow).members
+        // A deposit group spans trips, so no single one names it -- but the row
+        // keeps its own event underneath, because pairKey and the group sheet
+        // read it. Said in the cell, not written into the data.
+        const trips = members ? new Set(members.map((m) => m.event)).size : 1
+        return (
+          <span className="text-muted whitespace-nowrap">
+            {trips > 1 ? `${trips} trips` : getValue<string>()}
+          </span>
+        )
+      },
     },
     {
       accessorKey: "customer",
@@ -583,6 +607,9 @@ export default function RefundsClient() {
       meta: { align: "right" },
       cell: ({ row }) => {
         const r = row.original as GroupRow
+        // Nothing here is going to a bank: she chose to keep it, and it moves
+        // by being applied to an order, one at a time.
+        if (tab === DEPOSITS) return null
         const all = [...(r.members ?? [r]), ...openSiblings(r)].filter(isOpenRefund)
         if (all.length < 2) return null
         return (
@@ -603,7 +630,7 @@ export default function RefundsClient() {
       header: "Updated",
       enableColumnFilter: false,
     },
-  ], [outstandingFor, openSiblings])
+  ], [outstandingFor, openSiblings, tab])
 
   const renderMobileCard = useCallback((r: GroupRow) => {
     return (
@@ -655,6 +682,7 @@ export default function RefundsClient() {
         {ACTIVE_TABS.map(({ key, label }) => {
           const count = key === TO_CHECK
             ? toCheck?.length
+            : key === DEPOSITS ? counts.deposits
             : key === "refunded" ? counts.done : counts[key as RefundStatus]
           const active = tab === key
             || (key === "refunded" && tab !== TO_CHECK && doneStatuses.includes(tab as RefundStatus))
@@ -711,6 +739,9 @@ export default function RefundsClient() {
           onRowClick={(row) => {
             const g = row as GroupRow
             if (!g.members) { setEditRow(row); return }
+            // A deposit group has nothing to settle together -- it opens to its
+            // own list, and each one is applied to an order on its own.
+            if (tab === DEPOSITS) return
             setGroupSheet([...g.members, ...openSiblings(g)].filter(isOpenRefund))
           }}
           canExpandRow={(row) => Boolean((row as GroupRow).members)}
