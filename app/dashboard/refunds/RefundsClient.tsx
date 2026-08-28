@@ -1211,8 +1211,29 @@ function RefundDetailModal({
   // better than anything this screen can reconstruct: a line reduced 3 → 2
   // keeps no record of the original, so orders alone can only see what went to
   // zero.
-  const itemsList = row.note?.trim()
-    ? row.note.trim()
+  //
+  // But one refund can cover several marks. Five products marked out of stock
+  // write five notes, and if those refunds are merged into one the note names
+  // whichever mark happened to write it -- so she is told about one item and
+  // refunded for five. The note leads, because it carries quantities, and
+  // anything else that went to zero on this trip is named after it.
+  //
+  // Only where the cause is about items. An overpayment's note says what the
+  // money was, not what was lost, and cancelled lines are none of its business.
+  const itemsCause = REFUND_CAUSES.find((c) => c.key === row.reason)
+  const noteLines = (row.note ?? "")
+    .split("\n")
+    .map((l) => l.replace(/^[-•]\s*/, "").trim())
+    .filter(Boolean)
+  const named = [...noteLines]
+  if (itemsCause?.needsItems) {
+    for (const item of unavailableItems) {
+      const already = named.some((l) => l.toLowerCase().startsWith(item.toLowerCase()))
+      if (!already) named.push(item)
+    }
+  }
+  const itemsList = named.length
+    ? named.map((n) => `- ${n}`).join("\n")
     : unavailableItems.map((n) => `- ${n}`).join("\n")
 
   // What arrived instead, where a wrong delivery was marked on this trip.
