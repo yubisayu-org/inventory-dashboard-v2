@@ -190,6 +190,10 @@ export async function getDuplicateFormRowsPaginated(opts: {
   event?: string
   customer?: string
   items?: string
+  /** Purchase receipt, matched on the front of the code. */
+  receipt?: string
+  /** The box a parcel travelled in, matched on the front of the code. */
+  dispatchReceipt?: string
   note?: string
   dateFrom?: string
   dateTo?: string
@@ -204,7 +208,8 @@ export async function getDuplicateFormRowsPaginated(opts: {
    */
   skipCount?: boolean
 }): Promise<PaginatedFormRows> {
-  const { page, pageSize, search, event, customer, items, note, dateFrom, dateTo, newestFirst, skipCount } = opts
+  const { page, pageSize, search, event, customer, items, receipt, dispatchReceipt,
+          note, dateFrom, dateTo, newestFirst, skipCount } = opts
   const offset = (page - 1) * pageSize
 
   const conditions: string[] = []
@@ -223,6 +228,24 @@ export async function getDuplicateFormRowsPaginated(opts: {
   if (items) {
     params.push(`%${items.toLowerCase()}%`)
     conditions.push(`lower(p.name) LIKE $${params.length}`)
+  }
+  // The two receipts are not the same kind of thing, and the production data
+  // says so plainly.
+  //
+  // A purchase receipt is however the shopping trip was described -- "chiko 25
+  // mar", "31jan - sea", "tbo 31jan" -- so the useful part is as often in the
+  // middle as at the front. Substring.
+  if (receipt) {
+    params.push(`%${receipt.toLowerCase()}%`)
+    conditions.push(`lower(COALESCE(o.receipt, '')) LIKE $${params.length}`)
+  }
+  // A dispatch receipt is a code: HC, HC/KS-2601, CJI-06. Its prefix is the
+  // question worth asking -- "HC" means every hand-carry box, "HC/KS" means
+  // that route's -- and matching from the front leaves room for an index,
+  // which a leading wildcard never can.
+  if (dispatchReceipt) {
+    params.push(`${dispatchReceipt.toLowerCase()}%`)
+    conditions.push(`lower(COALESCE(o.dispatch_receipt, '')) LIKE $${params.length}`)
   }
   // Note presence filter: "has" = non-empty note, "none" = blank/null.
   if (note === "has") {
@@ -250,7 +273,7 @@ export async function getDuplicateFormRowsPaginated(opts: {
   const SORT_COLUMNS: Record<string, string> = {
     event: "o.event", customer: "o.customer", items: "p.name",
     unit: "o.unit", unitPrice: "o.unit_price", note: "o.note", createdAt: "o.created_at",
-    unitBuy: "o.unit_buy", receipt: "o.receipt",
+    unitBuy: "o.unit_buy", receipt: "o.receipt", dispatchReceipt: "o.dispatch_receipt",
     unitArrive: "o.unit_arrive", unitShip: "o.unit_ship", unitHold: "o.unit_hold",
     unitDispatch: "o.unit_dispatch",
     updatedAt: "o.updated_at",
