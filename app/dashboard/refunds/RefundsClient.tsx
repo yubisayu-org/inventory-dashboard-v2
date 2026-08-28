@@ -1169,9 +1169,8 @@ function RefundDetailModal({
   // the items that became unavailable — name them in the message. Lines merely
   // reduced (e.g. 3 → 2) keep no record of the original quantity, so partial
   // shortages can't be listed and the message falls back to the generic phrasing.
-  const unavailableItems = (invoiceEvent?.orders ?? [])
-    .filter((o) => o.unit === 0)
-    .map((o) => o.productName)
+  const unavailableLines = (invoiceEvent?.orders ?? []).filter((o) => o.unit === 0)
+  const unavailableItems = unavailableLines.map((o) => o.productName)
   const templates = useMessageTemplates()
 
   // A mark writes what it removed onto the refund, quantities and all, which is
@@ -1192,28 +1191,59 @@ function RefundDetailModal({
     .split("\n")
     .map((l) => l.replace(/^[-•]\s*/, "").trim())
     .filter(Boolean)
-  const named = [...noteLines]
-  if (itemsCause?.needsItems) {
-    // A note may name items in full, or abbreviate them: "Cooling Towel,
-    // Bucket Hat, Simple Cap — 5 item" is how a person summarises five marks
-    // merged into one refund, and none of the real product names starts with
-    // it. Matching whole lines appended every item again and she was sent the
-    // list twice.
-    //
-    // So compare fragments. A note line is cut on commas and dashes, and a
-    // fragment of four characters or more that appears inside a product name
-    // counts as having named it. Short fragments are ignored: "Cap" would
-    // swallow "Simple Cap" and hide it.
-    const fragments = noteLines
-      .flatMap((l) => l.split(/[,;·—–-]|\s×\s/))
-      .map((f) => f.trim().toLowerCase())
-      .filter((f) => f.length > 3)
-    for (const item of unavailableItems) {
-      const name = item.toLowerCase()
-      const already = fragments.some((f) => name.includes(f) || f.includes(name))
-      if (!already) named.push(item)
+  // One item per line, with what it costs.
+  //
+  // The invoice leads here, because it is the only place the price lives. A
+  // note may name the same items in full or in shorthand -- "Cooling Towel,
+  // Bucket Hat, Simple Cap — 5 item" is how a person summarises five marks
+  // merged into one refund -- so it is used to recognise what the invoice
+  // already shows, and to add anything the invoice cannot: a line reduced 3 to
+  // 2 keeps no record of the original, so only the note knows it happened.
+  const fragments = noteLines
+    .flatMap((l) => l.split(/[,;·—–]|\s×\s/))
+    .map((f) => f.trim().toLowerCase())
+    .filter((f) => f.length > 3)
+
+  /** "Bucket Hat with String × 1" out of a note line, when it says a count. */
+  function qtyFor(name: string): number | null {
+    for (const line of noteLines) {
+      const m = line.match(/×\s*(\d+)/)
+      if (!m) continue
+      const before = line.slice(0, line.indexOf("×")).trim().toLowerCase()
+      if (before && (name.toLowerCase().includes(before) || before.includes(name.toLowerCase()))) {
+        return Number(m[1])
+      }
     }
+    return null
   }
+
+  const named: string[] = []
+  if (itemsCause?.needsItems) {
+    for (const line of unavailableLines) {
+      const qty = qtyFor(line.productName)
+      const each = line.rawUnitPrice
+      // Price per unit, and the total beside it when more than one went. She
+      // checks the arithmetic; making her multiply is making her work.
+      const money = each > 0
+        ? qty && qty > 1
+          ? ` — ${qty} × ${formatRp(each)} = ${formatRp(each * qty)}`
+          : ` — ${formatRp(each)}`
+        : ""
+      named.push(`${line.productName}${qty && qty > 1 ? ` × ${qty}` : ""}${money}`)
+    }
+    // Anything the note mentions that no zeroed line accounts for: a partial
+    // shortage, which leaves nothing behind on the order to find.
+    for (const line of noteLines) {
+      const known = unavailableItems.some((item) => {
+        const name = item.toLowerCase()
+        return fragments.some((f) => name.includes(f) || f.includes(name))
+      })
+      if (!known) named.push(line)
+    }
+  } else {
+    named.push(...noteLines)
+  }
+
   const itemsList = named.length
     ? named.map((n) => `- ${n}`).join("\n")
     : unavailableItems.map((n) => `- ${n}`).join("\n")
