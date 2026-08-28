@@ -110,12 +110,13 @@ export async function refundForReduction(
     // What came off, how many, and what each cost. The note is the only record
     // of a refund's goods -- the order line it came from is already reduced --
     // so a figure that cannot be checked against anything is a figure nobody
-    // trusts six weeks later. The line total only where there is a sum to do.
-    const each = `Rp ${new Intl.NumberFormat("id-ID").format(r.unitPrice)}`
-    const items = r.unitsRemoved > 1
-      ? `${itemsLabel} × ${r.unitsRemoved} × ${each}`
-        + ` = Rp ${new Intl.NumberFormat("id-ID").format(r.unitPrice * r.unitsRemoved)}`
-      : `${itemsLabel} × ${r.unitsRemoved} × ${each}`
+    // trusts six weeks later.
+    //
+    // No line total: the refund's own amount is a column away on every screen
+    // this appears on, and printing the multiplication as well is the screen
+    // doing arithmetic at somebody who can already see the answer.
+    const items = `${itemsLabel} × ${r.unitsRemoved}`
+      + ` × Rp ${new Intl.NumberFormat("id-ID").format(r.unitPrice)}`
 
     // What she is owed for this trip and this cause once this mark lands, not
     // what this mark alone came to. She is told a running total because a

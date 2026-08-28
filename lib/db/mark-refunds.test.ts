@@ -229,7 +229,8 @@ test("the ongkir the missing goods were carrying comes back with them", async ()
 test("the note says what came off, how many, and what each cost", async () => {
   // The note is the only record of a refund's goods -- the order line it came
   // from is already reduced -- so a figure with nothing to check it against is
-  // a figure nobody trusts six weeks later.
+  // a figure nobody trusts six weeks later. No line total: the refund's amount
+  // is a column away on every screen this shows up on.
   const who = `${TAG}_priced`
   const EV = `${TAG}_PRICED`
   await sql`INSERT INTO events (name, warehouse_id) SELECT ${EV}, id FROM warehouses ORDER BY id LIMIT 1`
@@ -249,10 +250,10 @@ test("the note says what came off, how many, and what each cost", async () => {
 
   const [row] = await sql<{ note: string }[]>`
     SELECT note FROM refunds WHERE event = ${EV}`
-  assert.equal(row.note, "Muji Boston Bag 38L Greige × 2 × Rp 100.000 = Rp 200.000")
+  assert.equal(row.note, "Muji Boston Bag 38L Greige × 2 × Rp 100.000")
 })
 
-test("a single unit does not print a sum of one thing", async () => {
+test("one unit reads the same way as many", async () => {
   const who = `${TAG}_one`
   const EV = `${TAG}_ONE`
   await sql`INSERT INTO events (name, warehouse_id) SELECT ${EV}, id FROM warehouses ORDER BY id LIMIT 1`

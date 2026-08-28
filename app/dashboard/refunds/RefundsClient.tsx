@@ -1282,19 +1282,13 @@ function CreateRefundCard({
   // What the picked lines come to. Prefilled, not imposed: she may be keeping
   // the item at a discount rather than sending it back for all of it.
   const pickedTotal = lines.reduce((sum, o) => sum + o.rawUnitPrice * (picked[o.orderId] ?? 0), 0)
-  // Same shape a mark writes: name, count, price each, and the sum where there
-  // is one to do. A refund raised by hand and one raised by a mark end up on
-  // the same screen, and reading differently makes them look like different
-  // kinds of thing.
+  // Same shape a mark writes: name, count, price each. A refund raised by hand
+  // and one raised by a mark end up on the same screen, and reading differently
+  // makes them look like different kinds of thing.
   const pickedItems = lines
     .filter((o) => (picked[o.orderId] ?? 0) > 0)
-    .map((o) => {
-      const n = picked[o.orderId]
-      const each = `Rp ${new Intl.NumberFormat("id-ID").format(o.rawUnitPrice)}`
-      return n > 1
-        ? `${o.productName} × ${n} × ${each} = Rp ${new Intl.NumberFormat("id-ID").format(o.rawUnitPrice * n)}`
-        : `${o.productName} × ${n} × ${each}`
-    })
+    .map((o) => `${o.productName} × ${picked[o.orderId]}`
+      + ` × Rp ${new Intl.NumberFormat("id-ID").format(o.rawUnitPrice)}`)
     .join(", ")
 
   useEffect(() => {

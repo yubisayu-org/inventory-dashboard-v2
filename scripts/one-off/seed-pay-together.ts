@@ -75,7 +75,7 @@ async function main() {
     // shape, where what is owed is spread across steps.
     ["unavailable", 160000, "pending",
       "Muji Bucket Hat with String × 1 × Rp 90.000\nMuji Aroma Diffuser Small × 1 × Rp 70.000"],
-    ["shipping_loss", 200000, "pending", "Muji Boston Bag 38L Greige × 2 × Rp 100.000 = Rp 200.000"],
+    ["shipping_loss", 200000, "pending", "Muji Boston Bag 38L Greige × 2 × Rp 100.000"],
     ["damaged", 100000, "pending", "Muji Shoulder Bag 9L Beige × 1 × Rp 100.000"],
   ]
   for (const [reason, amount, status, items] of three) {
