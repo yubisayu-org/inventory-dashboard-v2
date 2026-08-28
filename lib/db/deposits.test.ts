@@ -63,3 +63,48 @@ test("a refund nobody promised as credit is not a deposit", async () => {
     VALUES (${OLD}, ${WHO}, 'overpayment', 50000, 'pending')`
   assert.deepEqual(await heldDeposits(WHO), [])
 })
+
+test("spending part of a deposit leaves the rest a deposit", async () => {
+  // She holds Rp 2.000 and owes Rp 1.000. Taking what is needed must not turn
+  // the leftover back into a plain pending refund -- the banner and the list
+  // marker both look for deposits, so the remainder would go quiet exactly
+  // when it got small enough to forget.
+  const EV3 = `${TAG}_THIRD`
+  await sql`INSERT INTO events (name, warehouse_id) SELECT ${EV3}, id FROM warehouses ORDER BY id LIMIT 1`
+  await sql`
+    INSERT INTO orders (event, customer, product_id, unit_price, unit)
+    VALUES (${EV3}, ${WHO}, ${productId}, 500000, 1)`
+  const [r] = await sql<{ id: number }[]>`
+    INSERT INTO refunds (event, customer, reason, refund_amount, status)
+    VALUES (${OLD}, ${WHO}, 'overpayment', 2000, 'applied_to_next_order') RETURNING id`
+
+  await applyRefundAsCredit(r.id, EV3, 1000, "tester")
+
+  const [row] = await sql<{ status: string; refund_amount: number }[]>`
+    SELECT status, refund_amount::int AS refund_amount FROM refunds WHERE id = ${r.id}`
+  assert.equal(row.refund_amount, 1000, "the unspent part is still owed")
+  assert.equal(row.status, "applied_to_next_order", "and is still a deposit")
+
+  const held = await heldDeposits(WHO)
+  assert.equal(held.length, 1, "so the next invoice still offers it")
+  assert.equal(held[0].amount, 1000)
+})
+
+test("a plain pending refund still goes back to pending when part-applied", async () => {
+  // Unchanged for the case the old behaviour was written for: a claim that is
+  // part settled is still a claim.
+  //
+  // Its own trip, because the database allows only one active overpayment
+  // refund per customer per event.
+  const EV4 = `${TAG}_FOURTH`
+  await sql`INSERT INTO events (name, warehouse_id) SELECT ${EV4}, id FROM warehouses ORDER BY id LIMIT 1`
+  await sql`
+    INSERT INTO orders (event, customer, product_id, unit_price, unit)
+    VALUES (${EV4}, ${WHO}, ${productId}, 500000, 1)`
+  const [r] = await sql<{ id: number }[]>`
+    INSERT INTO refunds (event, customer, reason, refund_amount, status)
+    VALUES (${EV4}, ${WHO}, 'overpayment', 5000, 'pending') RETURNING id`
+  await applyRefundAsCredit(r.id, NEXT, 2000, "tester")
+  const [row] = await sql<{ status: string }[]>`SELECT status FROM refunds WHERE id = ${r.id}`
+  assert.equal(row.status, "pending")
+})

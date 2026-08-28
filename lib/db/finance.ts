@@ -750,10 +750,20 @@ export async function applyRefundAsCredit(
     `
 
     const newRemaining = remaining - amount
+    // Spending part of a deposit is not a change of mind about the rest. She
+    // chose to keep the money on her account; taking Rp 1.000 of it to settle a
+    // Rp 161.000 invoice leaves Rp 1.000 still hers, still a deposit.
+    //
+    // Dropping it back to "pending" is right for a refund that was only ever a
+    // claim -- part paid, the remainder still queued -- but it hid the leftover
+    // from the invoice banner and the list marker, which look for deposits. The
+    // money the feature exists to surface would have gone quiet at exactly the
+    // moment it got small enough to forget.
+    const wasDeposit = refund.status === "applied_to_next_order"
     await tx`
       UPDATE refunds
       SET refund_amount = ${newRemaining},
-          status = ${newRemaining <= 0 ? "applied_to_next_order" : "pending"},
+          status = ${newRemaining <= 0 || wasDeposit ? "applied_to_next_order" : "pending"},
           note = ${newRemaining <= 0
             ? `Applied as credit to ${target}`
             : `Applied Rp ${amount} as credit to ${target}; Rp ${newRemaining} overpayment remaining`},
