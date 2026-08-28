@@ -699,28 +699,50 @@ export default function RefundsClient() {
           // A parent opens rather than drills: its own drawer would edit one
           // member while showing the group's total.
           onRowClick={(row) => { if (!(row as GroupRow).members) setEditRow(row) }}
-          renderExpandedRow={(row) => {
+          canExpandRow={(row) => Boolean((row as GroupRow).members)}
+          // Laid out on the header's own measured widths, so a member's reason
+          // sits under Reason and its amount under Amount. A detail row that
+          // lays itself out lands wherever, and reads as a different table
+          // wedged under this one.
+          renderExpandedRow={(row, layout) => {
             const members = (row as GroupRow).members
             if (!members) return null
             return (
-              <div className="flex flex-col gap-1 py-1">
-                {members.map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    onClick={() => setEditRow(m)}
-                    className="flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-white text-left text-sm"
-                  >
-                    <span className="flex-1 min-w-0 truncate text-muted-strong">{reasonLabel(m.reason)}</span>
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border shrink-0 ${statusColor(m)}`}>
-                      {statusLabel(m)}
-                    </span>
-                    <span className="tabular-nums font-semibold text-foreground shrink-0 w-28 text-right">
-                      {formatRp(displayAmount(m))}
-                    </span>
-                  </button>
-                ))}
-              </div>
+              <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
+                <colgroup>
+                  {layout.columnIds.map((id, i) => (
+                    <col key={id} style={{ width: layout.widths[i] ? `${layout.widths[i]}px` : undefined }} />
+                  ))}
+                </colgroup>
+                <tbody>
+                  {members.map((m) => (
+                    <tr
+                      key={m.id}
+                      onClick={() => setEditRow(m)}
+                      className="cursor-pointer hover:bg-white/70 transition-colors"
+                    >
+                      {layout.columnIds.map((id) => {
+                        if (id === "reason") return (
+                          <td key={id} className="px-4 py-2 text-muted-strong truncate">{reasonLabel(m.reason)}</td>
+                        )
+                        if (id === "amount") return (
+                          <td key={id} className="px-4 py-2 text-right tabular-nums font-semibold text-foreground">
+                            {formatRp(displayAmount(m))}
+                          </td>
+                        )
+                        if (id === "status") return (
+                          <td key={id} className="px-4 py-2">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${statusColor(m)}`}>
+                              {statusLabel(m)}
+                            </span>
+                          </td>
+                        )
+                        return <td key={id} className="px-4 py-2" />
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )
           }}
           renderMobileCard={renderMobileCard}
