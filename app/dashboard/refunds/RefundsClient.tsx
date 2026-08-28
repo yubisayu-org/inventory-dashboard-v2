@@ -2554,6 +2554,16 @@ function RefundDetailModal({
                 step is asking you to do.
                 The word follows the setting rather than being written here, so
                 it cannot say Copy while Settings says WhatsApp. */}
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              className="px-4 py-2 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+            >
+              Cancel
+            </button>
+            {/* Between leaving and recording it done, in the order the step is
+                worked: send it, then say you did. */}
             {(row.status === "pending" || showMessagePanel) && (
               <MessageButton
                 kind="refund"
@@ -2565,14 +2575,6 @@ function RefundDetailModal({
                 className="px-4 py-2 rounded-lg border border-brand text-brand text-sm font-semibold hover:bg-brand-light disabled:opacity-50 transition-colors"
               />
             )}
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={saving}
-              className="px-4 py-2 rounded-lg border border-cream-border text-muted-strong text-sm hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
-            >
-              Cancel
-            </button>
             {primaryAction}
           </div>
         </div>
