@@ -257,6 +257,30 @@ function displayAmount(row: RefundRow): number {
   return isFullyAppliedAsCredit(row) ? row.appliedCreditAmount : row.refundAmount
 }
 
+/**
+ * A row that stands for several refunds.
+ *
+ * One trip can owe her three separate things, and each stays its own refund
+ * because each is its own explanation. On screen that reads as three lines for
+ * one person, three times over, and the shape of what is owed disappears into
+ * the list. So a customer with more than one open refund on a trip collapses to
+ * a line that carries the total, opening to the reasons underneath.
+ *
+ * The parent is a real member wearing the group's figures -- same event, same
+ * customer, so every column that reads those still reads correctly. `reason`
+ * carries every member's label so searching "damaged" still finds a collapsed
+ * group; the cell renders the count instead.
+ */
+type GroupRow = RefundRow & { members?: RefundRow[] }
+
+/** Still owed: not paid, not cancelled, and not a deposit she chose to keep. */
+function isOpenRefund(r: RefundRow): boolean {
+  return (r.status === "pending" || r.status === "awaiting_bank_info" || r.status === "ready_to_refund")
+    && displayAmount(r) > 0
+}
+
+const pairKey = (r: RefundRow) => `${r.event}|${normalizeId(r.customer)}`
+
 // "Applied to Next Order" claims something that has not happened yet. The
 // promise gets its own words and the purple the credit action already uses.
 function statusLabel(row: RefundRow): string {
@@ -283,6 +307,8 @@ export default function RefundsClient() {
   const [creating, setCreating] = useState(false)
   const [mobileCreating, setMobileCreating] = useState(false)
   const [editRow, setEditRow] = useState<RefundRow | null>(null)
+  /** The refunds a single transfer is about to settle, or null. */
+  const [payGroup, setPayGroup] = useState<RefundRow[] | null>(null)
   const [eventFilter, setEventFilter] = useState("")
   // Owned here rather than by each grid: the tabs swap the data underneath and
   // remount the table, which would drop whatever was typed. Looking for one
@@ -382,6 +408,55 @@ export default function RefundsClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, tab, eventFilter])
 
+  /**
+   * Collapse within the tab, never across it: a tab is a step, and moving rows
+   * between steps to make a tidier group would make the tab lie about what it
+   * shows. A customer with a single refund here stays exactly the row she is
+   * today, caret and all -- so the flat scan survives for the common case.
+   *
+   * The Done tab is history and stays flat: nothing there is waiting to be
+   * paid, so there is nothing to pay together.
+   */
+  const tabGrouped = useMemo<GroupRow[]>(() => {
+    if (tab === "refunded") return tabFiltered
+    const by = new Map<string, RefundRow[]>()
+    for (const r of tabFiltered) {
+      const k = pairKey(r)
+      const list = by.get(k)
+      if (list) list.push(r)
+      else by.set(k, [r])
+    }
+    const out: GroupRow[] = []
+    for (const list of by.values()) {
+      if (list.length < 2) { out.push(list[0]); continue }
+      const members = [...list].sort((a, b) => displayAmount(b) - displayAmount(a))
+      out.push({
+        ...members[0],
+        refundAmount: members.reduce((n, m) => n + displayAmount(m), 0),
+        appliedCreditAmount: 0,
+        reason: members.map((m) => reasonLabel(m.reason)).join(", "),
+        members,
+      })
+    }
+    return out
+  }, [tabFiltered, tab])
+
+  /**
+   * Everything else she is still owed on that trip, wherever it sits.
+   *
+   * The steps mean something -- Sent is "I asked her for her account", Bank Info
+   * is "she replied" -- so they keep their own tabs. What she is owed does not
+   * care: one transfer settles all of it, and a refund two tabs away is exactly
+   * the one that gets forgotten.
+   */
+  const openSiblings = useCallback(
+    (row: GroupRow): RefundRow[] => {
+      const mine = new Set((row.members ?? [row]).map((m) => m.id))
+      return rows.filter((r) => !mine.has(r.id) && pairKey(r) === pairKey(row) && isOpenRefund(r))
+    },
+    [rows],
+  )
+
   const counts = useMemo(() => {
     const c: Partial<Record<RefundStatus | "done", number>> = {}
     for (const r of rows) {
@@ -433,11 +508,18 @@ export default function RefundsClient() {
     },
     {
       id: "reason",
+      // Every member's label, so a search for one reason still finds the group
+      // it is folded into. The cell shows the count instead.
       accessorFn: (r) => reasonLabel(r.reason),
       header: "Reason",
       size: 150,
       filterFn: "textContains",
-      cell: ({ getValue }) => <span className="text-muted-strong">{getValue<string>()}</span>,
+      cell: ({ row, getValue }) => {
+        const members = (row.original as GroupRow).members
+        return members
+          ? <span className="font-medium text-foreground">{members.length} refunds</span>
+          : <span className="text-muted-strong">{getValue<string>()}</span>
+      },
     },
     {
       id: "amount",
@@ -456,11 +538,54 @@ export default function RefundsClient() {
       header: "Status",
       size: 150,
       filterFn: "textContains",
-      cell: ({ row }) => (
-        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${statusColor(row.original)}`}>
-          {statusLabel(row.original)}
-        </span>
-      ),
+      cell: ({ row }) => {
+        const members = (row.original as GroupRow).members
+        if (!members) return (
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${statusColor(row.original)}`}>
+            {statusLabel(row.original)}
+          </span>
+        )
+        // One chip per step present, counted -- the group's own status is the
+        // spread of its members', and naming only the first would hide the rest.
+        const seen = new Map<string, { label: string; cls: string; n: number }>()
+        for (const m of members) {
+          const label = statusLabel(m)
+          const cur = seen.get(label)
+          if (cur) cur.n += 1
+          else seen.set(label, { label, cls: statusColor(m), n: 1 })
+        }
+        return (
+          <span className="flex flex-wrap gap-1">
+            {[...seen.values()].map((c) => (
+              <span key={c.label} className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${c.cls}`}>
+                {c.n > 1 ? `${c.n} × ` : ""}{c.label}
+              </span>
+            ))}
+          </span>
+        )
+      },
+    },
+    {
+      id: "pay",
+      header: "",
+      size: 90,
+      enableSorting: false,
+      enableColumnFilter: false,
+      meta: { align: "right" },
+      cell: ({ row }) => {
+        const r = row.original as GroupRow
+        const all = [...(r.members ?? [r]), ...openSiblings(r)].filter(isOpenRefund)
+        if (all.length < 2) return null
+        return (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setPayGroup(all) }}
+            className="px-2 py-1 rounded-lg border border-brand text-brand text-xs font-semibold hover:bg-brand-light whitespace-nowrap"
+          >
+            Pay all ({all.length})
+          </button>
+        )
+      },
     },
     {
       // Hidden by default — exists only so the Done tab can sort by completion
@@ -469,9 +594,9 @@ export default function RefundsClient() {
       header: "Updated",
       enableColumnFilter: false,
     },
-  ], [outstandingFor])
+  ], [outstandingFor, openSiblings])
 
-  const renderMobileCard = useCallback((r: RefundRow) => {
+  const renderMobileCard = useCallback((r: GroupRow) => {
     return (
       <div className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] flex items-center justify-between gap-3">
         <div className="min-w-0">
@@ -479,6 +604,9 @@ export default function RefundsClient() {
             <span className="text-sm font-semibold text-foreground">{r.event}</span>
             <span className="text-xs text-faint uppercase truncate">{displayIg(r.customer)}</span>
           </div>
+          {r.members && (
+            <div className="text-xs text-muted mt-0.5">{r.members.length} refunds · one transfer</div>
+          )}
         </div>
         <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">{formatRp(displayAmount(r))}</span>
       </div>
@@ -556,7 +684,7 @@ export default function RefundsClient() {
       <div className="mt-3">
         <DataGrid
           key={tab}
-          data={tabFiltered}
+          data={tabGrouped}
           columns={columns}
           pageSize={25}
           searchPlaceholder="Search customer or event…"
@@ -568,7 +696,33 @@ export default function RefundsClient() {
           toolbarExtraAfterColumns
           hideRowCount
           getRowId={(row) => String(row.id)}
-          onRowClick={(row) => setEditRow(row)}
+          // A parent opens rather than drills: its own drawer would edit one
+          // member while showing the group's total.
+          onRowClick={(row) => { if (!(row as GroupRow).members) setEditRow(row) }}
+          renderExpandedRow={(row) => {
+            const members = (row as GroupRow).members
+            if (!members) return null
+            return (
+              <div className="flex flex-col gap-1 py-1">
+                {members.map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setEditRow(m)}
+                    className="flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-white text-left text-sm"
+                  >
+                    <span className="flex-1 min-w-0 truncate text-muted-strong">{reasonLabel(m.reason)}</span>
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border shrink-0 ${statusColor(m)}`}>
+                      {statusLabel(m)}
+                    </span>
+                    <span className="tabular-nums font-semibold text-foreground shrink-0 w-28 text-right">
+                      {formatRp(displayAmount(m))}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )
+          }}
           renderMobileCard={renderMobileCard}
           paginationVariant="simple"
           initialVisibility={{ updatedAt: false }}
@@ -643,6 +797,15 @@ export default function RefundsClient() {
         </div>
       )}
 
+      {payGroup && (
+        <PayTogetherModal
+          refunds={payGroup}
+          accounts={options?.accounts ?? []}
+          onClose={() => setPayGroup(null)}
+          onPaid={() => { setPayGroup(null); fetchRows() }}
+        />
+      )}
+
       {editRow && (
         <RefundDetailModal
           row={editRow}
@@ -660,6 +823,192 @@ export default function RefundsClient() {
         />
       )}
     </>
+  )
+}
+
+// ─── Pay together ────────────────────────────────────────────────────────────
+
+/**
+ * Settle several of one customer's refunds on one trip with a single transfer.
+ *
+ * The rows stay split, because each is its own explanation and a report that
+ * cannot tell damaged from unavailable teaches nobody anything. None of that is
+ * a reason to open the banking app three times.
+ *
+ * Reached from the Pending tab, which means none of these rows has necessarily
+ * been through the bank-info step -- so the account is asked for here, prefilled
+ * from whichever of her refunds already carries it. Sending into a blank is
+ * refused: the step it skips exists because somebody had to ask her, and she
+ * had to answer.
+ */
+function PayTogetherModal({
+  refunds,
+  accounts,
+  onClose,
+  onPaid,
+}: {
+  refunds: RefundRow[]
+  accounts: string[]
+  onClose: () => void
+  onPaid: () => void
+}) {
+  const known = refunds.find((r) => r.bankAccountNumber?.trim())
+  const [bankName, setBankName] = useState(known?.bankName ?? "")
+  const [bankAccountNumber, setBankAccountNumber] = useState(known?.bankAccountNumber ?? "")
+  const [bankAccountHolder, setBankAccountHolder] = useState(known?.bankAccountHolder ?? "")
+  const [account, setAccount] = useState("")
+  const [transferRef, setTransferRef] = useState("")
+  const [picked, setPicked] = useState<Set<number>>(() => new Set(refunds.map((r) => r.id)))
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const chosen = refunds.filter((r) => picked.has(r.id))
+  const total = chosen.reduce((n, r) => n + displayAmount(r), 0)
+  const ready = chosen.length > 0 && bankAccountNumber.trim() !== ""
+    && account.trim() !== "" && transferRef.trim() !== ""
+
+  async function send() {
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/sheets/refunds/${chosen[0].id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "execute_group",
+          refundIds: chosen.map((r) => r.id),
+          transferReference: transferRef.trim(),
+          account: account.trim(),
+          bankName: bankName.trim(),
+          bankAccountNumber: bankAccountNumber.trim(),
+          bankAccountHolder: bankAccountHolder.trim(),
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? "Failed to pay these refunds")
+      // Her account, remembered, so the next one prefills instead of asking.
+      await fetch("/api/sheets/customer", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          instagramId: chosen[0].customer,
+          bankName: bankName.trim(),
+          bankAccountNumber: bankAccountNumber.trim(),
+          bankAccountHolder: bankAccountHolder.trim(),
+        }),
+      }).catch(() => {})
+      if (Array.isArray(data.skipped) && data.skipped.length > 0) {
+        setError(`${data.skipped.length} of them had nothing owed any more and were left alone.`)
+        setSaving(false)
+        return
+      }
+      onPaid()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to pay these refunds")
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6" onClick={onClose}>
+      <div
+        className="bg-white rounded-xl border border-cream-border shadow-xl w-full max-w-md flex flex-col gap-4 p-5 max-h-[88vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold text-foreground">
+              Pay {displayIg(refunds[0].customer)} together
+            </div>
+            <div className="text-xs text-faint mt-0.5">{refunds[0].event} · one transfer, one reference</div>
+          </div>
+          <button type="button" onClick={onClose} className="text-faint hover:text-brand transition-colors shrink-0">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          {refunds.map((r) => (
+            <label key={r.id} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg bg-surface-muted text-xs cursor-pointer">
+              <input
+                type="checkbox"
+                checked={picked.has(r.id)}
+                disabled={saving}
+                onChange={(e) => setPicked((prev) => {
+                  const next = new Set(prev)
+                  if (e.target.checked) next.add(r.id)
+                  else next.delete(r.id)
+                  return next
+                })}
+                className="accent-brand"
+              />
+              <span className="flex-1 min-w-0 truncate text-muted-strong">{reasonLabel(r.reason)}</span>
+              <span className="text-faint shrink-0">{statusLabel(r)}</span>
+              <span className="tabular-nums font-semibold text-foreground shrink-0">{formatRp(displayAmount(r))}</span>
+            </label>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-muted-strong">Her bank</span>
+            <input value={bankName} onChange={(e) => setBankName(e.target.value)} disabled={saving}
+              placeholder="e.g. BCA" className={`${INPUT_CLASS} w-full`} />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-muted-strong">Account number <span className="text-brand">*</span></span>
+            <input value={bankAccountNumber} onChange={(e) => setBankAccountNumber(e.target.value)} disabled={saving}
+              placeholder="e.g. 1234567890" className={`${INPUT_CLASS} w-full`} />
+          </label>
+          <label className="flex flex-col gap-1 col-span-2">
+            <span className="text-xs font-medium text-muted-strong">Account holder</span>
+            <input value={bankAccountHolder} onChange={(e) => setBankAccountHolder(e.target.value)} disabled={saving}
+              placeholder="Full name on the account" className={`${INPUT_CLASS} w-full`} />
+          </label>
+        </div>
+        {!known && (
+          <p className="text-[11px] text-faint -mt-2">
+            None of these refunds has her account on it yet. Ask her before sending.
+          </p>
+        )}
+
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-muted-strong">Sent from account <span className="text-brand">*</span></span>
+          <SearchableSelect
+            value={account}
+            onChange={setAccount}
+            options={accounts.map((a) => ({ value: a, label: a }))}
+            placeholder="Which of our accounts sent it…"
+            allowNewValue
+            disabled={saving}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-muted-strong">Transfer reference <span className="text-brand">*</span></span>
+          <input value={transferRef} onChange={(e) => setTransferRef(e.target.value)} disabled={saving}
+            placeholder="e.g. TRF20260828-014" className={`${INPUT_CLASS} w-full`} />
+        </label>
+
+        <div className="flex items-baseline justify-between pt-2 border-t border-cream-border text-sm">
+          <span className="text-muted">One transfer</span>
+          <span className="tabular-nums font-semibold text-foreground">{formatRp(total)}</span>
+        </div>
+        {error && <p className="text-xs text-brand font-medium">{error}</p>}
+
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onClose} disabled={saving}
+            className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-muted-strong hover:bg-cream">
+            Cancel
+          </button>
+          <button type="button" onClick={send} disabled={!ready || saving}
+            className="px-4 py-1.5 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-dark disabled:opacity-50">
+            {saving ? "Sending…" : `Refund ${formatRp(total)}`}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 

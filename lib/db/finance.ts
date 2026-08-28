@@ -773,6 +773,13 @@ export async function executeRefundGroup(
   transferReference: string,
   account: string,
   actor?: string | null,
+  /**
+   * Where the money went. Paying from the Pending tab means none of the rows
+   * has been through the bank-info step, so the details come from the screen
+   * instead -- prefilled from her customer record, and typed if she has none.
+   * Omitted, the row that was open supplies them, as the drawer's flow does.
+   */
+  bank?: { name: string; accountNumber: string; accountHolder: string },
 ): Promise<{
   paid: { id: number; amount: number }[]
   skipped: { id: number; reason: string }[]
@@ -803,11 +810,18 @@ export async function executeRefundGroup(
     // passed -- because that is the one whose details were checked against her
     // message. The rows come back ordered by id, which need not be that one.
     const primary = rows.find((r) => r.id === refundIds[0]) ?? rows[0]
-    const bankName = (primary.bank_name as string) ?? ""
-    const bankAccountNumber = (primary.bank_account_number as string) ?? ""
-    const bankAccountHolder = (primary.bank_account_holder as string) ?? ""
+    const bankName = bank ? bank.name : ((primary.bank_name as string) ?? "")
+    const bankAccountNumber = bank
+      ? bank.accountNumber
+      : ((primary.bank_account_number as string) ?? "")
+    const bankAccountHolder = bank
+      ? bank.accountHolder
+      : ((primary.bank_account_holder as string) ?? "")
+    // Never into a blank. The status walk exists because somebody had to ask
+    // her for this and she had to answer; paying from Pending skips both, which
+    // is right when her account is already on file and wrong when it is not.
     if (!bankAccountNumber.trim()) {
-      throw new Error("The refund you are paying from has no account number on it")
+      throw new Error("She has no account number on file. Ask her for it before sending.")
     }
 
     const paid: { id: number; amount: number }[] = []

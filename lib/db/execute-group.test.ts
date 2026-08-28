@@ -103,6 +103,38 @@ test("a refund already sent stops the whole group", async () => {
   assert.equal(row.status, "ready_to_refund")
 })
 
+test("paid from Pending, the account comes from the screen", async () => {
+  // None of these rows has been through the bank-info step, so there is nothing
+  // on them to send to. The details are typed once, written onto every row, and
+  // are what the transfer went to.
+  const a = await refund(EVENT, WHO, "unavailable", 30000, "pending")
+  const b = await refund(EVENT, WHO, "damaged", 20000, "pending")
+  await sql`UPDATE refunds SET bank_name = '', bank_account_number = '', bank_account_holder = ''
+             WHERE id IN (${a}, ${b})`
+
+  await executeRefundGroup([a, b], "TRF-7", "BCA", "tester", {
+    name: "JAGO", accountNumber: "5550001", accountHolder: "Typed On The Screen",
+  })
+  const rows = await sql<{ status: string; bank_account_number: string }[]>`
+    SELECT status, bank_account_number FROM refunds WHERE id IN (${a}, ${b})`
+  assert.ok(rows.every((r) => r.status === "refunded"))
+  assert.ok(rows.every((r) => r.bank_account_number === "5550001"))
+})
+
+test("it will not transfer into a blank", async () => {
+  // The step this skips exists because somebody had to ask her, and she had to
+  // answer. Skipping it is right when her account is on file and wrong when it
+  // is not.
+  const a = await refund(EVENT, WHO, "goodwill", 5000, "pending")
+  await sql`UPDATE refunds SET bank_account_number = '' WHERE id = ${a}`
+  await assert.rejects(
+    () => executeRefundGroup([a], "TRF-8", "BCA", "tester"),
+    /no account number on file/,
+  )
+  const [row] = await sql<{ status: string }[]>`SELECT status FROM refunds WHERE id = ${a}`
+  assert.equal(row.status, "pending", "nothing moved")
+})
+
 test("the bank details come from the row that was open, not the lowest id", async () => {
   const older = await refund(EVENT, WHO, "unavailable", 10000)
   const [open] = await sql<{ id: number }[]>`

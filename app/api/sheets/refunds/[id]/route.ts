@@ -38,7 +38,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     // Several refunds, one transfer. The id in the URL is the row that was
     // open; refundIds is what to pay, and it must include that row.
     if (action === "execute_group") {
-      const { transferReference, account, refundIds } = data
+      const { transferReference, account, refundIds, bankName, bankAccountNumber, bankAccountHolder } = data
       if (!transferReference?.trim()) {
         return NextResponse.json({ error: "transferReference is required" }, { status: 400 })
       }
@@ -50,7 +50,15 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         : []
       // The open row leads: its bank details are the ones that were checked.
       const ordered = [refundId, ...ids.filter((n) => n !== refundId)]
-      const result = await executeRefundGroup(ordered, transferReference.trim(), account.trim(), session.user.email)
+      const bank = typeof bankAccountNumber === "string" && bankAccountNumber.trim()
+        ? {
+            name: typeof bankName === "string" ? bankName.trim() : "",
+            accountNumber: bankAccountNumber.trim(),
+            accountHolder: typeof bankAccountHolder === "string" ? bankAccountHolder.trim() : "",
+          }
+        : undefined
+      const result = await executeRefundGroup(
+        ordered, transferReference.trim(), account.trim(), session.user.email, bank)
       return NextResponse.json({ success: true, ...result })
     }
 

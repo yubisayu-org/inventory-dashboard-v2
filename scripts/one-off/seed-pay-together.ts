@@ -67,20 +67,19 @@ async function main() {
     VALUES (${event.name}, ${TOGETHER}, 500000, 'BCA', true, 'deposit', 'seed: paid in full')`
 
   const three: [string, number, string][] = [
-    // reason, amount, status -- one at each step, so the card is reached from
-    // the row that already has bank details and the other two ride along.
-    ["unavailable", 160000, "ready_to_refund"],
+    // All three at the same step, so they collapse into one row on the Pending
+    // tab -- which is the thing to look at. lebihbayar below covers the other
+    // shape, where what is owed is spread across steps.
+    ["unavailable", 160000, "pending"],
     ["shipping_loss", 200000, "pending"],
-    ["damaged", 100000, "awaiting_bank_info"],
+    ["damaged", 100000, "pending"],
   ]
   for (const [reason, amount, status] of three) {
     await sql`
       INSERT INTO refunds (event, customer, reason, refund_amount, status,
                            bank_name, bank_account_number, bank_account_holder, note)
       VALUES (${event.name}, ${TOGETHER}, ${reason}, ${amount}, ${status},
-              ${status === "ready_to_refund" ? "BCA" : ""},
-              ${status === "ready_to_refund" ? "1234567890" : ""},
-              ${status === "ready_to_refund" ? "Seed Bertiga" : ""},
+              '', '', '',
               ${`seed: ${prod.name}`})`
   }
 
@@ -112,16 +111,18 @@ async function main() {
 
   ${TOGETHER}
     invoice 500.000, paid 500.000
-    3 refunds: unavailable 160.000 (Transfer), shipping_loss 200.000 (Pending),
-               damaged 100.000 (Bank Info)
-    → Refunds → open the unavailable one → Execute transfer.
-      "Pay together" lists the other two. Total should read Rp 460.000.
+    3 refunds, all Pending, no bank details on any of them
+    → Refunds → Pending. She is ONE row: "3 refunds", Rp 460.000, with a caret.
+      Open it to see the three reasons. "Pay all (3)" asks for her account
+      (empty here -- it refuses to send until you type one).
 
   ${DRIFT}
     invoice 200.000, paid 500.000, balance 300.000
-    overpayment (Pending) + unavailable 200.000 (Transfer)
+    overpayment 100.000 (Pending) + unavailable 200.000 (Transfer)
     → the overpayment should read Rp 100.000, not Rp 300.000.
-      The two together come to exactly 300.000.
+      The two together come to exactly 300.000. They sit on different tabs,
+      so neither collapses -- but both carry "Pay all (2)", and the Transfer
+      one also has the "Pay together" list inside its drawer.
 
   Undo with:  npx tsx --env-file=.env.development.local scripts/one-off/seed-pay-together.ts --clean`)
 }
