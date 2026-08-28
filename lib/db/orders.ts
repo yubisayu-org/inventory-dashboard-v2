@@ -433,12 +433,12 @@ export async function bankStrandedBoughtUnits(
   cause: "staff_mistake" | "customer_changed_mind" = "staff_mistake",
 ): Promise<{ banked: number }> {
   const rows = (await db`
-    SELECT o.event, o.unit, o.unit_buy, o.unit_dispatch, o.receipt, p.name AS product_name
+    SELECT o.event, o.customer, o.unit, o.unit_buy, o.unit_dispatch, o.receipt, p.name AS product_name
       FROM orders o JOIN products p ON p.id = o.product_id
      WHERE o.id = ${orderId}
      FOR UPDATE OF o
   `) as unknown as {
-    event: string; unit: number; unit_buy: number | null
+    event: string; customer: string; unit: number; unit_buy: number | null
     unit_dispatch: number | null; receipt: string | null; product_name: string
   }[]
   const r = rows[0]
@@ -453,9 +453,15 @@ export async function bankStrandedBoughtUnits(
   // overbuy is the shop buying more than it needed; customer_cancelled is her
   // deciding she did not want it. Both already exist as reasons.
   const reason = cause === "customer_changed_mind" ? "customer_cancelled" : "overbuy"
+  // Whose order it fell off. The reason says what happened; without the handle
+  // nobody can tell which of that trip's customers it happened to, and a shelf
+  // full of "Overbuy" rows answers no question anyone actually asks. The order's
+  // own receipt wins where it has one -- that is a real parcel number, and the
+  // allocation screens group on it.
+  const receipt = (r.receipt ?? "").trim() || (r.customer ?? "")
   await db`
     INSERT INTO excess_purchase (event, items, unit_buy, receipt, unit_dispatch, reason)
-    VALUES (${r.event}, ${r.product_name}, ${banked}, ${r.receipt ?? ""},
+    VALUES (${r.event}, ${r.product_name}, ${banked}, ${receipt},
             ${dispatched > 0 ? dispatched : null}, ${reason})`
 
   // The units are the shelf's now, so the order stops claiming them -- and the

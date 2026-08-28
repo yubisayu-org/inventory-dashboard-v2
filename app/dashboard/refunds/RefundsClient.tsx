@@ -9,6 +9,8 @@ import { normalizeId } from "@/lib/db/helpers"
 import { isCreditPromised } from "@/lib/db/refund-credit"
 import { REFUND_REASONS } from "@/lib/db/types"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
+import { useHitAndRun, handleKey } from "@/hooks/useHitAndRun"
+import { HitAndRunFlag } from "@/components/HitAndRunFlag"
 import { fetchJson } from "@/lib/api-fetch"
 import EventSelect from "@/components/EventSelect"
 import SearchableSelect from "@/components/SearchableSelect"
@@ -576,6 +578,8 @@ export default function RefundsClient() {
               <div className="hidden md:block">
                 <CreateRefundCard
                   events={options?.events ?? []}
+                  customers={options?.customers ?? []}
+                  customerMobiles={options?.customerMobiles}
                   reasonOptions={reasonOptions}
                   onCreated={handleCreated}
                   onClose={() => setCreating(false)}
@@ -627,6 +631,8 @@ export default function RefundsClient() {
           <div className="max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <CreateRefundCard
               events={options?.events ?? []}
+              customers={options?.customers ?? []}
+              customerMobiles={options?.customerMobiles}
               reasonOptions={reasonOptions}
               onCreated={() => { handleCreated(); setMobileCreating(false); window.scrollTo({ top: 0, behavior: "smooth" }) }}
               onClose={() => setMobileCreating(false)}
@@ -652,11 +658,15 @@ export default function RefundsClient() {
 
 function CreateRefundCard({
   events,
+  customers,
+  customerMobiles,
   reasonOptions,
   onCreated,
   onClose,
 }: {
   events: string[]
+  customers: string[]
+  customerMobiles?: Record<string, string>
   reasonOptions: { value: string; label: string }[]
   /** The notice route returns an id, not a row, so the list reloads. */
   onCreated: () => void
@@ -671,6 +681,24 @@ function CreateRefundCard({
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { marks } = useHitAndRun()
+
+  // Typing a handle by hand is how a refund lands on a customer who does not
+  // exist -- one typo and the row is filed against nobody, invisible to her
+  // invoice and to every total. The same picker the order forms use, so the
+  // handle here is the handle there, flag and all.
+  const customerOptions = useMemo(
+    () => customers.map((c) => {
+      const stamps = marks.get(handleKey(c))
+      return {
+        value: c,
+        label: displayIg(c),
+        meta: customerMobiles?.[c] || undefined,
+        badge: stamps?.length ? <HitAndRunFlag stamps={stamps} /> : undefined,
+      }
+    }),
+    [customers, customerMobiles, marks],
+  )
 
   // Which lines it is about, for a reason that names them, and how many units
   // of each. Only fetched once there is a customer and an event to fetch for.
@@ -796,8 +824,15 @@ function CreateRefundCard({
           <EventSelect value={form.event} onChange={(v) => setForm((f) => ({ ...f, event: v }))} events={events} disabled={saving} />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-muted">Customer (Instagram ID)</span>
-          <input {...field("customer")} required disabled={saving} placeholder="@username" className={`${INPUT_CLASS} w-full`} />
+          <span className="text-xs font-medium text-muted">Customer</span>
+          <SearchableSelect
+            value={form.customer}
+            onChange={(v) => setForm((f) => ({ ...f, customer: v }))}
+            options={customerOptions}
+            placeholder="Search customer…"
+            disabled={saving}
+            searchMeta
+          />
         </label>
         <label className="flex flex-col gap-1">
           <span className="text-xs font-medium text-muted">Reason</span>
