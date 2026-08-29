@@ -17,7 +17,13 @@
  * its legs at row size.
  *
  * A box with a dial says what this actually is: her money, kept somewhere, not
- * spent. Two shapes and two ticks -- nothing in it to lose when it is small.
+ * spent.
+ *
+ * The dial has to be a dial. A circle centred in a square is a camera lens --
+ * that is the whole of the camera icon -- so the ring moves off centre, a seam
+ * runs down the hinge side, and a stub of a handle sticks out where a hand
+ * would take it. Nothing crosses the ring: a bar through a circle is a
+ * prohibition sign and an X in one is a close button, and this is neither.
  */
 export function AccountCreditIcon({ size = 15, className }: { size?: number; className?: string }) {
   return (
@@ -27,8 +33,9 @@ export function AccountCreditIcon({ size = 15, className }: { size?: number; cla
       className={className} aria-hidden="true"
     >
       <rect x="3" y="3" width="18" height="18" rx="2" />
-      <circle cx="12" cy="12" r="4" />
-      <path d="M12 8v1" /><path d="M12 15v1" />
+      <path d="M7 3v18" />
+      <circle cx="13.5" cy="12" r="3.5" />
+      <path d="M17.5 12h2" />
     </svg>
   )
 }
