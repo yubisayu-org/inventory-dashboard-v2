@@ -810,9 +810,7 @@ export default function RefundsClient() {
     const items = r.members ? [] : r.note.split("\n").map((l) => l.trim()).filter(Boolean)
     return (
       <div className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] active:bg-cream transition-colors">
-        {/* Whose and which trip on the left, where it stands on the right --
-            the two things you sort a screen of these by, at the two ends of
-            the line they are quickest to find at. */}
+        {/* Whose and which trip. */}
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-1.5 flex-wrap min-w-0">
             <span className="font-semibold text-sm text-foreground uppercase">
@@ -821,9 +819,17 @@ export default function RefundsClient() {
             {owesMark(r)}
             <span className="text-xs text-faint uppercase truncate">{displayIg(r.customer)}</span>
           </div>
-          <span className="shrink-0 flex flex-wrap justify-end gap-1">
-            <StatusChips row={r} />
-          </span>
+          {/* Only on Done. Everywhere else the tab already says the step, and
+              the sheet says it again on the way in -- a chip on every card
+              repeated a thing you cannot be looking at without knowing.
+              Done is the one tab that does not: refunded, applied to her next
+              order and cancelled all end up on it, and they are not the same
+              outcome. */}
+          {tab === "refunded" && (
+            <span className="shrink-0 flex flex-wrap justify-end gap-1">
+              <StatusChips row={r} />
+            </span>
+          )}
         </div>
         <div className="flex items-start justify-between gap-3 mt-2">
           {/* The goods. Two lines at most: they are why you would open it, but
