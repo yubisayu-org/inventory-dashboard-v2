@@ -38,6 +38,12 @@ type DraftCustomer = {
   bankName: string
   bankAccountNumber: string
   bankAccountHolder: string
+  // Her address as the courier reads it, and the area it resolved to.
+  kota: string
+  kecamatan: string
+  kodePos: string
+  biteshipAreaId: string | null
+  biteshipAreaName: string | null
 }
 
 const EMPTY_DRAFT: DraftCustomer = {
@@ -50,6 +56,11 @@ const EMPTY_DRAFT: DraftCustomer = {
   bankName: "",
   bankAccountNumber: "",
   bankAccountHolder: "",
+  kota: "",
+  kecamatan: "",
+  kodePos: "",
+  biteshipAreaId: null,
+  biteshipAreaName: null,
 }
 
 function rowToDraft(row: CustomerRow): DraftCustomer {
@@ -67,6 +78,11 @@ function rowToDraft(row: CustomerRow): DraftCustomer {
     bankName: row.bankName,
     bankAccountNumber: row.bankAccountNumber,
     bankAccountHolder: row.bankAccountHolder,
+    kota: row.kota ?? "",
+    kecamatan: row.kecamatan ?? "",
+    kodePos: row.kodePos ?? "",
+    biteshipAreaId: row.biteshipAreaId ?? null,
+    biteshipAreaName: row.biteshipAreaName ?? null,
   }
 }
 
@@ -623,7 +639,9 @@ function CustomerFields({
 }) {
   // Only the plain string fields go through this helper; ongkir is a map and is
   // handled with its own per-warehouse inputs below.
-  function field(key: Exclude<keyof DraftCustomer, "ongkir">) {
+  // Only the plain text fields. The ongkir map is per-warehouse, and the two
+  // area fields are set by choosing from a list rather than by typing.
+  function field(key: Exclude<keyof DraftCustomer, "ongkir" | "biteshipAreaId" | "biteshipAreaName">) {
     return {
       value: draft[key],
       onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
@@ -671,6 +689,13 @@ function CustomerFields({
           className={`${modalInputCls} resize-none`}
         />
       </label>
+
+      <AddressFields
+        draft={draft}
+        setDraft={setDraft}
+        warehouses={warehouses}
+        saving={saving}
+      />
 
       <label className="flex flex-col gap-1">
         <span className="text-xs font-medium text-muted">Ekspedisi</span>
@@ -743,6 +768,241 @@ function CustomerFields({
   )
 }
 
+/**
+ * Where she lives, and what the courier makes of it.
+ *
+ * The dashboard has never had these fields. Her address lived in one free-text
+ * blob, which is fine for writing a label and useless for pricing a parcel --
+ * so a district typed with a missing space, or a postal code with a digit
+ * dropped, could only be fixed in SQL.
+ *
+ * Three plain inputs and a picker. The picker searches on a press rather than
+ * on every keystroke, because each search is a billable request; the found
+ * areas are hers to choose from, since which of a district's postal codes she
+ * lives in is a question the office cannot answer and she can.
+ */
+function AddressFields({ draft, setDraft, warehouses, saving }: {
+  draft: DraftCustomer
+  setDraft: React.Dispatch<React.SetStateAction<DraftCustomer>>
+  warehouses: WarehouseRow[]
+  saving: boolean
+}) {
+  const [query, setQuery] = useState("")
+  const [areas, setAreas] = useState<{ id: string; name: string }[] | null>(null)
+  const [searching, setSearching] = useState(false)
+  const [searchError, setSearchError] = useState("")
+  // What the rates table would charge for this address, once it is asked for.
+  // Never applied on its own -- see the note on the route.
+  const [quote, setQuote] = useState<{ warehouseId: number; code: string; rate: number }[] | null>(null)
+  const [quoting, setQuoting] = useState(false)
+
+  async function search() {
+    const q = query.trim() || `${draft.kecamatan.trim()}, ${draft.kota.trim()}`.trim()
+    if (q.replace(/[,\s]/g, "").length < 3) return
+    setSearching(true)
+    setSearchError("")
+    try {
+      const res = await fetch(`/api/biteship/areas?q=${encodeURIComponent(q)}`)
+      const body = await res.json()
+      if (!res.ok) throw new Error(body.error ?? "Search failed")
+      setAreas(body.areas ?? [])
+    } catch (err) {
+      setSearchError(err instanceof Error ? err.message : "Search failed")
+      setAreas(null)
+    } finally {
+      setSearching(false)
+    }
+  }
+
+  async function priceIt() {
+    if (!draft.kota.trim() || !draft.kecamatan.trim()) return
+    setQuoting(true)
+    try {
+      const res = await fetch("/api/customers/ongkir-preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kota: draft.kota.trim(), kecamatan: draft.kecamatan.trim() }),
+      })
+      const body = await res.json()
+      setQuote(res.ok ? (body.rates ?? []) : [])
+    } catch {
+      setQuote([])
+    } finally {
+      setQuoting(false)
+    }
+  }
+
+  // Only the warehouses whose rate would actually move, and only where the
+  // table has one: 0 means "no rate for this district", which is not free
+  // shipping and must never be written as though it were.
+  const changes = (quote ?? []).filter((q) => {
+    const current = Number(draft.ongkir[q.warehouseId] ?? 0)
+    return q.rate > 0 && q.rate !== current
+  })
+
+  function applyRates() {
+    setDraft((d) => {
+      const ongkir = { ...d.ongkir }
+      for (const c of changes) ongkir[c.warehouseId] = String(c.rate)
+      return { ...d, ongkir }
+    })
+    setQuote(null)
+  }
+
+  return (
+    <div className="flex flex-col gap-2 pt-2 border-t border-cream-border">
+      <span className="text-xs font-semibold text-muted">Address</span>
+
+      <div className="grid grid-cols-2 gap-3">
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-muted">Kota / Kabupaten</span>
+          <input
+            value={draft.kota}
+            onChange={(e) => setDraft((d) => ({ ...d, kota: e.target.value }))}
+            disabled={saving}
+            placeholder="KOTA BANDUNG"
+            className={modalInputCls}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-muted">Kode pos</span>
+          <input
+            value={draft.kodePos}
+            onChange={(e) => setDraft((d) => ({ ...d, kodePos: e.target.value }))}
+            disabled={saving}
+            placeholder="40132"
+            inputMode="numeric"
+            className={modalInputCls}
+          />
+        </label>
+      </div>
+
+      <label className="flex flex-col gap-1">
+        <span className="text-xs font-medium text-muted">Kecamatan</span>
+        <input
+          value={draft.kecamatan}
+          onChange={(e) => setDraft((d) => ({ ...d, kecamatan: e.target.value }))}
+          disabled={saving}
+          placeholder="COBLONG"
+          className={modalInputCls}
+        />
+      </label>
+
+      {/* The courier's own name for the place. Stored so a parcel is booked
+          against the area she actually lives in rather than a district-wide
+          guess. */}
+      <div className="flex flex-col gap-1">
+        <span className="text-xs font-medium text-muted">Biteship area</span>
+        {draft.biteshipAreaName ? (
+          <div className="flex items-center gap-2 text-sm rounded-lg border border-cream-border bg-cream px-3 py-2">
+            <span className="flex-1 min-w-0 truncate text-foreground">{draft.biteshipAreaName}</span>
+            <button
+              type="button"
+              onClick={() => setDraft((d) => ({ ...d, biteshipAreaId: null, biteshipAreaName: null }))}
+              disabled={saving}
+              className="shrink-0 text-xs text-muted hover:text-brand transition-colors"
+            >
+              Change
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="flex gap-2">
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); search() } }}
+                disabled={saving}
+                placeholder={draft.kecamatan ? `${draft.kecamatan}, ${draft.kota}` : "kecamatan, kota"}
+                className={`${modalInputCls} flex-1`}
+              />
+              {/* Pressed, not typed into. Every search is billed, and a search
+                  per keystroke would bill for eight answers nobody read. */}
+              <button
+                type="button"
+                onClick={search}
+                disabled={saving || searching}
+                className="shrink-0 px-3 py-2 rounded-lg bg-brand text-white text-sm font-medium disabled:opacity-50"
+              >
+                {searching ? "…" : "Search"}
+              </button>
+            </div>
+            {searchError && <span className="text-xs text-red-500">{searchError}</span>}
+            {areas?.length === 0 && (
+              <span className="text-xs text-faint">
+                Nothing found. Try the district on its own, or her postal code.
+              </span>
+            )}
+            {areas && areas.length > 0 && (
+              <div className="flex flex-col rounded-lg border border-cream-border overflow-hidden">
+                {areas.map((a) => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={() => {
+                      setDraft((d) => ({ ...d, biteshipAreaId: a.id, biteshipAreaName: a.name }))
+                      setAreas(null)
+                      setQuery("")
+                    }}
+                    className="text-left text-sm px-3 py-2 border-b border-cream-border last:border-b-0 hover:bg-brand-light hover:text-brand transition-colors"
+                  >
+                    {a.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Re-pricing, offered rather than done. A rate can be a discount somebody
+          granted on purpose, and correcting a typo in her city is not consent to
+          withdraw it -- so the figures are shown and a person accepts them. */}
+      <div className="flex flex-col gap-1">
+        <button
+          type="button"
+          onClick={priceIt}
+          disabled={saving || quoting || !draft.kota.trim() || !draft.kecamatan.trim()}
+          className="self-start text-xs text-muted hover:text-brand underline disabled:opacity-50 transition-colors"
+        >
+          {quoting ? "Checking…" : "Check ongkir for this address"}
+        </button>
+        {quote && changes.length === 0 && (
+          <span className="text-xs text-faint">
+            {quote.length === 0
+              ? "No rate in the table for that district — leaving the ongkir as it is."
+              : "The rates table agrees with what is set. Nothing to change."}
+          </span>
+        )}
+        {changes.length > 0 && (
+          <div className="rounded-lg border border-brand/30 bg-brand-light px-3 py-2 flex flex-col gap-1.5">
+            {changes.map((c) => {
+              const current = Number(draft.ongkir[c.warehouseId] ?? 0)
+              const wh = warehouses.find((w) => w.id === c.warehouseId)
+              return (
+                <div key={c.warehouseId} className="text-xs text-foreground flex items-center gap-1.5">
+                  <span className="text-muted">{wh?.code ?? c.warehouseId}</span>
+                  <span className="tabular-nums">{current ? `Rp ${fmt(current)}` : "—"}</span>
+                  <span className="text-muted">→</span>
+                  <span className="tabular-nums font-semibold">{`Rp ${fmt(c.rate)}`}</span>
+                </div>
+              )
+            })}
+            <button
+              type="button"
+              onClick={applyRates}
+              disabled={saving}
+              className="self-start mt-0.5 px-2.5 py-1 rounded-lg bg-brand text-white text-[11px] font-bold disabled:opacity-50"
+            >
+              Use these
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function buildCustomerPayload(draft: DraftCustomer, warehouses: WarehouseRow[]) {
   // Build the per-warehouse ongkir map (numbers) from the form's string inputs.
   const ongkir: Record<number, number> = {}
@@ -759,6 +1019,11 @@ function buildCustomerPayload(draft: DraftCustomer, warehouses: WarehouseRow[]) 
     bankName: draft.bankName.trim(),
     bankAccountNumber: draft.bankAccountNumber.trim(),
     bankAccountHolder: draft.bankAccountHolder.trim(),
+    kota: draft.kota.trim(),
+    kecamatan: draft.kecamatan.trim(),
+    kodePos: draft.kodePos.trim(),
+    biteshipAreaId: draft.biteshipAreaId,
+    biteshipAreaName: draft.biteshipAreaName,
   }
 }
 

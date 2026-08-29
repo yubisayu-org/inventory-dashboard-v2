@@ -107,6 +107,11 @@ function mapCustomerRow(r: Record<string, unknown>, ongkir: OngkirByWarehouse): 
     bankName: (r.bank_name as string) ?? "",
     bankAccountNumber: (r.bank_account_number as string) ?? "",
     bankAccountHolder: (r.bank_account_holder as string) ?? "",
+    kota: (r.kota as string) ?? "",
+    kecamatan: (r.kecamatan as string) ?? "",
+    kodePos: (r.kode_pos as string) ?? "",
+    biteshipAreaId: (r.biteship_area_id as string) ?? null,
+    biteshipAreaName: (r.biteship_area_name as string) ?? null,
     // Present only when the query joined customer_invoice_summary; otherwise 0.
     invoiceCount: Number(r.invoice_count ?? 0),
     totalInvoiced: Number(r.total_invoiced ?? 0),
@@ -128,6 +133,7 @@ export async function getCustomers(): Promise<CustomerRow[]> {
   const [rows, ongkirRows] = await Promise.all([
     sql`
       SELECT id, instagram_id, name, whatsapp, data_diri, ekspedisi,
+             kota, kecamatan, kode_pos, biteship_area_id, biteship_area_name,
              bank_name, bank_account_number, bank_account_holder,
              google_sub, created_at, updated_at
       FROM customers
@@ -275,6 +281,7 @@ export async function getCustomersPaginated(opts: {
   const dataRows = await sql.unsafe(
     `SELECT c.id, c.instagram_id, c.name, c.whatsapp, c.data_diri, c.ekspedisi,
             c.bank_name, c.bank_account_number, c.bank_account_holder,
+            c.kota, c.kecamatan, c.kode_pos, c.biteship_area_id, c.biteship_area_name,
             c.google_sub, c.created_at, c.updated_at,
             COALESCE(cis.invoice_count, 0) AS invoice_count,
             COALESCE(cis.total_invoiced, 0) AS total_invoiced,
@@ -358,6 +365,27 @@ export async function updateCustomer(id: number, data: CustomerInput, db: DBExec
         updated_at          = NOW()
     WHERE id = ${id}
   `
+  // Her address, only from a screen that asked for it.
+  //
+  // A separate statement rather than more columns above: every other caller of
+  // this function -- the add form, the bank-details save -- has never had these
+  // fields, and folding them in would blank the address the catalogue set every
+  // time somebody corrected a bank account.
+  if (data.kota !== undefined || data.kecamatan !== undefined || data.kodePos !== undefined) {
+    await db`
+      UPDATE customers
+      SET kota      = ${data.kota ?? ""},
+          kecamatan = ${data.kecamatan ?? ""},
+          kode_pos  = ${data.kodePos ?? ""},
+          -- Cleared when the address changes and nobody named an area: the old
+          -- one belonged to the old address, and a stale area is worse than
+          -- none. It is what prices a redirect and what the courier is told.
+          biteship_area_id   = ${data.biteshipAreaId ?? null},
+          biteship_area_name = ${data.biteshipAreaName ?? null},
+          updated_at         = NOW()
+      WHERE id = ${id}
+    `
+  }
   await upsertCustomerOngkir(id, data.ongkir, db)
 }
 
