@@ -690,9 +690,13 @@ export default function RefundsClient() {
                 aria-label={`Open all ${all.length} refunds together`}
                 className="shrink-0 inline-flex items-center gap-0.5 p-1 rounded text-faint hover:text-brand transition-colors"
               >
+                {/* A stack, not two squares: the old glyph was the copy icon
+                    with a different name, and on a row that already has a
+                    delete and a credit, "copy" is a thing you might believe. */}
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="8" y="8" width="13" height="13" rx="2" />
-                  <path d="M16 8V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h2" />
+                  <path d="M12.8 2.2a2 2 0 0 0-1.6 0L2.6 6.1a1 1 0 0 0 0 1.8l8.6 3.9a2 2 0 0 0 1.6 0l8.6-3.9a1 1 0 0 0 0-1.8Z" />
+                  <path d="m22 12.7-9.2 4.1a2 2 0 0 1-1.6 0L2 12.7" />
+                  <path d="m22 17.7-9.2 4.1a2 2 0 0 1-1.6 0L2 17.7" />
                 </svg>
                 <span className="text-[10px] font-bold tabular-nums">{all.length}</span>
               </button>
