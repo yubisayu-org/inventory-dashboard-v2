@@ -14,6 +14,7 @@
  *
  *   npx tsx --env-file-if-exists=.env.development.local scripts/backfill-biteship-areas.ts
  *   npx tsx --env-file-if-exists=.env.development.local scripts/backfill-biteship-areas.ts --apply
+ *   npx tsx --env-file-if-exists=.env.development.local scripts/backfill-biteship-areas.ts --rates
  *
  * Dry run by default: prints what it WOULD do and writes nothing. Only
  * unambiguous matches are ever applied — a wrong area is a wrong shipping
@@ -22,10 +23,17 @@
  */
 
 import sql from "@/lib/db-pool"
-import { searchAreas, BiteshipNotConfiguredError } from "@/lib/biteship"
+import { searchAreas, courierRates, BiteshipNotConfiguredError } from "@/lib/biteship"
 import { matchArea, matchByPostal } from "@/lib/biteship-area-match"
 
 const APPLY = process.argv.includes("--apply")
+/**
+ * Also ask what a courier would charge to each area it resolved, and print it
+ * beside what the invoice charges today. Answers the only question that makes
+ * "the district is right, the postal code is not" a decision rather than a
+ * detail: whether the two prices differ at all.
+ */
+const RATES = process.argv.includes("--rates")
 
 type Place = { kota: string; kecamatan: string; kodePos: string; customers: number }
 
@@ -48,6 +56,30 @@ async function distinctPlaces(): Promise<Place[]> {
     customers: Number(r.customers),
   }))
 }
+
+/**
+ * The per-kilo rate the invoice charges today, by place.
+ *
+ * `customer_warehouse_ongkir.ongkos_kirim` times the parcel's kilos is the
+ * shipping line on every invoice, so this is the number a Biteship quote has
+ * to be compared against. A place can hold two customers on different rates --
+ * they were set by hand over a year -- so both ends are kept.
+ */
+async function storedRates() {
+  const rows = (await sql`
+    SELECT upper(trim(c.kota)) AS kota, upper(trim(c.kecamatan)) AS kecamatan,
+           COALESCE(trim(c.kode_pos), '') AS kode_pos,
+           min(cwo.ongkos_kirim)::int AS lo, max(cwo.ongkos_kirim)::int AS hi
+      FROM customers c
+      JOIN customer_warehouse_ongkir cwo
+        ON cwo.customer_id = c.id AND cwo.warehouse_id = 1
+     WHERE c.biteship_area_id IS NULL AND trim(c.kecamatan) <> '' AND trim(c.kota) <> ''
+     GROUP BY 1, 2, 3
+  `) as unknown as { kota: string; kecamatan: string; kode_pos: string; lo: number; hi: number }[]
+  return new Map(rows.map((r) => [`${r.kota}|${r.kecamatan}|${r.kode_pos}`, r]))
+}
+
+const rupiah = (n: number) => `Rp ${new Intl.NumberFormat("id-ID").format(n)}`
 
 async function main() {
   const places = await distinctPlaces()
@@ -175,6 +207,35 @@ async function main() {
       for (const c of h.candidates) console.log(`       candidate: ${c}`)
     }
     console.log("\n   These keep their current jne_rates pricing and are left unmapped.")
+  }
+
+  if (RATES) {
+    const [origin] = (await sql`
+      SELECT biteship_area_id AS id, code FROM warehouses WHERE code = 'CIMAHI'
+    `) as unknown as { id: string; code: string }[]
+    const stored = await storedRates()
+    console.log(`\nWhat a kilo costs from ${origin.code}, ours against JNE's own quote:`)
+    console.log("   ours = customer_warehouse_ongkir × 1kg, the invoice's own shipping line\n")
+    let cheaper = 0, dearer = 0, same = 0
+    for (const row of [...matched, ...approximate]) {
+      const p = row.place
+      const s = stored.get(`${p.kota}|${p.kecamatan}|${p.kodePos}`)
+      let quote: number | null = null
+      try {
+        const rates = await courierRates(origin.id, row.areaId, 1000)
+        const reg = rates.find((r) => /^(reg|ctc)$/i.test(r.serviceCode)) ?? rates[0]
+        quote = reg ? reg.price : null
+      } catch { quote = null }
+      const oursText = !s ? "—" : s.lo === s.hi ? rupiah(s.lo) : `${rupiah(s.lo)}–${rupiah(s.hi)}`
+      const diff = s && quote != null && s.lo === s.hi ? quote - s.lo : null
+      if (diff != null) { if (diff > 0) dearer++; else if (diff < 0) cheaper++; else same++ }
+      console.log(
+        `   ${p.kota} / ${p.kecamatan}${p.kodePos ? ` ${p.kodePos}` : ""}  (${p.customers}c)` +
+        `  ours ${oursText}  jne ${quote == null ? "—" : rupiah(quote)}` +
+        `${diff == null ? "" : diff === 0 ? "  same" : `  ${diff > 0 ? "+" : ""}${rupiah(diff)}`}`,
+      )
+    }
+    console.log(`\n   ${same} the same, ${dearer} where JNE quotes MORE than we charge, ${cheaper} where it quotes less.`)
   }
 
   if (!APPLY) {
