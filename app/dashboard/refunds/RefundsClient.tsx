@@ -701,13 +701,23 @@ export default function RefundsClient() {
               </button>
             )}
             {payable && (
+              // Drawn, like the two beside it. A bordered word among icons
+              // read as the important one on the row, and it is not -- it is
+              // the third of three things you can do to a refund from here.
+              // The count rides on it, because "how many" is the whole reason
+              // to press it.
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); setGroupSheet(all) }}
-                title={`She has ${all.length - 1} more open on ${r.event}`}
-                className="px-2 py-1 rounded-lg border border-brand text-brand text-xs font-semibold hover:bg-brand-light whitespace-nowrap"
+                title={`Open all ${all.length} together — she has ${all.length - 1} more open on ${r.event}`}
+                aria-label={`Open all ${all.length} refunds together`}
+                className="shrink-0 inline-flex items-center gap-0.5 p-1 rounded text-faint hover:text-brand transition-colors"
               >
-                Open all ({all.length})
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="8" y="8" width="13" height="13" rx="2" />
+                  <path d="M16 8V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h2" />
+                </svg>
+                <span className="text-[10px] font-bold tabular-nums">{all.length}</span>
               </button>
             )}
           </div>
