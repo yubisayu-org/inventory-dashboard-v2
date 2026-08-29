@@ -1,6 +1,6 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { matchArea, matchByPostal, normalisePlace, sameDistrictSpelling } from "./biteship-area-match"
+import { matchArea, matchByPostal, nearDistrictSpelling, normalisePlace, sameDistrictSpelling } from "./biteship-area-match"
 import type { BiteshipArea } from "./biteship"
 
 const area = (id: string, name: string, postalCode?: string): BiteshipArea =>
@@ -216,4 +216,31 @@ test("a code two areas share has not chosen between them", () => {
 test("no postal code, nothing to go on", () => {
   const areas = [area("IDZ17412", "Pondok Gede, Bekasi, Jawa Barat. 17412", "17412")]
   assert.equal(matchByPostal(areas, { kota: "KOTA BEKASI", kecamatan: "PONDOKGEDE", kodePos: "" }).kind, "none")
+})
+
+test("a letter's difference in a long name is a typo, not another district", () => {
+  assert.equal(nearDistrictSpelling("CIMENYAN", "Cimeunyan"), true)
+  assert.equal(nearDistrictSpelling("TANAH SAREAL", "Tanah Sereal"), true)
+  assert.equal(nearDistrictSpelling("PABEAN CANTIAN", "Pabean Cantikan"), true)
+})
+
+test("short names get no tolerance at all", () => {
+  // Two edits on a five-letter name is a different place, not a slip: SETU
+  // and SETIA are both real, and a code shared between neighbours must not
+  // be allowed to choose one.
+  assert.equal(nearDistrictSpelling("SETU", "Setia"), false)
+  assert.equal(nearDistrictSpelling("JATI", "Jaya"), false)
+})
+
+test("JATIASIH is still not Jati", () => {
+  // The Kudus customer: four edits apart, and both are real districts.
+  assert.equal(nearDistrictSpelling("JATIASIH", "Jati"), false)
+  assert.equal(nearDistrictSpelling("JAGAKARSA", "Sukmajaya"), false)
+})
+
+test("the typo tolerance reaches matchByPostal, and only with a unique code", () => {
+  const areas = [area("IDZ16167", "Tanah Sereal, Bogor, Jawa Barat. 16167", "16167")]
+  const r = matchByPostal(areas, { kota: "KOTA BOGOR", kecamatan: "TANAH SAREAL", kodePos: "16167" })
+  assert.equal(r.kind, "matched")
+  assert.equal(r.kind === "matched" && r.area.id, "IDZ16167")
 })

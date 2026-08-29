@@ -76,9 +76,47 @@ function sameDistrict(area: BiteshipArea, wantKec: string): boolean {
  * "Jatiasih" are two, and a containment test would have merged them.
  */
 export function sameDistrictSpelling(a: string, b: string): boolean {
-  const letters = (s: string) => normalisePlace(s).replace(/[^A-Z0-9]/g, "")
-  const x = letters(a)
-  return x.length > 0 && x === letters(b)
+  const x = districtLetters(a)
+  return x.length > 0 && x === districtLetters(b)
+}
+
+const districtLetters = (s: string) => normalisePlace(s).replace(/[^A-Z0-9]/g, "")
+
+/** How many single-letter edits separate two spellings. */
+function editDistance(a: string, b: string): number {
+  if (a === b) return 0
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i)
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i]
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1))
+    }
+    prev = cur
+  }
+  return prev[b.length]
+}
+
+/**
+ * The same district, spelled slightly wrong.
+ *
+ * Our addresses carry a handful of districts written the way people say them
+ * rather than the way the list does: CIMENYAN for Cimeunyan, TANAH SAREAL for
+ * Tanah Sereal, PABEAN CANTIAN for Pabean Cantikan. A letter each.
+ *
+ * Only ever used ALONGSIDE a postal code that exactly one area carries -- the
+ * code is what identifies the place, and this is the sanity check that stops
+ * the code moving somebody to a different town. So the tolerance can be small
+ * and still do its job: two edits, on names long enough that two edits is a
+ * typo rather than a different word. JATIASIH against their Jati is four, and
+ * stays refused.
+ */
+export function nearDistrictSpelling(a: string, b: string): boolean {
+  const x = districtLetters(a)
+  const y = districtLetters(b)
+  if (!x || !y) return false
+  if (x === y) return true
+  if (Math.min(x.length, y.length) < 6) return false
+  return editDistance(x, y) <= 2
 }
 
 /**
@@ -89,8 +127,8 @@ export function sameDistrictSpelling(a: string, b: string): boolean {
  * gets past our spelling entirely. What it must not do is move somebody to a
  * different district: a code that lands on a name we do not recognise means
  * one of the two fields is wrong, and nothing here can say which. So the code
- * has to appear exactly once AND name our own district back to us, spacing
- * aside.
+ * has to appear exactly once AND name our own district back to us -- spacing
+ * aside, and a typo's worth of spelling aside.
  */
 export function matchByPostal(areas: BiteshipArea[], place: Place): AreaMatch {
   const wantPos = place.kodePos.trim()
@@ -100,7 +138,7 @@ export function matchByPostal(areas: BiteshipArea[], place: Place): AreaMatch {
     return carrying.length > 1 ? { kind: "ambiguous", candidates: carrying } : { kind: "none" }
   }
   const [only] = carrying
-  return sameDistrictSpelling(place.kecamatan, only.name.split(",")[0] ?? "")
+  return nearDistrictSpelling(place.kecamatan, only.name.split(",")[0] ?? "")
     ? { kind: "matched", area: only, approximate: false }
     : { kind: "ambiguous", candidates: carrying }
 }

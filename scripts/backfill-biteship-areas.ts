@@ -15,6 +15,7 @@
  *   npx tsx --env-file-if-exists=.env.development.local scripts/backfill-biteship-areas.ts
  *   npx tsx --env-file-if-exists=.env.development.local scripts/backfill-biteship-areas.ts --apply
  *   npx tsx --env-file-if-exists=.env.development.local scripts/backfill-biteship-areas.ts --rates
+ *   npx tsx --env-file-if-exists=.env.development.local scripts/backfill-biteship-areas.ts --accept-district --apply
  *
  * Dry run by default: prints what it WOULD do and writes nothing. Only
  * unambiguous matches are ever applied — a wrong area is a wrong shipping
@@ -34,6 +35,33 @@ const APPLY = process.argv.includes("--apply")
  * detail: whether the two prices differ at all.
  */
 const RATES = process.argv.includes("--rates")
+/**
+ * Also write the district-only matches -- the ones where Biteship carries a
+ * different set of postal codes for a district than our addresses use.
+ *
+ * Not the default, because "the right district" and "the right area" are not
+ * the same claim. It became a reasonable claim only once the prices were
+ * checked: 108 of these 111 districts quote exactly what the invoice already
+ * charges, so storing the district's area moves no money.
+ */
+const ACCEPT_DISTRICT = process.argv.includes("--accept-district")
+
+/**
+ * The three whose price does NOT agree, held back by the owner's decision on
+ * 29 Aug 2026 until each is looked at.
+ *
+ * Pasar Kliwon is undercharged by Rp 7.000 a kilo and the shop pays that;
+ * Pagedangan and Johan Pahlawan are overcharged by Rp 9.000 and Rp 6.000.
+ * Mapping them would not change those rates -- but it would tidy away the one
+ * signal that something is wrong with them.
+ */
+const HELD: [kota: string, kecamatan: string, kodePos: string][] = [
+  ["KOTA SURAKARTA", "PASAR KLIWON", "57122"],
+  ["KAB. TANGERANG", "PAGEDANGAN", "15345"],
+  ["KAB. ACEH BARAT", "JOHAN PAHLAWAN", "24614"],
+]
+const isHeld = (p: Place) =>
+  HELD.some(([kota, kec, pos]) => p.kota === kota && p.kecamatan === kec && p.kodePos === pos)
 
 type Place = { kota: string; kecamatan: string; kodePos: string; customers: number }
 
@@ -302,8 +330,19 @@ async function main() {
     return
   }
 
+  // District-only rows join the write only when asked for, and never the three
+  // held back.
+  const held = ACCEPT_DISTRICT ? approximate.filter((a) => isHeld(a.place)) : []
+  const writing = ACCEPT_DISTRICT
+    ? [...matched, ...approximate.filter((a) => !isHeld(a.place))]
+    : matched
+  if (held.length) {
+    console.log(`\nHolding ${held.length} place(s) back — their price disagrees and each needs a decision:`)
+    for (const h of held) console.log(`   ${h.place.kota} / ${h.place.kecamatan} ${h.place.kodePos}`)
+  }
+
   let updated = 0
-  for (const m of matched) {
+  for (const m of writing) {
     const rows = await sql`
       UPDATE customers
          SET biteship_area_id = ${m.areaId}, biteship_area_name = ${m.areaName}, updated_at = NOW()
@@ -315,7 +354,7 @@ async function main() {
     `
     updated += rows.length
   }
-  console.log(`\nApplied: ${updated} customers mapped across ${matched.length} places.`)
+  console.log(`\nApplied: ${updated} customers mapped across ${writing.length} places.`)
   await sql.end()
 }
 
