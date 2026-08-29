@@ -695,11 +695,12 @@ export default function RefundsClient() {
                     the copy icon, a stack is a noun where this is an act, a
                     merge is busy at 15px. The number IS the reason to press --
                     "there are three of these" -- so it is the whole mark. */}
-                {/* 1.25px, not 1: the icons beside it are 24-unit drawings at
-                    stroke 2, rendered at 15px -- 2 × 15/24 on screen. A 1px
-                    border beside them reads as a lighter mark rather than the
-                    same mark with a number in it. */}
-                <span className="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full border-[1.25px] border-current text-[10px] font-bold tabular-nums leading-none">
+                {/* 15px across and 1.25px thick, which is what its neighbours
+                    measure: they are 24-unit drawings at stroke 2, drawn at
+                    15px, so their lines land at 2 × 15/24 on screen. At 18px it
+                    was the largest thing on the row and read as the loudest,
+                    which it is not -- it is one of three. */}
+                <span className="inline-flex items-center justify-center w-[15px] h-[15px] rounded-full border-[1.25px] border-current text-[9px] font-bold tabular-nums leading-none">
                   {all.length}
                 </span>
               </button>
