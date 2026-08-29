@@ -860,7 +860,10 @@ export default function RefundsClient() {
         {/* Why, and how much -- the pair you read together when deciding
             whether the figure is right. */}
         <div className="flex items-center justify-between gap-2 mt-2.5 pt-2.5 border-t border-cream-border">
-          <span className="text-sm text-muted-strong truncate">{reasonLabel(r.reason)}</span>
+          {/* Set like the Order List's own bottom-left word, which sits in
+              this slot and is read the same way: what kind of row this is,
+              under the figure it explains. */}
+          <span className="text-xs text-faint uppercase truncate">{reasonLabel(r.reason)}</span>
           <span className="shrink-0 text-sm font-semibold text-foreground tabular-nums whitespace-nowrap">
             {formatRp(displayAmount(r))}
           </span>
