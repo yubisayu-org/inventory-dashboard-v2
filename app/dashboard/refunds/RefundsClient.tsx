@@ -74,13 +74,14 @@ const ACTIVE_TABS: { key: TabKey; label: string }[] = [
   { key: "pending", label: "Pending" },
   { key: "awaiting_bank_info", label: "Bank Info" },
   { key: "ready_to_refund", label: "Transfer" },
-  // Not Pending, where these used to sit. Pending is a to-do list -- every row
-  // in it money you have decided to send, this week. A deposit is settled: she
-  // asked to keep it, nothing is owed to her bank, and there is nothing to do
-  // until an order of hers can take it. A list you work through should not
-  // contain things you cannot work on.
-  { key: DEPOSITS, label: "Deposits" },
   { key: "refunded", label: "Done" },
+  // Last, and not Pending where these used to sit. Pending is a to-do list --
+  // every row in it money you have decided to send, this week. A deposit is
+  // settled: she asked to keep it, nothing is owed to her bank, and there is
+  // nothing to do until an order of hers can take it. A list you work through
+  // should not contain things you cannot work on, and the tabs before this one
+  // read left to right in the order a refund is worked.
+  { key: DEPOSITS, label: "Deposits" },
 ]
 
 /**
@@ -199,40 +200,72 @@ function ToCheckPanel({ rows, error, promoting, onPromote, onRetry, search, onSe
             disabled={busy}
             className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-bold disabled:opacity-50 whitespace-nowrap"
           >
-            {busy ? "Creating…" : "Create refund"}
+            {busy ? "Creating…" : "Refund"}
           </button>
         )
       },
     },
   ], [promoting, onPromote])
 
+  // Two bands: what it is and the one thing to do about it, then the
+  // figures under the rule.
   const renderMobileCard = useCallback((r: OverpaymentToCheck) => {
     const busy = promoting === `${r.event}|${r.customer}`
     return (
-      <div className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-sm font-semibold text-foreground">{r.event}</span>
+      <div className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+        {/* One line: what it is, and the one thing to do about it. The two
+            were on rows of their own, and the empty half of each read as a
+            gap in the card. */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+            <span className="font-semibold text-sm text-foreground uppercase">{r.event}</span>
             <span className="text-xs text-faint uppercase truncate">{displayIg(r.customer)}</span>
+            {/* Beside the handle, because it is hers that it opens. Every row
+                here is a question -- is this gap a refund, or rounding, or a
+                payment nobody ticked -- and the answer is on her invoice. The
+                phone has no hover to reach it by, so it rides on the card. */}
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onOpenInvoice(r) }}
+              title={`Open ${r.event} on her invoice`}
+              aria-label={`Open ${r.event} on her invoice`}
+              className="shrink-0 p-0.5 rounded text-faint active:text-brand transition-colors"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M15 3h6v6" /><path d="M10 14 21 3" /><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+              </svg>
+            </button>
           </div>
-          <div className="mt-0.5 text-xs text-muted tabular-nums">
-            paid {formatRp(r.totalPaid)} of {formatRp(r.invoiceTotal)}
-          </div>
-        </div>
-        <div className="shrink-0 flex flex-col items-end gap-1.5">
-          <span className="text-sm font-semibold tabular-nums text-brand">{formatRp(r.uncovered)}</span>
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onPromote(r) }}
             disabled={busy}
-            className="px-2.5 py-1 rounded-lg bg-brand text-white text-[11px] font-bold disabled:opacity-50 whitespace-nowrap"
+            className="shrink-0 px-2.5 py-1 rounded-lg bg-brand text-white text-[11px] font-bold disabled:opacity-50 whitespace-nowrap"
           >
-            {busy ? "Creating…" : "Create refund"}
+            {busy ? "Creating…" : "Refund"}
           </button>
+        </div>
+        {/* Paid and invoiced beside the gap, so a small difference can be
+            recognised as rounding without opening the invoice. */}
+        <div className="flex items-center justify-between gap-2 mt-2.5 pt-2.5 border-t border-cream-border">
+          <div className="min-w-0">
+            <div className="text-sm text-muted tabular-nums">
+              Paid {formatRp(r.totalPaid)} of {formatRp(r.invoiceTotal)}
+            </div>
+            {/* What a mark has already covered, where the gap is only what is
+                left of it -- otherwise the figure reads as the whole
+                overpayment. */}
+            {r.refundedSoFar > 0 && (
+              <div className="text-[11px] text-faint tabular-nums">
+                after {formatRp(r.refundedSoFar)} refunded
+              </div>
+            )}
+          </div>
+          <span className="shrink-0 text-sm font-semibold tabular-nums text-brand">{formatRp(r.uncovered)}</span>
         </div>
       </div>
     )
-  }, [promoting, onPromote])
+  }, [promoting, onPromote, onOpenInvoice])
 
   if (error) {
     return (
@@ -324,6 +357,37 @@ function statusLabel(row: RefundRow): string {
 }
 function statusColor(row: RefundRow): string {
   return isCreditPromised(row) ? "bg-purple-50 text-purple-700 border-purple-200" : STATUS_COLORS[row.status]
+}
+
+/**
+ * Where a row stands, in chips.
+ *
+ * One chip per step present, counted -- a group's own status is the spread of
+ * its members', and naming only the first would hide the rest.
+ */
+function StatusChips({ row }: { row: GroupRow }) {
+  const members = row.members
+  if (!members) return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${statusColor(row)}`}>
+      {statusLabel(row)}
+    </span>
+  )
+  const seen = new Map<string, { label: string; cls: string; n: number }>()
+  for (const m of members) {
+    const label = statusLabel(m)
+    const cur = seen.get(label)
+    if (cur) cur.n += 1
+    else seen.set(label, { label, cls: statusColor(m), n: 1 })
+  }
+  return (
+    <span className="flex flex-wrap gap-1">
+      {[...seen.values()].map((c) => (
+        <span key={c.label} className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${c.cls}`}>
+          {c.n > 1 ? `${c.n} × ` : ""}{c.label}
+        </span>
+      ))}
+    </span>
+  )
 }
 
 // ─── Main component ──────────────────────────────────────────────────────────
@@ -514,6 +578,122 @@ export default function RefundsClient() {
     return { ...c, done }
   }, [rows])
 
+  /**
+   * What a row can do to itself, wherever the row is drawn.
+   *
+   * The list has two shapes -- a table on the desktop, cards on a phone -- and
+   * these three belong to both. Written once: a control that exists in one
+   * shape and not the other is a control you cannot find.
+   */
+  const rowActions = useCallback((r: GroupRow) => {
+    // Applying a credit is a single refund's move -- a group cannot do it
+    // together, because each one lands on an order of its own.
+    const creditable = !r.members
+      && r.status !== "refunded" && r.status !== "cancelled"
+      && r.refundAmount > 0
+    // Only where the row does not already lead there. A group row opens
+    // the group sheet when clicked -- members and their siblings from other
+    // tabs included -- so a button beside it is a second control with one
+    // destination.
+    //
+    // On a single row it is the only way in: her other refunds are on other
+    // tabs, and nothing on this one would tell you they exist.
+    const all = !r.members && tab !== DEPOSITS
+      ? [r, ...openSiblings(r)].filter(isOpenRefund)
+      : []
+    // Nothing in Deposits is going to a bank: she chose to keep it, and it
+    // moves by being applied to an order.
+    const payable = all.length >= 2
+    if (!creditable && !payable) return null
+    // Deleting one. It was only in that refund's own sheet, which a
+    // grouped refund no longer opens -- and a refund raised in error is
+    // exactly the kind that gets grouped with three correct ones.
+    const deletable = !r.members && r.status !== "refunded"
+    return (
+      <div className="flex items-center justify-end gap-1">
+        {/* Widest first: taking the whole group somewhere, then moving this
+            one's money, then getting rid of it. Reads left to right from
+            the most to the least of the list it touches. */}
+        {payable && (
+          // Drawn, like the two beside it. A bordered word among icons read
+          // as the important one on the row, and it is not. The count rides
+          // on it, because "how many" is the whole reason to press it.
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setGroupSheet(all) }}
+            title={`Open all ${all.length} together — she has ${all.length - 1} more open on ${r.event}`}
+            aria-label={`Open all ${all.length} refunds together`}
+            className="shrink-0 inline-flex items-center p-1 rounded text-faint hover:text-brand transition-colors"
+          >
+            {/* The count, and nothing else.
+                Every glyph tried here said the wrong thing: two squares is
+                the copy icon, a stack is a noun where this is an act, a
+                merge is busy at 15px. The number IS the reason to press --
+                "there are three of these" -- so it is the whole mark. */}
+            {/* 15px across and 1.25px thick, which is what its neighbours
+                measure: they are 24-unit drawings at stroke 2, drawn at
+                15px, so their lines land at 2 × 15/24 on screen. At 18px it
+                was the largest thing on the row and read as the loudest,
+                which it is not -- it is one of three. */}
+            <span className="inline-flex items-center justify-center w-[15px] h-[15px] rounded-full border-[1.25px] border-current text-[9px] font-bold tabular-nums leading-none">
+              {all.length}
+            </span>
+          </button>
+        )}
+        {creditable && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setCreditFor(r) }}
+            title="Apply as credit to another order"
+            aria-label="Apply as credit to another order"
+            className="shrink-0 p-1 rounded text-faint hover:text-brand transition-colors"
+          >
+            <AccountCreditIcon />
+          </button>
+        )}
+        {deletable && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setDeleteFor(r) }}
+            title="Delete this refund"
+            aria-label="Delete this refund"
+            className="shrink-0 p-1 rounded text-faint hover:text-brand transition-colors"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+              <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            </svg>
+          </button>
+        )}
+      </div>
+    )
+  }, [openSiblings, tab])
+
+  /**
+   * Owed here, behind there.
+   *
+   * A marker rather than a figure: the amount belongs to another trip, and
+   * printing it beside this row's own amount invites reading the wrong one.
+   * Drawn like the marks and controls around it -- a row of differently
+   * coloured glyphs reads as a traffic light rather than a set of marks.
+   */
+  const owesMark = useCallback((r: RefundRow) => {
+    const owes = outstandingFor(r.customer, r.event)
+    if (owes.length === 0) return null
+    const owesTotal = owes.reduce((sum, t) => sum + t.amount, 0)
+    return (
+      <span
+        title={`Owes elsewhere — ${owes.map((t) => `${formatRp(t.amount)} on ${t.event}`).join(", ")}`}
+        aria-label={`Owes ${formatRp(owesTotal)} on ${owes.length === 1 ? owes[0].event : `${owes.length} other trips`}`}
+        className="text-faint shrink-0"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M8 3 4 7l4 4" /><path d="M4 7h16" /><path d="m16 21 4-4-4-4" /><path d="M20 17H4" />
+        </svg>
+      </span>
+    )
+  }, [outstandingFor])
+
   const columns = useMemo<ColumnDef<RefundRow, unknown>[]>(() => [
     {
       // Event first, as the Invoice page reads: the trip is what a row belongs
@@ -541,32 +721,12 @@ export default function RefundsClient() {
       header: "Customer",
       size: 160,
       filterFn: "textContains",
-      cell: ({ row }) => {
-        const r = row.original
-        const owes = outstandingFor(r.customer, r.event)
-        const owesTotal = owes.reduce((sum, t) => sum + t.amount, 0)
-        return (
-          <div className="flex items-center gap-1.5 font-medium text-foreground">
-            {displayIg(r.customer)}
-            {/* Owed here, behind there. A marker rather than a figure: the
-                amount belongs to another trip, and printing it beside this
-                row's own amount invites reading the wrong one. Drawn like the
-                marks and controls around it -- a row of differently coloured
-                glyphs reads as a traffic light rather than a set of marks. */}
-            {owes.length > 0 && (
-              <span
-                title={`Owes elsewhere — ${owes.map((t) => `${formatRp(t.amount)} on ${t.event}`).join(", ")}`}
-                aria-label={`Owes ${formatRp(owesTotal)} on ${owes.length === 1 ? owes[0].event : `${owes.length} other trips`}`}
-                className="text-faint shrink-0"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M8 3 4 7l4 4" /><path d="M4 7h16" /><path d="m16 21 4-4-4-4" /><path d="M20 17H4" />
-                </svg>
-              </span>
-            )}
-          </div>
-        )
-      },
+      cell: ({ row }) => (
+        <div className="flex items-center gap-1.5 font-medium text-foreground">
+          {displayIg(row.original.customer)}
+          {owesMark(row.original)}
+        </div>
+      ),
     },
     {
       id: "reason",
@@ -581,7 +741,14 @@ export default function RefundsClient() {
       filterFn: "textContains",
       cell: ({ row, getValue }) => {
         const r = row.original as GroupRow
-        if (r.members) return <span className="font-medium text-foreground">{r.members.length} refunds</span>
+        // A group says what its refunds are for, not how many of them there
+        // are: "3 refunds" is a count of rows, and the column is headed Reason.
+        // Deduplicated -- three damaged items on one trip is one reason said
+        // three times, and the count is on the row's own button.
+        if (r.members) {
+          const labels = [...new Set(r.members.map((m) => reasonLabel(m.reason)))]
+          return <div className="truncate text-muted-strong" title={labels.join(", ")}>{labels.join(", ")}</div>
+        }
         // What it is actually about, on the row itself. A refund folded into a
         // group already showed its goods when opened; one standing on its own
         // showed only "Item Unavailable", which names a kind of problem and not
@@ -617,32 +784,7 @@ export default function RefundsClient() {
       header: "Status",
       size: 140,
       filterFn: "textContains",
-      cell: ({ row }) => {
-        const members = (row.original as GroupRow).members
-        if (!members) return (
-          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${statusColor(row.original)}`}>
-            {statusLabel(row.original)}
-          </span>
-        )
-        // One chip per step present, counted -- the group's own status is the
-        // spread of its members', and naming only the first would hide the rest.
-        const seen = new Map<string, { label: string; cls: string; n: number }>()
-        for (const m of members) {
-          const label = statusLabel(m)
-          const cur = seen.get(label)
-          if (cur) cur.n += 1
-          else seen.set(label, { label, cls: statusColor(m), n: 1 })
-        }
-        return (
-          <span className="flex flex-wrap gap-1">
-            {[...seen.values()].map((c) => (
-              <span key={c.label} className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${c.cls}`}>
-                {c.n > 1 ? `${c.n} × ` : ""}{c.label}
-              </span>
-            ))}
-          </span>
-        )
-      },
+      cell: ({ row }) => <StatusChips row={row.original as GroupRow} />,
     },
     {
       id: "pay",
@@ -651,90 +793,7 @@ export default function RefundsClient() {
       enableSorting: false,
       enableColumnFilter: false,
       meta: { align: "right" },
-      cell: ({ row }) => {
-        const r = row.original as GroupRow
-        // Applying a credit is a single refund's move -- a group cannot do it
-        // together, because each one lands on an order of its own.
-        const creditable = !r.members
-          && r.status !== "refunded" && r.status !== "cancelled"
-          && r.refundAmount > 0
-        // Only where the row does not already lead there. A group row opens
-        // the group sheet when clicked -- members and their siblings from other
-        // tabs included -- so a button beside it is a second control with one
-        // destination.
-        //
-        // On a single row it is the only way in: her other refunds are on other
-        // tabs, and nothing on this one would tell you they exist.
-        const all = !r.members && tab !== DEPOSITS
-          ? [r, ...openSiblings(r)].filter(isOpenRefund)
-          : []
-        // Nothing in Deposits is going to a bank: she chose to keep it, and it
-        // moves by being applied to an order.
-        const payable = all.length >= 2
-        if (!creditable && !payable) return null
-        // Deleting one. It was only in that refund's own sheet, which a
-        // grouped refund no longer opens -- and a refund raised in error is
-        // exactly the kind that gets grouped with three correct ones.
-        const deletable = !r.members && r.status !== "refunded"
-        return (
-          <div className="flex items-center justify-end gap-1">
-            {/* Widest first: taking the whole group somewhere, then moving this
-                one's money, then getting rid of it. Reads left to right from
-                the most to the least of the list it touches. */}
-            {payable && (
-              // Drawn, like the two beside it. A bordered word among icons read
-              // as the important one on the row, and it is not. The count rides
-              // on it, because "how many" is the whole reason to press it.
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); setGroupSheet(all) }}
-                title={`Open all ${all.length} together — she has ${all.length - 1} more open on ${r.event}`}
-                aria-label={`Open all ${all.length} refunds together`}
-                className="shrink-0 inline-flex items-center p-1 rounded text-faint hover:text-brand transition-colors"
-              >
-                {/* The count, and nothing else.
-                    Every glyph tried here said the wrong thing: two squares is
-                    the copy icon, a stack is a noun where this is an act, a
-                    merge is busy at 15px. The number IS the reason to press --
-                    "there are three of these" -- so it is the whole mark. */}
-                {/* 15px across and 1.25px thick, which is what its neighbours
-                    measure: they are 24-unit drawings at stroke 2, drawn at
-                    15px, so their lines land at 2 × 15/24 on screen. At 18px it
-                    was the largest thing on the row and read as the loudest,
-                    which it is not -- it is one of three. */}
-                <span className="inline-flex items-center justify-center w-[15px] h-[15px] rounded-full border-[1.25px] border-current text-[9px] font-bold tabular-nums leading-none">
-                  {all.length}
-                </span>
-              </button>
-            )}
-            {creditable && (
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); setCreditFor(r) }}
-                title="Apply as credit to another order"
-                aria-label="Apply as credit to another order"
-                className="shrink-0 p-1 rounded text-faint hover:text-brand transition-colors"
-              >
-                <AccountCreditIcon />
-              </button>
-            )}
-            {deletable && (
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); setDeleteFor(r) }}
-                title="Delete this refund"
-                aria-label="Delete this refund"
-                className="shrink-0 p-1 rounded text-faint hover:text-brand transition-colors"
-              >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-                  <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                </svg>
-              </button>
-            )}
-          </div>
-        )
-      },
+      cell: ({ row }) => rowActions(row.original as GroupRow),
     },
     {
       // Hidden by default — exists only so the Done tab can sort by completion
@@ -743,24 +802,115 @@ export default function RefundsClient() {
       header: "Updated",
       enableColumnFilter: false,
     },
-  ], [outstandingFor, openSiblings, tab])
+  ], [owesMark, rowActions])
 
+  /**
+   * The same row, on a phone -- laid out like the Order List's card, because
+   * they are read the same way and by the same person: what trip and whose,
+   * then what it is about, then where it stands and how much.
+   *
+   * Every column the table shows is here. The card carries its own actions
+   * too, since a phone has no hover and no caret to reach them by.
+   */
   const renderMobileCard = useCallback((r: GroupRow) => {
+    // A deposit group spans trips, so no single one names it.
+    const trips = r.members ? new Set(r.members.map((m) => m.event)).size : 1
+    // What the refund is actually about, its members' included: a group used
+    // to say "3 refunds", which is a count of rows and not a thing you can
+    // recognise. A refund with no goods on it falls back to its own reason,
+    // so the line is never blank.
+    const itemsOf = (m: RefundRow) => {
+      const own = m.note.split("\n").map((l) => l.trim()).filter(Boolean)
+      return own.length > 0 ? own : [reasonLabel(m.reason)]
+    }
+    const items = (r.members ?? [r]).flatMap(itemsOf)
     return (
-      <div className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-sm font-semibold text-foreground">{r.event}</span>
+      <div className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] active:bg-cream transition-colors">
+        {/* Whose and which trip. */}
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+            <span className="font-semibold text-sm text-foreground uppercase">
+              {trips > 1 ? `${trips} trips` : r.event}
+            </span>
+            {owesMark(r)}
             <span className="text-xs text-faint uppercase truncate">{displayIg(r.customer)}</span>
           </div>
-          {r.members && (
-            <div className="text-xs text-muted mt-0.5">{r.members.length} refunds · one transfer</div>
+          {/* Only on Done. Everywhere else the tab already says the step, and
+              the sheet says it again on the way in -- a chip on every card
+              repeated a thing you cannot be looking at without knowing.
+              Done is the one tab that does not: refunded, applied to her next
+              order and cancelled all end up on it, and they are not the same
+              outcome. */}
+          {tab === "refunded" && (
+            <span className="shrink-0 flex flex-wrap justify-end gap-1">
+              <StatusChips row={r} />
+            </span>
           )}
         </div>
-        <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">{formatRp(displayAmount(r))}</span>
+        <div className="flex items-start justify-between gap-3 mt-2">
+          {/* The goods, set as the Order List sets them: full strength. One
+              refund wraps, because all of it fits and all of it matters. A
+              group is cut off at the line's end instead -- four items over
+              three refunds would push everything under it off the screen, and
+              the sheet is one tap away. */}
+          <div className={`text-sm text-foreground min-w-0 ${r.members ? "truncate" : ""}`} title={r.members ? items.join(" · ") : undefined}>
+            {r.members ? items[0] : items.join(" · ")}
+            {/* Said, not left to the CSS. A first item short enough to fit
+                clipped nothing visible, so a card with three goods on it read
+                as a card with one. */}
+            {r.members && items.length > 1 && <span className="text-faint"> …</span>}
+          </div>
+          <div className="shrink-0 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+            {/* A group shows one of its items and stops, so nothing else on
+                the card says it is more than one refund. The count does, in
+                the circle the open-all button already uses for it -- not a
+                button here, because the card itself opens them together. */}
+            {r.members && (
+              <span
+                title={`${r.members.length} refunds · one transfer`}
+                aria-label={`${r.members.length} refunds, settled by one transfer`}
+                className="shrink-0 inline-flex items-center justify-center w-[15px] h-[15px] rounded-full border-[1.25px] border-current text-[9px] font-bold tabular-nums leading-none text-faint"
+              >
+                {r.members.length}
+              </span>
+            )}
+            {rowActions(r)}
+          </div>
+        </div>
+        {/* A deposit group has nothing to settle together, so tapping it opens
+            nothing -- and on a phone there is no caret to expand it by. Its
+            members are printed here instead, each with the two things that are
+            its own: applying it to an order, and getting rid of it. */}
+        {r.members && tab === DEPOSITS && (
+          <div className="mt-2 flex flex-col divide-y divide-cream-border border-t border-cream-border">
+            {r.members.map((m) => (
+              <div key={m.id} className="flex items-center justify-between gap-2 py-2">
+                <div className="min-w-0">
+                  <div className="text-xs text-faint uppercase">{m.event}</div>
+                  <div className="text-sm text-muted-strong truncate">{reasonLabel(m.reason)}</div>
+                </div>
+                <div className="shrink-0 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                  <span className="text-sm font-semibold text-foreground tabular-nums">{formatRp(displayAmount(m))}</span>
+                  {rowActions(m)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {/* Why, and how much -- the pair you read together when deciding
+            whether the figure is right. */}
+        <div className="flex items-center justify-between gap-2 mt-2.5 pt-2.5 border-t border-cream-border">
+          {/* Set like the Order List's own bottom-left word, which sits in
+              this slot and is read the same way: what kind of row this is,
+              under the figure it explains. */}
+          <span className="text-xs text-faint uppercase truncate">{reasonLabel(r.reason)}</span>
+          <span className="shrink-0 text-sm font-semibold text-foreground tabular-nums whitespace-nowrap">
+            {formatRp(displayAmount(r))}
+          </span>
+        </div>
       </div>
     )
-  }, [])
+  }, [owesMark, rowActions, tab])
 
   function handleUpdated(updated: RefundRow) {
     setRows((prev) => prev.map((r) => r.id === updated.id ? updated : r))
