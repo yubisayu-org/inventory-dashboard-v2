@@ -23,7 +23,7 @@
  */
 
 import sql from "@/lib/db-pool"
-import { searchAreas, courierRates, BiteshipNotConfiguredError } from "@/lib/biteship"
+import { searchAreas, courierRates, BiteshipNotConfiguredError, type BiteshipArea } from "@/lib/biteship"
 import { matchArea, matchByPostal } from "@/lib/biteship-area-match"
 
 const APPLY = process.argv.includes("--apply")
@@ -105,7 +105,17 @@ async function main() {
   // enough to store as somebody's address — so these are reported and never
   // written.
   const approximate: { place: Place; areaId: string; areaName: string }[] = []
-  const needsHuman: { place: Place; reason: string; candidates: string[] }[] = []
+  // The areas each unresolved place DID see are kept, so --rates can quote a
+  // price for them without paying for the searches a second time. Deciding
+  // whether a district or a postal code is the wrong field is a question about
+  // money, and the money was one call away.
+  const needsHuman: {
+    place: Place
+    reason: string
+    candidates: string[]
+    nameAreas: BiteshipArea[]
+    postalAreas: BiteshipArea[]
+  }[] = []
 
   // One district can appear several times over, once per postal code. The
   // search is the billable part and its answer is the same every time, so it is
@@ -132,7 +142,7 @@ async function main() {
         await sql.end()
         process.exit(1)
       }
-      needsHuman.push({ place, reason: "search failed", candidates: [] })
+      needsHuman.push({ place, reason: "search failed", candidates: [], nameAreas: [], postalAreas: [] })
       continue
     }
 
@@ -149,9 +159,11 @@ async function main() {
     // our own spelling -- "PONDOKGEDE" for their "Pondok Gede", which is five
     // Bekasi districts and about seventy customers on its own. A second
     // billable search, made only where the first found nothing usable.
+    let postalAreas: BiteshipArea[] = []
     if (result.kind !== "matched" && place.kodePos) {
       const byCode = searched.get(place.kodePos) ?? await searchAreas(place.kodePos)
       searched.set(place.kodePos, byCode)
+      postalAreas = byCode
       const second = matchByPostal(byCode, place)
       if (second.kind === "matched") {
         recovered += place.customers
@@ -160,7 +172,7 @@ async function main() {
     }
 
     if (result.kind !== "matched" && !areas.length) {
-      needsHuman.push({ place, reason: "no results", candidates: [] })
+      needsHuman.push({ place, reason: "no results", candidates: [], nameAreas: areas, postalAreas })
       continue
     }
 
@@ -169,6 +181,8 @@ async function main() {
       ;(result.approximate ? approximate : matched).push(row)
     } else {
       needsHuman.push({
+        nameAreas: areas,
+        postalAreas,
         place,
         reason:
           result.kind === "none"
@@ -236,6 +250,50 @@ async function main() {
       )
     }
     console.log(`\n   ${same} the same, ${dearer} where JNE quotes MORE than we charge, ${cheaper} where it quotes less.`)
+
+    // The unresolved places, priced both ways they could be read.
+    //
+    // A place is unresolved because two readings of it disagree: what her
+    // district says and what her postal code says. Each reading has a price,
+    // and where the two prices are equal the disagreement costs nothing and
+    // the choice can wait. Where they differ, the gap is what the decision is
+    // actually worth -- which is the thing a list of place names could never
+    // say.
+    console.log("\nUnresolved places, priced both ways:")
+    console.log("   district = what her kecamatan points at; code = what her kode pos points at\n")
+    for (const h of needsHuman) {
+      const p = h.place
+      const s2 = stored.get(`${p.kota}|${p.kecamatan}|${p.kodePos}`)
+      const oursText = !s2 ? "—" : s2.lo === s2.hi ? rupiah(s2.lo) : `${rupiah(s2.lo)}–${rupiah(s2.hi)}`
+
+      // One district among the name results, whatever its codes: a courier
+      // prices by district, so any of its areas quotes the same.
+      const districts = new Set(h.nameAreas.map((a) => a.name.split(",")[0]?.trim()))
+      const byDistrict = districts.size === 1 ? h.nameAreas[0] : null
+      // The single area carrying her code, where there is one.
+      const carrying = h.postalAreas.filter(
+        (a) => (a.postalCode ?? a.name.match(/\b(\d{5})\b\s*$/)?.[1] ?? "") === p.kodePos,
+      )
+      const byCode = carrying.length === 1 ? carrying[0] : null
+
+      const quote = async (a: BiteshipArea | null) => {
+        if (!a) return null
+        try {
+          const rates = await courierRates(origin.id, a.id, 1000)
+          const reg = rates.find((r) => /^(reg|ctc)$/i.test(r.serviceCode)) ?? rates[0]
+          return reg ? reg.price : null
+        } catch { return null }
+      }
+      const [dq, cq] = [await quote(byDistrict), await quote(byCode)]
+      const agree = dq != null && cq != null && dq === cq
+
+      console.log(
+        `   ${p.kota} / ${p.kecamatan}${p.kodePos ? ` ${p.kodePos}` : ""}  (${p.customers}c)  ours ${oursText}` +
+        `  district ${dq == null ? "—" : rupiah(dq)}${byDistrict ? ` [${byDistrict.name}]` : ""}` +
+        `  code ${cq == null ? "—" : rupiah(cq)}${byCode ? ` [${byCode.name}]` : ""}` +
+        `${agree ? "  — both the same, so the disagreement costs nothing" : ""}`,
+      )
+    }
   }
 
   if (!APPLY) {
