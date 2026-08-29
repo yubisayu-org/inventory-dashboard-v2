@@ -832,9 +832,10 @@ export default function RefundsClient() {
           )}
         </div>
         <div className="flex items-start justify-between gap-3 mt-2">
-          {/* The goods. Two lines at most: they are why you would open it, but
-              a refund covering four items must not push the amount off screen. */}
-          <div className="text-sm text-muted min-w-0 line-clamp-2">
+          {/* The goods, set as the Order List sets them: full strength, and
+              wrapping rather than cut, because the item is the thing the card
+              is about. */}
+          <div className="text-sm text-foreground min-w-0">
             {r.members
               ? <span className="font-medium text-foreground">{r.members.length} refunds · one transfer</span>
               : items.join(" · ")}
