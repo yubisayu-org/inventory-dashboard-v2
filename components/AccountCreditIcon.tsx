@@ -7,9 +7,17 @@
  * styled differently -- but they are the same money, and were drawn three
  * different ways: an emoji in two places and a bank card outline in the third.
  *
- * A wallet rather than 💰: the emoji is the only pictogram in an interface of
- * line drawings, it renders as a different picture on every platform, and it
- * cannot take the colour of the thing it sits in.
+ * Two coins rather than a wallet, and neither is 💰.
+ *
+ * The emoji went first: it was the only pictogram in an interface of line
+ * drawings, it renders as a different picture on every platform, and it cannot
+ * take the colour of the thing it sits in. The wallet that replaced it was the
+ * right idea at the wrong size -- at 14px in a row of marks its clasp and fold
+ * collapse into a grey lump.
+ *
+ * Two overlapping discs survive being small, and read as money before they
+ * read as anything else, which is what this has to say in both its jobs: money
+ * she is holding, and money about to be moved onto another order.
  */
 export function AccountCreditIcon({ size = 15, className }: { size?: number; className?: string }) {
   return (
@@ -18,8 +26,8 @@ export function AccountCreditIcon({ size = 15, className }: { size?: number; cla
       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
       className={className} aria-hidden="true"
     >
-      <path d="M19 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0 0 4h15a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5" />
-      <path d="M16 12h.01" />
+      <circle cx="9" cy="9" r="6" />
+      <path d="M15.5 5.6a6 6 0 0 1 0 12.8" />
     </svg>
   )
 }
