@@ -847,6 +847,10 @@ export default function RefundsClient() {
               the sheet is one tap away. */}
           <div className={`text-sm text-foreground min-w-0 ${r.members ? "truncate" : ""}`} title={r.members ? items.join(" · ") : undefined}>
             {r.members ? items[0] : items.join(" · ")}
+            {/* Said, not left to the CSS. A first item short enough to fit
+                clipped nothing visible, so a card with three goods on it read
+                as a card with one. */}
+            {r.members && items.length > 1 && <span className="text-faint"> …</span>}
           </div>
           <div className="shrink-0 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
             {/* A group shows one of its items and stops, so nothing else on
