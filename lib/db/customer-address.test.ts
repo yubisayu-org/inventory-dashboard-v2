@@ -28,8 +28,13 @@ const base = {
 }
 
 async function read(id: number) {
-  const [r] = await sql<{ kota: string; kecamatan: string; kode_pos: string; area: string | null }[]>`
-    SELECT kota, kecamatan, kode_pos, biteship_area_id AS area FROM customers WHERE id = ${id}`
+  const [r] = await sql<{
+    kota: string; kecamatan: string; kode_pos: string; area: string | null
+    jalan: string; provinsi: string; data_diri: string
+  }[]>`
+    SELECT kota, kecamatan, kode_pos, jalan, provinsi, data_diri,
+           biteship_area_id AS area
+      FROM customers WHERE id = ${id}`
   return r
 }
 
@@ -84,4 +89,48 @@ test("changing the address without naming an area clears the old one", async () 
   const r = await read(id)
   assert.equal(r.kecamatan, "PONDOK GEDE")
   assert.equal(r.area, null)
+})
+
+test("saving an address writes the label from its parts", async () => {
+  // data_diri is what the shipping label prints. It used to be typed, with her
+  // name in it a second time; now it is made, so the two cannot disagree.
+  const id = await makeCustomer()
+  const handle = `${TAG}_${n - 1}`
+  await updateCustomer(id, {
+    ...base,
+    instagramId: handle,
+    name: "Shinta Michiko",
+    whatsapp: "447487779195",
+    dataDiri: "whatever was in the box before",
+    jalan: "YVE Habitat B16\nJl. Pendowo Raya",
+    kecamatan: "Limo",
+    kota: "Depok",
+    provinsi: "Jawa Barat",
+    kodePos: "16512",
+  })
+  const r = await read(id)
+  assert.equal(r.jalan, "YVE Habitat B16\nJl. Pendowo Raya")
+  assert.equal(r.provinsi, "Jawa Barat")
+  assert.equal(
+    r.data_diri,
+    "Nama: Shinta Michiko\nTelepon: 447487779195\nAlamat Lengkap:\n" +
+    "YVE Habitat B16\nJl. Pendowo Raya\nLimo, Depok, Jawa Barat 16512",
+  )
+})
+
+test("an address with no street keeps the label it already prints", async () => {
+  // Composing here would put her district on the parcel and lose the house.
+  const id = await makeCustomer()
+  const handle = `${TAG}_${n - 1}`
+  await updateCustomer(id, {
+    ...base,
+    instagramId: handle,
+    dataDiri: "jl alam pesanggrahan 6 blok OH 6, kota depok kec cinere 16514",
+    jalan: "",
+    kecamatan: "CINERE",
+    kota: "KOTA DEPOK",
+    kodePos: "16514",
+  })
+  const r = await read(id)
+  assert.equal(r.data_diri, "jl alam pesanggrahan 6 blok OH 6, kota depok kec cinere 16514")
 })

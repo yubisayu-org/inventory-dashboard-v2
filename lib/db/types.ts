@@ -225,8 +225,10 @@ export interface CustomerRow {
   bankAccountNumber: string
   bankAccountHolder: string
   /** Where she lives, as the courier needs it. Empty until somebody fills it. */
+  jalan: string
   kota: string
   kecamatan: string
+  provinsi: string
   kodePos: string
   /** The Biteship area her address resolved to, or null while it has not. */
   biteshipAreaId: string | null
@@ -266,8 +268,10 @@ export interface CustomerInput {
    * screen that asks for it is the screen that showed her the choice --
    * deriving it again here would be a second set of rules for one question.
    */
+  jalan?: string
   kota?: string
   kecamatan?: string
+  provinsi?: string
   kodePos?: string
   biteshipAreaId?: string | null
   biteshipAreaName?: string | null

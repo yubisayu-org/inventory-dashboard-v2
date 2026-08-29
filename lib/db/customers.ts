@@ -1,5 +1,6 @@
 import sql from "../db-pool"
 import { normalizeId } from "./helpers"
+import { composeLabel, canCompose } from "../address"
 import type { DBExecutor } from "./actor"
 import type { CustomerDetail, CustomerRow, CustomerInput, OngkirByWarehouse } from "./types"
 
@@ -107,8 +108,10 @@ function mapCustomerRow(r: Record<string, unknown>, ongkir: OngkirByWarehouse): 
     bankName: (r.bank_name as string) ?? "",
     bankAccountNumber: (r.bank_account_number as string) ?? "",
     bankAccountHolder: (r.bank_account_holder as string) ?? "",
+    jalan: (r.jalan as string) ?? "",
     kota: (r.kota as string) ?? "",
     kecamatan: (r.kecamatan as string) ?? "",
+    provinsi: (r.provinsi as string) ?? "",
     kodePos: (r.kode_pos as string) ?? "",
     biteshipAreaId: (r.biteship_area_id as string) ?? null,
     biteshipAreaName: (r.biteship_area_name as string) ?? null,
@@ -133,7 +136,8 @@ export async function getCustomers(): Promise<CustomerRow[]> {
   const [rows, ongkirRows] = await Promise.all([
     sql`
       SELECT id, instagram_id, name, whatsapp, data_diri, ekspedisi,
-             kota, kecamatan, kode_pos, biteship_area_id, biteship_area_name,
+             jalan, kota, kecamatan, provinsi, kode_pos,
+             biteship_area_id, biteship_area_name,
              bank_name, bank_account_number, bank_account_holder,
              google_sub, created_at, updated_at
       FROM customers
@@ -281,7 +285,8 @@ export async function getCustomersPaginated(opts: {
   const dataRows = await sql.unsafe(
     `SELECT c.id, c.instagram_id, c.name, c.whatsapp, c.data_diri, c.ekspedisi,
             c.bank_name, c.bank_account_number, c.bank_account_holder,
-            c.kota, c.kecamatan, c.kode_pos, c.biteship_area_id, c.biteship_area_name,
+            c.jalan, c.kota, c.kecamatan, c.provinsi, c.kode_pos,
+            c.biteship_area_id, c.biteship_area_name,
             c.google_sub, c.created_at, c.updated_at,
             COALESCE(cis.invoice_count, 0) AS invoice_count,
             COALESCE(cis.total_invoiced, 0) AS total_invoiced,
@@ -329,6 +334,27 @@ export async function getCustomersPaginated(opts: {
   }
 }
 
+/**
+ * The label text, made from her parts when they can say it.
+ *
+ * `data_diri` is what the shipping label prints, and it used to be typed --
+ * her name written a second time, her district a third, nothing keeping any of
+ * them in step. Now the parts are the truth and this is generated from them.
+ *
+ * Only where the parts CAN say it. A row whose street nobody could recover
+ * keeps the text it prints today: composing without a street would put her
+ * district on the parcel and lose the house.
+ */
+function labelFor(data: CustomerInput): string {
+  const parts = {
+    name: data.name, whatsapp: data.whatsapp, jalan: data.jalan ?? "",
+    kecamatan: data.kecamatan ?? "", kota: data.kota ?? "",
+    provinsi: data.provinsi ?? "", kodePos: data.kodePos ?? "",
+    areaName: data.biteshipAreaName ?? "",
+  }
+  return canCompose(parts) ? composeLabel(parts) : data.dataDiri
+}
+
 export async function addCustomer(data: CustomerInput, db: DBExecutor = sql): Promise<{ id: number }> {
   // Canonical form is bare lowercase, no '@'. Without this, "@User" and "user"
   // would each create their own row and the order flow (which normalizes the
@@ -338,9 +364,14 @@ export async function addCustomer(data: CustomerInput, db: DBExecutor = sql): Pr
   const rows = await db`
     INSERT INTO customers (
       instagram_id, name, whatsapp, data_diri, ekspedisi,
+      jalan, kota, kecamatan, provinsi, kode_pos,
+      biteship_area_id, biteship_area_name,
       bank_name, bank_account_number, bank_account_holder
     ) VALUES (
-      ${instagramId}, ${data.name}, ${data.whatsapp}, ${data.dataDiri}, ${data.ekspedisi},
+      ${instagramId}, ${data.name}, ${data.whatsapp}, ${labelFor(data)}, ${data.ekspedisi},
+      ${data.jalan ?? ""}, ${data.kota ?? ""}, ${data.kecamatan ?? ""},
+      ${data.provinsi ?? ""}, ${data.kodePos ?? ""},
+      ${data.biteshipAreaId ?? null}, ${data.biteshipAreaName ?? null},
       ${data.bankName}, ${data.bankAccountNumber}, ${data.bankAccountHolder}
     )
     RETURNING id
@@ -357,7 +388,7 @@ export async function updateCustomer(id: number, data: CustomerInput, db: DBExec
     SET instagram_id        = ${instagramId},
         name                = ${data.name},
         whatsapp            = ${data.whatsapp},
-        data_diri           = ${data.dataDiri},
+        data_diri           = ${labelFor(data)},
         ekspedisi           = ${data.ekspedisi},
         bank_name           = ${data.bankName},
         bank_account_number = ${data.bankAccountNumber},
@@ -374,8 +405,10 @@ export async function updateCustomer(id: number, data: CustomerInput, db: DBExec
   if (data.kota !== undefined || data.kecamatan !== undefined || data.kodePos !== undefined) {
     await db`
       UPDATE customers
-      SET kota      = ${data.kota ?? ""},
+      SET jalan     = ${data.jalan ?? ""},
+          kota      = ${data.kota ?? ""},
           kecamatan = ${data.kecamatan ?? ""},
+          provinsi  = ${data.provinsi ?? ""},
           kode_pos  = ${data.kodePos ?? ""},
           -- Cleared when the address changes and nobody named an area: the old
           -- one belonged to the old address, and a stale area is worse than
@@ -441,6 +474,10 @@ export async function registerCustomer(data: {
   kota: string
   kecamatan: string
   kodePos: string
+  /** The form has always collected these; until now it only pasted them into
+   *  data_diri and threw the fields away. */
+  jalan?: string
+  provinsi?: string
 }): Promise<{ id: number; created: boolean }> {
   const norm = normalizeId(data.instagramId)
   // Persist the destination so future warehouses can re-derive ongkir without
@@ -454,6 +491,8 @@ export async function registerCustomer(data: {
       kota         = ${data.kota},
       kecamatan    = ${data.kecamatan},
       kode_pos     = ${data.kodePos},
+      jalan        = ${data.jalan ?? ""},
+      provinsi     = ${data.provinsi ?? ""},
       updated_at   = NOW()
     WHERE lower(replace(instagram_id, '@', '')) = ${norm}
     RETURNING id
@@ -466,9 +505,11 @@ export async function registerCustomer(data: {
     created = false
   } else {
     const inserted = await sql`
-      INSERT INTO customers (instagram_id, name, whatsapp, data_diri, ekspedisi, kota, kecamatan, kode_pos)
+      INSERT INTO customers (instagram_id, name, whatsapp, data_diri, ekspedisi,
+                             kota, kecamatan, kode_pos, jalan, provinsi)
       VALUES (${norm}, ${data.name}, ${data.whatsapp}, ${data.dataDiri}, ${data.ekspedisi},
-              ${data.kota}, ${data.kecamatan}, ${data.kodePos})
+              ${data.kota}, ${data.kecamatan}, ${data.kodePos},
+              ${data.jalan ?? ""}, ${data.provinsi ?? ""})
       RETURNING id
     `
     id = inserted[0].id as number

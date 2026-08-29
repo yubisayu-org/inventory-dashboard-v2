@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { composeLabel } from "@/lib/address"
 import { registerCustomer } from "@/lib/db"
 
 // Public, no-login endpoint for the external registration form
@@ -77,20 +78,27 @@ async function verifyTurnstile(token: string, ip: string | null): Promise<boolea
 // directly usable on printed shipping labels. Phone is duplicated here (also
 // stored in the `whatsapp` column) on purpose. Empty fields are skipped.
 // Dashboard renders this with `whitespace-pre-line`.
+/**
+ * The label text for a registration, from the same composer the dashboard uses.
+ *
+ * It was written here first and copied nowhere, which was fine until the
+ * dashboard had to produce the identical string -- two copies of one format is
+ * how a customer ends up with two different labels depending on who last
+ * touched her row.
+ */
 function composeDataDiri(b: Record<string, string>): string {
-  const name = [b.nama_depan, b.nama_belakang].filter(Boolean).join(" ").trim()
-  const region = [b.kecamatan, b.kota, b.provinsi].filter(Boolean).join(", ")
-  const regionLine = [region, b.kode_pos].filter(Boolean).join(" ").trim()
-  const lines: string[] = []
-  if (name) lines.push(`Nama: ${name}`)
-  if (b.ponsel) lines.push(`Telepon: ${b.ponsel}`)
-  if (b.jalan || regionLine) {
-    lines.push("Alamat Lengkap:")
-    if (b.jalan) lines.push(`Alamat: ${b.jalan}`)
-    if (regionLine) lines.push(regionLine)
-  }
-  if (b.email) lines.push(`Email: ${b.email}`)
-  return lines.join("\n")
+  const label = composeLabel({
+    name: [b.nama_depan, b.nama_belakang].filter(Boolean).join(" ").trim(),
+    whatsapp: b.ponsel,
+    jalan: b.jalan,
+    kecamatan: b.kecamatan,
+    kota: b.kota,
+    provinsi: b.provinsi,
+    kodePos: b.kode_pos,
+  })
+  // The email is the shop's, not the courier's -- it has never been on a label
+  // and is kept only because the old blob carried it.
+  return b.email ? `${label}\nEmail: ${b.email}` : label
 }
 
 export async function POST(req: NextRequest) {
@@ -153,6 +161,8 @@ export async function POST(req: NextRequest) {
       kota: b.kota,
       kecamatan: b.kecamatan,
       kodePos: b.kode_pos,
+      jalan: b.jalan,
+      provinsi: b.provinsi,
     })
     return NextResponse.json(
       { success: true, id: result.id, created: result.created },

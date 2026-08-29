@@ -11,6 +11,7 @@ import DataGrid, {
 } from "@/components/DataGrid"
 import { usePaginatedFetch, type PageData } from "@/hooks/usePaginatedFetch"
 import { fmt, displayIg } from "@/lib/format"
+import { composeLabel, canCompose } from "@/lib/address"
 import { CustomerDetailDrawer } from "./CustomerDetailDrawer"
 
 const PAGE_SIZE = 25
@@ -39,8 +40,10 @@ type DraftCustomer = {
   bankAccountNumber: string
   bankAccountHolder: string
   // Her address as the courier reads it, and the area it resolved to.
+  jalan: string
   kota: string
   kecamatan: string
+  provinsi: string
   kodePos: string
   biteshipAreaId: string | null
   biteshipAreaName: string | null
@@ -56,8 +59,10 @@ const EMPTY_DRAFT: DraftCustomer = {
   bankName: "",
   bankAccountNumber: "",
   bankAccountHolder: "",
+  jalan: "",
   kota: "",
   kecamatan: "",
+  provinsi: "",
   kodePos: "",
   biteshipAreaId: null,
   biteshipAreaName: null,
@@ -78,8 +83,10 @@ function rowToDraft(row: CustomerRow): DraftCustomer {
     bankName: row.bankName,
     bankAccountNumber: row.bankAccountNumber,
     bankAccountHolder: row.bankAccountHolder,
+    jalan: row.jalan ?? "",
     kota: row.kota ?? "",
     kecamatan: row.kecamatan ?? "",
+    provinsi: row.provinsi ?? "",
     kodePos: row.kodePos ?? "",
     biteshipAreaId: row.biteshipAreaId ?? null,
     biteshipAreaName: row.biteshipAreaName ?? null,
@@ -641,7 +648,7 @@ function CustomerFields({
   // handled with its own per-warehouse inputs below.
   // Only the plain text fields. The ongkir map is per-warehouse, and the two
   // area fields are set by choosing from a list rather than by typing.
-  function field(key: Exclude<keyof DraftCustomer, "ongkir" | "biteshipAreaId" | "biteshipAreaName">) {
+  function field(key: Exclude<keyof DraftCustomer, "ongkir" | "biteshipAreaId" | "biteshipAreaName" | "dataDiri">) {
     return {
       value: draft[key],
       onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
@@ -677,16 +684,6 @@ function CustomerFields({
           {...field("whatsapp")}
           placeholder="08xx-xxxx-xxxx"
           className={modalInputCls}
-        />
-      </label>
-
-      <label className="flex flex-col gap-1">
-        <span className="text-xs font-medium text-muted">Alamat / Data Diri</span>
-        <textarea
-          {...field("dataDiri")}
-          placeholder="Full name, address, phone…"
-          rows={4}
-          className={`${modalInputCls} resize-none`}
         />
       </label>
 
@@ -769,6 +766,37 @@ function CustomerFields({
 }
 
 /**
+ * The four fields an area already contains.
+ *
+ * "Limo, Depok, Jawa Barat. 16512" IS the kecamatan, the kota, the provinsi and
+ * the kode pos, so asking somebody to type them again after choosing it would
+ * be asking twice for one answer.
+ *
+ * Empty fields only. The shipping price is looked up in `jne_rates` by the
+ * district's NAME, and Biteship spells those differently on purpose -- their
+ * "Limo, Depok" against the table's "LIMO, KOTA DEPOK", "Cimeunyan" against our
+ * "CIMENYAN". Overwriting a district that already prices would break the price
+ * to fix the spelling. So a filled field is left exactly as it is, and only the
+ * blanks are answered.
+ */
+function fillFromArea(areaName: string, current: DraftCustomer): Partial<DraftCustomer> {
+  // "Kecamatan, Kota, Provinsi. 12345" — the postal code is on the end, after a
+  // full stop that only Biteship uses.
+  const postal = areaName.match(/\b(\d{5})\b\s*$/)?.[1] ?? ""
+  const [kecamatan = "", kota = "", provinsi = ""] = areaName
+    .replace(/\.?\s*\d{5}\s*$/, "")
+    .split(",")
+    .map((p) => p.trim().replace(/\.$/, ""))
+
+  const out: Partial<DraftCustomer> = {}
+  if (!current.kecamatan.trim() && kecamatan) out.kecamatan = kecamatan
+  if (!current.kota.trim() && kota) out.kota = kota
+  if (!current.provinsi.trim() && provinsi) out.provinsi = provinsi
+  if (!current.kodePos.trim() && postal) out.kodePos = postal
+  return out
+}
+
+/**
  * Where she lives, and what the courier makes of it.
  *
  * The dashboard has never had these fields. Her address lived in one free-text
@@ -832,6 +860,15 @@ function AddressFields({ draft, setDraft, warehouses, saving }: {
     }
   }
 
+  const parts = {
+    name: draft.name, whatsapp: draft.whatsapp, jalan: draft.jalan,
+    kecamatan: draft.kecamatan, kota: draft.kota,
+    provinsi: draft.provinsi, kodePos: draft.kodePos,
+    areaName: draft.biteshipAreaName ?? "",
+  }
+  const composed = canCompose(parts)
+  const label = composed ? composeLabel(parts) : draft.dataDiri
+
   // Only the warehouses whose rate would actually move, and only where the
   // table has one: 0 means "no rate for this district", which is not free
   // shipping and must never be written as though it were.
@@ -853,6 +890,21 @@ function AddressFields({ draft, setDraft, warehouses, saving }: {
     <div className="flex flex-col gap-2 pt-2 border-t border-cream-border">
       <span className="text-xs font-semibold text-muted">Address</span>
 
+      {/* The street, kept as typed. Three lines is one address here --
+          "Memora House / Cluster Milestone F09 / Jl. Bambu Apus" -- and the
+          label prints them the way they are written. */}
+      <label className="flex flex-col gap-1">
+        <span className="text-xs font-medium text-muted">Jalan</span>
+        <textarea
+          value={draft.jalan}
+          onChange={(e) => setDraft((d) => ({ ...d, jalan: e.target.value }))}
+          disabled={saving}
+          rows={2}
+          placeholder="Jl. Mawar No. 1, Blok C"
+          className={`${modalInputCls} resize-none`}
+        />
+      </label>
+
       <div className="grid grid-cols-2 gap-3">
         <label className="flex flex-col gap-1">
           <span className="text-xs font-medium text-muted">Kota / Kabupaten</span>
@@ -861,6 +913,29 @@ function AddressFields({ draft, setDraft, warehouses, saving }: {
             onChange={(e) => setDraft((d) => ({ ...d, kota: e.target.value }))}
             disabled={saving}
             placeholder="KOTA BANDUNG"
+            className={modalInputCls}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-muted">Provinsi</span>
+          <input
+            value={draft.provinsi}
+            onChange={(e) => setDraft((d) => ({ ...d, provinsi: e.target.value }))}
+            disabled={saving}
+            placeholder="Jawa Barat"
+            className={modalInputCls}
+          />
+        </label>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-muted">Kecamatan</span>
+          <input
+            value={draft.kecamatan}
+            onChange={(e) => setDraft((d) => ({ ...d, kecamatan: e.target.value }))}
+            disabled={saving}
+            placeholder="COBLONG"
             className={modalInputCls}
           />
         </label>
@@ -876,17 +951,6 @@ function AddressFields({ draft, setDraft, warehouses, saving }: {
           />
         </label>
       </div>
-
-      <label className="flex flex-col gap-1">
-        <span className="text-xs font-medium text-muted">Kecamatan</span>
-        <input
-          value={draft.kecamatan}
-          onChange={(e) => setDraft((d) => ({ ...d, kecamatan: e.target.value }))}
-          disabled={saving}
-          placeholder="COBLONG"
-          className={modalInputCls}
-        />
-      </label>
 
       {/* The courier's own name for the place. Stored so a parcel is booked
           against the area she actually lives in rather than a district-wide
@@ -940,7 +1004,7 @@ function AddressFields({ draft, setDraft, warehouses, saving }: {
                     key={a.id}
                     type="button"
                     onClick={() => {
-                      setDraft((d) => ({ ...d, biteshipAreaId: a.id, biteshipAreaName: a.name }))
+                      setDraft((d) => ({ ...d, biteshipAreaId: a.id, biteshipAreaName: a.name, ...fillFromArea(a.name, d) }))
                       setAreas(null)
                       setQuery("")
                     }}
@@ -999,6 +1063,26 @@ function AddressFields({ draft, setDraft, warehouses, saving }: {
           </div>
         )}
       </div>
+
+      {/* What the parcel will actually say.
+          The label prints one column and that column is now made from the
+          fields above, so this is not a preview of the label -- it IS the
+          label, shown where it can be checked before it is printed.
+
+          A row whose street nobody has filled in keeps the text it prints
+          today: composing without a street would put her district on the
+          parcel and lose the house. */}
+      <div className="flex flex-col gap-1">
+        <span className="text-xs font-medium text-muted">What the label will say</span>
+        <div className="rounded-lg border border-dashed border-cream-border bg-cream px-3 py-2 text-xs text-muted-strong whitespace-pre-line leading-relaxed">
+          {label || <span className="text-faint">Nothing yet — fill in the address above.</span>}
+        </div>
+        {!composed && label && (
+          <span className="text-[11px] text-faint">
+            Kept as typed. Fill in Jalan and it will be made from the fields instead.
+          </span>
+        )}
+      </div>
     </div>
   )
 }
@@ -1019,8 +1103,10 @@ function buildCustomerPayload(draft: DraftCustomer, warehouses: WarehouseRow[]) 
     bankName: draft.bankName.trim(),
     bankAccountNumber: draft.bankAccountNumber.trim(),
     bankAccountHolder: draft.bankAccountHolder.trim(),
+    jalan: draft.jalan.trim(),
     kota: draft.kota.trim(),
     kecamatan: draft.kecamatan.trim(),
+    provinsi: draft.provinsi.trim(),
     kodePos: draft.kodePos.trim(),
     biteshipAreaId: draft.biteshipAreaId,
     biteshipAreaName: draft.biteshipAreaName,
