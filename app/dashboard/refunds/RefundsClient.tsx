@@ -655,12 +655,19 @@ export default function RefundsClient() {
         const creditable = !r.members
           && r.status !== "refunded" && r.status !== "cancelled"
           && r.refundAmount > 0
-        const all = r.members || tab !== DEPOSITS
-          ? [...(r.members ?? [r]), ...openSiblings(r)].filter(isOpenRefund)
+        // Only where the row does not already lead there. A group row opens
+        // the group sheet when clicked -- members and their siblings from other
+        // tabs included -- so a button beside it is a second control with one
+        // destination.
+        //
+        // On a single row it is the only way in: her other refunds are on other
+        // tabs, and nothing on this one would tell you they exist.
+        const all = !r.members && tab !== DEPOSITS
+          ? [r, ...openSiblings(r)].filter(isOpenRefund)
           : []
         // Nothing in Deposits is going to a bank: she chose to keep it, and it
         // moves by being applied to an order.
-        const payable = tab !== DEPOSITS && all.length >= 2
+        const payable = all.length >= 2
         if (!creditable && !payable) return null
         // Deleting one. It was only in that refund's own sheet, which a
         // grouped refund no longer opens -- and a refund raised in error is
@@ -697,9 +704,10 @@ export default function RefundsClient() {
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); setGroupSheet(all) }}
+                title={`She has ${all.length - 1} more open on ${r.event}`}
                 className="px-2 py-1 rounded-lg border border-brand text-brand text-xs font-semibold hover:bg-brand-light whitespace-nowrap"
               >
-                Pay all ({all.length})
+                Open all ({all.length})
               </button>
             )}
           </div>
