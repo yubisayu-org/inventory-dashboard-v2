@@ -1,9 +1,10 @@
 import { test, before, after } from "node:test"
 import assert from "node:assert/strict"
+import { readFileSync } from "node:fs"
 import sql from "../db-pool"
 import {
   cancelOrderLines,
-  recordCustomerCancellation,
+  cancelOrderUnits,
   recordMissingArrival,
   recordBrokenArrival,
   recordWrongProduct,
@@ -36,6 +37,8 @@ before(async () => {
 })
 
 after(async () => {
+  await sql`DELETE FROM announcements WHERE customer_id IN (
+    SELECT id FROM customers WHERE instagram_id LIKE ${`${TAG}%`})`
   await sql`DELETE FROM excess_purchase WHERE event LIKE ${`${TAG}%`}`
   await sql`DELETE FROM orders WHERE event LIKE ${`${TAG}%`}`
   await sql`DELETE FROM events WHERE name LIKE ${`${TAG}%`}`
@@ -71,12 +74,8 @@ test("a fully shipped line cannot be cancelled away at all", async () => {
 })
 
 test("every arrival-list route that cancels is covered", async () => {
-  // All four reach cancelOrderLines, so the guard has to hold through each of
+  // All three reach cancelOrderLines, so the guard has to hold through each of
   // them rather than only where it is called directly.
-  const cancelled = await line(1)
-  await recordCustomerCancellation({ event: EV, productName: "x", cancelOrderIds: [cancelled] })
-  assert.equal((await read(cancelled)).unit, 1, "customer_cancelled")
-
   const missing = await line(1)
   await recordMissingArrival({ cancelOrderIds: [missing] })
   assert.equal((await read(missing)).unit, 1, "missing")
@@ -92,12 +91,41 @@ test("every arrival-list route that cancels is covered", async () => {
   assert.equal((await read(wrong)).unit, 1, "wrong_product")
 })
 
-test("the stock returned to Inventory still excludes what shipped", async () => {
-  // recordCustomerCancellation always knew this -- the point is the guard did
-  // not change what it banks.
+test("the Arrival List no longer offers a cancellation of its own", () => {
+  // There was a second door: an Arrival List tab that cancelled for a customer
+  // who had changed her mind. It banked the stock but could not adjust the
+  // quantity, told her nothing, and its bulk twin skipped the refund
+  // altogether. One door now, on the invoice line, where all five rules live.
+  const route = readFileSync("app/api/sheets/arrival-list/route.ts", "utf8")
+  assert.equal(route.includes("customer_cancelled"), false, "route action gone")
+  const client = readFileSync("app/dashboard/arrival-list/ArrivalListClient.tsx", "utf8")
+  assert.equal(client.includes('"cancelled"'), false, "the tab that reached it is gone")
+})
+
+test("the stock returned to Inventory excludes what shipped", async () => {
+  // Cancelling puts the units still on the shelf back into Inventory -- the
+  // ones already in a parcel are with her, and cannot be sold twice.
   const id = await line(1)
-  const { excessUnits } = await recordCustomerCancellation({
-    event: EV, productName: "banked", cancelOrderIds: [id],
+  const { excessUnits } = await cancelOrderUnits({
+    orderId: id, qty: 2, event: EV, productName: "banked",
   })
   assert.equal(excessUnits, 2, "3 bought, 1 gone, 2 back on the shelf")
+})
+
+test("cancelOrderUnits will not take a line below what shipped", async () => {
+  // The banked stock already excluded shipped units, but `unit` had no floor:
+  // cancelling all 3 of a line with 1 shipped left unit 0 against unit_ship 1,
+  // so she was billed nothing for goods she was holding. The screen hides the
+  // control there; the route did not.
+  const id = await line(1)          // 3 ordered, 3 bought, 1 shipped
+  await assert.rejects(
+    () => cancelOrderUnits({ orderId: id, qty: 3, event: EV, productName: "x" }),
+    /already shipped/,
+  )
+
+  // Cancelling down to the shipped unit is still allowed — that is the truth.
+  await cancelOrderUnits({ orderId: id, qty: 2, event: EV, productName: "x" })
+  const r = await read(id)
+  assert.equal(r.unit, 1)
+  assert.equal(r.unit_ship, 1)
 })

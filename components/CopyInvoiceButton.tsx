@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react"
 import type { InvoiceResult } from "@/lib/db"
 import { copyToClipboard } from "@/lib/clipboard"
+import { useMessageDelivery } from "@/hooks/useMessageDelivery"
+import { waLink } from "@/lib/message-delivery"
 
 type InvoiceCopyState =
   | { status: "idle" }
@@ -11,12 +13,21 @@ type InvoiceCopyState =
   | { status: "error"; message: string }
 
 /**
- * Per-row "copy invoice message" button. Fetches the customer's invoices, picks
- * the one for the given event (a customer can have several events, so we match
- * on eventId rather than taking the latest), and copies its message.
+ * Per-row invoice message button. Fetches the customer's invoices, picks the
+ * one for the given event (a customer can have several events, so we match on
+ * eventId rather than taking the latest), and either copies its message or
+ * opens her WhatsApp with it -- whichever Settings → Communication says this
+ * shop does with an invoice. Same message either way; only where it lands
+ * differs.
+ *
+ * The message is not known until the fetch returns, so WhatsApp is opened after
+ * it rather than being a link. A pop-up blocker can stop that; the fallback is
+ * to copy instead and say so, which is better than a press that does nothing.
  */
 export default function CopyInvoiceButton({ customer, event }: { customer: string; event: string }) {
   const [state, setState] = useState<InvoiceCopyState>({ status: "idle" })
+  const delivery = useMessageDelivery()
+  const toWhatsApp = delivery.invoice === "whatsapp"
 
   useEffect(() => {
     if (state.status === "idle") return
@@ -33,6 +44,10 @@ export default function CopyInvoiceButton({ customer, event }: { customer: strin
       if (!res.ok) throw new Error((data as { error?: string }).error ?? "Failed")
       const invoiceEvent = data.events.find((e) => e.eventId === event)
       if (!invoiceEvent) throw new Error(`No invoice found for ${customer} · ${event}`)
+      if (toWhatsApp) {
+        const win = window.open(waLink(data.customerDetail?.whatsapp, invoiceEvent.message), "_blank", "noopener")
+        if (win) { setState({ status: "idle" }); return }
+      }
       await copyToClipboard(invoiceEvent.message)
       setState({ status: "copied" })
     } catch (err) {
@@ -46,7 +61,8 @@ export default function CopyInvoiceButton({ customer, event }: { customer: strin
     <button
       onClick={handleClick}
       disabled={status === "loading"}
-      title={status === "error" ? state.message : "Copy invoice message"}
+      title={status === "error" ? state.message
+        : toWhatsApp ? "Send the invoice on WhatsApp" : "Copy invoice message"}
       className={`inline-flex items-center justify-center p-1 transition-colors rounded disabled:opacity-50 ${
         status === "copied" ? "text-green-600"
         : status === "error" ? "text-red-500"

@@ -200,7 +200,26 @@ export async function reconcileParcelPlan(
   const extra = ongkirPerKg * (sentKg + plannedKg - invoicedKg)
 
   const partner = merged ? events.filter((e) => e !== event).sort()[0] ?? null : null
-  const wanted = planAdjustment(extra, partner)
+
+  /**
+   * The group saves once, so the group is credited once.
+   *
+   * `extra` above is the whole pairing's arithmetic -- every trip's weight
+   * summed before rounding, against every trip's invoiced kilos. That figure
+   * belongs to the pairing, not to whichever trip this call happens to name.
+   * Writing it per event, and calling this once per event, credited a two-trip
+   * merge twice: hanapanjaitan saved one kilo, Rp 14.000, and was given
+   * Rp 28.000 across LSCN202606 and LSFT202607. A three-way merge would have
+   * paid it three times.
+   *
+   * One trip of the group holds it, chosen by name so every call agrees on
+   * which without needing to know who called first. The others reach
+   * `wanted = null` here and delete their own row on the next reconcile --
+   * unless a parcel has already gone, where the floor below refuses to take
+   * money back for a journey that happened.
+   */
+  const holder = merged ? [...events].sort()[0] : event
+  const wanted = merged && event !== holder ? null : planAdjustment(extra, partner)
 
   // A parcel that has gone was paid for at the price agreed then, and this
   // prices what is true now. The kilos are counted above, so the figure holds

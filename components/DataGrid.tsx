@@ -219,9 +219,22 @@ interface DataGridProps<T> {
   paginationVariant?: "full" | "simple"
   /** Optional expanded-row renderer. Adds a chevron column; clicking it
    *  toggles a full-width detail row below. Desktop table only — mobile
-   *  cards ignore it (pair with onRowClick/renderMobileCard for mobile). */
-  renderExpandedRow?: (row: T) => React.ReactNode
+   *  cards ignore it (pair with onRowClick/renderMobileCard for mobile).
+   *
+   *  `layout` carries the header's own measured column widths and ids, so a
+   *  detail row can line its cells up with the columns above it instead of
+   *  laying itself out and landing wherever. The table is `table-layout:
+   *  fixed`, which spreads leftover width across every column, so the sizes
+   *  declared on the column defs are not what any of them ends up. */
+  renderExpandedRow?: (row: T, layout: ExpandedLayout) => React.ReactNode
+  /** Which rows actually have something to show. A caret on a row whose detail
+   *  renders nothing opens an empty band and looks broken. Default: all. */
+  canExpandRow?: (row: T) => boolean
 }
+
+/** Measured widths of the header cells, in render order, with their column ids
+ *  (the chevron and selection columns come first, as "__caret" / "__select"). */
+export type ExpandedLayout = { widths: number[]; columnIds: string[] }
 
 // ─── Component ─────────────────────────────────────────────────────────────
 
@@ -260,6 +273,7 @@ export default function DataGrid<T>({
   renderMobileCard,
   paginationVariant = "simple",
   renderExpandedRow,
+  canExpandRow,
 }: DataGridProps<T>) {
   // Client-side state (ignored when serverSide is provided)
   // How far in the first real column starts, in pixels.
@@ -283,6 +297,24 @@ export default function DataGrid<T>({
     ro.observe(el)
     return () => ro.disconnect()
   }, [renderExpandedRow])
+
+  // Every header cell, measured. A detail row that wants to line up with the
+  // columns above it cannot work them out from the column defs: the table is
+  // laid out fixed, which hands the leftover width around, so the only honest
+  // source is what the header actually came out as.
+  const headRef = useRef<HTMLTableRowElement>(null)
+  const [colWidths, setColWidths] = useState<number[]>([])
+  useLayoutEffect(() => {
+    const el = headRef.current
+    if (!el) return
+    const measure = () => setColWidths(
+      Array.from(el.children).map((th) => (th as HTMLElement).getBoundingClientRect().width),
+    )
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [renderExpandedRow, columns])
 
   const [sorting, setSorting] = useState<SortingState>(initialSorting ?? [])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
@@ -444,7 +476,7 @@ export default function DataGrid<T>({
           <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
             <thead>
               {table.getHeaderGroups().map((hg) => (
-                <tr key={hg.id} className={`text-left text-xs text-muted border-b border-cream-border bg-surface-muted/80 ${boldUppercaseHeader ? "uppercase" : ""}`}>
+                <tr key={hg.id} ref={headRef} className={`text-left text-xs text-muted border-b border-cream-border bg-surface-muted/80 ${boldUppercaseHeader ? "uppercase" : ""}`}>
                   {renderExpandedRow && <th ref={caretRef} className="pl-3 pr-0 py-3 w-8" />}
                   {enableRowSelection && (
                     <th className="pl-4 pr-2 py-3 w-10">
@@ -490,7 +522,8 @@ export default function DataGrid<T>({
                 </tr>
               ) : (
                 table.getRowModel().rows.map((row) => {
-                  const isExpanded = Boolean(renderExpandedRow && expandedRows[row.id])
+                  const expandable = Boolean(renderExpandedRow && (canExpandRow?.(row.original) ?? true))
+                  const isExpanded = expandable && Boolean(expandedRows[row.id])
                   return (
                   <Fragment key={row.id}>
                   <tr
@@ -499,7 +532,7 @@ export default function DataGrid<T>({
                   >
                     {renderExpandedRow && (
                       <td className="pl-3 pr-0 py-3">
-                        <button
+                        {expandable && <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); setExpandedRows((prev) => ({ ...prev, [row.id]: !prev[row.id] })) }}
                           aria-label={isExpanded ? "Collapse row" : "Expand row"}
@@ -509,7 +542,7 @@ export default function DataGrid<T>({
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform ${isExpanded ? "rotate-90" : ""}`}>
                             <path d="m9 18 6-6-6-6" />
                           </svg>
-                        </button>
+                        </button>}
                       </td>
                     )}
                     {enableRowSelection && (
@@ -539,7 +572,14 @@ export default function DataGrid<T>({
                         className="p-0"
                         style={{ "--dg-indent": `${caretWidth}px` } as React.CSSProperties}
                       >
-                        {renderExpandedRow(row.original)}
+                        {renderExpandedRow(row.original, {
+                          widths: colWidths,
+                          columnIds: [
+                            "__caret",
+                            ...(enableRowSelection ? ["__select"] : []),
+                            ...table.getVisibleLeafColumns().map((c) => c.id),
+                          ],
+                        })}
                       </td>
                     </tr>
                   )}

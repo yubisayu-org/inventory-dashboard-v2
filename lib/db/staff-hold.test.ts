@@ -1,8 +1,8 @@
 import { test, before, after } from "node:test"
 import assert from "node:assert/strict"
 import sql from "../db-pool"
-import { setShippingMode, clearHoldMode, setMergeGroup, getShippingPrefs } from "./shipping-prefs"
-import { releasePackingList, reapplyHoldsForArrival } from "./fulfillment"
+import { setShippingMode, releaseHold, setMergeGroup, getShippingPrefs } from "./shipping-prefs"
+import { reapplyHoldsForArrival } from "./fulfillment"
 
 const TAG = `staffhold${process.hrtime.bigint()}`
 const EV = `${TAG}_EV`
@@ -78,9 +78,9 @@ test("releasing a hold survives the next arrival", async () => {
   await setShippingMode(custId, EV2, "hold", sql, "customer")
   assert.equal(await toShip(id), 0)
 
-  // The shop releases it: units freed, and the request forgotten with them.
-  await releasePackingList({ customer: WHO, event: EV2 })
-  await clearHoldMode(custId, EV2)
+  // The shop releases it: units freed, and the request forgotten with them,
+  // in one call that cannot do only half.
+  await releaseHold(custId, WHO, EV2)
   assert.equal(await toShip(id), 2, "released")
   assert.equal(await modeOf(EV2), "wait", "and nothing is left on file asking for it back")
 
@@ -97,7 +97,7 @@ test("clearing a hold leaves a pairing alone", async () => {
   const before = (await getShippingPrefs(custId)).find((p) => p.event === EV)
   assert.ok(before?.mergeKey, "paired")
 
-  await clearHoldMode(custId, EV)
+  await releaseHold(custId, WHO, EV)
 
   const after = (await getShippingPrefs(custId)).find((p) => p.event === EV)
   assert.equal(after?.mergeKey, before?.mergeKey, "still paired")

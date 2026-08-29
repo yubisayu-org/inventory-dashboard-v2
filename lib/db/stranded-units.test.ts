@@ -71,7 +71,24 @@ test("the surplus goes to the shelf, and the order stops claiming it", async () 
     SELECT items, unit_buy::int AS unit_buy, receipt FROM excess_purchase WHERE event = ${EVENT}`) as unknown as
     { items: string; unit_buy: number; receipt: string }[]
   assert.equal(x.unit_buy, 1)
-  assert.equal(x.receipt, "R-1", "the shelf row traces back to the purchase")
+  // Parcel number first, so the allocation screens still read it, then whose
+  // order it came off and which answer shelved it.
+  assert.equal(x.receipt, `R-1 · ${WHO} · staff correction`)
+})
+
+test("a customer's own change of mind says so on the shelf row", async () => {
+  // Same units, different story. Six weeks later the row is all anyone has.
+  const [o] = await sql<{ id: number }[]>`
+    INSERT INTO orders (event, customer, product_id, unit_price, unit, unit_buy)
+    SELECT ${EVENT}, ${WHO}, product_id, 100000, 1, 2 FROM orders WHERE id = ${orderId}
+    RETURNING id`
+  await bankStrandedBoughtUnits(o.id, sql, "customer_changed_mind")
+  const [x] = (await sql`
+    SELECT receipt, reason FROM excess_purchase
+     WHERE event = ${EVENT} ORDER BY id DESC LIMIT 1`) as unknown as
+    { receipt: string; reason: string }[]
+  assert.equal(x.reason, "customer_cancelled")
+  assert.equal(x.receipt, `${WHO} · customer ask`, "no parcel number, so it opens with the handle")
 })
 
 test("running it again banks nothing", async () => {
@@ -79,6 +96,7 @@ test("running it again banks nothing", async () => {
   const { banked } = await bankStrandedBoughtUnits(orderId)
   assert.equal(banked, 0)
   const [{ n }] = (await sql`
-    SELECT count(*)::int AS n FROM excess_purchase WHERE event = ${EVENT}`) as unknown as { n: number }[]
+    SELECT count(*)::int AS n FROM excess_purchase
+     WHERE event = ${EVENT} AND receipt LIKE ${"R-1%"}`) as unknown as { n: number }[]
   assert.equal(n, 1)
 })

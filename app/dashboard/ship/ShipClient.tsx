@@ -1,6 +1,9 @@
 "use client"
 
 import { RequestedAddressModal } from "./RequestedAddressModal"
+import { MessageButton } from "@/components/MessageButton"
+import { useMessageDelivery } from "@/hooks/useMessageDelivery"
+import { waLink } from "@/lib/message-delivery"
 import { displayIg } from "@/lib/format"
 import TableSkeleton from "@/components/TableSkeleton"
 import SelectionActionBar from "@/components/SelectionActionBar"
@@ -477,18 +480,6 @@ export default function ShipClient() {
   )
 }
 
-// Build a WhatsApp deep link with the message prefilled. Indonesian numbers are
-// normalized to international (0… → 62…, 8… → 62…). Without a number we fall
-// back to the send picker so the user can choose a chat. (Same helper as the
-// invoice message modal.)
-function waLink(whatsapp: string | null | undefined, message: string): string {
-  const text = encodeURIComponent(message)
-  let num = (whatsapp ?? "").replace(/\D/g, "")
-  if (num.startsWith("0")) num = "62" + num.slice(1)
-  else if (num.startsWith("8")) num = "62" + num
-  return num ? `https://wa.me/${num}?text=${text}` : `https://api.whatsapp.com/send?text=${text}`
-}
-
 // One "Product x N x Rp price" line per shipped row — matches the format the
 // copy-confirm button and downstream messaging use.
 function confirmMessageItems(c: ShipCustomer): string[] {
@@ -503,10 +494,19 @@ type CopyState =
   | { status: "copied" }
   | { status: "error"; message: string }
 
+/**
+ * The row's own confirmation button.
+ *
+ * Builds the message on press rather than up front, so it cannot be a link --
+ * WhatsApp is opened after the message exists. Same setting as the sheet's
+ * button: this is the same message, and two controls for one message obeying
+ * different rules is exactly the confusion the setting removes.
+ */
 function CopyConfirmMessageButton({ customer: c, className }: { customer: ShipCustomer; className?: string }) {
   const [state, setState] = useState<CopyState>({ status: "idle" })
   const templates = useMessageTemplates()
   const businessProfile = useBusinessProfile()
+  const toWhatsApp = useMessageDelivery().shipment === "whatsapp"
 
   useEffect(() => {
     if (state.status === "idle") return
@@ -527,6 +527,12 @@ function CopyConfirmMessageButton({ customer: c, className }: { customer: ShipCu
         dataDiri: c.customerDetail?.dataDiri ?? "",
         items: confirmMessageItems(c),
       }, templates?.shipment, businessProfile?.publicSiteUrl)
+      if (toWhatsApp) {
+        const win = window.open(waLink(c.customerDetail?.whatsapp, message), "_blank", "noopener")
+        // A blocked pop-up must not swallow the press: copying is the fallback,
+        // and the tick says what happened.
+        if (win) { setState({ status: "idle" }); return }
+      }
       await copyToClipboard(message)
       setState({ status: "copied" })
     } catch (err) {
@@ -546,7 +552,8 @@ function CopyConfirmMessageButton({ customer: c, className }: { customer: ShipCu
       type="button"
       onClick={handleClick}
       disabled={status === "loading" || !templates || !businessProfile}
-      title={status === "error" ? state.message : "Copy pesan konfirmasi pengiriman"}
+      title={status === "error" ? state.message
+        : toWhatsApp ? "Kirim pesan konfirmasi lewat WhatsApp" : "Copy pesan konfirmasi pengiriman"}
       className={`${className ?? "p-1 rounded"} inline-flex items-center justify-center transition-colors disabled:opacity-50 ${
         status === "copied" ? "text-green-600"
         : status === "error" ? "text-red-500"
@@ -1092,30 +1099,19 @@ function ShipConfirmModal({
   const requestedAddress = c.requestedAddress
   const [useTempAddress, setUseTempAddress] = useState(Boolean(requestedAddress))
   const [tempAddress, setTempAddress] = useState(requestedAddress ?? profileAddress)
-  const [msgCopied, setMsgCopied] = useState(false)
   const [pairedWarning, setPairedWarning] = useState<string[] | null>(null)
   const toShipRows = c.orders.filter((o) => o.toShip > 0)
   const templates = useMessageTemplates()
   const businessProfile = useBusinessProfile()
 
   // Confirmation message uses whichever address is active (temp override or the
-  // customer's profile), so Copy / WhatsApp always match what's shown above.
+  // customer's profile), so what is sent matches what is shown above.
   const confirmMessage = buildShipmentConfirmMessage({
     event: c.event,
     customer: c.customer,
     dataDiri: useTempAddress ? tempAddress : profileAddress,
     items: confirmMessageItems(c),
   }, templates?.shipment, businessProfile?.publicSiteUrl)
-
-  async function handleCopyMessage() {
-    try {
-      await copyToClipboard(confirmMessage)
-      setMsgCopied(true)
-      setTimeout(() => setMsgCopied(false), 1500)
-    } catch {
-      /* clipboard blocked — no-op, WhatsApp button still works */
-    }
-  }
 
   const dismissRef = useRef<() => void>(onClose)
   dismissRef.current = result ? onSuccess : onClose
@@ -1333,33 +1329,17 @@ function ShipConfirmModal({
             </>
           ) : (
             <>
-              <button
-                type="button"
-                onClick={handleCopyMessage}
+              {/* One button, doing whichever thing Settings → Communication says
+                  this shop does with a shipment confirmation. */}
+              <MessageButton
+                kind="shipment"
+                message={confirmMessage}
+                whatsapp={c.customerDetail?.whatsapp}
                 disabled={!templates || !businessProfile}
-                title="Salin pesan konfirmasi pengiriman"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-xs font-medium hover:border-brand hover:text-brand transition-colors disabled:opacity-50"
-              >
-                {msgCopied ? (
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
-                ) : (
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
-                )}
-                {msgCopied ? "Tersalin" : "Salin pesan"}
-              </button>
-              <a
-                href={waLink(c.customerDetail?.whatsapp, confirmMessage)}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => { if (!templates || !businessProfile) e.preventDefault() }}
-                title="Kirim pesan via WhatsApp"
-                className={`mr-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-green-500 text-green-700 text-xs font-medium hover:bg-green-500 hover:text-white transition-colors ${templates && businessProfile ? "" : "opacity-50 pointer-events-none"}`}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                  <path d="M17.5 14.4c-.3-.15-1.77-.87-2.04-.97-.27-.1-.47-.15-.67.15-.2.3-.77.97-.94 1.17-.17.2-.35.22-.65.07-.3-.15-1.26-.46-2.4-1.48-.89-.79-1.49-1.77-1.66-2.07-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.08-.15-.67-1.62-.92-2.22-.24-.58-.49-.5-.67-.51-.17-.01-.37-.01-.57-.01-.2 0-.52.07-.8.37-.27.3-1.05 1.02-1.05 2.5s1.07 2.9 1.22 3.1c.15.2 2.1 3.2 5.08 4.49.71.31 1.26.49 1.7.62.71.23 1.36.2 1.87.12.57-.08 1.77-.72 2.02-1.42.25-.7.25-1.3.17-1.42-.07-.12-.27-.2-.57-.35zM12.05 21.5h-.01a9.4 9.4 0 0 1-4.8-1.32l-.34-.2-3.57.94.95-3.48-.22-.36a9.42 9.42 0 0 1-1.44-5.02c0-5.2 4.24-9.44 9.45-9.44 2.52 0 4.89.98 6.67 2.77a9.38 9.38 0 0 1 2.76 6.68c0 5.2-4.24 9.44-9.45 9.44zm8.04-17.49A11.36 11.36 0 0 0 12.05.5C5.8.5.72 5.58.72 11.83c0 2 .52 3.95 1.51 5.67L.63 23.5l6.14-1.61a11.33 11.33 0 0 0 5.28 1.34h.01c6.25 0 11.33-5.08 11.33-11.33 0-3.03-1.18-5.87-3.32-8.01z" />
-                </svg>
-                WhatsApp
-              </a>
+                className="mr-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-xs font-medium hover:border-brand hover:text-brand transition-colors disabled:opacity-50"
+                copyLabel="Salin pesan"
+                sendLabel="Kirim WhatsApp"
+              />
               <button
                 type="button"
                 onClick={onClose}

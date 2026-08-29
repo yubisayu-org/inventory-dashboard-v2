@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { updateRefund, executeRefund, deleteRefund, applyRefundAsCredit, undoRefundCredit, withActor } from "@/lib/db"
+import { updateRefund, executeRefund, executeRefundGroup, keepRefundOnAccount, deleteRefund, applyRefundAsCredit, undoRefundCredit, withActor } from "@/lib/db"
 import type { RefundStatus } from "@/lib/db"
 
 const VALID_STATUSES: RefundStatus[] = [
@@ -35,6 +35,39 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.json({ success: true })
     }
 
+    // Several refunds, one transfer. The id in the URL is the row that was
+    // open; refundIds is what to pay, and it must include that row.
+    if (action === "execute_group") {
+      const { transferReference, account, refundIds, bankName, bankAccountNumber, bankAccountHolder } = data
+      if (!transferReference?.trim()) {
+        return NextResponse.json({ error: "transferReference is required" }, { status: 400 })
+      }
+      if (!account?.trim()) {
+        return NextResponse.json({ error: "account is required" }, { status: 400 })
+      }
+      const ids = Array.isArray(refundIds)
+        ? refundIds.filter((n: unknown) => Number.isInteger(n)) as number[]
+        : []
+      // The open row leads: its bank details are the ones that were checked.
+      const ordered = [refundId, ...ids.filter((n) => n !== refundId)]
+      const bank = typeof bankAccountNumber === "string" && bankAccountNumber.trim()
+        ? {
+            name: typeof bankName === "string" ? bankName.trim() : "",
+            accountNumber: bankAccountNumber.trim(),
+            accountHolder: typeof bankAccountHolder === "string" ? bankAccountHolder.trim() : "",
+          }
+        : undefined
+      const result = await executeRefundGroup(
+        ordered, transferReference.trim(), account.trim(), session.user.email, bank)
+      return NextResponse.json({ success: true, ...result })
+    }
+
+    // She said keep it. No target order, no money moved -- a deposit.
+    if (action === "keep_on_account") {
+      await keepRefundOnAccount(refundId, session.user.email)
+      return NextResponse.json({ success: true })
+    }
+
     if (action === "apply_credit") {
       const { targetEvent, amount } = data
       if (!targetEvent?.trim()) {
@@ -59,12 +92,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
     await withActor(session.user.email, (tx) => updateRefund(refundId, {
       status: data.status,
-      refundAmount: data.refundAmount !== undefined ? Number(data.refundAmount) : undefined,
       bankName: data.bankName,
       bankAccountNumber: data.bankAccountNumber,
       bankAccountHolder: data.bankAccountHolder,
       transferReference: data.transferReference,
-      note: data.note,
     }, tx))
     return NextResponse.json({ success: true })
   } catch (err) {

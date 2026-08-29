@@ -862,6 +862,16 @@ export async function updateTrackingNumber(
   trackingNumber: string,
   db: DBExecutor = sql,
 ): Promise<void> {
+  // What it says now, and whose parcel it is. Read first: whether this is news
+  // depends on what was there before, and after the UPDATE that is gone.
+  const rows = (await db`
+    SELECT customer, event, COALESCE(tracking_number, '') AS tracking_number
+      FROM shipments
+     WHERE id = ${rowNumber}
+        OR merge_group = (SELECT merge_group FROM shipments WHERE id = ${rowNumber} AND merge_group IS NOT NULL)
+     ORDER BY id
+  `) as unknown as { customer: string; event: string; tracking_number: string }[]
+
   // For a merged ("Ship together") shipment the resi is shared, so setting it on
   // any row applies to every row in the same merge_group; otherwise just the row.
   await db`
@@ -870,6 +880,34 @@ export async function updateTrackingNumber(
     WHERE id = ${rowNumber}
        OR merge_group = (SELECT merge_group FROM shipments WHERE id = ${rowNumber} AND merge_group IS NOT NULL)
   `
+
+  /**
+   * Tell her, because the parcel notice deliberately could not.
+   *
+   * Shipping says the box has gone and that a number will appear later --
+   * whether a resi is ready to be seen is the shop's call. This is that call
+   * being made, so it is the moment she can be told.
+   *
+   * Once per box, not once per row: a merged shipment is several rows and one
+   * physical parcel, and three notices about one box is the shop talking to
+   * itself. Silent when nothing changed (a save that retyped the same number)
+   * and when the field is cleared -- an emptied resi is a correction in
+   * progress, not news she can act on.
+   */
+  const before = rows[0]
+  if (!before) return
+  const next = trackingNumber.trim()
+  const previous = before.tracking_number.trim()
+  if (!next || next === previous) return
+
+  const events = [...new Set(rows.map((r) => r.event))]
+  const where = events.length > 1 ? events.join(" and ") : events[0]
+  await notifyCustomer(before.customer, {
+    title: previous ? `Tracking number for ${where} changed` : `Tracking number for ${where}`,
+    body: previous
+      ? `Your parcel is now travelling under ${next}. The number we gave you before, ${previous}, no longer applies.`
+      : `Your parcel from ${where} is travelling under ${next}. You can follow it from your order.`,
+  }, db)
 }
 
 /**
@@ -1230,7 +1268,6 @@ export interface NotReceivedResult {
  * cancellation; leftover (pending − qty) units stay pending. Refunds
  * auto-materialize as invoices drop. Inventory logging depends on mode:
  *   - broken / missing → log qty units flagged that reason (unassignable)
- *   - cancelled        → log the reclaimed in-hand units as customer_cancelled (assignable)
  *   - wrong            → log qty units of the received SKU as wrong_product (assignable)
  * Manages its own transaction + actor, mirroring markProductArrived.
  */
@@ -1240,7 +1277,7 @@ export async function recordNotReceived(
     productId: number
     productName: string
     qty: number
-    mode: "wrong" | "broken" | "missing" | "cancelled"
+    mode: "wrong" | "broken" | "missing"
     receivedItem?: string
     /**
      * Only consider these orders.
@@ -1289,7 +1326,6 @@ export async function recordNotReceived(
   if (excess > 0) throw new Error(`Only ${data.qty - excess} units are pending; cannot record ${data.qty}`)
 
   let cancelledUnits = 0
-  let inHandUnits = 0
   const reductions: MarkReduction[] = []
   // What one of these units is worth, and weighs. The refund is measured from
   // her invoice, but bounded by this reduction's own cost -- marks do not run
@@ -1307,7 +1343,6 @@ export async function recordNotReceived(
     await tx`SELECT set_config('app.actor', ${actor ?? ""}, true)`
     for (const { item: o, allocated } of allocations) {
       cancelledUnits += allocated
-      inHandUnits += Math.min(allocated, Math.max(0, o.unitBuy - o.unitShip))
       reductions.push({ customer: o.customer, unitsRemoved: allocated, unitPrice: o.unitPrice, gramPerUnit })
       await reduceOrderRefundOnly({ orderId: o.id, qty: allocated }, tx)
     }
@@ -1316,13 +1351,6 @@ export async function recordNotReceived(
         [{ event: data.event, items: data.productName, unitBuy: data.qty, receipt: "", reason: data.mode }],
         tx,
       )
-    } else if (data.mode === "cancelled") {
-      if (inHandUnits > 0) {
-        await appendExcessPurchase(
-          [{ event: data.event, items: data.productName, unitBuy: inHandUnits, receipt: "", reason: "customer_cancelled" }],
-          tx,
-        )
-      }
     } else {
       await appendExcessPurchase(
         [{ event: data.event, items: data.receivedItem!, unitBuy: data.qty, receipt: "", reason: "wrong_product", expectedItem: data.productName }],
@@ -1338,7 +1366,6 @@ export async function recordNotReceived(
     missing: "shipping_loss",
     broken: "damaged",
     wrong: "wrong_item",
-    cancelled: null,
   }
   const reason = REASON_FOR[data.mode]
 
@@ -1357,7 +1384,7 @@ export async function recordNotReceived(
         data.event, reason, data.productName, reductions, totalsBefore, actor, data.receivedItem)
     : []
 
-  const excessUnits = data.mode === "cancelled" ? inHandUnits : data.qty
+  const excessUnits = data.qty
   return { cancelledUnits, excessUnits, refunds }
 }
 

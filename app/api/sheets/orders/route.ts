@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole, requireOwner } from "@/lib/api"
-import { appendOrders, cancelOrderUnits, withActor } from "@/lib/db"
+import { appendOrders, cancelOrderLineForCustomer, withActor } from "@/lib/db"
 import { invalidate } from "@/lib/route-cache"
 
 export async function POST(req: NextRequest) {
@@ -72,13 +72,11 @@ export async function PATCH(req: NextRequest) {
         { status: 400 },
       )
     }
-    const result = await withActor(session.user.email, (tx) =>
-      cancelOrderUnits({
-        event, productName, orderId, qty,
-        receipt: typeof receipt === "string" ? receipt : undefined,
-        stamp: typeof stamp === "string" ? stamp : undefined,
-      }, tx),
-    )
+    const result = await cancelOrderLineForCustomer({
+      event, productName, orderId, qty,
+      receipt: typeof receipt === "string" ? receipt : undefined,
+      stamp: typeof stamp === "string" ? stamp : undefined,
+    }, session.user.email)
     if (typeof stamp === "string" && stamp.trim()) invalidate("hit-and-run")
     return NextResponse.json({ success: true, ...result })
   } catch (err) {

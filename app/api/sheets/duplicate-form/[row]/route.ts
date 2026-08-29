@@ -206,8 +206,9 @@ export async function PUT(req: NextRequest, { params }: Params) {
     if (err instanceof AlreadyShipped) {
       return NextResponse.json(
         {
-          error: `${err.shipped} unit sudah dikirim, jadi pesanannya tidak bisa dikurangi. `
-            + `Barangnya ada di customer — kalau uangnya perlu kembali, itu refund.`,
+          error: `${err.shipped} unit${err.shipped === 1 ? " has" : "s have"} already shipped, `
+            + `so this order cannot be reduced. She has the goods — if the money `
+            + `needs to go back, that is a refund.`,
         },
         { status: 409 },
       )

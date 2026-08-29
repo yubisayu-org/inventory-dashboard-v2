@@ -31,6 +31,9 @@ import type { CountryRow } from "@/lib/db"
 import KursTiersSection from "./KursTiersSection"
 import TierFeeBracketsSection from "./TierFeeBracketsSection"
 import WhatsAppSection from "./WhatsAppSection"
+import {
+  MESSAGE_KINDS, MESSAGE_KIND_LABELS, MESSAGE_KIND_HINTS, DELIVERY_LABELS, type DeliveryMode,
+} from "@/lib/message-delivery"
 import DispatchRoutesSection from "./DispatchRoutesSection"
 import WarehouseOriginSection from "./WarehouseOriginSection"
 import MoneyInput from "@/components/MoneyInput"
@@ -322,6 +325,47 @@ function BusinessProfileSection() {
               className={fieldInputCls}
             />
           </label>
+        </div>
+      )}
+
+      {/* Communication — which channel each kind of message goes out on.
+          Inside the profile card because it is the same row in the same table,
+          saved by the same button: a second Save beside it is a second thing to
+          forget to press. */}
+      {profile && (
+        <div className="flex flex-col gap-2 pt-3 border-t border-cream-border">
+          <div>
+            <h3 className="text-xs font-semibold text-foreground">Communication</h3>
+            <p className="text-[10px] text-faint">
+              Each message screen shows one button, and this is what it does. Copy puts the text on
+              the clipboard for a DM; WhatsApp opens her chat with it already written.{" "}
+              {/* The Save is at the top of this card, far enough up to be missed
+                  from down here -- and a dropdown that looks committed the
+                  moment it is changed is the kind of setting that quietly does
+                  not apply. */}
+              <span className="text-muted">Press Save at the top of this card to keep the change.</span>
+            </p>
+          </div>
+          <div className="grid md:grid-cols-3 gap-3">
+            {MESSAGE_KINDS.map((kind) => (
+              <label key={kind} className="flex flex-col gap-1">
+                <span className="text-xs text-muted">{MESSAGE_KIND_LABELS[kind]}</span>
+                <span className="text-[10px] text-faint">{MESSAGE_KIND_HINTS[kind]}</span>
+                <select
+                  value={profile.messageDelivery[kind]}
+                  onChange={(e) => setProfile((prev) => prev && ({
+                    ...prev,
+                    messageDelivery: { ...prev.messageDelivery, [kind]: e.target.value as DeliveryMode },
+                  }))}
+                  className={fieldInputCls}
+                >
+                  {(["copy", "whatsapp"] as DeliveryMode[]).map((mode) => (
+                    <option key={mode} value={mode}>{DELIVERY_LABELS[mode]}</option>
+                  ))}
+                </select>
+              </label>
+            ))}
+          </div>
         </div>
       )}
     </div>

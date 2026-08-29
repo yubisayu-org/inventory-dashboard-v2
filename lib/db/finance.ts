@@ -515,7 +515,49 @@ function liveAmount(r: Record<string, unknown>): number {
   const stored = (r.refund_amount as number) ?? 0
   if (!isLiveAmount({ reason: r.reason as string, status: r.status as string })) return stored
   const balance = r.live_balance as number | null | undefined
-  return balance == null ? stored : Math.max(0, balance)
+  if (balance == null) return stored
+  // Her surplus, less what the open goods refunds on this trip already claim of
+  // it. Both read the same balance: a mark drops the invoice, which is what
+  // creates the surplus the goods refund is paid out of -- so an overpayment
+  // filed before that mark would count the same money a second time and the
+  // two together would promise more than she is overpaid.
+  const claimed = (r.other_claims as number | null | undefined) ?? 0
+  return Math.max(0, balance - claimed)
+}
+
+/**
+ * What the open goods refunds on this (event, customer) still claim.
+ *
+ * Only the ones still waiting to be sent. A refund already transferred has a
+ * payment row lowering her balance, so subtracting it again would hide money
+ * she is genuinely owed; a credit already applied moved its money the same way.
+ * Overpayment refunds are excluded because they ARE this figure -- there is
+ * only ever one active per pair, and it cannot claim against itself.
+ */
+const OTHER_CLAIMS_SQL = `
+  SELECT COALESCE(SUM(r2.refund_amount), 0)::int
+    FROM refunds r2
+   WHERE r2.event = $EVENT
+     AND lower(replace(r2.customer, '@', '')) = $CUSTKEY
+     AND r2.id <> $SELF
+     AND r2.reason <> 'overpayment'
+     AND r2.status IN ('pending', 'awaiting_bank_info', 'ready_to_refund')`
+
+/** The same figure, for a single refund, inside whatever transaction is open. */
+async function otherOpenClaims(
+  db: DBExecutor,
+  refund: { id: number; event: string; customer: string },
+): Promise<number> {
+  const [row] = (await db`
+    SELECT COALESCE(SUM(r2.refund_amount), 0)::int AS claimed
+      FROM refunds r2
+     WHERE r2.event = ${refund.event}
+       AND lower(replace(r2.customer, '@', '')) = lower(replace(${refund.customer}, '@', ''))
+       AND r2.id <> ${refund.id}
+       AND r2.reason <> 'overpayment'
+       AND r2.status IN ('pending', 'awaiting_bank_info', 'ready_to_refund')
+  `) as unknown as { claimed: number }[]
+  return row?.claimed ?? 0
 }
 
 function mapRefundRow(r: Record<string, unknown>): RefundRow {
@@ -564,7 +606,11 @@ export async function getRefunds(filters?: { event?: string; status?: string; cu
             EXISTS (SELECT 1 FROM payments p WHERE p.refund_id = r.id AND p.kind = 'credit') AS has_applied_credit,
             (SELECT COALESCE(SUM(p.amount), 0)::int FROM payments p
              WHERE p.refund_id = r.id AND p.kind = 'credit' AND p.amount > 0) AS applied_credit_amount,
-            lb.balance AS live_balance
+            lb.balance AS live_balance,
+            (${OTHER_CLAIMS_SQL
+                .replace("$EVENT", "r.event")
+                .replace("$CUSTKEY", "lower(replace(r.customer, '@', ''))")
+                .replace("$SELF", "r.id")}) AS other_claims
      FROM refunds r
      LEFT JOIN live_balances lb
             ON lb.event = r.event
@@ -607,25 +653,60 @@ export async function updateRefund(
   id: number,
   data: Partial<{
     status: RefundStatus
-    refundAmount: number
+    /**
+     * Refused, always.
+     *
+     * Every amount in the system is either computed or typed once, at the
+     * moment the refund is made: a mark works out what the reduction cost her,
+     * an overpayment reads her balance, and a refund raised by hand takes the
+     * figure the composer was given -- which is where refunding less than the
+     * price belongs, because that is a decision about what is owed, not a
+     * correction of it.
+     *
+     * Editing afterwards made a fourth kind of amount, one with no reasoning
+     * attached and nothing to check it against. A wrong refund is cancelled or
+     * deleted and made again, which leaves a record of the change instead of
+     * quietly replacing the number.
+     */
+    refundAmount: never
     bankName: string
     bankAccountNumber: string
     bankAccountHolder: string
     transferReference: string
-    note: string
+    /**
+     * Refused, like the amount, and for the same reason.
+     *
+     * A note is written when the refund is made: a mark writes the goods and
+     * what each cost, the composer writes what was picked. Nothing a person
+     * would want to add afterwards survives examination -- "she asked to keep
+     * it" is the deposit status, "she never sent her account" is the Bank Info
+     * step, "she kept it at half price" is a refund made again at the right
+     * figure, and "send it to her sister instead" is not something this shop
+     * does. Each of those is a state the row already carries, or a decision
+     * that belongs at creation.
+     *
+     * Left editable, the note becomes the place those facts are recorded
+     * INSTEAD of the field that means them, and then two things disagree.
+     */
+    note: never
   }>,
   db: DBExecutor = sql,
 ): Promise<void> {
+  if (data.refundAmount !== undefined) {
+    throw new Error("A refund's amount is set when it is made. Cancel it and make a new one.")
+  }
+  if (data.note !== undefined) {
+    throw new Error("A refund's note is written when it is made. Cancel it and make a new one.")
+  }
+
   const fields: string[] = []
   const params: (string | number)[] = []
 
   if (data.status !== undefined) { params.push(data.status); fields.push(`status = $${params.length}`) }
-  if (data.refundAmount !== undefined) { params.push(data.refundAmount); fields.push(`refund_amount = $${params.length}`) }
   if (data.bankName !== undefined) { params.push(data.bankName); fields.push(`bank_name = $${params.length}`) }
   if (data.bankAccountNumber !== undefined) { params.push(data.bankAccountNumber); fields.push(`bank_account_number = $${params.length}`) }
   if (data.bankAccountHolder !== undefined) { params.push(data.bankAccountHolder); fields.push(`bank_account_holder = $${params.length}`) }
   if (data.transferReference !== undefined) { params.push(data.transferReference); fields.push(`transfer_reference = $${params.length}`) }
-  if (data.note !== undefined) { params.push(data.note); fields.push(`note = $${params.length}`) }
 
   if (fields.length === 0) return
   params.push(id)
@@ -658,7 +739,10 @@ export async function executeRefund(
          WHERE event = ${refund.event as string}
            AND customer = lower(replace(${refund.customer as string}, '@', ''))
       `) as unknown as { balance: number }[]
-      amount = Math.max(0, live?.balance ?? 0)
+      const claimed = await otherOpenClaims(tx, {
+        id: refundId, event: refund.event as string, customer: refund.customer as string,
+      })
+      amount = Math.max(0, (live?.balance ?? 0) - claimed)
     }
     if (!(amount > 0)) {
       throw new Error("There is nothing owed on this refund any more")
@@ -692,6 +776,190 @@ export async function executeRefund(
           payment_id         = ${payment.id as number},
           updated_at         = NOW()
       WHERE id = ${refundId}
+    `
+  })
+}
+
+/**
+ * Pay several of one customer's refunds on one trip with a single transfer.
+ *
+ * A trip can owe her three separate things -- an item that never arrived, one
+ * that arrived broken, and a transfer she typed wrong -- and each is its own
+ * row because each is its own explanation, and because a report that cannot
+ * tell damaged from unavailable teaches nobody anything. None of that is a
+ * reason to open the banking app three times.
+ *
+ * So the rows stay split and the payout is joined: one reference, one account,
+ * one press. Each refund still writes its OWN payment row carrying its own
+ * refund_id and its own reason -- that link is what undo, the audit trail and
+ * every per-reason total are built on, and merging the payments would buy
+ * nothing and break all three. The bank sees one transfer because they share a
+ * reference.
+ *
+ * Refuses the lot rather than paying part of it: a group spanning two customers
+ * or two trips, or containing something already refunded, is a mistake about
+ * what is being paid, and finding out afterwards is worse than not starting.
+ *
+ * A refund whose live figure has fallen to nothing since the screen opened is
+ * skipped and named, not silently paid.
+ */
+export async function executeRefundGroup(
+  refundIds: number[],
+  transferReference: string,
+  account: string,
+  actor?: string | null,
+  /**
+   * Where the money went. Paying from the Pending tab means none of the rows
+   * has been through the bank-info step, so the details come from the screen
+   * instead -- prefilled from her customer record, and typed if she has none.
+   * Omitted, the row that was open supplies them, as the drawer's flow does.
+   */
+  bank?: { name: string; accountNumber: string; accountHolder: string },
+): Promise<{
+  paid: { id: number; amount: number }[]
+  skipped: { id: number; reason: string }[]
+  total: number
+}> {
+  if (refundIds.length === 0) throw new Error("Pick at least one refund to pay")
+
+  return sql.begin(async (tx) => {
+    await tx`SELECT set_config('app.actor', ${actor ?? ""}, true)`
+
+    const rows = (await tx`
+      SELECT * FROM refunds WHERE id = ANY(${refundIds}) ORDER BY id FOR UPDATE
+    `) as unknown as Record<string, unknown>[]
+    if (rows.length !== refundIds.length) throw new Error("One of those refunds no longer exists")
+
+    const event = rows[0].event as string
+    const who = normalizeCustomer(rows[0].customer as string)
+    for (const r of rows) {
+      if (r.event !== event || normalizeCustomer(r.customer as string) !== who) {
+        throw new Error("These refunds are not all for the same customer on the same trip")
+      }
+      if (r.status === "refunded") throw new Error("One of those refunds has already been sent")
+      if (r.status === "cancelled") throw new Error("One of those refunds was cancelled")
+    }
+
+    // One account is receiving the money, so one set of bank details describes
+    // the transfer. Taken from the row that was open -- the first id the caller
+    // passed -- because that is the one whose details were checked against her
+    // message. The rows come back ordered by id, which need not be that one.
+    const primary = rows.find((r) => r.id === refundIds[0]) ?? rows[0]
+    const bankName = bank ? bank.name : ((primary.bank_name as string) ?? "")
+    const bankAccountNumber = bank
+      ? bank.accountNumber
+      : ((primary.bank_account_number as string) ?? "")
+    const bankAccountHolder = bank
+      ? bank.accountHolder
+      : ((primary.bank_account_holder as string) ?? "")
+    // Never into a blank. The status walk exists because somebody had to ask
+    // her for this and she had to answer; paying from Pending skips both, which
+    // is right when her account is already on file and wrong when it is not.
+    if (!bankAccountNumber.trim()) {
+      throw new Error("She has no account number on file. Ask her for it before sending.")
+    }
+
+    const paid: { id: number; amount: number }[] = []
+    const skipped: { id: number; reason: string }[] = []
+
+    for (const r of rows) {
+      const id = r.id as number
+      let amount = r.refund_amount as number
+      if (isLiveAmount({ reason: r.reason as string, status: r.status as string })) {
+        const [live] = (await tx`
+          SELECT balance FROM live_balances
+           WHERE event = ${event} AND customer = ${who}
+        `) as unknown as { balance: number }[]
+        const claimed = await otherOpenClaims(tx, {
+          id, event, customer: r.customer as string,
+        })
+        amount = Math.max(0, (live?.balance ?? 0) - claimed)
+      }
+      if (!(amount > 0)) {
+        skipped.push({ id, reason: "Nothing is owed on it any more" })
+        continue
+      }
+
+      const [payment] = (await tx`
+        INSERT INTO payments (event, customer, amount, account, is_checked, remarks, kind, refund_id)
+        VALUES (${event}, ${r.customer as string}, ${-amount}, ${account}, true,
+                ${`Refund: ${r.reason as string}`}, 'refund', ${id})
+        RETURNING id
+      `) as unknown as { id: number }[]
+
+      await tx`
+        UPDATE refunds
+           SET status = 'refunded',
+               refund_amount = ${amount},
+               transfer_reference = ${transferReference},
+               bank_name = ${bankName},
+               bank_account_number = ${bankAccountNumber},
+               bank_account_holder = ${bankAccountHolder},
+               payment_id = ${payment.id},
+               updated_at = NOW()
+         WHERE id = ${id}
+      `
+      paid.push({ id, amount })
+    }
+
+    return { paid, skipped, total: paid.reduce((n, p) => n + p.amount, 0) }
+  })
+}
+
+/**
+ * She said keep it: park the refund on her account as a deposit.
+ *
+ * The same state her own choice on the catalogue produces -- status
+ * applied_to_next_order with the money still on the row and no payment written
+ * -- reachable from the dashboard, because she is as likely to say it in a DM
+ * as to press it. Without this the only honest thing to do was leave the refund
+ * Pending, which reads as "we owe her and have not paid yet" and keeps
+ * appearing on the Pending tab as work nobody is going to do.
+ *
+ * Deliberately names no target order: she may not have one yet, and which
+ * future order it lands on is the shop's decision when that order exists.
+ * applyRefundAsCredit is what actually moves it.
+ *
+ * The amount freezes here. A pending overpayment reads from her balance, and a
+ * balance moves; a deposit is a fixed sum on her account, and the moment she
+ * says "keep it" the money stops being a claim on that trip. Frozen at what is
+ * owed right now -- the live figure, less what her other open refunds claim --
+ * so the deposit banner offers exactly what she is owed rather than whatever
+ * the row happened to be written with.
+ */
+export async function keepRefundOnAccount(refundId: number, actor?: string | null): Promise<void> {
+  await sql.begin(async (tx) => {
+    await tx`SELECT set_config('app.actor', ${actor ?? ""}, true)`
+    const [refund] = await tx`SELECT * FROM refunds WHERE id = ${refundId} FOR UPDATE`
+    if (!refund) throw new Error("Refund not found")
+    if (refund.status === "refunded") throw new Error("This one has already been sent to her bank")
+    if (refund.status === "cancelled") throw new Error("This refund was cancelled")
+    if (refund.status === "applied_to_next_order") throw new Error("It is already on her account")
+
+    let amount = refund.refund_amount as number
+    if (isLiveAmount({ reason: refund.reason as string, status: refund.status as string })) {
+      const [live] = (await tx`
+        SELECT balance FROM live_balances
+         WHERE event = ${refund.event as string}
+           AND customer = lower(replace(${refund.customer as string}, '@', ''))
+      `) as unknown as { balance: number }[]
+      const claimed = await otherOpenClaims(tx, {
+        id: refundId, event: refund.event as string, customer: refund.customer as string,
+      })
+      amount = Math.max(0, (live?.balance ?? 0) - claimed)
+    }
+    if (!(amount > 0)) throw new Error("There is nothing owed on this refund to keep")
+
+    // Her bank details come off with it: they were collected to send money to,
+    // and money is no longer being sent. Her own choice on the catalogue clears
+    // them for the same reason.
+    await tx`
+      UPDATE refunds
+         SET status = 'applied_to_next_order',
+             refund_amount = ${amount},
+             bank_name = '', bank_account_number = '', bank_account_holder = '',
+             updated_at = NOW()
+       WHERE id = ${refundId}
     `
   })
 }
@@ -740,7 +1008,10 @@ export async function applyRefundAsCredit(
          WHERE event = ${refund.event as string}
            AND customer = lower(replace(${refund.customer as string}, '@', ''))
       `) as unknown as { balance: number }[]
-      remaining = Math.max(0, live?.balance ?? 0)
+      const claimed = await otherOpenClaims(tx, {
+        id: refundId, event: refund.event as string, customer: refund.customer as string,
+      })
+      remaining = Math.max(0, (live?.balance ?? 0) - claimed)
     }
     if (!(remaining > 0)) throw new Error("Nothing left to apply")
     if (amount > remaining) throw new Error(`Amount exceeds the overpayment (Rp ${remaining})`)

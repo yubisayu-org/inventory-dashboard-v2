@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { fmt } from "@/lib/format"
+import { AccountCreditIcon } from "@/components/AccountCreditIcon"
 import type { HeldDeposit } from "@/lib/db"
 
 /**
@@ -53,12 +54,12 @@ export function DepositBanner({
 
   const send = useCallback(async (refundId: number, amount: number) => {
     const res = await fetch(`/api/sheets/refunds/${refundId}`, {
-      method: "PATCH",
+      method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "apply_credit", targetEvent: event, amount }),
     })
     const data = await res.json().catch(() => ({}))
-    if (!res.ok) throw new Error(data.error ?? "Gagal memakai deposit")
+    if (!res.ok) throw new Error(data.error ?? "Could not apply the deposit")
   }, [event])
 
   const apply = useCallback(async (d: HeldDeposit) => {
@@ -71,7 +72,7 @@ export function DepositBanner({
       setNonce((n) => n + 1)
       onApplied()
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal memakai deposit")
+      setError(err instanceof Error ? err.message : "Could not apply the deposit")
     } finally {
       setBusy(null)
     }
@@ -104,7 +105,7 @@ export function DepositBanner({
     } catch (err) {
       // Whatever went through before the failure stands; the banner reloads to
       // show what is left rather than pretending none of it happened.
-      setError(err instanceof Error ? err.message : "Gagal memakai deposit")
+      setError(err instanceof Error ? err.message : "Could not apply the deposit")
       setNonce((n) => n + 1)
       onApplied()
     } finally {
@@ -123,14 +124,14 @@ export function DepositBanner({
           and the row's own would do the identical thing, differently worded. */}
       {deposits.length > 1 && (
         <div className="flex items-center gap-2.5 pb-2 border-b border-green-200">
-          <span className="text-green-700 text-sm leading-none">💰</span>
+          <span className="text-green-700 leading-none shrink-0"><AccountCreditIcon size={15} /></span>
           <div className="flex-1 min-w-0 text-xs">
             <div className="text-foreground">
-              Total deposit <b className="tabular-nums">Rp {fmt(total)}</b> dari{" "}
-              {deposits.length} refund
+              <b className="tabular-nums">Rp {fmt(total)}</b> on her account, from{" "}
+              {deposits.length} refunds
             </div>
             <div className="text-muted-strong mt-0.5">
-              Dipakai dari yang paling lama dulu, berhenti kalau tagihannya sudah tertutup.
+              Spent oldest first, stopping once this bill is covered.
             </div>
           </div>
           <button
@@ -139,7 +140,7 @@ export function DepositBanner({
             disabled={busy !== null}
             className="shrink-0 px-2.5 py-1 rounded-lg bg-green-700 text-white text-[11px] font-medium hover:bg-green-800 disabled:opacity-50"
           >
-            {busy === "all" ? "Memakai…" : `Pakai semua Rp ${fmt(usableTotal)}`}
+            {busy === "all" ? "Applying…" : `Use all Rp ${fmt(usableTotal)}`}
           </button>
         </div>
       )}
@@ -149,17 +150,17 @@ export function DepositBanner({
         const over = d.amount > outstanding
         return (
           <div key={d.refundId} className="flex items-start gap-2.5">
-            <span className="text-green-700 text-sm leading-none mt-0.5">💰</span>
+            <span className="text-green-700 leading-none shrink-0 mt-0.5"><AccountCreditIcon size={15} /></span>
             <div className="flex-1 min-w-0 text-xs">
               <div className="text-foreground">
-                Dia punya deposit <b className="tabular-nums">Rp {fmt(d.amount)}</b> dari{" "}
+                She has <b className="tabular-nums">Rp {fmt(d.amount)}</b> on her account from{" "}
                 <b>{d.fromEvent}</b>
               </div>
               <div className="text-muted-strong mt-0.5">
                 {over
-                  ? `Rp ${fmt(usable)} menutup sisa tagihan ini; Rp ${fmt(d.amount - usable)} tetap di akunnya.`
-                  : `Menutup Rp ${fmt(usable)} dari sisa tagihannya.`}
-                {d.since && <span className="text-faint"> · sejak {d.since}</span>}
+                  ? `Rp ${fmt(usable)} covers what is left of this bill; Rp ${fmt(d.amount - usable)} stays on her account.`
+                  : `Covers Rp ${fmt(usable)} of what she still owes.`}
+                {d.since && <span className="text-faint"> · since {d.since}</span>}
               </div>
             </div>
             <button
@@ -168,7 +169,7 @@ export function DepositBanner({
               disabled={busy !== null}
               className="shrink-0 px-2.5 py-1 rounded-lg bg-green-700 text-white text-[11px] font-medium hover:bg-green-800 disabled:opacity-50"
             >
-              {busy === d.refundId ? "Memakai…" : `Pakai Rp ${fmt(usable)}`}
+              {busy === d.refundId ? "Applying…" : `Use Rp ${fmt(usable)}`}
             </button>
           </div>
         )
