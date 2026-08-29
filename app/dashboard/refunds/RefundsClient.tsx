@@ -807,7 +807,15 @@ export default function RefundsClient() {
   const renderMobileCard = useCallback((r: GroupRow) => {
     // A deposit group spans trips, so no single one names it.
     const trips = r.members ? new Set(r.members.map((m) => m.event)).size : 1
-    const items = r.members ? [] : r.note.split("\n").map((l) => l.trim()).filter(Boolean)
+    // What the refund is actually about, its members' included: a group used
+    // to say "3 refunds", which is a count of rows and not a thing you can
+    // recognise. A refund with no goods on it falls back to its own reason,
+    // so the line is never blank.
+    const itemsOf = (m: RefundRow) => {
+      const own = m.note.split("\n").map((l) => l.trim()).filter(Boolean)
+      return own.length > 0 ? own : [reasonLabel(m.reason)]
+    }
+    const items = (r.members ?? [r]).flatMap(itemsOf)
     return (
       <div className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] active:bg-cream transition-colors">
         {/* Whose and which trip. */}
@@ -832,15 +840,28 @@ export default function RefundsClient() {
           )}
         </div>
         <div className="flex items-start justify-between gap-3 mt-2">
-          {/* The goods, set as the Order List sets them: full strength, and
-              wrapping rather than cut, because the item is the thing the card
-              is about. */}
-          <div className="text-sm text-foreground min-w-0">
-            {r.members
-              ? <span className="font-medium text-foreground">{r.members.length} refunds · one transfer</span>
-              : items.join(" · ")}
+          {/* The goods, set as the Order List sets them: full strength. One
+              refund wraps, because all of it fits and all of it matters. A
+              group is cut off at the line's end instead -- four items over
+              three refunds would push everything under it off the screen, and
+              the sheet is one tap away. */}
+          <div className={`text-sm text-foreground min-w-0 ${r.members ? "truncate" : ""}`} title={r.members ? items.join(" · ") : undefined}>
+            {r.members ? items[0] : items.join(" · ")}
           </div>
-          <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
+          <div className="shrink-0 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+            {/* A group shows one of its items and stops, so nothing else on
+                the card says it is more than one refund. The count does, in
+                the circle the open-all button already uses for it -- not a
+                button here, because the card itself opens them together. */}
+            {r.members && (
+              <span
+                title={`${r.members.length} refunds · one transfer`}
+                aria-label={`${r.members.length} refunds, settled by one transfer`}
+                className="shrink-0 inline-flex items-center justify-center w-[15px] h-[15px] rounded-full border-[1.25px] border-current text-[9px] font-bold tabular-nums leading-none text-faint"
+              >
+                {r.members.length}
+              </span>
+            )}
             {rowActions(r)}
           </div>
         </div>
