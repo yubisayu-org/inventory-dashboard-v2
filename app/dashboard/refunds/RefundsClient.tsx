@@ -688,17 +688,16 @@ export default function RefundsClient() {
                 onClick={(e) => { e.stopPropagation(); setGroupSheet(all) }}
                 title={`Open all ${all.length} together — she has ${all.length - 1} more open on ${r.event}`}
                 aria-label={`Open all ${all.length} refunds together`}
-                className="shrink-0 inline-flex items-center gap-0.5 p-1 rounded text-faint hover:text-brand transition-colors"
+                className="shrink-0 inline-flex items-center p-1 rounded text-faint hover:text-brand transition-colors"
               >
-                {/* A stack, not two squares: the old glyph was the copy icon
-                    with a different name, and on a row that already has a
-                    delete and a credit, "copy" is a thing you might believe. */}
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12.8 2.2a2 2 0 0 0-1.6 0L2.6 6.1a1 1 0 0 0 0 1.8l8.6 3.9a2 2 0 0 0 1.6 0l8.6-3.9a1 1 0 0 0 0-1.8Z" />
-                  <path d="m22 12.7-9.2 4.1a2 2 0 0 1-1.6 0L2 12.7" />
-                  <path d="m22 17.7-9.2 4.1a2 2 0 0 1-1.6 0L2 17.7" />
-                </svg>
-                <span className="text-[10px] font-bold tabular-nums">{all.length}</span>
+                {/* The count, and nothing else.
+                    Every glyph tried here said the wrong thing: two squares is
+                    the copy icon, a stack is a noun where this is an act, a
+                    merge is busy at 15px. The number IS the reason to press --
+                    "there are three of these" -- so it is the whole mark. */}
+                <span className="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full border border-current text-[10px] font-bold tabular-nums leading-none">
+                  {all.length}
+                </span>
               </button>
             )}
             {creditable && (
