@@ -741,7 +741,14 @@ export default function RefundsClient() {
       filterFn: "textContains",
       cell: ({ row, getValue }) => {
         const r = row.original as GroupRow
-        if (r.members) return <span className="font-medium text-foreground">{r.members.length} refunds</span>
+        // A group says what its refunds are for, not how many of them there
+        // are: "3 refunds" is a count of rows, and the column is headed Reason.
+        // Deduplicated -- three damaged items on one trip is one reason said
+        // three times, and the count is on the row's own button.
+        if (r.members) {
+          const labels = [...new Set(r.members.map((m) => reasonLabel(m.reason)))]
+          return <div className="truncate text-muted-strong" title={labels.join(", ")}>{labels.join(", ")}</div>
+        }
         // What it is actually about, on the row itself. A refund folded into a
         // group already showed its goods when opened; one standing on its own
         // showed only "Item Unavailable", which names a kind of problem and not
