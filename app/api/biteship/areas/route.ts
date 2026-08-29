@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
 import { searchAreas, BiteshipNotConfiguredError } from "@/lib/biteship"
+import { resolveRatesDistrict } from "@/lib/db"
 
 /**
  * Search Biteship's areas, for staff choosing one by hand.
@@ -26,9 +27,23 @@ export async function GET(req: NextRequest) {
     const areas = await searchAreas(q)
     // Eight is what fits on the screen without scrolling. More than that means
     // the query was too vague to choose from anyway.
-    return NextResponse.json({
-      areas: areas.slice(0, 8).map((a) => ({ id: a.id, name: a.name })),
-    })
+    const shown = areas.slice(0, 8)
+    // Each area carries the rates table's spelling of its district, so choosing
+    // one can fill the address with a district that PRICES. Biteship's own
+    // words never match jne_rates -- not once in 663 districts -- so filling
+    // them verbatim would leave every new address unpriceable.
+    const withDistrict = await Promise.all(shown.map(async (a) => {
+      const [kec = "", kota = ""] = a.name
+        .replace(/\.?\s*\d{5}\s*$/, "")
+        .split(",")
+        .map((p) => p.trim())
+      return {
+        id: a.id,
+        name: a.name,
+        district: await resolveRatesDistrict(kec, kota),
+      }
+    }))
+    return NextResponse.json({ areas: withDistrict })
   } catch (err) {
     if (err instanceof BiteshipNotConfiguredError) {
       return NextResponse.json({ error: "Biteship is not configured" }, { status: 503 })

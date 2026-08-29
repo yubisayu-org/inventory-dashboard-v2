@@ -434,6 +434,42 @@ export async function deleteCustomer(id: number, db: DBExecutor = sql): Promise<
  * different origin city, so the same destination resolves to a different price
  * per origin (see jne_rates.origin_code in migration 032).
  */
+/**
+ * The rates table's own spelling of a district, from the courier's.
+ *
+ * Biteship writes "Limo, Depok"; `jne_rates` has "LIMO, KOTA DEPOK". Neither is
+ * wrong -- but `lookupOngkir` matches on exact strings, and NONE of the 663
+ * districts our customers live in exist under Biteship's spelling. So filling
+ * the address fields with what the area says would fill them with a district
+ * that cannot be priced.
+ *
+ * Matching on letters alone gets past all of it: "JatiSampurna" finds
+ * "JATISAMPURNA", "Depok" finds "KOTA DEPOK". 550 of 570 districts resolve to
+ * exactly one row; the rest are left to a person, because a rate is a price
+ * somebody pays.
+ */
+export async function resolveRatesDistrict(
+  kecamatan: string,
+  kota: string,
+  db: DBExecutor = sql,
+): Promise<{ kecamatan: string; kota: string } | null> {
+  const letters = (v: string) => v.toUpperCase().replace(/[^A-Z0-9]/g, "")
+  const kec = letters(kecamatan)
+  const kab = letters(kota)
+  if (!kec || !kab) return null
+  const rows = (await db`
+    SELECT DISTINCT kecamatan_nama, kab_kota_nama
+      FROM jne_rates
+     WHERE regexp_replace(upper(kecamatan_nama), '[^A-Z0-9]', '', 'g') = ${kec}
+       AND regexp_replace(upper(kab_kota_nama), '[^A-Z0-9]', '', 'g') LIKE ${`%${kab}%`}
+     LIMIT 2
+  `) as unknown as { kecamatan_nama: string; kab_kota_nama: string }[]
+  // Exactly one, or it has not chosen: two districts of the same name in one
+  // province is a question, not a fill.
+  if (rows.length !== 1) return null
+  return { kecamatan: rows[0].kecamatan_nama.trim(), kota: rows[0].kab_kota_nama.trim() }
+}
+
 export async function lookupOngkir(
   originCode: string,
   kabKota: string,

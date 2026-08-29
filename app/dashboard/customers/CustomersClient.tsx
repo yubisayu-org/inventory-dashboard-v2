@@ -779,14 +779,28 @@ function CustomerFields({
  * to fix the spelling. So a filled field is left exactly as it is, and only the
  * blanks are answered.
  */
-function fillFromArea(areaName: string, current: DraftCustomer): Partial<DraftCustomer> {
+type AreaChoice = {
+  id: string
+  name: string
+  /** The rates table's spelling of the same district, where it has one. */
+  district: { kecamatan: string; kota: string } | null
+}
+
+function fillFromArea(area: AreaChoice, current: DraftCustomer): Partial<DraftCustomer> {
   // "Kecamatan, Kota, Provinsi. 12345" — the postal code is on the end, after a
   // full stop that only Biteship uses.
-  const postal = areaName.match(/\b(\d{5})\b\s*$/)?.[1] ?? ""
-  const [kecamatan = "", kota = "", provinsi = ""] = areaName
+  const postal = area.name.match(/\b(\d{5})\b\s*$/)?.[1] ?? ""
+  const [areaKec = "", areaKota = "", provinsi = ""] = area.name
     .replace(/\.?\s*\d{5}\s*$/, "")
     .split(",")
     .map((p) => p.trim().replace(/\.$/, ""))
+  // The rates table's spelling wins, because these two fields are what prices
+  // the parcel: "KOTA DEPOK" prices, "Depok" does not. Biteship's own words are
+  // the fallback for a district the table has never heard of — filled so the
+  // address is not left blank, and visibly wrong in the ongkir check if it
+  // cannot be priced.
+  const kecamatan = area.district?.kecamatan ?? areaKec
+  const kota = area.district?.kota ?? areaKota
 
   const out: Partial<DraftCustomer> = {}
   if (!current.kecamatan.trim() && kecamatan) out.kecamatan = kecamatan
@@ -816,7 +830,7 @@ function AddressFields({ draft, setDraft, warehouses, saving }: {
   saving: boolean
 }) {
   const [query, setQuery] = useState("")
-  const [areas, setAreas] = useState<{ id: string; name: string }[] | null>(null)
+  const [areas, setAreas] = useState<AreaChoice[] | null>(null)
   const [searching, setSearching] = useState(false)
   const [searchError, setSearchError] = useState("")
   // What the rates table would charge for this address, once it is asked for.
@@ -957,7 +971,7 @@ function AddressFields({ draft, setDraft, warehouses, saving }: {
                     key={a.id}
                     type="button"
                     onClick={() => {
-                      setDraft((d) => ({ ...d, biteshipAreaId: a.id, biteshipAreaName: a.name, ...fillFromArea(a.name, d) }))
+                      setDraft((d) => ({ ...d, biteshipAreaId: a.id, biteshipAreaName: a.name, ...fillFromArea(a, d) }))
                       setAreas(null)
                       setQuery("")
                     }}
