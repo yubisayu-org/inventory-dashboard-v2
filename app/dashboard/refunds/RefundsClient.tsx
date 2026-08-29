@@ -2224,14 +2224,11 @@ function RefundDetailModal({
   const [invoiceError, setInvoiceError] = useState<string | null>(null)
   // Collapsed-by-default sections keep the modal short enough to never scroll
   // in the common case — the old layout hid half the workflow below the fold.
-  // Open at Pending: the message is the whole of that step, and a preview
-  // folded away is a step that looks like it has nothing in it.
-  const [showMessage, setShowMessage] = useState(row.status === "pending")
   // Opens the full invoice as a drawer over this modal instead of navigating
   // away to /dashboard/invoice, so the refund list keeps its place.
   const [showFullInvoice, setShowFullInvoice] = useState(false)
   /** The message, on a step that is not about writing it. */
-  const [showMessagePanel, setShowMessagePanel] = useState(false)
+  const [showMessage, setShowMessage] = useState(false)
 
   // Apply-as-credit flow: the customer's other orders are the valid targets.
   const [customerEvents, setCustomerEvents] = useState<InvoiceEvent[]>([])
@@ -2480,35 +2477,22 @@ function RefundDetailModal({
       </button>
     ) : null
 
+  /**
+   * The group sheet's card, exactly.
+   *
+   * This one had its own eye-toggle and folded the text away behind it, so the
+   * same message looked like two different features depending on which sheet
+   * you opened. The group's shape is the better of the two: the text is simply
+   * there, on its own white ground so it reads as something quoted rather than
+   * something typed, and the header icon is what folds it -- one control, not
+   * two doing the same job on different sheets.
+   */
   const whatsAppCard = (
     <div className="flex flex-col gap-2 p-3 rounded-lg bg-surface-muted border border-cream-border">
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-xs font-medium text-muted-strong">Refund message</div>
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => setShowMessage((v) => !v)}
-            title={showMessage ? "Hide message" : "Preview message"}
-            className="inline-flex items-center justify-center w-6 h-6 rounded border border-cream-border text-muted hover:bg-surface-sunken transition-colors shrink-0"
-          >
-            {showMessage ? (
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-10-8-10-8a18.4 18.4 0 0 1 5.06-5.94M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 10 8 10 8a18.5 18.5 0 0 1-2.16 3.19" />
-                <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
-                <path d="M1 1l22 22" />
-              </svg>
-            ) : (
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M1 12s3-8 11-8 11 8 11 8-3 8-11 8-11-8-11-8z" />
-                <circle cx="12" cy="12" r="3" />
-              </svg>
-            )}
-          </button>
-        </div>
-      </div>
-      {showMessage ? (
-        <p className="text-xs text-muted-strong whitespace-pre-wrap leading-relaxed">{waMessageText}</p>
-      ) : null}
+      <div className="text-xs font-medium text-muted-strong">Refund message</div>
+      <pre className="text-[11px] text-muted-strong whitespace-pre-wrap font-sans bg-white rounded-lg border border-cream-border p-2 max-h-56 overflow-y-auto">
+        {waMessageText}
+      </pre>
     </div>
   )
 
@@ -2530,10 +2514,10 @@ function RefundDetailModal({
               {row.status !== "pending" && !isReadOnly && (
                 <button
                   type="button"
-                  onClick={() => setShowMessagePanel((v) => !v)}
-                  aria-label={showMessagePanel ? "Hide the message" : "Show the message"}
-                  title={showMessagePanel ? "Hide the message" : "Show the message"}
-                  className={`transition-colors shrink-0 ${showMessagePanel ? "text-brand" : "text-faint hover:text-brand"}`}
+                  onClick={() => setShowMessage((v) => !v)}
+                  aria-label={showMessage ? "Hide the message" : "Show the message"}
+                  title={showMessage ? "Hide the message" : "Show the message"}
+                  className={`transition-colors shrink-0 ${showMessage ? "text-brand" : "text-faint hover:text-brand"}`}
                 >
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
@@ -2631,7 +2615,7 @@ function RefundDetailModal({
               header's message button: Bank Info is for typing what she replied
               with, and showing her the message again there is the sheet
               answering a question nobody asked. */}
-          {(row.status === "pending" || showMessagePanel) && whatsAppCard}
+          {(row.status === "pending" || showMessage) && whatsAppCard}
 
           {row.status === "awaiting_bank_info" && (
             <div className="flex flex-col gap-3">
@@ -2823,7 +2807,7 @@ function RefundDetailModal({
             )}
             {/* Between leaving and recording it done, in the order the step is
                 worked: send it, then say you did. */}
-            {(row.status === "pending" || showMessagePanel) && (
+            {(row.status === "pending" || showMessage) && (
               <MessageButton
                 kind="refund"
                 message={waMessageText}
