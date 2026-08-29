@@ -905,53 +905,6 @@ function AddressFields({ draft, setDraft, warehouses, saving }: {
         />
       </label>
 
-      <div className="grid grid-cols-2 gap-3">
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-muted">Kota / Kabupaten</span>
-          <input
-            value={draft.kota}
-            onChange={(e) => setDraft((d) => ({ ...d, kota: e.target.value }))}
-            disabled={saving}
-            placeholder="KOTA BANDUNG"
-            className={modalInputCls}
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-muted">Provinsi</span>
-          <input
-            value={draft.provinsi}
-            onChange={(e) => setDraft((d) => ({ ...d, provinsi: e.target.value }))}
-            disabled={saving}
-            placeholder="Jawa Barat"
-            className={modalInputCls}
-          />
-        </label>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-muted">Kecamatan</span>
-          <input
-            value={draft.kecamatan}
-            onChange={(e) => setDraft((d) => ({ ...d, kecamatan: e.target.value }))}
-            disabled={saving}
-            placeholder="COBLONG"
-            className={modalInputCls}
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-muted">Kode pos</span>
-          <input
-            value={draft.kodePos}
-            onChange={(e) => setDraft((d) => ({ ...d, kodePos: e.target.value }))}
-            disabled={saving}
-            placeholder="40132"
-            inputMode="numeric"
-            className={modalInputCls}
-          />
-        </label>
-      </div>
-
       {/* The courier's own name for the place. Stored so a parcel is booked
           against the area she actually lives in rather than a district-wide
           guess. */}
@@ -1017,6 +970,57 @@ function AddressFields({ draft, setDraft, warehouses, saving }: {
             )}
           </>
         )}
+      </div>
+
+      {/* Filled from the area above, and only where they are empty --
+          see fillFromArea. Typed by hand for the customers no area can
+          be found for, which is what keeps them fields rather than a
+          read-out. */}
+      <div className="grid grid-cols-2 gap-3">
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-muted">Kota / Kabupaten</span>
+          <input
+            value={draft.kota}
+            onChange={(e) => setDraft((d) => ({ ...d, kota: e.target.value }))}
+            disabled={saving}
+            placeholder="KOTA BANDUNG"
+            className={modalInputCls}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-muted">Provinsi</span>
+          <input
+            value={draft.provinsi}
+            onChange={(e) => setDraft((d) => ({ ...d, provinsi: e.target.value }))}
+            disabled={saving}
+            placeholder="Jawa Barat"
+            className={modalInputCls}
+          />
+        </label>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-muted">Kecamatan</span>
+          <input
+            value={draft.kecamatan}
+            onChange={(e) => setDraft((d) => ({ ...d, kecamatan: e.target.value }))}
+            disabled={saving}
+            placeholder="COBLONG"
+            className={modalInputCls}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-muted">Kode pos</span>
+          <input
+            value={draft.kodePos}
+            onChange={(e) => setDraft((d) => ({ ...d, kodePos: e.target.value }))}
+            disabled={saving}
+            placeholder="40132"
+            inputMode="numeric"
+            className={modalInputCls}
+          />
+        </label>
       </div>
 
       {/* Re-pricing, offered rather than done. A rate can be a discount somebody
