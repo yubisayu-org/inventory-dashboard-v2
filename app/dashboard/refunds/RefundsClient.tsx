@@ -803,25 +803,28 @@ export default function RefundsClient() {
     const items = r.members ? [] : r.note.split("\n").map((l) => l.trim()).filter(Boolean)
     return (
       <div className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] active:bg-cream transition-colors">
-        <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-          <span className="font-semibold text-sm text-foreground uppercase">
-            {trips > 1 ? `${trips} trips` : r.event}
+        {/* Whose and which trip on the left, where it stands on the right --
+            the two things you sort a screen of these by, at the two ends of
+            the line they are quickest to find at. */}
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+            <span className="font-semibold text-sm text-foreground uppercase">
+              {trips > 1 ? `${trips} trips` : r.event}
+            </span>
+            {owesMark(r)}
+            <span className="text-xs text-faint uppercase truncate">{displayIg(r.customer)}</span>
+          </div>
+          <span className="shrink-0 flex flex-wrap justify-end gap-1">
+            <StatusChips row={r} />
           </span>
-          {owesMark(r)}
-          <span className="text-xs text-faint uppercase truncate">{displayIg(r.customer)}</span>
         </div>
         <div className="flex items-start justify-between gap-3 mt-2">
-          {/* Two lines at most: the goods are why you would open it, but a
-              refund covering four items must not push the amount off screen. */}
-          <div className="text-sm min-w-0 line-clamp-2">
-            {r.members ? (
-              <span className="font-medium text-foreground">{r.members.length} refunds · one transfer</span>
-            ) : (
-              <>
-                <span className="text-muted-strong">{reasonLabel(r.reason)}</span>
-                {items.length > 0 && <span className="text-faint"> · {items.join(" · ")}</span>}
-              </>
-            )}
+          {/* The goods. Two lines at most: they are why you would open it, but
+              a refund covering four items must not push the amount off screen. */}
+          <div className="text-sm text-muted min-w-0 line-clamp-2">
+            {r.members
+              ? <span className="font-medium text-foreground">{r.members.length} refunds · one transfer</span>
+              : items.join(" · ")}
           </div>
           <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
             {rowActions(r)}
@@ -847,8 +850,10 @@ export default function RefundsClient() {
             ))}
           </div>
         )}
+        {/* Why, and how much -- the pair you read together when deciding
+            whether the figure is right. */}
         <div className="flex items-center justify-between gap-2 mt-2.5 pt-2.5 border-t border-cream-border">
-          <StatusChips row={r} />
+          <span className="text-sm text-muted-strong truncate">{reasonLabel(r.reason)}</span>
           <span className="shrink-0 text-sm font-semibold text-foreground tabular-nums whitespace-nowrap">
             {formatRp(displayAmount(r))}
           </span>
