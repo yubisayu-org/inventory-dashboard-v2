@@ -550,13 +550,14 @@ export default function RefundsClient() {
             {displayIg(r.customer)}
             {/* Owed here, behind there. A marker rather than a figure: the
                 amount belongs to another trip, and printing it beside this
-                row's own amount invites reading the wrong one. Purple is the
-                credit colour it leads to. */}
+                row's own amount invites reading the wrong one. Drawn like the
+                marks and controls around it -- a row of differently coloured
+                glyphs reads as a traffic light rather than a set of marks. */}
             {owes.length > 0 && (
               <span
                 title={`Owes elsewhere — ${owes.map((t) => `${formatRp(t.amount)} on ${t.event}`).join(", ")}`}
                 aria-label={`Owes ${formatRp(owesTotal)} on ${owes.length === 1 ? owes[0].event : `${owes.length} other trips`}`}
-                className="text-purple-400 shrink-0"
+                className="text-faint shrink-0"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M8 3 4 7l4 4" /><path d="M4 7h16" /><path d="m16 21 4-4-4-4" /><path d="M20 17H4" />
@@ -675,37 +676,13 @@ export default function RefundsClient() {
         const deletable = !r.members && r.status !== "refunded"
         return (
           <div className="flex items-center justify-end gap-1">
-            {deletable && (
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); setDeleteFor(r) }}
-                title="Delete this refund"
-                aria-label="Delete this refund"
-                className="shrink-0 p-1 rounded text-faint hover:text-brand transition-colors"
-              >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-                  <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                </svg>
-              </button>
-            )}
-            {creditable && (
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); setCreditFor(r) }}
-                title="Apply as credit to another order"
-                aria-label="Apply as credit to another order"
-                className="shrink-0 p-1 rounded text-purple-400 hover:text-purple-700 transition-colors"
-              >
-                <AccountCreditIcon />
-              </button>
-            )}
+            {/* Widest first: taking the whole group somewhere, then moving this
+                one's money, then getting rid of it. Reads left to right from
+                the most to the least of the list it touches. */}
             {payable && (
-              // Drawn, like the two beside it. A bordered word among icons
-              // read as the important one on the row, and it is not -- it is
-              // the third of three things you can do to a refund from here.
-              // The count rides on it, because "how many" is the whole reason
-              // to press it.
+              // Drawn, like the two beside it. A bordered word among icons read
+              // as the important one on the row, and it is not. The count rides
+              // on it, because "how many" is the whole reason to press it.
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); setGroupSheet(all) }}
@@ -718,6 +695,31 @@ export default function RefundsClient() {
                   <path d="M16 8V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h2" />
                 </svg>
                 <span className="text-[10px] font-bold tabular-nums">{all.length}</span>
+              </button>
+            )}
+            {creditable && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setCreditFor(r) }}
+                title="Apply as credit to another order"
+                aria-label="Apply as credit to another order"
+                className="shrink-0 p-1 rounded text-faint hover:text-brand transition-colors"
+              >
+                <AccountCreditIcon />
+              </button>
+            )}
+            {deletable && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setDeleteFor(r) }}
+                title="Delete this refund"
+                aria-label="Delete this refund"
+                className="shrink-0 p-1 rounded text-faint hover:text-brand transition-colors"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                  <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                </svg>
               </button>
             )}
           </div>
@@ -913,6 +915,17 @@ export default function RefundsClient() {
                         if (id === "pay") return (
                           <td key={id} className="px-4 py-2 align-top">
                             <div className="flex items-center justify-end gap-1">
+                              {m.status !== "refunded" && m.status !== "cancelled" && m.refundAmount > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); setCreditFor(m) }}
+                                  title="Apply as credit to another order"
+                                  aria-label="Apply as credit to another order"
+                                  className="shrink-0 p-1 rounded text-faint hover:text-brand transition-colors"
+                                >
+                                  <AccountCreditIcon />
+                                </button>
+                              )}
                               {m.status !== "refunded" && (
                                 <button
                                   type="button"
@@ -925,17 +938,6 @@ export default function RefundsClient() {
                                     <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
                                     <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
                                   </svg>
-                                </button>
-                              )}
-                              {m.status !== "refunded" && m.status !== "cancelled" && m.refundAmount > 0 && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); setCreditFor(m) }}
-                                  title="Apply as credit to another order"
-                                  aria-label="Apply as credit to another order"
-                                  className="shrink-0 p-1 rounded text-purple-400 hover:text-purple-700 transition-colors"
-                                >
-                                  <AccountCreditIcon />
                                 </button>
                               )}
                             </div>

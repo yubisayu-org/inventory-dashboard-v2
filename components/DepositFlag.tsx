@@ -19,7 +19,12 @@ export function DepositFlag({ deposits }: { deposits: HeldDeposit[] | undefined 
     <span
       title={`Deposit belum dipakai:\n${detail}`}
       aria-label={`Deposit Rp ${fmt(total)}`}
-      className="shrink-0 text-green-700 leading-none cursor-help inline-flex"
+      // The colour every other row mark uses. Green said "good news"; a
+      // deposit is neither good nor bad, it is money of hers the shop is
+      // holding -- and it sat beside the hit-and-run flag and the owes-elsewhere
+      // arrow in three different colours, which made the row look like a
+      // traffic light rather than a set of marks.
+      className="shrink-0 text-faint leading-none cursor-help inline-flex"
     >
       <AccountCreditIcon size={14} />
     </span>
