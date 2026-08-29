@@ -348,6 +348,9 @@ export default function RefundsClient() {
   const [invoiceFor, setInvoiceFor] = useState<{ customer: string; event: string } | null>(null)
   /** The one refund about to be moved onto another of her orders. */
   const [creditFor, setCreditFor] = useState<RefundRow | null>(null)
+  /** The one about to be deleted, held until it is confirmed. */
+  const [deleteFor, setDeleteFor] = useState<RefundRow | null>(null)
+  const [deleting, setDeleting] = useState(false)
   const [eventFilter, setEventFilter] = useState("")
   // Owned here rather than by each grid: the tabs swap the data underneath and
   // remount the table, which would drop whatever was typed. Looking for one
@@ -659,8 +662,26 @@ export default function RefundsClient() {
         // moves by being applied to an order.
         const payable = tab !== DEPOSITS && all.length >= 2
         if (!creditable && !payable) return null
+        // Deleting one. It was only in that refund's own sheet, which a
+        // grouped refund no longer opens -- and a refund raised in error is
+        // exactly the kind that gets grouped with three correct ones.
+        const deletable = !r.members && r.status !== "refunded"
         return (
           <div className="flex items-center justify-end gap-1">
+            {deletable && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setDeleteFor(r) }}
+                title="Delete this refund"
+                aria-label="Delete this refund"
+                className="shrink-0 p-1 rounded text-faint hover:text-brand transition-colors"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                  <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                </svg>
+              </button>
+            )}
             {creditable && (
               <button
                 type="button"
@@ -949,6 +970,27 @@ export default function RefundsClient() {
         </div>
       )}
 
+      {deleteFor && (
+        <ConfirmDelete
+          row={deleteFor}
+          busy={deleting}
+          onCancel={() => setDeleteFor(null)}
+          onConfirm={async () => {
+            setDeleting(true)
+            try {
+              const res = await fetch(`/api/sheets/refunds/${deleteFor.id}`, { method: "DELETE" })
+              if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Failed")
+              handleDeleted(deleteFor.id)
+              setDeleteFor(null)
+            } catch (err) {
+              setError(err instanceof Error ? err.message : "Failed to delete")
+            } finally {
+              setDeleting(false)
+            }
+          }}
+        />
+      )}
+
       {creditFor && (
         <ApplyCreditModal
           row={creditFor}
@@ -998,6 +1040,62 @@ export default function RefundsClient() {
         />
       )}
     </>
+  )
+}
+
+// ─── Deleting one ────────────────────────────────────────────────────────────
+
+/**
+ * Named, so the wrong one cannot be deleted by muscle memory.
+ *
+ * A window rather than confirm(): the row it is about is small and the list is
+ * long, and "Delete this refund? This cannot be undone" told you nothing about
+ * WHICH. It says the customer, the trip, the reason and the figure, because
+ * those are what tell two rows apart.
+ */
+function ConfirmDelete({
+  row, busy, onCancel, onConfirm,
+}: {
+  row: RefundRow
+  busy: boolean
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4" onClick={onCancel}>
+      <div
+        className="bg-white rounded-xl border border-cream-border shadow-xl w-full max-w-sm flex flex-col gap-4 p-5"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
+        <div className="text-sm font-semibold text-foreground">Delete this refund?</div>
+        <div className="rounded-lg bg-surface-muted border border-cream-border p-3 text-xs flex flex-col gap-1">
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="font-medium text-foreground">{reasonLabel(row.reason)}</span>
+            <span className="tabular-nums font-semibold text-foreground">{formatRp(displayAmount(row))}</span>
+          </div>
+          <div className="text-faint">{displayIg(row.customer)} · {row.event}</div>
+          {row.note.split("\n").map((l) => l.trim()).filter(Boolean).map((l, i) => (
+            <div key={i} className="text-faint">{l}</div>
+          ))}
+        </div>
+        <p className="text-xs text-muted">
+          It disappears from her refunds and from yours. Nothing about the order changes — the goods
+          stay marked as they are, so a mark will raise it again if the reason is still true.
+        </p>
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onCancel} disabled={busy}
+            className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-muted-strong hover:bg-cream disabled:opacity-50">
+            Keep it
+          </button>
+          <button type="button" onClick={onConfirm} disabled={busy}
+            className="px-4 py-1.5 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-dark disabled:opacity-50">
+            {busy ? "Deleting…" : "Delete"}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -1084,6 +1182,30 @@ function ApplyCreditModal({
     }
   }
 
+  async function undoCredit() {
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/sheets/refunds/${row.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "undo_credit" }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? "Failed to undo")
+      onApplied({
+        ...row,
+        status: "pending",
+        hasAppliedCredit: false,
+        refundAmount: row.refundAmount + (row.appliedCreditAmount ?? 0),
+        appliedCreditAmount: 0,
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to undo")
+      setSaving(false)
+    }
+  }
+
   async function apply() {
     if (!target) { setError("Pick an order"); return }
     if (!(amt > 0)) { setError("Enter an amount"); return }
@@ -1125,8 +1247,11 @@ function ApplyCreditModal({
       >
         <div className="flex items-start justify-between gap-3">
           <div>
+            {/* Titled for the subject, not one direction of it: undoing a
+                credit happens here too, and "Apply as credit" is a strange
+                heading to read while un-applying one. */}
             <div className="text-sm font-semibold text-foreground">
-              Apply {formatRp(row.refundAmount)} as credit
+              Credit · {formatRp(row.refundAmount)}
             </div>
             <div className="text-xs text-faint mt-0.5">
               {displayIg(row.customer)} · from {row.event} · {reasonLabel(row.reason)}
@@ -1204,6 +1329,22 @@ function ApplyCreditModal({
         )}
 
         {error && <p className="text-xs text-red-600">{error}</p>}
+
+        {/* Reversing one. It lives here because this is where credit is
+            handled, and it was previously only reachable by opening the
+            refund's own sheet -- which a grouped refund no longer does. */}
+        {row.hasAppliedCredit && (
+          <div className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-purple-50 border border-purple-200">
+            <span className="text-[11px] text-purple-700">
+              Applied to another order already.
+              {row.status !== "applied_to_next_order" ? " Undo reverses what has been applied so far." : " Undo reverses it and reopens this refund."}
+            </span>
+            <button type="button" onClick={undoCredit} disabled={saving}
+              className="shrink-0 text-[11px] px-2.5 py-1 rounded-lg border border-purple-300 text-purple-700 font-semibold hover:bg-purple-100 disabled:opacity-50">
+              ↩ Undo
+            </button>
+          </div>
+        )}
 
         <div className="flex items-center justify-between gap-2 pt-1 border-t border-cream-border">
           {!alreadyKept ? (
@@ -2102,88 +2243,30 @@ function RefundDetailModal({
     }
   }
 
-  // Fully-cancelled invoice lines (unit === 0 is the canonical void marker) are
-  // the items that became unavailable — name them in the message. Lines merely
-  // reduced (e.g. 3 → 2) keep no record of the original quantity, so partial
-  // shortages can't be listed and the message falls back to the generic phrasing.
-  const unavailableLines = (invoiceEvent?.orders ?? []).filter((o) => o.unit === 0)
-  const unavailableItems = unavailableLines.map((o) => o.productName)
   const templates = useMessageTemplates()
 
-  // A mark writes what it removed onto the refund, quantities and all, which is
-  // better than anything this screen can reconstruct: a line reduced 3 → 2
-  // keeps no record of the original, so orders alone can only see what went to
-  // zero.
-  //
-  // But one refund can cover several marks. Five products marked out of stock
-  // write five notes, and if those refunds are merged into one the note names
-  // whichever mark happened to write it -- so she is told about one item and
-  // refunded for five. The note leads, because it carries quantities, and
-  // anything else that went to zero on this trip is named after it.
-  //
-  // Only where the cause is about items. An overpayment's note says what the
-  // money was, not what was lost, and cancelled lines are none of its business.
-  const itemsCause = REFUND_CAUSES.find((c) => c.key === row.reason)
-  const noteLines = (row.note ?? "")
+  /**
+   * What this refund is for, one item per line.
+   *
+   * Read from the note, which is what the mark wrote as it happened: the item,
+   * the count, and what each one cost. This screen used to rebuild that list
+   * instead -- matching note fragments against invoice lines that had gone to
+   * zero, guessing quantities out of the text, and looking prices up again --
+   * because the note did not carry prices when it was written. It does now.
+   *
+   * Two things go with the reconstruction. It could disagree with what was
+   * actually refunded, having been assembled from a different source than the
+   * figure; and it printed "× 2 — 2 × Rp 385.000 = Rp 770.000", a format
+   * retired from the notes because the refund's own amount is already on the
+   * screen beside it. One shape now, everywhere, and the group sheet's message
+   * reads identically because it reads the same field.
+   */
+  const itemsList = (row.note ?? "")
     .split("\n")
     .map((l) => l.replace(/^[-•]\s*/, "").trim())
     .filter(Boolean)
-  // One item per line, with what it costs.
-  //
-  // The invoice leads here, because it is the only place the price lives. A
-  // note may name the same items in full or in shorthand -- "Cooling Towel,
-  // Bucket Hat, Simple Cap — 5 item" is how a person summarises five marks
-  // merged into one refund -- so it is used to recognise what the invoice
-  // already shows, and to add anything the invoice cannot: a line reduced 3 to
-  // 2 keeps no record of the original, so only the note knows it happened.
-  const fragments = noteLines
-    .flatMap((l) => l.split(/[,;·—–]|\s×\s/))
-    .map((f) => f.trim().toLowerCase())
-    .filter((f) => f.length > 3)
-
-  /** "Bucket Hat with String × 1" out of a note line, when it says a count. */
-  function qtyFor(name: string): number | null {
-    for (const line of noteLines) {
-      const m = line.match(/×\s*(\d+)/)
-      if (!m) continue
-      const before = line.slice(0, line.indexOf("×")).trim().toLowerCase()
-      if (before && (name.toLowerCase().includes(before) || before.includes(name.toLowerCase()))) {
-        return Number(m[1])
-      }
-    }
-    return null
-  }
-
-  const named: string[] = []
-  if (itemsCause?.needsItems) {
-    for (const line of unavailableLines) {
-      const qty = qtyFor(line.productName)
-      const each = line.rawUnitPrice
-      // Price per unit, and the total beside it when more than one went. She
-      // checks the arithmetic; making her multiply is making her work.
-      const money = each > 0
-        ? qty && qty > 1
-          ? ` — ${qty} × ${formatRp(each)} = ${formatRp(each * qty)}`
-          : ` — ${formatRp(each)}`
-        : ""
-      named.push(`${line.productName}${qty && qty > 1 ? ` × ${qty}` : ""}${money}`)
-    }
-    // Anything the note mentions that no zeroed line accounts for: a partial
-    // shortage, which leaves nothing behind on the order to find.
-    for (const line of noteLines) {
-      const known = unavailableItems.some((item) => {
-        const name = item.toLowerCase()
-        return fragments.some((f) => name.includes(f) || f.includes(name))
-      })
-      if (!known) named.push(line)
-    }
-  } else {
-    named.push(...noteLines)
-  }
-
-  const itemsList = named.length
-    ? named.map((n) => `- ${n}`).join("\n")
-    : unavailableItems.map((n) => `- ${n}`).join("\n")
+    .map((l) => `- ${l}`)
+    .join("\n")
 
   // What arrived instead, where a wrong delivery was marked on this trip.
   const [receivedMap, setReceivedMap] = useState<Record<string, string>>({})
