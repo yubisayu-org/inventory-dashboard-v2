@@ -23,7 +23,7 @@
 
 import sql from "@/lib/db-pool"
 import { searchAreas, BiteshipNotConfiguredError } from "@/lib/biteship"
-import { matchArea } from "@/lib/biteship-area-match"
+import { matchArea, matchByPostal } from "@/lib/biteship-area-match"
 
 const APPLY = process.argv.includes("--apply")
 
@@ -63,7 +63,8 @@ async function main() {
   const queries = new Set(places.map((p) => `${p.kecamatan}, ${p.kota}`))
   console.log(
     `${queries.size} distinct districts to search — ` +
-    `estimated cost IDR ${queries.size * 2} (one Maps request each).`,
+    `estimated cost IDR ${queries.size * 2} (one Maps request each), plus one ` +
+    `more for each district whose name finds nothing and has a postal code to fall back on.`,
   )
   console.log(APPLY ? "\nAPPLYING changes.\n" : "\nDRY RUN — nothing will be written. Re-run with --apply.\n")
 
@@ -79,6 +80,8 @@ async function main() {
   // made once and reused.
   const searched = new Map<string, Awaited<ReturnType<typeof searchAreas>>>()
 
+  // How many were saved by the postal-code fallback rather than the name.
+  let recovered = 0
   let done = 0
   for (const place of places) {
     // A thousand silent requests are indistinguishable from a hang.
@@ -101,12 +104,34 @@ async function main() {
       continue
     }
 
-    if (!areas.length) {
+    // No early exit on an empty answer: a district whose NAME finds nothing is
+    // the exact case the postal code below rescues, and returning here skipped
+    // it -- which is how five Bekasi districts stayed unmapped through a run
+    // that was written to save them.
+    let result: ReturnType<typeof matchArea> = areas.length
+      ? matchArea(areas, place)
+      : { kind: "none" }
+
+    // Searching for the district by name failed. Try its postal code instead:
+    // the code is the one field both sides write the same way, so it gets past
+    // our own spelling -- "PONDOKGEDE" for their "Pondok Gede", which is five
+    // Bekasi districts and about seventy customers on its own. A second
+    // billable search, made only where the first found nothing usable.
+    if (result.kind !== "matched" && place.kodePos) {
+      const byCode = searched.get(place.kodePos) ?? await searchAreas(place.kodePos)
+      searched.set(place.kodePos, byCode)
+      const second = matchByPostal(byCode, place)
+      if (second.kind === "matched") {
+        recovered += place.customers
+        result = second
+      }
+    }
+
+    if (result.kind !== "matched" && !areas.length) {
       needsHuman.push({ place, reason: "no results", candidates: [] })
       continue
     }
 
-    const result = matchArea(areas, place)
     if (result.kind === "matched") {
       const row = { place, areaId: result.area.id, areaName: result.area.name }
       ;(result.approximate ? approximate : matched).push(row)
@@ -127,7 +152,7 @@ async function main() {
   }
 
   console.log(`\n${searched.size} searches made for ${places.length} places.`)
-  console.log(`✓ ${matched.length} places matched confidently`)
+  console.log(`✓ ${matched.length} places matched confidently` + (recovered ? ` (${recovered} customers via their postal code, after the district name found nothing)` : ""))
   for (const m of matched) {
     console.log(`   ${m.place.kota} / ${m.place.kecamatan}${m.place.kodePos ? ` ${m.place.kodePos}` : ""}  ->  ${m.areaName}  (${m.place.customers} customers)`)
   }

@@ -62,6 +62,49 @@ function sameDistrict(area: BiteshipArea, wantKec: string): boolean {
     .every((word) => theirs.includes(word))
 }
 
+/**
+ * The same district, written with different spacing.
+ *
+ * `sameDistrict` compares WORDS, which is right when one side carries an extra
+ * one -- their "Lubuk Linggau Timur Satu (I)" for our "Lubuk Linggau Timur I".
+ * It cannot see through a missing space: "PONDOKGEDE" is a single word and
+ * "Pondok Gede" is two, so nothing matched, and about seventy customers in five
+ * Bekasi districts went unmapped for a spacing habit in our own data.
+ *
+ * Letters only, both sides, and they must be equal -- not one containing the
+ * other. "Pondok Gede" and "Pondokgede" are the same place; "Jati" and
+ * "Jatiasih" are two, and a containment test would have merged them.
+ */
+export function sameDistrictSpelling(a: string, b: string): boolean {
+  const letters = (s: string) => normalisePlace(s).replace(/[^A-Z0-9]/g, "")
+  const x = letters(a)
+  return x.length > 0 && x === letters(b)
+}
+
+/**
+ * The area a POSTAL CODE means, when a search for the district name found
+ * nothing.
+ *
+ * A code is the one field both sides write the same way, so searching for it
+ * gets past our spelling entirely. What it must not do is move somebody to a
+ * different district: a code that lands on a name we do not recognise means
+ * one of the two fields is wrong, and nothing here can say which. So the code
+ * has to appear exactly once AND name our own district back to us, spacing
+ * aside.
+ */
+export function matchByPostal(areas: BiteshipArea[], place: Place): AreaMatch {
+  const wantPos = place.kodePos.trim()
+  if (!wantPos) return { kind: "none" }
+  const carrying = areas.filter((a) => postalOf(a) === wantPos)
+  if (carrying.length !== 1) {
+    return carrying.length > 1 ? { kind: "ambiguous", candidates: carrying } : { kind: "none" }
+  }
+  const [only] = carrying
+  return sameDistrictSpelling(place.kecamatan, only.name.split(",")[0] ?? "")
+    ? { kind: "matched", area: only, approximate: false }
+    : { kind: "ambiguous", candidates: carrying }
+}
+
 /** Five digits at the end of a name, e.g. "Cimahi Utara, Cimahi. 40512". */
 function postalOf(area: BiteshipArea): string {
   if (area.postalCode) return area.postalCode.trim()
