@@ -887,6 +887,42 @@ export default function RefundsClient() {
                             </span>
                           </td>
                         )
+                        // Its own actions, in the column the ungrouped rows
+                        // keep theirs in. Grouping took a refund's sheet away;
+                        // it must not take these with it -- a refund raised in
+                        // error is exactly the kind that ends up beside three
+                        // correct ones.
+                        if (id === "pay") return (
+                          <td key={id} className="px-4 py-2 align-top">
+                            <div className="flex items-center justify-end gap-1">
+                              {m.status !== "refunded" && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); setDeleteFor(m) }}
+                                  title="Delete this refund"
+                                  aria-label="Delete this refund"
+                                  className="shrink-0 p-1 rounded text-faint hover:text-brand transition-colors"
+                                >
+                                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                                    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                  </svg>
+                                </button>
+                              )}
+                              {m.status !== "refunded" && m.status !== "cancelled" && m.refundAmount > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); setCreditFor(m) }}
+                                  title="Apply as credit to another order"
+                                  aria-label="Apply as credit to another order"
+                                  className="shrink-0 p-1 rounded text-purple-400 hover:text-purple-700 transition-colors"
+                                >
+                                  <AccountCreditIcon />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        )
                         return <td key={id} className="px-4 py-2 align-top" />
                       })}
                     </tr>
