@@ -7,29 +7,36 @@
  * styled differently -- but they are the same money, and were drawn three
  * different ways: an emoji in two places and a bank card outline in the third.
  *
- * Not a drawing at all, in the end.
+ * A stack of coins, after a long argument with everything else.
  *
- * Every pictogram tried here was read as something else at 15px. 💰 was the
- * only pictogram in an interface of line drawings, a different picture on
- * every platform, and could not take the colour of the thing it sat in. A
- * wallet collapsed into a grey lump. Coins said money but nothing more
- * specific; a voucher risked reading as a ticket in a shop that runs trips; a
- * piggy bank lost its ear and its legs at row size; a vault -- a ring in a
- * rounded square -- is the camera icon, whatever was meant by it.
+ * 💰 went first: the only pictogram in an interface of line drawings, a
+ * different picture on every platform, and unable to take the colour of the
+ * thing it sits in. A wallet collapsed into a grey lump at 14px. A voucher
+ * risked reading as a ticket in a shop that runs trips; a piggy bank lost its
+ * ear and its legs at row size; a vault -- a ring centred in a rounded square
+ * -- is the camera icon, whatever was meant by it; a money sack said money
+ * plainly but is also how an order gets drawn in a shop, and outweighed its
+ * neighbours besides. Two letters in a box said it without a picture at all,
+ * and read as a label rather than a mark.
  *
- * So the money is said rather than pictured. Two letters cannot be mistaken
- * for a lens or a ticket, and the badge is built like the count marker beside
- * it -- same border, same weight, a rounded box against its circle -- so the
- * row still reads as one set of marks.
+ * Two tiers, not three: at 15px a third tier puts four horizontal lines inside
+ * fifteen pixels and they close into a grey block.
+ *
+ * Drawn 2 to 22 rather than to the full box, which is the twenty units the bin
+ * beside it measures -- the three marks on the row share a top and a bottom
+ * line. The coordinates are the scaling already done, so the strokes stay the
+ * weight its neighbours are drawn at.
  */
 export function AccountCreditIcon({ size = 15, className }: { size?: number; className?: string }) {
   return (
-    <span
-      aria-hidden="true"
-      className={`inline-flex items-center justify-center rounded-[4px] border-[1.25px] border-current font-bold leading-none tabular-nums ${className ?? ""}`}
-      style={{ width: size, height: size, fontSize: Math.round(size * 0.58) }}
+    <svg
+      width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+      className={className} aria-hidden="true"
     >
-      Rp
-    </span>
+      <ellipse cx="12" cy="5.84" rx="9.59" ry="3.84" />
+      <path d="M2.41 5.84v6.16c0 2.06 4.25 3.84 9.59 3.84s9.59-1.78 9.59-3.84V5.84" />
+      <path d="M2.41 12v6.17c0 2.06 4.25 3.84 9.59 3.84s9.59-1.78 9.59-3.84V12" />
+    </svg>
   )
 }
