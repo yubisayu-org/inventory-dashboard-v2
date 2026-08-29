@@ -206,41 +206,42 @@ function ToCheckPanel({ rows, error, promoting, onPromote, onRetry, search, onSe
     },
   ], [promoting, onPromote])
 
-  // Same three bands as every other card on this page, and as the Order
-  // List's: whose and which trip, what there is to do, then the figures.
+  // Two bands: what it is and the one thing to do about it, then the
+  // figures under the rule.
   const renderMobileCard = useCallback((r: OverpaymentToCheck) => {
     const busy = promoting === `${r.event}|${r.customer}`
     return (
       <div className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-        <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-          <span className="font-semibold text-sm text-foreground uppercase">{r.event}</span>
-          <span className="text-xs text-faint uppercase truncate">{displayIg(r.customer)}</span>
-          {/* Beside the handle, because it is hers that it opens. Every row
-              here is a question -- is this gap a refund, or rounding, or a
-              payment nobody ticked -- and the answer is on her invoice. The
-              phone has no hover to reach it by, so it rides on the card. */}
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); onOpenInvoice(r) }}
-            title={`Open ${r.event} on her invoice`}
-            aria-label={`Open ${r.event} on her invoice`}
-            className="shrink-0 p-0.5 rounded text-faint active:text-brand transition-colors"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M15 3h6v6" /><path d="M10 14 21 3" /><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-            </svg>
-          </button>
-        </div>
-        {/* The one thing this row is for, where the refund cards keep their
-            own buttons. */}
-        <div className="flex justify-end mt-2">
+        {/* One line: what it is, and the one thing to do about it. The two
+            were on rows of their own, and the empty half of each read as a
+            gap in the card. */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+            <span className="font-semibold text-sm text-foreground uppercase">{r.event}</span>
+            <span className="text-xs text-faint uppercase truncate">{displayIg(r.customer)}</span>
+            {/* Beside the handle, because it is hers that it opens. Every row
+                here is a question -- is this gap a refund, or rounding, or a
+                payment nobody ticked -- and the answer is on her invoice. The
+                phone has no hover to reach it by, so it rides on the card. */}
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onOpenInvoice(r) }}
+              title={`Open ${r.event} on her invoice`}
+              aria-label={`Open ${r.event} on her invoice`}
+              className="shrink-0 p-0.5 rounded text-faint active:text-brand transition-colors"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M15 3h6v6" /><path d="M10 14 21 3" /><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+              </svg>
+            </button>
+          </div>
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onPromote(r) }}
             disabled={busy}
-            className="px-2.5 py-1 rounded-lg bg-brand text-white text-[11px] font-bold disabled:opacity-50 whitespace-nowrap"
+            className="shrink-0 px-2.5 py-1 rounded-lg bg-brand text-white text-[11px] font-bold disabled:opacity-50 whitespace-nowrap"
           >
-            {busy ? "Creating…" : "Create refund"}
+            {busy ? "Creating…" : "Refund"}
           </button>
         </div>
         {/* Paid and invoiced beside the gap, so a small difference can be
