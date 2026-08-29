@@ -200,7 +200,7 @@ function ToCheckPanel({ rows, error, promoting, onPromote, onRetry, search, onSe
             disabled={busy}
             className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-bold disabled:opacity-50 whitespace-nowrap"
           >
-            {busy ? "Creating…" : "Create refund"}
+            {busy ? "Creating…" : "Refund"}
           </button>
         )
       },
