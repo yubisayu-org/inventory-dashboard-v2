@@ -588,12 +588,14 @@ export default function RefundsClient() {
         // the thing -- and made you open a sheet to answer a question the list
         // could have answered.
         const items = r.note.split("\n").map((l) => l.trim()).filter(Boolean)
+        // One line, not a stack. A refund covering two items used to make its
+        // row three deep, so eight refunds filled the screen and the list
+        // stopped being scannable -- which is the only thing a list is for.
+        // The whole of it is on the hover.
         return (
-          <div className="min-w-0">
-            <div className="text-muted-strong truncate">{getValue<string>()}</div>
-            {items.map((l, i) => (
-              <div key={i} title={l} className="text-xs text-faint leading-snug truncate">{l}</div>
-            ))}
+          <div className="truncate" title={[getValue<string>(), ...items].join(" · ")}>
+            <span className="text-muted-strong">{getValue<string>()}</span>
+            {items.length > 0 && <span className="text-faint"> · {items.join(" · ")}</span>}
           </div>
         )
       },
@@ -897,10 +899,14 @@ export default function RefundsClient() {
                         // says a kind of thing went wrong, not which.
                         if (id === "reason") return (
                           <td key={id} className="px-4 py-2 align-top">
-                            <div className="text-muted-strong">{reasonLabel(m.reason)}</div>
-                            {m.note.split("\n").map((l) => l.trim()).filter(Boolean).map((l, i) => (
-                              <div key={i} title={l} className="text-xs text-faint leading-snug truncate">{l}</div>
-                            ))}
+                            <div className="truncate" title={[reasonLabel(m.reason), ...m.note.split("\n").map((l) => l.trim()).filter(Boolean)].join(" · ")}>
+                              <span className="text-muted-strong">{reasonLabel(m.reason)}</span>
+                              {m.note.trim() && (
+                                <span className="text-faint">
+                                  {" · "}{m.note.split("\n").map((l) => l.trim()).filter(Boolean).join(" · ")}
+                                </span>
+                              )}
+                            </div>
                           </td>
                         )
                         if (id === "amount") return (
