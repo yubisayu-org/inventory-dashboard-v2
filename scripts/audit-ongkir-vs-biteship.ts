@@ -6,13 +6,19 @@
  * carried over from the old JNE table. This asks JNE what a one-kilo parcel
  * to each mapped area actually costs today and prints the two side by side.
  *
- * Read-only. It changes nothing and is not meant to: a rate that disagrees
+ * The quotes are kept: `biteship_ongkir` beside `ongkos_kirim`, in its own
+ * column, never overwriting ours. Every request is billed, so a second run
+ * reads what the first one paid for and asks only about areas nobody has
+ * quoted yet. `--refresh` asks about everything again, on purpose.
+ *
+ * It changes no PRICE and is not meant to: a rate that disagrees
  * may be a discount somebody granted on purpose, and only a person knows
  * which. One request per distinct AREA, not per customer — a thousand areas
  * across three thousand customers costs a thousand requests.
  *
  *   npx tsx --env-file=.env.local scripts/audit-ongkir-vs-biteship.ts
  *   npx tsx --env-file=.env.local scripts/audit-ongkir-vs-biteship.ts --warehouse DEPOK
+ *   npx tsx --env-file=.env.local scripts/audit-ongkir-vs-biteship.ts --refresh
  */
 
 import sql from "@/lib/db-pool"
@@ -20,6 +26,14 @@ import { courierRates, BiteshipNotConfiguredError } from "@/lib/biteship"
 
 const argv = process.argv.slice(2)
 const warehouseCode = (argv[argv.indexOf("--warehouse") + 1] ?? "CIMAHI").toUpperCase()
+/**
+ * Ask the courier again even where a quote is already stored.
+ *
+ * Off by default, because every request is billed and place-to-place rates
+ * move about once a year. The stored quote is read instead, and only areas
+ * that have never been quoted cost anything.
+ */
+const REFRESH = argv.includes("--refresh")
 
 const rupiah = (n: number) => `Rp ${new Intl.NumberFormat("id-ID").format(n)}`
 
@@ -54,10 +68,30 @@ async function main() {
   console.log(`${rows.length} area/rate pairs over ${areas.size} areas, from ${origin.code}.`)
   console.log(`Quoting a one-kilo JNE parcel for each area.\n`)
 
+  // What was already paid for. A quote belongs to an area, so one stored row
+  // answers for every customer in it.
+  const known = new Map<string, number>()
+  if (!REFRESH) {
+    const rows = (await sql`
+      SELECT c.biteship_area_id AS area_id, max(cwo.biteship_ongkir)::int AS price
+        FROM customers c
+        JOIN customer_warehouse_ongkir cwo
+          ON cwo.customer_id = c.id AND cwo.warehouse_id = ${origin.id}
+       WHERE COALESCE(c.biteship_area_id, '') <> '' AND cwo.biteship_ongkir IS NOT NULL
+       GROUP BY 1
+    `) as unknown as { area_id: string; price: number }[]
+    for (const r of rows) known.set(r.area_id, r.price)
+    console.log(`${known.size} areas answered from stored quotes — no request, no charge.`)
+  }
+
   const quotes = new Map<string, number | null>()
   let done = 0
+  let asked = 0
   for (const areaId of areas) {
     if (++done % 100 === 0 || done === areas.size) console.log(`   … ${done}/${areas.size}`)
+    const stored = known.get(areaId)
+    if (stored != null) { quotes.set(areaId, stored); continue }
+    asked++
     try {
       const rates = await courierRates(origin.area, areaId, 1000)
       const reg = rates.find((r) => /^(reg|ctc)$/i.test(r.serviceCode)) ?? rates[0]
@@ -69,6 +103,21 @@ async function main() {
         process.exit(1)
       }
       quotes.set(areaId, null)
+    }
+  }
+
+  if (asked > 0) {
+    console.log(`${asked} areas had to be asked for — storing them, so the next run is free.`)
+    for (const [areaId, price] of quotes) {
+      if (price == null || known.get(areaId) === price) continue
+      await sql`
+        UPDATE customer_warehouse_ongkir cwo
+           SET biteship_ongkir = ${price}, biteship_quoted_at = NOW()
+          FROM customers c
+         WHERE c.id = cwo.customer_id
+           AND cwo.warehouse_id = ${origin.id}
+           AND c.biteship_area_id = ${areaId}
+      `
     }
   }
 
