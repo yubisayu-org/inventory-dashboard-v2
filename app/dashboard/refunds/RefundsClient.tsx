@@ -845,11 +845,10 @@ export default function RefundsClient() {
                 </colgroup>
                 <tbody>
                   {members.map((m) => (
-                    <tr
-                      key={m.id}
-                      onClick={() => setEditRow(m)}
-                      className="cursor-pointer hover:bg-white/70 transition-colors"
-                    >
+                    // Not clickable: a grouped refund travels with the others,
+                    // so there is no walking one of them alone. Deleting it,
+                    // crediting it or undoing that is on its own row's actions.
+                    <tr key={m.id}>
                       {layout.columnIds.map((id) => {
                         // Repeated on every member, quieter than the parent's.
                         // A detail row read on its own -- scrolled to, copied
@@ -1537,6 +1536,55 @@ function RefundGroupSheet({
     }
   }
 
+  /**
+   * Where the group is, which is where its slowest member is.
+   *
+   * Three refunds raised at different moments -- two marked sold out on the
+   * Shopping List in June, one marked missing on the Arrival List in August --
+   * are one conversation with her from the moment they overlap. So they walk
+   * the steps together, and the group stands at the earliest step any ticked
+   * member has reached. The ones further along wait; nothing is asked of her
+   * twice.
+   */
+  const ORDER: RefundStatus[] = ["pending", "awaiting_bank_info", "ready_to_refund"]
+  const step: RefundStatus = chosen.length === 0
+    ? "pending"
+    : ORDER[Math.min(...chosen.map((r) => Math.max(0, ORDER.indexOf(r.status))))] ?? "pending"
+  const ahead = chosen.filter((r) => ORDER.indexOf(r.status) > ORDER.indexOf(step)).length
+
+  /** Move every ticked refund on together. */
+  async function markAllSent() {
+    setSaving(true)
+    setError(null)
+    try {
+      for (const r of chosen) {
+        if (r.status !== "pending") continue
+        const res = await fetch(`/api/sheets/refunds/${r.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "awaiting_bank_info" }),
+        })
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Failed")
+      }
+      onChanged()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to move these on")
+      setSaving(false)
+    }
+  }
+
+  const primary = step === "pending"
+    ? { label: "Mark all as sent", run: markAllSent, ready: chosen.length > 0 }
+    : step === "awaiting_bank_info"
+      ? { label: `Save to all ${chosen.length}`, run: saveBank, ready: bankAccountNumber.trim() !== "" }
+      : { label: `Refund ${formatRp(total)}`, run: send, ready: canSend }
+
+  const stepLabel = step === "pending"
+    ? "tell her, then record that you did"
+    : step === "awaiting_bank_info"
+      ? "she replied; type what she sent"
+      : "one transfer, one reference"
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6" onClick={onClose}>
       <div
@@ -1545,25 +1593,63 @@ function RefundGroupSheet({
         role="dialog"
         aria-modal="true"
       >
-        <div className="flex items-start justify-between gap-3 p-5 pb-3 border-b border-cream-border">
+        {/* The individual sheet's header, with the count where its status sits. */}
+        <div className="shrink-0 flex items-start justify-between gap-3 px-6 py-4 border-b border-cream-border">
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-foreground truncate">{displayIg(who)}</div>
-            <div className="text-xs text-faint mt-0.5">
-              {event} · {refunds.length} refunds · <span className="tabular-nums font-medium text-muted-strong">{formatRp(total)}</span>
+            <div className="flex flex-wrap items-center gap-x-2">
+              <span className="text-sm font-semibold text-foreground">{event}</span>
+              <span className="text-sm text-faint truncate uppercase">{displayIg(who)}</span>
+              {/* At Pending the message is the step, so the toggle would be a
+                  second way to the same card. */}
+              {step !== "pending" && (
+                <button
+                  type="button"
+                  onClick={() => setShowMessage((v) => !v)}
+                  aria-label={showMessage ? "Hide the message" : "Show the message"}
+                  title={showMessage ? "Hide the message" : "Show the message"}
+                  className={`transition-colors shrink-0 ${showMessage ? "text-brand" : "text-faint hover:text-brand"}`}
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                  </svg>
+                </button>
+              )}
             </div>
+            <div className="mt-1.5 text-lg font-bold text-foreground tabular-nums">{formatRp(total)}</div>
           </div>
-          <button type="button" onClick={onClose} className="text-faint hover:text-brand transition-colors shrink-0">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${STATUS_COLORS[step]}`}>
+              {STATUS_LABELS[step]}
+            </span>
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border border-cream-border bg-brand-light text-brand">
+              {refunds.length} refunds
+            </span>
+            <button type="button" onClick={onClose} aria-label="Close" title="Close"
+              className="text-faint hover:text-brand transition-colors shrink-0">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+            </button>
+          </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-4">
-          {/* What she is owed, and what each of them is about. Ticking decides
-              what this transfer settles; opening one goes to its own sheet for
-              the note, the credit, and cancelling it. */}
+        <StepIndicator status={step} />
+        <div className="shrink-0 px-6 py-1.5 text-[11px] text-muted border-b border-cream-border bg-surface-muted">
+          {stepLabel}
+          {ahead > 0 && (
+            <span className="text-faint">
+              {" · "}{ahead} {ahead === 1 ? "is" : "are"} further along and waits here
+            </span>
+          )}
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-4 flex flex-col gap-4">
+          {/* What the group IS, at every step -- and the ticks are how one is
+              left behind if it should not move with the others. Not clickable:
+              they travel together, so there is no such thing as opening one and
+              walking it alone. What a single refund still needs -- deleting it,
+              crediting it, undoing that -- is on its row in the list. */}
           <div className="flex flex-col gap-1">
             {refunds.map((r) => (
-              <div key={r.id} className="flex items-start gap-2.5 px-2 py-2 rounded-lg bg-surface-muted">
+              <label key={r.id} className="flex items-start gap-2.5 px-2 py-2 rounded-lg bg-surface-muted cursor-pointer">
                 <input
                   type="checkbox"
                   checked={picked.has(r.id)}
@@ -1576,115 +1662,118 @@ function RefundGroupSheet({
                   })}
                   className="accent-brand mt-0.5"
                 />
-                <button
-                  type="button"
-                  onClick={() => onOpenOne(r)}
-                  className="flex-1 min-w-0 text-left"
-                >
-                  <div className="flex items-baseline gap-2">
+                <span className="flex-1 min-w-0">
+                  <span className="flex items-baseline gap-2">
                     <span className="text-sm font-medium text-foreground">{reasonLabel(r.reason)}</span>
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${statusColor(r)}`}>
-                      {statusLabel(r)}
-                    </span>
-                  </div>
+                    {r.status !== step && (
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${statusColor(r)}`}>
+                        {statusLabel(r)}
+                      </span>
+                    )}
+                  </span>
                   {r.note.split("\n").map((l) => l.trim()).filter(Boolean).map((l, i) => (
-                    <div key={i} className="text-xs text-faint leading-snug">{l}</div>
+                    <span key={i} className="block text-xs text-faint leading-snug">{l}</span>
                   ))}
-                </button>
+                </span>
                 <span className="tabular-nums text-sm font-semibold text-foreground shrink-0">
                   {formatRp(displayAmount(r))}
                 </span>
-              </div>
+              </label>
             ))}
+            <span className="text-[11px] text-faint px-2">
+              All {refunds.length} move together. Untick one and it stays where it is.
+            </span>
           </div>
 
-          {/* Her account — one, whatever she is owed it for. */}
-          <div className="flex flex-col gap-2 p-3 rounded-lg bg-surface-muted border border-cream-border">
-            <div className="text-xs font-medium text-muted-strong">Her account</div>
-            <div className="grid grid-cols-2 gap-2">
-              <label className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-muted">Bank</span>
-                <input value={bankName} onChange={(e) => setBankName(e.target.value)} disabled={saving}
-                  placeholder="e.g. BCA" className={`${INPUT_CLASS} w-full`} />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-muted">Account number <span className="text-brand">*</span></span>
-                <input value={bankAccountNumber} onChange={(e) => setBankAccountNumber(e.target.value)} disabled={saving}
-                  placeholder="e.g. 1234567890" className={`${INPUT_CLASS} w-full`} />
-              </label>
-              <label className="flex flex-col gap-1 col-span-2">
-                <span className="text-xs font-medium text-muted">Account holder</span>
-                <input value={bankAccountHolder} onChange={(e) => setBankAccountHolder(e.target.value)} disabled={saving}
-                  placeholder="Full name on the account" className={`${INPUT_CLASS} w-full`} />
-              </label>
-            </div>
-            <div className="flex justify-end">
-              <button type="button" onClick={saveBank} disabled={saving || !bankAccountNumber.trim()}
-                className="text-xs px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong hover:border-brand hover:text-brand disabled:opacity-50 transition-colors">
-                Save to all {refunds.length}
-              </button>
-            </div>
-          </div>
+          {/* ── the step, and only the step ── */}
 
-          {/* One message, one figure, every reason inside it. */}
-          <div className="flex flex-col gap-2 p-3 rounded-lg bg-surface-muted border border-cream-border">
-            <div className="flex items-center justify-between gap-2">
-              <div className="text-xs font-medium text-muted-strong">Message · one for all {chosen.length}</div>
-              <div className="flex items-center gap-1.5">
-                <button type="button" onClick={() => setShowMessage((v) => !v)}
-                  className="text-xs px-2 py-1 rounded border border-cream-border text-muted hover:bg-surface-sunken">
-                  {showMessage ? "Hide" : "Preview"}
-                </button>
-                <MessageButton
-                  kind="refund"
-                  message={waMessageText}
-                  whatsapp={whatsapp}
-                  disabled={!templates}
-                  className="text-xs px-2 py-1 rounded border border-cream-border text-muted-strong hover:border-brand hover:text-brand transition-colors disabled:opacity-50"
-                  copyLabel="Copy"
-                  sendLabel="WhatsApp"
-                />
+          {(step === "pending" || showMessage) && (
+            <div className="flex flex-col gap-2 p-3 rounded-lg bg-surface-muted border border-cream-border">
+              <div className="text-xs font-medium text-muted-strong">
+                Refund message <span className="text-faint font-normal">· one for all {chosen.length}</span>
               </div>
-            </div>
-            {showMessage && (
               <pre className="text-[11px] text-muted-strong whitespace-pre-wrap font-sans bg-white rounded-lg border border-cream-border p-2 max-h-56 overflow-y-auto">
                 {waMessageText}
               </pre>
-            )}
-          </div>
+            </div>
+          )}
 
-          {/* One transfer. */}
-          <div className="flex flex-col gap-2 p-3 rounded-lg bg-surface-muted border border-cream-border">
-            <div className="text-xs font-medium text-muted-strong">Transfer</div>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-muted">Sent from account <span className="text-brand">*</span></span>
-              <SearchableSelect
-                value={account}
-                onChange={setAccount}
-                options={accounts.map((a) => ({ value: a, label: a }))}
-                placeholder="Which of our accounts sent it…"
-                allowNewValue
-                disabled={saving}
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-muted">Transfer reference <span className="text-brand">*</span></span>
-              <input value={transferRef} onChange={(e) => setTransferRef(e.target.value)} disabled={saving}
-                placeholder="e.g. TRF20260828-014" className={`${INPUT_CLASS} w-full`} />
-            </label>
-          </div>
+          {step === "awaiting_bank_info" && (
+            <div className="flex flex-col gap-2 p-3 rounded-lg bg-surface-muted border border-cream-border">
+              <div className="text-xs font-medium text-muted-strong">
+                Her account <span className="text-faint font-normal">· saved to all {chosen.length}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs font-medium text-muted">Bank</span>
+                  <input value={bankName} onChange={(e) => setBankName(e.target.value)} disabled={saving}
+                    placeholder="e.g. BCA" className={`${INPUT_CLASS} w-full`} />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs font-medium text-muted">Account number <span className="text-brand">*</span></span>
+                  <input value={bankAccountNumber} onChange={(e) => setBankAccountNumber(e.target.value)} disabled={saving}
+                    placeholder="e.g. 1234567890" className={`${INPUT_CLASS} w-full`} />
+                </label>
+                <label className="flex flex-col gap-1 col-span-2">
+                  <span className="text-xs font-medium text-muted">Account holder</span>
+                  <input value={bankAccountHolder} onChange={(e) => setBankAccountHolder(e.target.value)} disabled={saving}
+                    placeholder="Full name on the account" className={`${INPUT_CLASS} w-full`} />
+                </label>
+              </div>
+            </div>
+          )}
+
+          {step === "ready_to_refund" && (
+            <div className="flex flex-col gap-2 p-3 rounded-lg bg-surface-muted border border-cream-border">
+              <div className="text-xs font-medium text-muted-strong">
+                Transfer
+                {bankAccountNumber.trim() && (
+                  <span className="text-faint font-normal">
+                    {" · to "}{bankName} {bankAccountNumber} · {bankAccountHolder}
+                  </span>
+                )}
+              </div>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-muted">Sent from account <span className="text-brand">*</span></span>
+                <SearchableSelect
+                  value={account}
+                  onChange={setAccount}
+                  options={accounts.map((a) => ({ value: a, label: a }))}
+                  placeholder="Which of our accounts sent it…"
+                  allowNewValue
+                  disabled={saving}
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-muted">Transfer reference <span className="text-brand">*</span></span>
+                <input value={transferRef} onChange={(e) => setTransferRef(e.target.value)} disabled={saving}
+                  placeholder="e.g. TRF20260828-014" className={`${INPUT_CLASS} w-full`} />
+              </label>
+            </div>
+          )}
 
           {error && <p className="text-xs text-brand font-medium">{error}</p>}
         </div>
 
-        <div className="flex items-center justify-between gap-3 p-4 border-t border-cream-border">
+        <div className="shrink-0 flex items-center justify-between gap-2 px-6 py-4 border-t border-cream-border flex-nowrap">
           <span className="text-xs text-muted">
-            {chosen.length} of {refunds.length} · one reference
+            {chosen.length} of {refunds.length}{step === "ready_to_refund" ? " · one reference" : ""}
           </span>
-          <button type="button" onClick={send} disabled={!canSend || saving}
-            className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-dark disabled:opacity-50">
-            {saving ? "Sending…" : `Refund ${formatRp(total)}`}
-          </button>
+          <div className="flex items-center gap-1.5 flex-nowrap min-w-0">
+            <MessageButton
+              kind="refund"
+              message={waMessageText}
+              whatsapp={whatsapp}
+              disabled={!templates}
+              copyLabel="Message"
+              sendLabel="WhatsApp"
+              className="px-3 py-2 rounded-lg border border-cream-border text-muted-strong text-sm whitespace-nowrap hover:border-brand hover:text-brand disabled:opacity-50 transition-colors"
+            />
+            <button type="button" onClick={primary.run} disabled={!primary.ready || saving}
+              className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium whitespace-nowrap shrink-0 hover:bg-brand-dark disabled:opacity-50 transition-colors">
+              {saving ? "Working…" : primary.label}
+            </button>
+          </div>
         </div>
       </div>
     </div>
