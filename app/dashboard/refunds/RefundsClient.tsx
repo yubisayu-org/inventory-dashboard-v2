@@ -74,13 +74,14 @@ const ACTIVE_TABS: { key: TabKey; label: string }[] = [
   { key: "pending", label: "Pending" },
   { key: "awaiting_bank_info", label: "Bank Info" },
   { key: "ready_to_refund", label: "Transfer" },
-  // Not Pending, where these used to sit. Pending is a to-do list -- every row
-  // in it money you have decided to send, this week. A deposit is settled: she
-  // asked to keep it, nothing is owed to her bank, and there is nothing to do
-  // until an order of hers can take it. A list you work through should not
-  // contain things you cannot work on.
-  { key: DEPOSITS, label: "Deposits" },
   { key: "refunded", label: "Done" },
+  // Last, and not Pending where these used to sit. Pending is a to-do list --
+  // every row in it money you have decided to send, this week. A deposit is
+  // settled: she asked to keep it, nothing is owed to her bank, and there is
+  // nothing to do until an order of hers can take it. A list you work through
+  // should not contain things you cannot work on, and the tabs before this one
+  // read left to right in the order a refund is worked.
+  { key: DEPOSITS, label: "Deposits" },
 ]
 
 /**
