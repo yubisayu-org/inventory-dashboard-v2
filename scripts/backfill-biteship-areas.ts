@@ -47,19 +47,19 @@ const RATES = process.argv.includes("--rates")
 const ACCEPT_DISTRICT = process.argv.includes("--accept-district")
 
 /**
- * The three whose price does NOT agree, held back by the owner's decision on
- * 29 Aug 2026 until each is looked at.
+ * Places held back from the district-only write.
  *
- * Pasar Kliwon is undercharged by Rp 7.000 a kilo and the shop pays that;
- * Pagedangan and Johan Pahlawan are overcharged by Rp 9.000 and Rp 6.000.
- * Mapping them would not change those rates -- but it would tidy away the one
- * signal that something is wrong with them.
+ * Was three, on 29 Aug: Pasar Kliwon, Pagedangan and Johan Pahlawan, whose
+ * quoted price disagrees with what we charge. The owner released them on
+ * 30 Aug -- mapping an area and correcting a rate are separate jobs, and
+ * holding the first hostage to the second only kept them invisible. The rate
+ * question travels with every other differing rate instead, on the quotes now
+ * stored beside our own.
+ *
+ * Kept as a mechanism rather than deleted: the next audit will find its own
+ * reasons to hold something back.
  */
-const HELD: [kota: string, kecamatan: string, kodePos: string][] = [
-  ["KOTA SURAKARTA", "PASAR KLIWON", "57122"],
-  ["KAB. TANGERANG", "PAGEDANGAN", "15345"],
-  ["KAB. ACEH BARAT", "JOHAN PAHLAWAN", "24614"],
-]
+const HELD: [kota: string, kecamatan: string, kodePos: string][] = []
 const isHeld = (p: Place) =>
   HELD.some(([kota, kec, pos]) => p.kota === kota && p.kecamatan === kec && p.kodePos === pos)
 

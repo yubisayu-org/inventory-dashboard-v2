@@ -14,13 +14,25 @@ import type { BiteshipArea } from "./biteship"
  * request behind it.
  */
 
-/** Strip the noise that differs between local spelling and Biteship's naming. */
+/**
+ * Strip the noise that differs between local spelling and Biteship's naming.
+ *
+ * Numbered districts are written both ways in Indonesia and the two sides
+ * disagree about which: Palembang's addresses say ILIR BARAT SATU and SEBERANG
+ * ULU SATU where Biteship says Ilir Barat I and Seberang Ulu I. Same place,
+ * same courier, no match. Counting words settles it -- both become I.
+ */
 export function normalisePlace(s: string): string {
   return s
     .toUpperCase()
     .replace(/\bKAB(UPATEN)?\.?\b/g, "")
     .replace(/\bKOTA\b/g, "")
     .replace(/[^A-Z0-9 ]/g, " ")
+    .replace(/\bSATU\b/g, "I")
+    .replace(/\bDUA\b/g, "II")
+    .replace(/\bTIGA\b/g, "III")
+    .replace(/\bEMPAT\b/g, "IV")
+    .replace(/\bLIMA\b/g, "V")
     .replace(/\s+/g, " ")
     .trim()
 }

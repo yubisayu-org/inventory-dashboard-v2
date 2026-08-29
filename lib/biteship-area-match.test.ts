@@ -244,3 +244,15 @@ test("the typo tolerance reaches matchByPostal, and only with a unique code", ()
   assert.equal(r.kind, "matched")
   assert.equal(r.kind === "matched" && r.area.id, "IDZ16167")
 })
+
+test("a district numbered in words is the same as one numbered in roman", () => {
+  // Palembang writes ILIR BARAT SATU; Biteship writes Ilir Barat I.
+  assert.equal(normalisePlace("ILIR BARAT SATU"), normalisePlace("Ilir Barat I"))
+  assert.equal(normalisePlace("SEBERANG ULU SATU"), normalisePlace("Seberang Ulu I"))
+  assert.equal(sameDistrictSpelling("ILIR BARAT SATU", "Ilir Barat I"), true)
+})
+
+test("the numeral rule does not merge two different numbers", () => {
+  assert.equal(sameDistrictSpelling("ILIR BARAT SATU", "Ilir Barat II"), false)
+  assert.equal(sameDistrictSpelling("SEBERANG ULU DUA", "Seberang Ulu I"), false)
+})
