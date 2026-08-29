@@ -207,7 +207,7 @@ function ToCheckPanel({ rows, error, promoting, onPromote, onRetry, search, onSe
   ], [promoting, onPromote])
 
   // Same three bands as every other card on this page, and as the Order
-  // List's: whose and which trip, what it is about, then the figure.
+  // List's: whose and which trip, what there is to do, then the figures.
   const renderMobileCard = useCallback((r: OverpaymentToCheck) => {
     const busy = promoting === `${r.event}|${r.customer}`
     return (
@@ -215,11 +215,40 @@ function ToCheckPanel({ rows, error, promoting, onPromote, onRetry, search, onSe
         <div className="flex items-center gap-1.5 flex-wrap min-w-0">
           <span className="font-semibold text-sm text-foreground uppercase">{r.event}</span>
           <span className="text-xs text-faint uppercase truncate">{displayIg(r.customer)}</span>
+          {/* Beside the handle, because it is hers that it opens. Every row
+              here is a question -- is this gap a refund, or rounding, or a
+              payment nobody ticked -- and the answer is on her invoice. The
+              phone has no hover to reach it by, so it rides on the card. */}
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onOpenInvoice(r) }}
+            title={`Open ${r.event} on her invoice`}
+            aria-label={`Open ${r.event} on her invoice`}
+            className="shrink-0 p-0.5 rounded text-faint active:text-brand transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M15 3h6v6" /><path d="M10 14 21 3" /><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+            </svg>
+          </button>
         </div>
-        <div className="flex items-start justify-between gap-3 mt-2">
+        {/* The one thing this row is for, where the refund cards keep their
+            own buttons. */}
+        <div className="flex justify-end mt-2">
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onPromote(r) }}
+            disabled={busy}
+            className="px-2.5 py-1 rounded-lg bg-brand text-white text-[11px] font-bold disabled:opacity-50 whitespace-nowrap"
+          >
+            {busy ? "Creating…" : "Create refund"}
+          </button>
+        </div>
+        {/* Paid and invoiced beside the gap, so a small difference can be
+            recognised as rounding without opening the invoice. */}
+        <div className="flex items-center justify-between gap-2 mt-2.5 pt-2.5 border-t border-cream-border">
           <div className="min-w-0">
             <div className="text-sm text-muted tabular-nums">
-              paid {formatRp(r.totalPaid)} of {formatRp(r.invoiceTotal)}
+              Paid {formatRp(r.totalPaid)} of {formatRp(r.invoiceTotal)}
             </div>
             {/* What a mark has already covered, where the gap is only what is
                 left of it -- otherwise the figure reads as the whole
@@ -230,29 +259,6 @@ function ToCheckPanel({ rows, error, promoting, onPromote, onRetry, search, onSe
               </div>
             )}
           </div>
-          {/* Every row here is a question, and the answer is on the invoice.
-              The phone has no hover to reach it by, so it rides on the card. */}
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); onOpenInvoice(r) }}
-            title={`Open ${r.event} on her invoice`}
-            aria-label={`Open ${r.event} on her invoice`}
-            className="shrink-0 p-1 rounded text-faint active:text-brand transition-colors"
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M15 3h6v6" /><path d="M10 14 21 3" /><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-            </svg>
-          </button>
-        </div>
-        <div className="flex items-center justify-between gap-2 mt-2.5 pt-2.5 border-t border-cream-border">
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); onPromote(r) }}
-            disabled={busy}
-            className="px-2.5 py-1 rounded-lg bg-brand text-white text-[11px] font-bold disabled:opacity-50 whitespace-nowrap"
-          >
-            {busy ? "Creating…" : "Create refund"}
-          </button>
           <span className="shrink-0 text-sm font-semibold tabular-nums text-brand">{formatRp(r.uncovered)}</span>
         </div>
       </div>
