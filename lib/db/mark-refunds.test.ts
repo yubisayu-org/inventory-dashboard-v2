@@ -118,27 +118,6 @@ test("a missing parcel refunds the customer who paid, as shipping_loss", async (
   assert.equal(rows[0].reason, "shipping_loss")
 })
 
-test("a customer cancellation creates no refund here", async () => {
-  // Their own doing, and the cancellation flow already handles it.
-  const EV = `${TAG}_CANC`
-  const who = `${TAG}_canc_paid`
-  await sql`INSERT INTO events (name, warehouse_id) SELECT ${EV}, id FROM warehouses ORDER BY id LIMIT 1`
-  await sql`INSERT INTO customers (instagram_id) VALUES (${who})`
-  await sql`
-    INSERT INTO orders (event, customer, product_id, unit_price, unit, unit_buy, unit_dispatch)
-    VALUES (${EV}, ${who}, ${productId}, 100000, 2, 2, 2)`
-  await sql`
-    INSERT INTO payments (event, customer, amount, is_checked, kind)
-    VALUES (${EV}, ${who}, 200000, true, 'deposit')`
-
-  const [prod] = await sql<{ name: string }[]>`SELECT name FROM products WHERE id = ${productId}`
-  const result = await recordNotReceived(
-    { event: EV, productId, productName: prod.name, qty: 1, mode: "cancelled" }, "tester")
-
-  assert.equal(result.refunds.length, 0)
-  assert.equal((await getRefunds({ event: EV })).length, 0)
-})
-
 test("picking whose order it comes off still removes only the marked quantity", async () => {
   // The Arrival List has two ways to mark the same thing: name a quantity, or
   // pick whose orders it comes off. The picking one used to cancel each chosen
@@ -245,4 +224,53 @@ test("the ongkir the missing goods were carrying comes back with them", async ()
     result.refunds[0].amount,
     "the refund is the whole surplus -- no stray kilo waiting in To check",
   )
+})
+
+test("the note says what came off, how many, and what each cost", async () => {
+  // The note is the only record of a refund's goods -- the order line it came
+  // from is already reduced -- so a figure with nothing to check it against is
+  // a figure nobody trusts six weeks later. No line total: the refund's amount
+  // is a column away on every screen this shows up on.
+  const who = `${TAG}_priced`
+  const EV = `${TAG}_PRICED`
+  await sql`INSERT INTO events (name, warehouse_id) SELECT ${EV}, id FROM warehouses ORDER BY id LIMIT 1`
+  await sql`INSERT INTO customers (instagram_id) VALUES (${who})`
+  await sql`
+    INSERT INTO orders (event, customer, product_id, unit_price, unit)
+    VALUES (${EV}, ${who}, ${productId}, 100000, 2)`
+  await sql`
+    INSERT INTO payments (event, customer, amount, is_checked, kind)
+    VALUES (${EV}, ${who}, 200000, true, 'deposit')`
+
+  const before = await invoiceTotalsNow(EV)
+  await sql`UPDATE orders SET unit = 0 WHERE event = ${EV}`
+  await refundForReduction(EV, "unavailable", "Muji Boston Bag 38L Greige", [
+    { customer: who, unitsRemoved: 2, unitPrice: 100000, gramPerUnit: 0 },
+  ], before, "tester")
+
+  const [row] = await sql<{ note: string }[]>`
+    SELECT note FROM refunds WHERE event = ${EV}`
+  assert.equal(row.note, "Muji Boston Bag 38L Greige × 2 × Rp 100.000")
+})
+
+test("one unit reads the same way as many", async () => {
+  const who = `${TAG}_one`
+  const EV = `${TAG}_ONE`
+  await sql`INSERT INTO events (name, warehouse_id) SELECT ${EV}, id FROM warehouses ORDER BY id LIMIT 1`
+  await sql`INSERT INTO customers (instagram_id) VALUES (${who})`
+  await sql`
+    INSERT INTO orders (event, customer, product_id, unit_price, unit)
+    VALUES (${EV}, ${who}, ${productId}, 160000, 1)`
+  await sql`
+    INSERT INTO payments (event, customer, amount, is_checked, kind)
+    VALUES (${EV}, ${who}, 160000, true, 'deposit')`
+
+  const before = await invoiceTotalsNow(EV)
+  await sql`UPDATE orders SET unit = 0 WHERE event = ${EV}`
+  await refundForReduction(EV, "damaged", "Muji Bucket Hat with String", [
+    { customer: who, unitsRemoved: 1, unitPrice: 160000, gramPerUnit: 0 },
+  ], before, "tester")
+
+  const [row] = await sql<{ note: string }[]>`SELECT note FROM refunds WHERE event = ${EV}`
+  assert.equal(row.note, "Muji Bucket Hat with String × 1 × Rp 160.000")
 })

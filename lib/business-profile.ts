@@ -8,6 +8,8 @@
 // business identity, and the Settings page groups it with the rest of the
 // Pricing tab.
 
+import { DEFAULT_MESSAGE_DELIVERY, type MessageDelivery } from "./message-delivery"
+
 export interface BusinessProfile {
   bankAccountHolder: string
   /** One "Bank Name 123456789" per line. */
@@ -18,6 +20,8 @@ export interface BusinessProfile {
   /** Public order-status site, e.g. "Cek rekapan mandiri {publicSiteUrl}" in
    *  the invoice message and "Cek resi {publicSiteUrl}" in the shipment one. */
   publicSiteUrl: string
+  /** How each kind of message reaches her — copy, or open her WhatsApp. */
+  messageDelivery: MessageDelivery
 }
 
 export const DEFAULT_BUSINESS_PROFILE: BusinessProfile = {
@@ -27,4 +31,5 @@ export const DEFAULT_BUSINESS_PROFILE: BusinessProfile = {
   storeName: "Yubisayu",
   phoneNumber: "",
   publicSiteUrl: "https://yubisayu-invoice.netlify.app/",
+  messageDelivery: DEFAULT_MESSAGE_DELIVERY,
 }

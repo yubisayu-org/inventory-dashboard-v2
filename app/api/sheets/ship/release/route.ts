@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { releasePackingList, withActor } from "@/lib/db"
-import { clearHoldMode } from "@/lib/db/shipping-prefs"
+import { withActor } from "@/lib/db"
+import { releaseHold } from "@/lib/db/shipping-prefs"
 import sql from "@/lib/db-pool"
 import { notifyCustomer } from "@/lib/db/announcements"
 
@@ -25,13 +25,11 @@ export async function POST(req: NextRequest) {
     `) as unknown as { id: number }[]
 
     await withActor(session.user.email, async (tx) => {
-      await releasePackingList({ customer, event }, tx)
-      // And forget that anyone asked. Freeing the units alone left the request
+      // Frees the units AND forgets the wish. Freeing alone left the request
       // on file, and the next arrival read it and parked the order again --
-      // undoing this release through an action nobody connected to it.
-      // releasePackingList still runs first, and unconditionally: a hold set
-      // before any of this existed has no row here to clear.
-      if (row) await clearHoldMode(row.id, event, tx)
+      // undoing this release through an action nobody connected to it. One
+      // call now, so that pair cannot come apart again.
+      await releaseHold(row?.id ?? null, customer, event, tx)
       await notifyCustomer(customer, {
         title: `${event} is back in the queue`,
         body: `The hold is lifted — this order goes out with the next run.`,

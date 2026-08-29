@@ -963,21 +963,24 @@ async function putOrderEdit(
     })
   }
 
+  // A response body can be read exactly once. The stranded-units question read
+  // it to see whether that was the refusal, and everything after re-read it to
+  // find the message -- so the one 409 that is not a question, the shipped
+  // guard, reported "body stream already read" instead of saying what the
+  // guard actually said. Read once, pass the body along.
   let res = await send()
-  if (res.status === 409) {
-    const d = await res.json()
-    if (d.error === "stranded_units") {
-      const n = Number(d.stranded) || 0
-      // Both answers shelve the units; the answer is the record, not the gate.
-      // Declining abandons the edit rather than saving it unexplained.
-      const cause = askCause ? await askCause(n) : null
-      if (!cause) throw new Error("Nothing was saved")
-      res = await send({ bankStranded: true, cause })
-    }
+  let body: Record<string, unknown> = await res.json().catch(() => ({}))
+  if (res.status === 409 && body.error === "stranded_units") {
+    const n = Number(body.stranded) || 0
+    // Both answers shelve the units; the answer is the record, not the gate.
+    // Declining abandons the edit rather than saving it unexplained.
+    const cause = askCause ? await askCause(n) : null
+    if (!cause) throw new Error("Nothing was saved")
+    res = await send({ bankStranded: true, cause })
+    body = await res.json().catch(() => ({}))
   }
-  if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? "Failed to save") }
-  const done = await res.json().catch(() => ({}))
-  return { banked: Number(done.banked) || 0 }
+  if (!res.ok) throw new Error(typeof body.error === "string" ? body.error : "Failed to save")
+  return { banked: Number(body.banked) || 0 }
 }
 
 function EditOrderModal({ row, options, isOwner, onClose, onSaved, onDelete }: {

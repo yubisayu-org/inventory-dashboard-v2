@@ -431,12 +431,12 @@ export async function bankStrandedBoughtUnits(
   cause: "staff_mistake" | "customer_changed_mind" = "staff_mistake",
 ): Promise<{ banked: number }> {
   const rows = (await db`
-    SELECT o.event, o.unit, o.unit_buy, o.unit_dispatch, o.receipt, p.name AS product_name
+    SELECT o.event, o.customer, o.unit, o.unit_buy, o.unit_dispatch, o.receipt, p.name AS product_name
       FROM orders o JOIN products p ON p.id = o.product_id
      WHERE o.id = ${orderId}
      FOR UPDATE OF o
   `) as unknown as {
-    event: string; unit: number; unit_buy: number | null
+    event: string; customer: string; unit: number; unit_buy: number | null
     unit_dispatch: number | null; receipt: string | null; product_name: string
   }[]
   const r = rows[0]
@@ -451,9 +451,19 @@ export async function bankStrandedBoughtUnits(
   // overbuy is the shop buying more than it needed; customer_cancelled is her
   // deciding she did not want it. Both already exist as reasons.
   const reason = cause === "customer_changed_mind" ? "customer_cancelled" : "overbuy"
+  // Whose order it fell off, and which answer put it here.
+  //
+  // The reason column says overbuy or customer_cancelled, which is the same
+  // distinction the dialog asks for -- but nothing said whose order it was, and
+  // a shelf full of "Overbuy" rows answers no question anyone actually asks. A
+  // real parcel number keeps its place at the front, untouched, because the
+  // allocation screens read it; the handle and the answer follow it.
+  const causeLabel = cause === "customer_changed_mind" ? "customer ask" : "staff correction"
+  const receipt = [(r.receipt ?? "").trim(), r.customer ?? "", causeLabel]
+    .filter(Boolean).join(" · ")
   await db`
     INSERT INTO excess_purchase (event, items, unit_buy, receipt, unit_dispatch, reason)
-    VALUES (${r.event}, ${r.product_name}, ${banked}, ${r.receipt ?? ""},
+    VALUES (${r.event}, ${r.product_name}, ${banked}, ${receipt},
             ${dispatched > 0 ? dispatched : null}, ${reason})`
 
   // The units are the shelf's now, so the order stops claiming them -- and the
@@ -943,9 +953,8 @@ export async function getExcessPurchasePaginated(opts: {
  * include what they had received.
  *
  * Everything nearby already knew this. cancelOrderUnits floors unit_buy at
- * unit_ship, reduceOrderRefundOnly does the same, and recordCustomerCancellation
- * computes the stock it reclaims as unit_buy - unit_ship -- then called this
- * and undid its own care.
+ * unit_ship and reduceOrderRefundOnly does the same -- then this one undid
+ * their care.
  *
  * A line with nothing shipped still goes to zero, exactly as before. A line
  * with a shipped unit keeps that unit, because she has it and owes for it.
@@ -1073,55 +1082,16 @@ export async function recordMissingArrival(
 }
 
 /**
- * Customer cancelled an order we'd already bought (misunderstanding, changed
- * their mind, etc.) — unlike wrong/broken/missing, the item itself is correct:
- * it's real, sellable stock that just lost its buyer. Log the still-in-hand
- * bought units for the chosen order lines to Inventory as ready stock
- * (reason=customer_cancelled, assignable to the next customer who wants it) and
- * cancel those orders (refunds auto-materialize if paid).
- *
- * The returned quantity is `unit_buy - unit_ship` (already-shipped units are
- * gone, so they aren't re-added to stock), read from the orders themselves
- * rather than trusted from the client. For the arrival-list callers nothing is
- * shipped yet, so this is simply their unit_buy.
- */
-export async function recordCustomerCancellation(
-  data: { event: string; productName: string; cancelOrderIds: number[]; receipt?: string },
-  db: DBExecutor = sql,
-): Promise<{ cancelledOrders: number; excessUnits: number }> {
-  if (data.cancelOrderIds.length === 0) return { cancelledOrders: 0, excessUnits: 0 }
-
-  const [{ total }] = await db`
-    SELECT COALESCE(SUM(GREATEST(0, unit_buy - COALESCE(unit_ship, 0))), 0)::int AS total
-    FROM orders
-    WHERE id = ANY(${data.cancelOrderIds})
-  `
-  const excessUnits = total as number
-
-  if (excessUnits > 0) {
-    await appendExcessPurchase(
-      [{
-        event: data.event,
-        items: data.productName,
-        unitBuy: excessUnits,
-        receipt: data.receipt ?? "",
-        reason: "customer_cancelled",
-      }],
-      db,
-    )
-  }
-
-  const cancelledOrders = await cancelOrderLines(data.cancelOrderIds, db)
-  return { cancelledOrders, excessUnits }
-}
-
-/**
  * Cancel `qty` units of a single order line rather than the whole line —
  * the invoice's per-line "Cancel Order" action, for when only part of what a
  * customer ordered falls through. Reduces `unit` by qty; `unit_buy` drops by
  * whichever is smaller of qty and the still-in-hand bought units
  * (unit_buy - unit_ship), so it never falls below what's already shipped.
  * That reclaimed portion is logged to Inventory (reason=customer_cancelled).
+ * Moves the order and nothing else. Pricing the refund and telling her are
+ * cancelOrderLineForCustomer's job, after this commits -- what she is owed
+ * depends on the invoice as it stands once the units are off it.
+ *
  * qty === the full unit count behaves like a full-line cancel, except
  * unit_buy lands on unit_ship instead of being force-zeroed — correct even
  * when part of the line already shipped, unlike the bulk cancelOrderLines
@@ -1147,6 +1117,21 @@ export async function cancelOrderUnits(
 
   if (!(data.qty >= 1)) throw new Error("qty must be at least 1")
   if (data.qty > unit) throw new Error(`Cannot cancel more than the ${unit} units ordered`)
+  // A parcel that has gone cannot be un-ordered. The banked stock already
+  // excluded shipped units, but `unit` itself had no floor -- and the invoice
+  // is SUM(unit_price * unit), so cancelling 3 of a 3-unit line with 1 shipped
+  // billed her for nothing while she held the goods. That is how ten lines
+  // worth Rp 5.721.000 came off invoices.
+  //
+  // The screen already hides the control on a shipped line. This is the same
+  // rule where it cannot be skipped by calling the route directly.
+  if (unit - data.qty < unitShip) {
+    throw new Error(
+      `${unitShip} unit${unitShip === 1 ? " has" : "s have"} already shipped, `
+      + `so this line cannot be cancelled. She has the goods — if the money `
+      + `needs to go back, that is a refund.`,
+    )
+  }
 
   const excessUnits = Math.min(data.qty, Math.max(0, unitBuy - unitShip))
   const remainingUnit = unit - data.qty

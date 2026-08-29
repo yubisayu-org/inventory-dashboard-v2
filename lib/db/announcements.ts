@@ -63,6 +63,70 @@ export async function notifyCustomer(
   `
 }
 
+/**
+ * Who a notice about one trip would reach.
+ *
+ * There were two shapes and nothing between them: an announcement with no
+ * customer_id, which every customer sees, and notifyCustomer, which reaches
+ * exactly one. A cargo delay on one trip is neither -- telling everybody
+ * includes people with no order on it, and telling them one at a time is forty
+ * invoices opened by hand.
+ *
+ * `skipShipped` leaves out anyone whose every unit has already gone. Their
+ * parcel is not in that cargo, and a delay notice they cannot act on is a false
+ * alarm that costs the next real one its credibility.
+ */
+export async function eventNoticeRecipients(
+  event: string,
+  skipShipped = true,
+  db: DBExecutor = sql,
+): Promise<{ customer: string; units: number; unshipped: number }[]> {
+  const rows = await db<{ customer: string; units: string; unshipped: string }[]>`
+    SELECT c.instagram_id AS customer,
+           SUM(o.unit)::int AS units,
+           SUM(GREATEST(o.unit - COALESCE(o.unit_ship, 0), 0))::int AS unshipped
+      FROM orders o
+      JOIN customers c
+        ON lower(replace(c.instagram_id, '@', '')) = lower(replace(o.customer, '@', ''))
+     WHERE o.event = ${event}
+       AND o.unit > 0
+     GROUP BY c.instagram_id
+     ORDER BY c.instagram_id
+  `
+  return rows
+    .map((r) => ({ customer: r.customer, units: Number(r.units), unshipped: Number(r.unshipped) }))
+    .filter((r) => (skipShipped ? r.unshipped > 0 : true))
+}
+
+/**
+ * One notice, to everybody on one trip.
+ *
+ * Personal rows rather than a single global one: it belongs in the inbox of the
+ * people it is about and nobody else's, and read state is per person -- one
+ * shared row would be read by the first customer to open it and unread for the
+ * rest, or worse, the other way round.
+ *
+ * Written in one statement so a delay notice cannot reach half a trip.
+ */
+export async function notifyEventCustomers(
+  event: string,
+  notice: { title: string; body: string },
+  opts: { skipShipped?: boolean } = {},
+  db: DBExecutor = sql,
+): Promise<{ sent: number; customers: string[] }> {
+  const recipients = await eventNoticeRecipients(event, opts.skipShipped ?? true, db)
+  if (recipients.length === 0) return { sent: 0, customers: [] }
+
+  const keys = recipients.map((r) => r.customer)
+  await db`
+    INSERT INTO announcements (title, body, kind, customer_id)
+    SELECT ${notice.title.trim()}, ${notice.body.trim()}, 'shipping', c.id
+      FROM customers c
+     WHERE c.instagram_id = ANY(${keys})
+  `
+  return { sent: keys.length, customers: keys }
+}
+
 export async function createAnnouncement(
   data: { title: string; body: string },
   db: DBExecutor = sql,

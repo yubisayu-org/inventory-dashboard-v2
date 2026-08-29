@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole, requireOwner } from "@/lib/api"
 import { getBusinessProfile, updateBusinessProfile, withActor } from "@/lib/db"
 import { cached, invalidate } from "@/lib/route-cache"
+import { normalizeDelivery } from "@/lib/message-delivery"
 
 export async function GET() {
   const { session, error: authError } = await requireSession()
@@ -35,6 +36,9 @@ export async function PATCH(req: NextRequest) {
       storeName: String(body.storeName ?? ""),
       phoneNumber: String(body.phoneNumber ?? ""),
       publicSiteUrl: String(body.publicSiteUrl ?? ""),
+      // Whatever arrives, only the three kinds we know survive, and only with
+      // a mode we know. See normalizeDelivery.
+      messageDelivery: normalizeDelivery(body.messageDelivery),
     }
 
     await withActor(session.user.email, (tx) => updateBusinessProfile(profile, tx))

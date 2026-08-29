@@ -16,6 +16,7 @@ export type NoticeKey =
   | "inbox_payment_confirmed"
   | "inbox_waiting_payment"
   | "inbox_delayed"
+  | "inbox_order_cancelled"
   | "inbox_ongkir_extra"
   | "inbox_ongkir_credit"
   | "inbox_ongkir_reweighed"
@@ -104,6 +105,17 @@ export const NOTICE_TEMPLATES: NoticeTemplate[] = [
     body:
       "Your order is packed and ready, but {outstanding} is still outstanding. It goes "
       + "out the day the payment clears.",
+  },
+  {
+    // She asked for it to come off. Sent whether or not any money moves: an
+    // unpaid order simply costs less, and she should hear that from the shop
+    // rather than notice it on an invoice later.
+    key: "inbox_order_cancelled",
+    label: "Order cancelled at her request",
+    title: "Cancelled from {event}",
+    body:
+      "As you asked, we have taken these off your order for {event}:\n{itemsList}\n\n"
+      + "Your bill for this trip goes down by {amount}.",
   },
   {
     key: "inbox_delayed",
@@ -266,6 +278,18 @@ export const REFUND_CAUSES: RefundCause[] = [
       + "Mohon maaf, ini luput dari pemeriksaan kami.",
   },
   {
+    key: "customer_cancelled",
+    fromMark: true,
+    label: "She asked to cancel it",
+    needsItems: true,
+    // Her own doing, and the sentence says so without making it sound like a
+    // fault of hers or of ours. The refund beside it is the whole point: money
+    // she had already sent for something she is no longer getting.
+    line: "As you asked, we have taken {itemsList} off your order for {event}.",
+    waLine: "Sesuai permintaan Anda, barang berikut kami keluarkan dari pesanan:\n{itemsList}",
+    waLineWithout: "Sesuai permintaan Anda, ada barang yang kami keluarkan dari pesanan.",
+  },
+  {
     key: "goodwill",
     label: "Goodwill",
     line: "A goodwill refund from us on {event}.",
@@ -341,6 +365,7 @@ export const NOTICE_TOKENS_FOR: Record<NoticeKey, string[]> = {
   inbox_payment_confirmed: ["{customer}", "{event}", "{total}"],
   inbox_waiting_payment: ["{customer}", "{event}", "{total}", "{outstanding}"],
   inbox_delayed: ["{customer}", "{event}"],
+  inbox_order_cancelled: ["{customer}", "{event}", "{itemsList}", "{amount}"],
   inbox_ongkir_extra: ["{customer}", "{event}", "{amount}"],
   inbox_ongkir_credit: ["{customer}", "{event}", "{amount}"],
   inbox_ongkir_reweighed: ["{customer}", "{event}", "{amount}", "{chargedKg}", "{estimatedKg}"],

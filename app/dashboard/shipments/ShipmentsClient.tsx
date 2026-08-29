@@ -8,6 +8,8 @@ import { generateShippingLabel, generateMultipleShippingLabels } from "@/lib/shi
 import type { ShippingLabelParams } from "@/lib/shipping-label"
 import { useModalDismiss } from "@/hooks/useModalDismiss"
 import { copyToClipboard } from "@/lib/clipboard"
+import { useMessageDelivery } from "@/hooks/useMessageDelivery"
+import { waLink } from "@/lib/message-delivery"
 import { buildShipmentConfirmMessage } from "@/lib/shipment-message"
 import { useMessageTemplates } from "@/hooks/useMessageTemplates"
 import { useBusinessProfile } from "@/hooks/useBusinessProfile"
@@ -112,6 +114,7 @@ function MergedIcon({ count }: { count: number }) {
 function CopyShipmentMessageButton({ record }: { record: DisplayShipment }) {
   const [state, setState] = useState<CopyState>({ status: "idle" })
   const templates = useMessageTemplates()
+  const toWhatsApp = useMessageDelivery().shipment === "whatsapp"
   const businessProfile = useBusinessProfile()
 
   useEffect(() => {
@@ -126,8 +129,10 @@ function CopyShipmentMessageButton({ record }: { record: DisplayShipment }) {
     setState({ status: "loading" })
     try {
       // Skip the customer fetch when the shipment carries its own temp address —
-      // we already have the address we need on the row.
-      const detail = record.tempAddress
+      // we already have the address we need on the row. Unless the message is
+      // going to WhatsApp, which needs her number, and the row does not carry
+      // one.
+      const detail = record.tempAddress && !toWhatsApp
         ? null
         : await fetch(`/api/sheets/customer?id=${encodeURIComponent(record.customer)}`)
             .then((r) => (r.ok ? r.json() : null))
@@ -142,6 +147,10 @@ function CopyShipmentMessageButton({ record }: { record: DisplayShipment }) {
         // "[event]" so the customer can tell which event each item came from.
         items: record.invoicing.split("\n").filter(Boolean),
       }, templates?.shipment, businessProfile?.publicSiteUrl)
+      if (toWhatsApp) {
+        const win = window.open(waLink(detail?.whatsapp, message), "_blank", "noopener")
+        if (win) { setState({ status: "idle" }); return }
+      }
       await copyToClipboard(message)
       setState({ status: "copied" })
     } catch (err) {
@@ -161,7 +170,8 @@ function CopyShipmentMessageButton({ record }: { record: DisplayShipment }) {
       type="button"
       onClick={handleClick}
       disabled={status === "loading" || !templates || !businessProfile}
-      title={status === "error" ? state.message : "Copy pesan konfirmasi pengiriman"}
+      title={status === "error" ? state.message
+        : toWhatsApp ? "Kirim pesan konfirmasi lewat WhatsApp" : "Copy pesan konfirmasi pengiriman"}
       className={`p-1 transition-colors rounded disabled:opacity-50 ${
         status === "copied" ? "text-green-600"
         : status === "error" ? "text-red-500"
@@ -754,7 +764,7 @@ export default function ShipmentsClient() {
         accessorKey: "shippingId",
         header: "ID",
         filterFn: "textContains",
-        size: 80,
+        size: 70,
         cell: ({ getValue }) => (
           <span className="font-mono text-xs text-muted">{getValue<string>()}</span>
         ),
@@ -763,10 +773,13 @@ export default function ShipmentsClient() {
         accessorKey: "event",
         header: "Event",
         filterFn: "textContains",
-        // Wide enough for one full event code ("LSKR202603") plus the " +"
-        // separator and the cell's px-4 padding, so a merged row breaks one
-        // event per line instead of mid-name.
-        size: 160,
+        // One full event code per line, and the whole point of the width.
+        // "LSKR202608" is ten characters, about 75px at this size; the cell's
+        // px-4 padding takes 32 of whatever is left, and a merged row adds a
+        // ", " and the merge icon on top. At 120 the last character wrapped,
+        // which broke a code in half -- and half a trip code reads as a
+        // different trip. 140 fits the widest code with the separator beside it.
+        size: 140,
         cell: ({ row, getValue }) => (
           // A merged shipment joins its events with ", ", which wraps to one
           // line per token in a narrow column — four rows for a two-event merge.
@@ -784,7 +797,7 @@ export default function ShipmentsClient() {
         accessorKey: "customer",
         header: "Customer",
         filterFn: "textContains",
-        size: 180,
+        size: 156,
         cell: ({ row }) => {
           const r = row.original
           return (
@@ -824,7 +837,7 @@ export default function ShipmentsClient() {
         accessorKey: "customerName",
         header: "Name",
         filterFn: "textContains",
-        size: 160,
+        size: 130,
         cell: ({ getValue }) => {
           const v = getValue<string>()
           return <span className={`line-clamp-2 ${v ? "" : "text-faint"}`}>{v || "—"}</span>
@@ -834,7 +847,15 @@ export default function ShipmentsClient() {
         accessorKey: "invoicing",
         header: "Items",
         filterFn: "textContains",
-        size: 220,
+        // 150 is DataGrid's "no width given": the header cell gets no width
+        // attribute, so fixed layout hands this column all the leftover space.
+        //
+        // Without one such column the leftover is spread across every column
+        // in proportion, which quietly fattens the 92px action column into a
+        // 200px one -- and its two icons, sitting at the end of it, drift far
+        // from the row they belong to. Items is the right place for slack: it
+        // is the only column whose content is a sentence.
+        size: 150,
         enableSorting: false,
         cell: ({ getValue }) => (
           <span className="whitespace-pre-wrap font-sans text-xs text-muted-strong leading-relaxed max-w-[200px] line-clamp-2">
@@ -846,7 +867,7 @@ export default function ShipmentsClient() {
         accessorKey: "weightEstimation",
         header: "Berat",
         filterFn: "numeric",
-        size: 120,
+        size: 92,
         meta: { align: "right" },
         cell: ({ row }) => {
           const record = row.original
@@ -885,7 +906,7 @@ export default function ShipmentsClient() {
         accessorKey: "ongkirTotal",
         header: "Ongkir",
         filterFn: "numeric",
-        size: 130,
+        size: 112,
         meta: { align: "right" },
         // What the parcel cost once a corrected weight has been recorded. The
         // stored total is the estimate made at ship time, and leaving it on
@@ -924,17 +945,18 @@ export default function ShipmentsClient() {
         accessorKey: "trackingNumber",
         header: "Resi",
         filterFn: "textContains",
-        size: 200,
+        size: 140,
         cell: ({ row }) => {
           const record = row.original
           return (
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); setEditResiRecord(record) }}
-              className="group flex items-center gap-1.5 text-left"
+              className="group flex items-center gap-1.5 text-left min-w-0 w-full"
+              title={record.trackingNumber || "Belum diisi"}
             >
               <span
-                className={`text-xs ${record.trackingNumber ? "text-foreground font-mono" : "text-faint italic"}`}
+                className={`text-xs truncate ${record.trackingNumber ? "text-foreground font-mono" : "text-faint italic"}`}
               >
                 {record.trackingNumber || "Belum diisi"}
               </span>
@@ -984,7 +1006,7 @@ export default function ShipmentsClient() {
         header: "",
         enableSorting: false,
         enableHiding: false,
-        size: 72,
+        size: 92,
         cell: ({ row }) => (
           <div className="flex items-center gap-1">
             <CopyShipmentMessageButton record={row.original} />
