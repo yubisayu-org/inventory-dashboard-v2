@@ -127,11 +127,40 @@ export function parseAddressBlob(
 }
 
 /**
+ * Indonesia has thirty-eight provinces, and this is the list.
+ *
+ * Named rather than inferred, because "whatever is left over" is not a
+ * province: one customer's address ends "Pondok Aren, Tangsel 15421", where
+ * Tangsel is her CITY abbreviated. Left to subtraction that lands in the
+ * province field and prints on her parcel as though it were one.
+ *
+ * Written the way an address writes them, and matched on letters alone, so
+ * "DI Yogyakarta", "D.I. Yogyakarta" and "Daerah Istimewa Yogyakarta" all
+ * arrive at the same entry.
+ */
+const PROVINCES = [
+  "Aceh", "Nanggroe Aceh Darussalam", "Sumatera Utara", "Sumatera Barat", "Riau",
+  "Kepulauan Riau", "Jambi", "Sumatera Selatan", "Bangka Belitung",
+  "Kepulauan Bangka Belitung", "Bengkulu", "Lampung", "DKI Jakarta", "Jakarta",
+  "Jawa Barat", "Banten", "Jawa Tengah", "DI Yogyakarta", "Yogyakarta",
+  "Daerah Istimewa Yogyakarta", "Jawa Timur", "Bali", "Nusa Tenggara Barat",
+  "Nusa Tenggara Timur", "Kalimantan Barat", "Kalimantan Tengah",
+  "Kalimantan Selatan", "Kalimantan Timur", "Kalimantan Utara",
+  "Sulawesi Utara", "Gorontalo", "Sulawesi Tengah", "Sulawesi Barat",
+  "Sulawesi Selatan", "Sulawesi Tenggara", "Maluku", "Maluku Utara",
+  "Papua", "Papua Barat", "Papua Selatan", "Papua Tengah", "Papua Pegunungan",
+  "Papua Barat Daya",
+]
+const PROVINCE_KEYS = new Map(
+  PROVINCES.map((p) => [p.toUpperCase().replace(/[^A-Z0-9]/g, ""), p]),
+)
+
+/**
  * The province out of "Limo, Depok, Jawa Barat 16512".
  *
- * Whatever is left once the postal code, the district and the city are taken
- * out. A line that names only the two we already know has no province in it,
- * which is most of them.
+ * What is left once the postal code, the district and the city are taken out --
+ * and then only if it is actually a province. A line that names only the two we
+ * already know has none in it, which is most of them.
  */
 function provinceOf(
   regionLine: string,
@@ -146,7 +175,10 @@ function provinceOf(
     .filter(Boolean)
     // "KOTA DEPOK" and "Depok" are the same segment to drop.
     .filter((s) => !drop.has(norm(s)) && ![...drop].some((d) => norm(s).includes(d) || d.includes(norm(s))))
-  return left.length === 1 ? left[0] : null
+  if (left.length !== 1) return null
+  // Its own spelling back, not ours: "jawa barat" typed in an address becomes
+  // "Jawa Barat" on the label.
+  return PROVINCE_KEYS.get(left[0].toUpperCase().replace(/[^A-Z0-9]/g, "")) ?? null
 }
 
 

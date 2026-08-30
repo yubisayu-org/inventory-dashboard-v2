@@ -71,6 +71,16 @@ export async function POST(req: NextRequest) {
       bankName: String(body.bankName ?? "").trim(),
       bankAccountNumber: String(body.bankAccountNumber ?? "").trim(),
       bankAccountHolder: String(body.bankAccountHolder ?? "").trim(),
+      // The add form shows the same Address block the edit modal does, so it
+      // has to carry the same fields -- typed once and dropped on the way in
+      // is worse than never asking.
+      jalan: String(body.jalan ?? "").replace(/^\s+|\s+$/g, ""),
+      kota: String(body.kota ?? "").trim(),
+      kecamatan: String(body.kecamatan ?? "").trim(),
+      provinsi: String(body.provinsi ?? "").trim(),
+      kodePos: String(body.kodePos ?? "").trim(),
+      biteshipAreaId: body.biteshipAreaId ? String(body.biteshipAreaId).trim() : null,
+      biteshipAreaName: body.biteshipAreaName ? String(body.biteshipAreaName).trim() : null,
     }, tx))
 
     return NextResponse.json({ success: true, id: result.id })
