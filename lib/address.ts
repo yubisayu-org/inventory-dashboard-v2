@@ -148,3 +148,33 @@ function provinceOf(
     .filter((s) => !drop.has(norm(s)) && ![...drop].some((d) => norm(s).includes(d) || d.includes(norm(s))))
   return left.length === 1 ? left[0] : null
 }
+
+
+/**
+ * The four district fields an area already contains.
+ *
+ * "Limo, Depok, Jawa Barat. 16512" IS her kecamatan, kota, provinsi and kode
+ * pos, so choosing one answers all four and nobody should type them again.
+ *
+ * `district` is the rates table's spelling of the same place, where it could be
+ * found -- "LIMO, KOTA DEPOK" against Biteship's "Limo, Depok". It wins for the
+ * two fields that price a parcel, because `lookupOngkir` matches those strings
+ * exactly and not one of the 663 districts our customers live in exists under
+ * Biteship's own words.
+ */
+export function fieldsFromArea(
+  areaName: string,
+  district: { kecamatan: string; kota: string } | null,
+): { kecamatan: string; kota: string; provinsi: string; kodePos: string } {
+  const kodePos = areaName.match(/\b(\d{5})\b\s*$/)?.[1] ?? ""
+  const [kec = "", kota = "", provinsi = ""] = areaName
+    .replace(/\.?\s*\d{5}\s*$/, "")
+    .split(",")
+    .map((p) => p.trim().replace(/\.$/, ""))
+  return {
+    kecamatan: district?.kecamatan ?? kec,
+    kota: district?.kota ?? kota,
+    provinsi,
+    kodePos,
+  }
+}

@@ -1,6 +1,6 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { composeLabel, canCompose, parseAddressBlob } from "./address"
+import { composeLabel, canCompose, parseAddressBlob, fieldsFromArea } from "./address"
 
 test("the label reads the way it always has", () => {
   assert.equal(
@@ -116,4 +116,25 @@ test("her own postal code beats the area's", () => {
     areaName: "Tambun Selatan, Bekasi, Jawa Barat. 17511",
   })
   assert.equal(out.split("\n").pop(), "Tambun Selatan, Bekasi, Jawa Barat 17510")
+})
+
+// ─── Choosing an area answers the four fields ───────────────────────────────
+
+test("the rates table's spelling wins for the two fields that price", () => {
+  const f = fieldsFromArea("Limo, Depok, Jawa Barat. 16512",
+    { kecamatan: "LIMO", kota: "KOTA DEPOK" })
+  assert.deepEqual(f, { kecamatan: "LIMO", kota: "KOTA DEPOK", provinsi: "Jawa Barat", kodePos: "16512" })
+})
+
+test("without one, the courier's own words are used rather than nothing", () => {
+  // Visibly unpriced in the ongkir check beats an empty address.
+  const f = fieldsFromArea("Nowhere, Somewhere, Kalimantan Barat. 79100", null)
+  assert.equal(f.kecamatan, "Nowhere")
+  assert.equal(f.kota, "Somewhere")
+})
+
+test("an area with no province still answers the rest", () => {
+  const f = fieldsFromArea("Limo, Depok. 16512", { kecamatan: "LIMO", kota: "KOTA DEPOK" })
+  assert.equal(f.provinsi, "")
+  assert.equal(f.kodePos, "16512")
 })

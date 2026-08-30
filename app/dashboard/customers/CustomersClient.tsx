@@ -11,7 +11,7 @@ import DataGrid, {
 } from "@/components/DataGrid"
 import { usePaginatedFetch, type PageData } from "@/hooks/usePaginatedFetch"
 import { fmt, displayIg } from "@/lib/format"
-import { composeLabel, canCompose } from "@/lib/address"
+import { composeLabel, canCompose, fieldsFromArea } from "@/lib/address"
 import { CustomerDetailDrawer } from "./CustomerDetailDrawer"
 
 const PAGE_SIZE = 25
@@ -765,20 +765,6 @@ function CustomerFields({
   )
 }
 
-/**
- * The four fields an area already contains.
- *
- * "Limo, Depok, Jawa Barat. 16512" IS the kecamatan, the kota, the provinsi and
- * the kode pos, so asking somebody to type them again after choosing it would
- * be asking twice for one answer.
- *
- * Empty fields only. The shipping price is looked up in `jne_rates` by the
- * district's NAME, and Biteship spells those differently on purpose -- their
- * "Limo, Depok" against the table's "LIMO, KOTA DEPOK", "Cimeunyan" against our
- * "CIMENYAN". Overwriting a district that already prices would break the price
- * to fix the spelling. So a filled field is left exactly as it is, and only the
- * blanks are answered.
- */
 type AreaChoice = {
   id: string
   name: string
@@ -786,28 +772,22 @@ type AreaChoice = {
   district: { kecamatan: string; kota: string } | null
 }
 
-function fillFromArea(area: AreaChoice, current: DraftCustomer): Partial<DraftCustomer> {
-  // "Kecamatan, Kota, Provinsi. 12345" — the postal code is on the end, after a
-  // full stop that only Biteship uses.
-  const postal = area.name.match(/\b(\d{5})\b\s*$/)?.[1] ?? ""
-  const [areaKec = "", areaKota = "", provinsi = ""] = area.name
-    .replace(/\.?\s*\d{5}\s*$/, "")
-    .split(",")
-    .map((p) => p.trim().replace(/\.$/, ""))
-  // The rates table's spelling wins, because these two fields are what prices
-  // the parcel: "KOTA DEPOK" prices, "Depok" does not. Biteship's own words are
-  // the fallback for a district the table has never heard of — filled so the
-  // address is not left blank, and visibly wrong in the ongkir check if it
-  // cannot be priced.
-  const kecamatan = area.district?.kecamatan ?? areaKec
-  const kota = area.district?.kota ?? areaKota
-
-  const out: Partial<DraftCustomer> = {}
-  if (!current.kecamatan.trim() && kecamatan) out.kecamatan = kecamatan
-  if (!current.kota.trim() && kota) out.kota = kota
-  if (!current.provinsi.trim() && provinsi) out.provinsi = provinsi
-  if (!current.kodePos.trim() && postal) out.kodePos = postal
-  return out
+/**
+ * What choosing an area does to the address below it.
+ *
+ * All four fields, every time -- not only the empty ones. Filling blanks was
+ * right for a customer who had no area and wrong the moment somebody CHANGED
+ * one: picking Pondok Aren for a customer stored as Limo left Limo sitting
+ * there, so the parcel would have been priced and posted to the district she
+ * just moved away from.
+ *
+ * Overwriting was only ever risky because Biteship's spelling cannot price a
+ * parcel. It no longer writes Biteship's spelling -- the search result carries
+ * the rates table's own, and that is what lands in the two fields the price is
+ * looked up by.
+ */
+function fillFromArea(area: AreaChoice): Partial<DraftCustomer> {
+  return fieldsFromArea(area.name, area.district)
 }
 
 /**
@@ -971,7 +951,7 @@ function AddressFields({ draft, setDraft, warehouses, saving }: {
                     key={a.id}
                     type="button"
                     onClick={() => {
-                      setDraft((d) => ({ ...d, biteshipAreaId: a.id, biteshipAreaName: a.name, ...fillFromArea(a, d) }))
+                      setDraft((d) => ({ ...d, biteshipAreaId: a.id, biteshipAreaName: a.name, ...fillFromArea(a) }))
                       setAreas(null)
                       setQuery("")
                     }}
