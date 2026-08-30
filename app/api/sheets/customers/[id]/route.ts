@@ -34,6 +34,18 @@ export async function PUT(req: NextRequest, { params }: Params) {
       bankName: String(body.bankName ?? "").trim(),
       bankAccountNumber: String(body.bankAccountNumber ?? "").trim(),
       bankAccountHolder: String(body.bankAccountHolder ?? "").trim(),
+      // Only when the screen sent them. The bank-details save and the add form
+      // do not, and a missing field must not blank the address she registered
+      // with.
+      ...(body.kota !== undefined || body.kecamatan !== undefined || body.kodePos !== undefined
+        ? {
+            kota: String(body.kota ?? "").trim(),
+            kecamatan: String(body.kecamatan ?? "").trim(),
+            kodePos: String(body.kodePos ?? "").trim(),
+            biteshipAreaId: body.biteshipAreaId ? String(body.biteshipAreaId).trim() : null,
+            biteshipAreaName: body.biteshipAreaName ? String(body.biteshipAreaName).trim() : null,
+          }
+        : {}),
     }, tx))
 
     return NextResponse.json({ success: true })

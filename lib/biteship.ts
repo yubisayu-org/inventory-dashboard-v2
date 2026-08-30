@@ -91,3 +91,68 @@ export async function searchAreas(input: string): Promise<BiteshipArea[]> {
     clearTimeout(timer)
   }
 }
+
+/** One courier service and what it would charge for the parcel asked about. */
+export type BiteshipRate = {
+  courierCode: string
+  serviceCode: string
+  serviceName: string
+  price: number
+  /** "1 - 2 days" and the like; absent on some services. */
+  duration?: string
+}
+
+const rateCache = new Map<string, { rates: BiteshipRate[]; ts: number }>()
+
+/**
+ * What a courier would charge, origin area to destination area.
+ *
+ * Read-only and priced per request, so it is cached like the area search. The
+ * shop's own rates come from the `jne_rates` table and are charged per kilo, so
+ * the comparison that matters is a one-kilo parcel: anything else is comparing
+ * a rate against a total.
+ */
+export async function courierRates(
+  originAreaId: string,
+  destinationAreaId: string,
+  weightGrams = 1000,
+  couriers = "jne",
+): Promise<BiteshipRate[]> {
+  const key = `${originAreaId}|${destinationAreaId}|${weightGrams}|${couriers}`
+  const hit = rateCache.get(key)
+  if (hit && Date.now() - hit.ts < CACHE_TTL) return hit.rates
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
+  try {
+    const res = await fetch(`${baseUrl()}/rates/couriers`, {
+      method: "POST",
+      headers: {
+        authorization: apiKey(),
+        accept: "application/json",
+        "content-type": "application/json",
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        origin_area_id: originAreaId,
+        destination_area_id: destinationAreaId,
+        couriers,
+        items: [{ name: "Parcel", value: 100000, weight: weightGrams, quantity: 1 }],
+      }),
+    })
+    if (!res.ok) throw new Error(`Biteship rates returned ${res.status}`)
+    const data = (await res.json()) as { pricing?: Record<string, unknown>[] }
+    const rates = (data.pricing ?? []).map((p) => ({
+      courierCode: String(p.courier_code ?? ""),
+      serviceCode: String(p.courier_service_code ?? ""),
+      serviceName: String(p.courier_service_name ?? ""),
+      price: Number(p.price ?? 0),
+      duration: p.duration != null ? String(p.duration) : undefined,
+    }))
+    if (rateCache.size > 2000) rateCache.clear()
+    rateCache.set(key, { rates, ts: Date.now() })
+    return rates
+  } finally {
+    clearTimeout(timer)
+  }
+}

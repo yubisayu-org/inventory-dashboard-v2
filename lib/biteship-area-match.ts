@@ -14,13 +14,25 @@ import type { BiteshipArea } from "./biteship"
  * request behind it.
  */
 
-/** Strip the noise that differs between local spelling and Biteship's naming. */
+/**
+ * Strip the noise that differs between local spelling and Biteship's naming.
+ *
+ * Numbered districts are written both ways in Indonesia and the two sides
+ * disagree about which: Palembang's addresses say ILIR BARAT SATU and SEBERANG
+ * ULU SATU where Biteship says Ilir Barat I and Seberang Ulu I. Same place,
+ * same courier, no match. Counting words settles it -- both become I.
+ */
 export function normalisePlace(s: string): string {
   return s
     .toUpperCase()
     .replace(/\bKAB(UPATEN)?\.?\b/g, "")
     .replace(/\bKOTA\b/g, "")
     .replace(/[^A-Z0-9 ]/g, " ")
+    .replace(/\bSATU\b/g, "I")
+    .replace(/\bDUA\b/g, "II")
+    .replace(/\bTIGA\b/g, "III")
+    .replace(/\bEMPAT\b/g, "IV")
+    .replace(/\bLIMA\b/g, "V")
     .replace(/\s+/g, " ")
     .trim()
 }
@@ -60,6 +72,87 @@ function sameDistrict(area: BiteshipArea, wantKec: string): boolean {
     .split(" ")
     .filter(Boolean)
     .every((word) => theirs.includes(word))
+}
+
+/**
+ * The same district, written with different spacing.
+ *
+ * `sameDistrict` compares WORDS, which is right when one side carries an extra
+ * one -- their "Lubuk Linggau Timur Satu (I)" for our "Lubuk Linggau Timur I".
+ * It cannot see through a missing space: "PONDOKGEDE" is a single word and
+ * "Pondok Gede" is two, so nothing matched, and about seventy customers in five
+ * Bekasi districts went unmapped for a spacing habit in our own data.
+ *
+ * Letters only, both sides, and they must be equal -- not one containing the
+ * other. "Pondok Gede" and "Pondokgede" are the same place; "Jati" and
+ * "Jatiasih" are two, and a containment test would have merged them.
+ */
+export function sameDistrictSpelling(a: string, b: string): boolean {
+  const x = districtLetters(a)
+  return x.length > 0 && x === districtLetters(b)
+}
+
+const districtLetters = (s: string) => normalisePlace(s).replace(/[^A-Z0-9]/g, "")
+
+/** How many single-letter edits separate two spellings. */
+function editDistance(a: string, b: string): number {
+  if (a === b) return 0
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i)
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i]
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1))
+    }
+    prev = cur
+  }
+  return prev[b.length]
+}
+
+/**
+ * The same district, spelled slightly wrong.
+ *
+ * Our addresses carry a handful of districts written the way people say them
+ * rather than the way the list does: CIMENYAN for Cimeunyan, TANAH SAREAL for
+ * Tanah Sereal, PABEAN CANTIAN for Pabean Cantikan. A letter each.
+ *
+ * Only ever used ALONGSIDE a postal code that exactly one area carries -- the
+ * code is what identifies the place, and this is the sanity check that stops
+ * the code moving somebody to a different town. So the tolerance can be small
+ * and still do its job: two edits, on names long enough that two edits is a
+ * typo rather than a different word. JATIASIH against their Jati is four, and
+ * stays refused.
+ */
+export function nearDistrictSpelling(a: string, b: string): boolean {
+  const x = districtLetters(a)
+  const y = districtLetters(b)
+  if (!x || !y) return false
+  if (x === y) return true
+  if (Math.min(x.length, y.length) < 6) return false
+  return editDistance(x, y) <= 2
+}
+
+/**
+ * The area a POSTAL CODE means, when a search for the district name found
+ * nothing.
+ *
+ * A code is the one field both sides write the same way, so searching for it
+ * gets past our spelling entirely. What it must not do is move somebody to a
+ * different district: a code that lands on a name we do not recognise means
+ * one of the two fields is wrong, and nothing here can say which. So the code
+ * has to appear exactly once AND name our own district back to us -- spacing
+ * aside, and a typo's worth of spelling aside.
+ */
+export function matchByPostal(areas: BiteshipArea[], place: Place): AreaMatch {
+  const wantPos = place.kodePos.trim()
+  if (!wantPos) return { kind: "none" }
+  const carrying = areas.filter((a) => postalOf(a) === wantPos)
+  if (carrying.length !== 1) {
+    return carrying.length > 1 ? { kind: "ambiguous", candidates: carrying } : { kind: "none" }
+  }
+  const [only] = carrying
+  return nearDistrictSpelling(place.kecamatan, only.name.split(",")[0] ?? "")
+    ? { kind: "matched", area: only, approximate: false }
+    : { kind: "ambiguous", candidates: carrying }
 }
 
 /** Five digits at the end of a name, e.g. "Cimahi Utara, Cimahi. 40512". */
