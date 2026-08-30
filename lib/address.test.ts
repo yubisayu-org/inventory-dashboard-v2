@@ -138,3 +138,23 @@ test("an area with no province still answers the rest", () => {
   assert.equal(f.provinsi, "")
   assert.equal(f.kodePos, "16512")
 })
+
+test("a city abbreviation is not a province", () => {
+  // "Pondok Aren, Tangsel 15421" — Tangsel is Tangerang Selatan, her city.
+  // Subtraction leaves it standing where a province would be, and it would
+  // have printed on her parcel as one.
+  const r = parseAddressBlob(
+    "Nama: X\nAlamat Lengkap:\nKomplek Edelweis Blok B23\nPondok Aren, Tangsel 15421",
+    { kota: "KOTA TANGERANG SELATAN", kecamatan: "PONDOK AREN", kodePos: "15421" },
+  )
+  assert.equal(r.jalan, "Komplek Edelweis Blok B23")
+  assert.equal(r.provinsi, null)
+})
+
+test("a province comes back in its own spelling", () => {
+  const r = parseAddressBlob(
+    "Nama: X\nAlamat Lengkap:\nJl. Mawar 1\nSekupang, Batam, kepulauan riau 29426",
+    { kota: "KOTA BATAM", kecamatan: "SEKUPANG", kodePos: "29426" },
+  )
+  assert.equal(r.provinsi, "Kepulauan Riau")
+})
