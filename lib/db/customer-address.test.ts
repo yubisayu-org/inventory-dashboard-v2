@@ -134,3 +134,28 @@ test("an address with no street keeps the label it already prints", async () => 
   const r = await read(id)
   assert.equal(r.data_diri, "jl alam pesanggrahan 6 blok OH 6, kota depok kec cinere 16514")
 })
+
+test("every address field the modal shows survives a round trip", async () => {
+  // The bug this exists for: the API route built its payload field by field and
+  // simply had no line for jalan or provinsi. The modal sent them, the route
+  // dropped them, updateCustomer wrote "" over the top — so typing a street and
+  // pressing Save emptied the box you had just filled in.
+  //
+  // Listing the fields here rather than asserting one at a time, because the
+  // failure mode is a field going MISSING from a hand-written payload.
+  const id = await makeCustomer()
+  const handle = `${TAG}_${n - 1}`
+  const address = {
+    jalan: "Jl kampung melayu no 444\nkel. Bukit Merapin",
+    kecamatan: "GERUNGGANG",
+    kota: "KOTA PANGKAL PINANG",
+    provinsi: "Bangka Belitung",
+    kodePos: "33123",
+  }
+  await updateCustomer(id, { ...base, instagramId: handle, ...address })
+  const r = await read(id)
+  assert.deepEqual(
+    { jalan: r.jalan, kecamatan: r.kecamatan, kota: r.kota, provinsi: r.provinsi, kodePos: r.kode_pos },
+    { ...address, kodePos: address.kodePos },
+  )
+})
