@@ -224,6 +224,15 @@ export interface CustomerRow {
   bankName: string
   bankAccountNumber: string
   bankAccountHolder: string
+  /** Where she lives, as the courier needs it. Empty until somebody fills it. */
+  jalan: string
+  kota: string
+  kecamatan: string
+  provinsi: string
+  kodePos: string
+  /** The Biteship area her address resolved to, or null while it has not. */
+  biteshipAreaId: string | null
+  biteshipAreaName: string | null
   // Invoice roll-up from customer_invoice_summary (0 for callers that don't
   // join it, e.g. the full getCustomers list). totalOutstanding > 0 = owes,
   // < 0 = overpaid, 0 = settled. Voids excluded from invoiceCount.
@@ -248,6 +257,24 @@ export interface CustomerInput {
   bankName: string
   bankAccountNumber: string
   bankAccountHolder: string
+  /**
+   * Where she lives, when the caller knows it.
+   *
+   * Optional, and written only when present: the customer form has always had
+   * her address as one free-text `dataDiri` blob, and a save from a screen that
+   * does not ask for these must not blank the ones the catalogue set.
+   *
+   * The Biteship area is passed alongside rather than derived, because the
+   * screen that asks for it is the screen that showed her the choice --
+   * deriving it again here would be a second set of rules for one question.
+   */
+  jalan?: string
+  kota?: string
+  kecamatan?: string
+  provinsi?: string
+  kodePos?: string
+  biteshipAreaId?: string | null
+  biteshipAreaName?: string | null
 }
 
 export interface WarehouseRow {

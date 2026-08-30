@@ -23,6 +23,7 @@
  */
 
 import { readFileSync } from "node:fs"
+import { parseCsv } from "@/lib/csv"
 import postgres from "postgres"
 
 // Parse args: <path-to-csv> --origin <code>  (order-independent).
@@ -56,34 +57,6 @@ const sql = postgres(process.env.DATABASE_URL, { max: 1 })
 function parseNum(v: string | undefined): number {
   if (!v || !v.trim()) return 0
   return Number(String(v).replace(/[^0-9.-]/g, "")) || 0
-}
-
-// Minimal RFC-4180 parser: handles quoted fields, embedded commas, and "" escapes.
-function parseCsv(text: string): string[][] {
-  const rows: string[][] = []
-  let row: string[] = []
-  let field = ""
-  let inQuotes = false
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i]
-    if (inQuotes) {
-      if (c === '"') {
-        if (text[i + 1] === '"') { field += '"'; i++ } else { inQuotes = false }
-      } else {
-        field += c
-      }
-    } else if (c === '"') {
-      inQuotes = true
-    } else if (c === ",") {
-      row.push(field); field = ""
-    } else if (c === "\n") {
-      row.push(field); rows.push(row); row = []; field = ""
-    } else if (c !== "\r") {
-      field += c
-    }
-  }
-  if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row) }
-  return rows
 }
 
 async function main() {

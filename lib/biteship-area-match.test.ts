@@ -1,6 +1,6 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { matchArea, normalisePlace } from "./biteship-area-match"
+import { matchArea, matchByPostal, nearDistrictSpelling, normalisePlace, sameDistrictSpelling } from "./biteship-area-match"
 import type { BiteshipArea } from "./biteship"
 
 const area = (id: string, name: string, postalCode?: string): BiteshipArea =>
@@ -167,4 +167,92 @@ test("a differently spelled district is still the same district", () => {
   })
   assert.equal(r.kind, "matched")
   assert.equal(r.kind === "matched" && r.area.id, "A")
+})
+
+// ─── A search by postal code, when the district's name found nothing ─────────
+
+test("a missing space is not a different district", () => {
+  assert.equal(sameDistrictSpelling("PONDOKGEDE", "Pondok Gede"), true)
+  assert.equal(sameDistrictSpelling("JATISAMPURNA", "Jati Sampurna"), true)
+  assert.equal(sameDistrictSpelling("TAJUR HALANG", "Tajurhalang"), true)
+})
+
+test("one name inside another is still two places", () => {
+  // The Kudus customer whose kecamatan reads JATIASIH: their code belongs to
+  // Jati, which is a real district and not theirs. A containment test would
+  // have merged them and priced someone's parcel from the wrong town.
+  assert.equal(sameDistrictSpelling("JATIASIH", "Jati"), false)
+  assert.equal(sameDistrictSpelling("CIMAHI UTARA", "Cimahi Tengah"), false)
+})
+
+test("a code carried by exactly one area, naming our own district, matches", () => {
+  const areas = [
+    area("IDZ17412", "Pondok Gede, Bekasi, Jawa Barat. 17412", "17412"),
+    area("IDZ17411", "Pondok Gede, Bekasi, Jawa Barat. 17411", "17411"),
+  ]
+  const r = matchByPostal(areas, { kota: "KOTA BEKASI", kecamatan: "PONDOKGEDE", kodePos: "17412" })
+  assert.equal(r.kind, "matched")
+  assert.equal(r.kind === "matched" && r.area.id, "IDZ17412")
+  assert.equal(r.kind === "matched" && r.approximate, false)
+})
+
+test("a code that lands on a district we do not recognise is refused", () => {
+  // One of the two fields is wrong and nothing here can say which -- the
+  // Jakarta Selatan address whose code belongs to Sukmajaya, Depok.
+  const areas = [area("IDZ16418", "Sukmajaya, Depok, Jawa Barat. 16418", "16418")]
+  const r = matchByPostal(areas, { kota: "JAKARTA SELATAN", kecamatan: "JAGAKARSA", kodePos: "16418" })
+  assert.equal(r.kind, "ambiguous")
+})
+
+test("a code two areas share has not chosen between them", () => {
+  const areas = [
+    area("IDZ-A", "Setu, Tangerang Selatan, Banten. 15314", "15314"),
+    area("IDZ-B", "Ciputat, Tangerang Selatan, Banten. 15314", "15314"),
+  ]
+  const r = matchByPostal(areas, { kota: "TANGERANG SELATAN", kecamatan: "CIPUTAT", kodePos: "15314" })
+  assert.equal(r.kind, "ambiguous")
+})
+
+test("no postal code, nothing to go on", () => {
+  const areas = [area("IDZ17412", "Pondok Gede, Bekasi, Jawa Barat. 17412", "17412")]
+  assert.equal(matchByPostal(areas, { kota: "KOTA BEKASI", kecamatan: "PONDOKGEDE", kodePos: "" }).kind, "none")
+})
+
+test("a letter's difference in a long name is a typo, not another district", () => {
+  assert.equal(nearDistrictSpelling("CIMENYAN", "Cimeunyan"), true)
+  assert.equal(nearDistrictSpelling("TANAH SAREAL", "Tanah Sereal"), true)
+  assert.equal(nearDistrictSpelling("PABEAN CANTIAN", "Pabean Cantikan"), true)
+})
+
+test("short names get no tolerance at all", () => {
+  // Two edits on a five-letter name is a different place, not a slip: SETU
+  // and SETIA are both real, and a code shared between neighbours must not
+  // be allowed to choose one.
+  assert.equal(nearDistrictSpelling("SETU", "Setia"), false)
+  assert.equal(nearDistrictSpelling("JATI", "Jaya"), false)
+})
+
+test("JATIASIH is still not Jati", () => {
+  // The Kudus customer: four edits apart, and both are real districts.
+  assert.equal(nearDistrictSpelling("JATIASIH", "Jati"), false)
+  assert.equal(nearDistrictSpelling("JAGAKARSA", "Sukmajaya"), false)
+})
+
+test("the typo tolerance reaches matchByPostal, and only with a unique code", () => {
+  const areas = [area("IDZ16167", "Tanah Sereal, Bogor, Jawa Barat. 16167", "16167")]
+  const r = matchByPostal(areas, { kota: "KOTA BOGOR", kecamatan: "TANAH SAREAL", kodePos: "16167" })
+  assert.equal(r.kind, "matched")
+  assert.equal(r.kind === "matched" && r.area.id, "IDZ16167")
+})
+
+test("a district numbered in words is the same as one numbered in roman", () => {
+  // Palembang writes ILIR BARAT SATU; Biteship writes Ilir Barat I.
+  assert.equal(normalisePlace("ILIR BARAT SATU"), normalisePlace("Ilir Barat I"))
+  assert.equal(normalisePlace("SEBERANG ULU SATU"), normalisePlace("Seberang Ulu I"))
+  assert.equal(sameDistrictSpelling("ILIR BARAT SATU", "Ilir Barat I"), true)
+})
+
+test("the numeral rule does not merge two different numbers", () => {
+  assert.equal(sameDistrictSpelling("ILIR BARAT SATU", "Ilir Barat II"), false)
+  assert.equal(sameDistrictSpelling("SEBERANG ULU DUA", "Seberang Ulu I"), false)
 })

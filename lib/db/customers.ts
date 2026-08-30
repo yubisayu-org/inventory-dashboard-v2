@@ -1,5 +1,6 @@
 import sql from "../db-pool"
 import { normalizeId } from "./helpers"
+import { composeLabel, canCompose } from "../address"
 import type { DBExecutor } from "./actor"
 import type { CustomerDetail, CustomerRow, CustomerInput, OngkirByWarehouse } from "./types"
 
@@ -107,6 +108,13 @@ function mapCustomerRow(r: Record<string, unknown>, ongkir: OngkirByWarehouse): 
     bankName: (r.bank_name as string) ?? "",
     bankAccountNumber: (r.bank_account_number as string) ?? "",
     bankAccountHolder: (r.bank_account_holder as string) ?? "",
+    jalan: (r.jalan as string) ?? "",
+    kota: (r.kota as string) ?? "",
+    kecamatan: (r.kecamatan as string) ?? "",
+    provinsi: (r.provinsi as string) ?? "",
+    kodePos: (r.kode_pos as string) ?? "",
+    biteshipAreaId: (r.biteship_area_id as string) ?? null,
+    biteshipAreaName: (r.biteship_area_name as string) ?? null,
     // Present only when the query joined customer_invoice_summary; otherwise 0.
     invoiceCount: Number(r.invoice_count ?? 0),
     totalInvoiced: Number(r.total_invoiced ?? 0),
@@ -128,6 +136,8 @@ export async function getCustomers(): Promise<CustomerRow[]> {
   const [rows, ongkirRows] = await Promise.all([
     sql`
       SELECT id, instagram_id, name, whatsapp, data_diri, ekspedisi,
+             jalan, kota, kecamatan, provinsi, kode_pos,
+             biteship_area_id, biteship_area_name,
              bank_name, bank_account_number, bank_account_holder,
              google_sub, created_at, updated_at
       FROM customers
@@ -275,6 +285,8 @@ export async function getCustomersPaginated(opts: {
   const dataRows = await sql.unsafe(
     `SELECT c.id, c.instagram_id, c.name, c.whatsapp, c.data_diri, c.ekspedisi,
             c.bank_name, c.bank_account_number, c.bank_account_holder,
+            c.jalan, c.kota, c.kecamatan, c.provinsi, c.kode_pos,
+            c.biteship_area_id, c.biteship_area_name,
             c.google_sub, c.created_at, c.updated_at,
             COALESCE(cis.invoice_count, 0) AS invoice_count,
             COALESCE(cis.total_invoiced, 0) AS total_invoiced,
@@ -322,6 +334,27 @@ export async function getCustomersPaginated(opts: {
   }
 }
 
+/**
+ * The label text, made from her parts when they can say it.
+ *
+ * `data_diri` is what the shipping label prints, and it used to be typed --
+ * her name written a second time, her district a third, nothing keeping any of
+ * them in step. Now the parts are the truth and this is generated from them.
+ *
+ * Only where the parts CAN say it. A row whose street nobody could recover
+ * keeps the text it prints today: composing without a street would put her
+ * district on the parcel and lose the house.
+ */
+function labelFor(data: CustomerInput): string {
+  const parts = {
+    name: data.name, whatsapp: data.whatsapp, jalan: data.jalan ?? "",
+    kecamatan: data.kecamatan ?? "", kota: data.kota ?? "",
+    provinsi: data.provinsi ?? "", kodePos: data.kodePos ?? "",
+    areaName: data.biteshipAreaName ?? "",
+  }
+  return canCompose(parts) ? composeLabel(parts) : data.dataDiri
+}
+
 export async function addCustomer(data: CustomerInput, db: DBExecutor = sql): Promise<{ id: number }> {
   // Canonical form is bare lowercase, no '@'. Without this, "@User" and "user"
   // would each create their own row and the order flow (which normalizes the
@@ -331,9 +364,14 @@ export async function addCustomer(data: CustomerInput, db: DBExecutor = sql): Pr
   const rows = await db`
     INSERT INTO customers (
       instagram_id, name, whatsapp, data_diri, ekspedisi,
+      jalan, kota, kecamatan, provinsi, kode_pos,
+      biteship_area_id, biteship_area_name,
       bank_name, bank_account_number, bank_account_holder
     ) VALUES (
-      ${instagramId}, ${data.name}, ${data.whatsapp}, ${data.dataDiri}, ${data.ekspedisi},
+      ${instagramId}, ${data.name}, ${data.whatsapp}, ${labelFor(data)}, ${data.ekspedisi},
+      ${data.jalan ?? ""}, ${data.kota ?? ""}, ${data.kecamatan ?? ""},
+      ${data.provinsi ?? ""}, ${data.kodePos ?? ""},
+      ${data.biteshipAreaId ?? null}, ${data.biteshipAreaName ?? null},
       ${data.bankName}, ${data.bankAccountNumber}, ${data.bankAccountHolder}
     )
     RETURNING id
@@ -350,7 +388,7 @@ export async function updateCustomer(id: number, data: CustomerInput, db: DBExec
     SET instagram_id        = ${instagramId},
         name                = ${data.name},
         whatsapp            = ${data.whatsapp},
-        data_diri           = ${data.dataDiri},
+        data_diri           = ${labelFor(data)},
         ekspedisi           = ${data.ekspedisi},
         bank_name           = ${data.bankName},
         bank_account_number = ${data.bankAccountNumber},
@@ -358,6 +396,29 @@ export async function updateCustomer(id: number, data: CustomerInput, db: DBExec
         updated_at          = NOW()
     WHERE id = ${id}
   `
+  // Her address, only from a screen that asked for it.
+  //
+  // A separate statement rather than more columns above: every other caller of
+  // this function -- the add form, the bank-details save -- has never had these
+  // fields, and folding them in would blank the address the catalogue set every
+  // time somebody corrected a bank account.
+  if (data.kota !== undefined || data.kecamatan !== undefined || data.kodePos !== undefined) {
+    await db`
+      UPDATE customers
+      SET jalan     = ${data.jalan ?? ""},
+          kota      = ${data.kota ?? ""},
+          kecamatan = ${data.kecamatan ?? ""},
+          provinsi  = ${data.provinsi ?? ""},
+          kode_pos  = ${data.kodePos ?? ""},
+          -- Cleared when the address changes and nobody named an area: the old
+          -- one belonged to the old address, and a stale area is worse than
+          -- none. It is what prices a redirect and what the courier is told.
+          biteship_area_id   = ${data.biteshipAreaId ?? null},
+          biteship_area_name = ${data.biteshipAreaName ?? null},
+          updated_at         = NOW()
+      WHERE id = ${id}
+    `
+  }
   await upsertCustomerOngkir(id, data.ongkir, db)
 }
 
@@ -373,6 +434,42 @@ export async function deleteCustomer(id: number, db: DBExecutor = sql): Promise<
  * different origin city, so the same destination resolves to a different price
  * per origin (see jne_rates.origin_code in migration 032).
  */
+/**
+ * The rates table's own spelling of a district, from the courier's.
+ *
+ * Biteship writes "Limo, Depok"; `jne_rates` has "LIMO, KOTA DEPOK". Neither is
+ * wrong -- but `lookupOngkir` matches on exact strings, and NONE of the 663
+ * districts our customers live in exist under Biteship's spelling. So filling
+ * the address fields with what the area says would fill them with a district
+ * that cannot be priced.
+ *
+ * Matching on letters alone gets past all of it: "JatiSampurna" finds
+ * "JATISAMPURNA", "Depok" finds "KOTA DEPOK". 550 of 570 districts resolve to
+ * exactly one row; the rest are left to a person, because a rate is a price
+ * somebody pays.
+ */
+export async function resolveRatesDistrict(
+  kecamatan: string,
+  kota: string,
+  db: DBExecutor = sql,
+): Promise<{ kecamatan: string; kota: string } | null> {
+  const letters = (v: string) => v.toUpperCase().replace(/[^A-Z0-9]/g, "")
+  const kec = letters(kecamatan)
+  const kab = letters(kota)
+  if (!kec || !kab) return null
+  const rows = (await db`
+    SELECT DISTINCT kecamatan_nama, kab_kota_nama
+      FROM jne_rates
+     WHERE regexp_replace(upper(kecamatan_nama), '[^A-Z0-9]', '', 'g') = ${kec}
+       AND regexp_replace(upper(kab_kota_nama), '[^A-Z0-9]', '', 'g') LIKE ${`%${kab}%`}
+     LIMIT 2
+  `) as unknown as { kecamatan_nama: string; kab_kota_nama: string }[]
+  // Exactly one, or it has not chosen: two districts of the same name in one
+  // province is a question, not a fill.
+  if (rows.length !== 1) return null
+  return { kecamatan: rows[0].kecamatan_nama.trim(), kota: rows[0].kab_kota_nama.trim() }
+}
+
 export async function lookupOngkir(
   originCode: string,
   kabKota: string,
@@ -413,6 +510,10 @@ export async function registerCustomer(data: {
   kota: string
   kecamatan: string
   kodePos: string
+  /** The form has always collected these; until now it only pasted them into
+   *  data_diri and threw the fields away. */
+  jalan?: string
+  provinsi?: string
 }): Promise<{ id: number; created: boolean }> {
   const norm = normalizeId(data.instagramId)
   // Persist the destination so future warehouses can re-derive ongkir without
@@ -426,6 +527,8 @@ export async function registerCustomer(data: {
       kota         = ${data.kota},
       kecamatan    = ${data.kecamatan},
       kode_pos     = ${data.kodePos},
+      jalan        = ${data.jalan ?? ""},
+      provinsi     = ${data.provinsi ?? ""},
       updated_at   = NOW()
     WHERE lower(replace(instagram_id, '@', '')) = ${norm}
     RETURNING id
@@ -438,9 +541,11 @@ export async function registerCustomer(data: {
     created = false
   } else {
     const inserted = await sql`
-      INSERT INTO customers (instagram_id, name, whatsapp, data_diri, ekspedisi, kota, kecamatan, kode_pos)
+      INSERT INTO customers (instagram_id, name, whatsapp, data_diri, ekspedisi,
+                             kota, kecamatan, kode_pos, jalan, provinsi)
       VALUES (${norm}, ${data.name}, ${data.whatsapp}, ${data.dataDiri}, ${data.ekspedisi},
-              ${data.kota}, ${data.kecamatan}, ${data.kodePos})
+              ${data.kota}, ${data.kecamatan}, ${data.kodePos},
+              ${data.jalan ?? ""}, ${data.provinsi ?? ""})
       RETURNING id
     `
     id = inserted[0].id as number
