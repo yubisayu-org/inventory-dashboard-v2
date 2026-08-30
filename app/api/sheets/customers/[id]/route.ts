@@ -39,8 +39,12 @@ export async function PUT(req: NextRequest, { params }: Params) {
       // with.
       ...(body.kota !== undefined || body.kecamatan !== undefined || body.kodePos !== undefined
         ? {
+            // Newlines kept: a street is often three lines, and the label
+            // prints them as typed. Only the ends are trimmed.
+            jalan: String(body.jalan ?? "").replace(/^\s+|\s+$/g, ""),
             kota: String(body.kota ?? "").trim(),
             kecamatan: String(body.kecamatan ?? "").trim(),
+            provinsi: String(body.provinsi ?? "").trim(),
             kodePos: String(body.kodePos ?? "").trim(),
             biteshipAreaId: body.biteshipAreaId ? String(body.biteshipAreaId).trim() : null,
             biteshipAreaName: body.biteshipAreaName ? String(body.biteshipAreaName).trim() : null,
