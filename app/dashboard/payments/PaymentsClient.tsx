@@ -448,7 +448,14 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
   return (
     <div className="space-y-3">
       {/* Stat cards: Deposit (cash in, 2/3 width) + Refund (cash out, 1/3 width)
-          on one row. Sums honour the active filters but ignore the type tab. */}
+          on one row. Sums honour the active filters but ignore the type tab.
+
+          Both are the shop's totals, not the list's, so an admin sees neither
+          -- what they need to work this screen is the rows, and the takings and
+          the money going back out are the owner's business. The whole row goes
+          rather than one card: half a row of stats reads like something failed
+          to load. */}
+      {!isAdmin && (
       <div className="grid grid-cols-[53fr_47fr] gap-2 sm:gap-4">
         <div className="rounded-xl border border-cream-border border-l-4 border-l-brand bg-white px-3 py-3 sm:px-5 sm:py-4">
           <div className="text-xs font-medium text-faint uppercase tracking-wide">Deposit</div>
@@ -463,6 +470,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
           </div>
         </div>
       </div>
+      )}
 
       {/* Type filter tabs */}
       <div className="hidden md:flex items-center gap-1 w-full rounded-xl border border-cream-border bg-white p-1 overflow-x-auto">
