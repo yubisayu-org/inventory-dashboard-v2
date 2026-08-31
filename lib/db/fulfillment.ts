@@ -1246,8 +1246,24 @@ export async function markProductArrived(data: {
   // stale fee is a wrong invoice. Priced per customer this arrival touched,
   // never the whole event — another customer's adjustment is not its business.
   // After the transaction, because the reconciler prices what is now true.
-  for (const customer of [...new Set(allocations.map(({ item }) => item.customer))]) {
-    await reconcileParcelPlan(customer, data.event)
+  //
+  // Several at a time, not one after another: each reconcile is half a dozen
+  // round trips, and one arrival on 30 Aug 2026 touched twenty customers — a
+  // hundred and twenty sequential queries inside a single request, with the
+  // receiving list waiting on all of them. They do not read each other's work,
+  // so the order was never load-bearing.
+  //
+  // Four at a time rather than all of them: the pool holds twenty connections
+  // for the whole dashboard, and an arrival that grabbed every one would make
+  // everybody else's page wait instead. Most of the speed, none of the
+  // starvation.
+  const toReconcile = [...new Set(allocations.map(({ item }) => item.customer))]
+  const RECONCILE_AT_ONCE = 4
+  for (let i = 0; i < toReconcile.length; i += RECONCILE_AT_ONCE) {
+    await Promise.all(
+      toReconcile.slice(i, i + RECONCILE_AT_ONCE)
+        .map((customer) => reconcileParcelPlan(customer, data.event)),
+    )
   }
 
   return { filledOrderIds, unassignedUnits }

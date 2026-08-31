@@ -2,7 +2,7 @@
 
 import { displayIg, fmt } from "@/lib/format"
 import TableSkeleton from "@/components/TableSkeleton"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { ArrivalListItem, ArrivalListOrder, ExcessTransitItem } from "@/lib/db"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import { allocateFifo } from "@/lib/fifo-fill"
@@ -275,7 +275,17 @@ export default function ArrivalListClient() {
   const [receiveOpen, setReceiveOpen] = useState(false)
   const [notReceivedOpen, setNotReceivedOpen] = useState(false)
 
+  /**
+   * Which load is the newest. A reply from an older one must not repaint the
+   * list, or marking an item shows it still pending: the refresh fired after
+   * the mark can land BEFORE a slower one issued before it, and the older
+   * answer -- which predates the mark -- wins. Pressing again looked like the
+   * only way to make it stick, when the write had succeeded the first time.
+   */
+  const loadSeq = useRef(0)
+
   const fetchItems = useCallback((event?: string, route?: string, silent = false) => {
+    const seq = ++loadSeq.current
     if (!silent) setLoading(true)
     setError("")
     // The route goes to the server now. Filtering in the browser meant every
@@ -288,6 +298,7 @@ export default function ArrivalListClient() {
     const url = qs ? `/api/sheets/arrival-list?${qs}` : "/api/sheets/arrival-list"
     fetchJson<{ items: ArrivalListItem[]; excessPending?: ExcessTransitItem[] }>(url)
       .then((data) => {
+        if (seq !== loadSeq.current) return
         const items = data.items ?? []
         setItems(items)
         setExcessPending(data.excessPending ?? [])
@@ -298,8 +309,11 @@ export default function ArrivalListClient() {
           setCollapsedStores(new Set(items.map((i) => `${i.event}|${i.store || "—"}`)))
         }
       })
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"))
-      .finally(() => { if (!silent) setLoading(false) })
+      .catch((err) => {
+        if (seq !== loadSeq.current) return
+        setError(err instanceof Error ? err.message : "Failed to load")
+      })
+      .finally(() => { if (!silent && seq === loadSeq.current) setLoading(false) })
   }, [])
 
   useEffect(() => {
@@ -447,13 +461,13 @@ export default function ArrivalListClient() {
    * if the new code reads as a different route.
    */
   const renameParcel = useCallback(async (from: string, to: string) => {
-    const res = await fetch("/api/sheets/arrival-list", {
+    await fetchJson("/api/sheets/arrival-list", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "rename_receipt", from, to }),
+    }).catch((e) => {
+      throw new Error(e instanceof Error ? e.message : "Could not rename")
     })
-    const data = await res.json().catch(() => ({}))
-    if (!res.ok) throw new Error(data.error ?? "Could not rename")
     clearSelection()
     fetchItems(selectedEvent || undefined, route, true)
   }, [fetchItems, selectedEvent, route])
@@ -1126,7 +1140,7 @@ function ArriveModal({
         // orders. Their invoices drop, so overpayment refunds auto-materialize
         // for anyone who already paid (overseas — the expected item can't be
         // re-ordered).
-        const res = await fetch("/api/sheets/arrival-list", {
+        await fetchJson("/api/sheets/arrival-list", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1138,15 +1152,15 @@ function ArriveModal({
             qty: quantityArrived,
             cancelOrderIds: [...cancelIds],
           }),
+        }).catch((e) => {
+          throw new Error(e instanceof Error ? e.message : "Failed to log wrong product")
         })
-        const data = await res.json()
-        if (!res.ok) throw new Error(data.error ?? "Failed to log wrong product")
       } else if (mode === "broken") {
         if (quantityArrived < 1) { setSaveError("Enter how many units arrived broken."); return }
         // Broken on arrival: log the broken units to Inventory (flagged broken,
         // never assignable to orders) and cancel the chosen customer orders,
         // refunding whoever had paid for them.
-        const res = await fetch("/api/sheets/arrival-list", {
+        await fetchJson("/api/sheets/arrival-list", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1157,13 +1171,13 @@ function ArriveModal({
             qty: quantityArrived,
             cancelOrderIds: [...cancelIds],
           }),
-        })
-        const data = await res.json()
-        if (!res.ok) throw new Error(data.error ?? "Failed to record broken units")
+          }).catch((e) => {
+            throw new Error(e instanceof Error ? e.message : "Failed to record broken units")
+          })
       } else if (mode === "missing") {
         if (cancelIds.size === 0) { setSaveError("Pick at least one order to cancel."); return }
         // Item never arrived: cancel the chosen orders, log nothing to Inventory.
-        const res = await fetch("/api/sheets/arrival-list", {
+        await fetchJson("/api/sheets/arrival-list", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1178,12 +1192,12 @@ function ArriveModal({
             qty: item.orders.filter((o) => cancelIds.has(o.id)).reduce((sum, o) => sum + o.pending, 0),
             cancelOrderIds: [...cancelIds],
           }),
-        })
-        const data = await res.json()
-        if (!res.ok) throw new Error(data.error ?? "Failed to record missing units")
+          }).catch((e) => {
+            throw new Error(e instanceof Error ? e.message : "Failed to record missing units")
+          })
       } else {
         if (quantityArrived < 1) { setSaveError("Enter how many units arrived."); return }
-        const res = await fetch("/api/sheets/arrival-list", {
+        await fetchJson("/api/sheets/arrival-list", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1191,9 +1205,9 @@ function ArriveModal({
             productId: item.productId,
             quantityArrived,
           }),
-        })
-        const data = await res.json()
-        if (!res.ok) throw new Error(data.error ?? "Failed to mark as arrived")
+          }).catch((e) => {
+            throw new Error(e instanceof Error ? e.message : "Failed to mark as arrived")
+          })
       }
       onSuccess()
     } catch (err) {
