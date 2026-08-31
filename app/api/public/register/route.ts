@@ -30,6 +30,8 @@ const LIMITS = {
   kecamatan: 80,
   kode_pos: 10,
   ekspedisi: 40,
+  biteship_area_id: 64,
+  biteship_area_name: 160,
 } as const
 
 function corsHeaders(): Record<string, string> {
@@ -129,6 +131,11 @@ export async function POST(req: NextRequest) {
     kecamatan: str(body.kecamatan),
     kode_pos: str(body.kode_pos),
     ekspedisi: str(body.ekspedisi),
+    // The courier's own id for her address, chosen on the form. Absent when
+    // Biteship carries no area for her district or the lookup was down --
+    // registration must not depend on a courier API being reachable.
+    biteship_area_id: str(body.biteship_area_id),
+    biteship_area_name: str(body.biteship_area_name),
   }
 
   // Bot check first — before any DB work.
@@ -149,6 +156,11 @@ export async function POST(req: NextRequest) {
   if (b.ponsel && !/^[0-9]{6,20}$/.test(b.ponsel)) return bad("Invalid phone number")
   if (b.kode_pos && !/^[0-9]{1,10}$/.test(b.kode_pos)) return bad("Invalid postal code")
   if (b.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(b.email)) return bad("Invalid email")
+  // Biteship's ids look like IDNP9IDNC111IDND268IDZ16512. Reject anything else
+  // rather than storing a string that will never match an area.
+  if (b.biteship_area_id && !/^[A-Za-z0-9]{8,64}$/.test(b.biteship_area_id)) {
+    return bad("Invalid area id")
+  }
 
   try {
     const name = [b.nama_depan, b.nama_belakang].filter(Boolean).join(" ").trim()
@@ -163,6 +175,11 @@ export async function POST(req: NextRequest) {
       kodePos: b.kode_pos,
       jalan: b.jalan,
       provinsi: b.provinsi,
+      // Pass null, not undefined, when the form found no area: undefined means
+      // "the caller did not say", which registerCustomer reads as "leave the
+      // stored area alone". A registration always speaks for the whole address.
+      biteshipAreaId: b.biteship_area_id || null,
+      biteshipAreaName: b.biteship_area_name || null,
     })
     return NextResponse.json(
       { success: true, id: result.id, created: result.created },

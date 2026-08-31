@@ -106,20 +106,31 @@ async function main() {
     }
   }
 
-  if (asked > 0) {
-    console.log(`${asked} areas had to be asked for — storing them, so the next run is free.`)
-    for (const [areaId, price] of quotes) {
-      if (price == null || known.get(areaId) === price) continue
-      await sql`
-        UPDATE customer_warehouse_ongkir cwo
-           SET biteship_ongkir = ${price}, biteship_quoted_at = NOW()
-          FROM customers c
-         WHERE c.id = cwo.customer_id
-           AND cwo.warehouse_id = ${origin.id}
-           AND c.biteship_area_id = ${areaId}
-      `
-    }
+  if (asked > 0) console.log(`${asked} areas had to be asked for — storing them, so the next run is free.`)
+
+  // Store the answer on every customer of the area that lacks one.
+  //
+  // Not only the areas we just paid for: a customer mapped into an area a
+  // NEIGHBOUR had already quoted costs nothing to fill, and skipping her
+  // leaves a NULL that the pricing switch would read as "no quote" and fall
+  // back to the very rate the quote was meant to replace. `IS NULL` keeps a
+  // stored quote authoritative unless --refresh asked for a new one.
+  let stored = 0
+  for (const [areaId, price] of quotes) {
+    if (price == null) continue
+    const rows = await sql`
+      UPDATE customer_warehouse_ongkir cwo
+         SET biteship_ongkir = ${price}, biteship_quoted_at = NOW()
+        FROM customers c
+       WHERE c.id = cwo.customer_id
+         AND cwo.warehouse_id = ${origin.id}
+         AND c.biteship_area_id = ${areaId}
+         AND (cwo.biteship_ongkir IS NULL OR (${REFRESH} AND cwo.biteship_ongkir <> ${price}))
+      RETURNING cwo.customer_id
+    `
+    stored += rows.length
   }
+  if (stored) console.log(`${stored} customer rows given a quote.`)
 
   const over: typeof rows & { diff?: number }[] = []
   const under: typeof rows & { diff?: number }[] = []
