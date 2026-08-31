@@ -1218,7 +1218,14 @@ export async function markProductArrived(data: {
    * no single box was opened.
    */
   receipt?: string
-}, actor?: string | null): Promise<{ filledOrderIds: number[]; unassignedUnits: number }> {
+}, actor?: string | null): Promise<{
+  filledOrderIds: number[]
+  unassignedUnits: number
+  /** What the paperwork said was in the opened box, when one was named. */
+  boxExpected?: number
+  /** How many more units were marked than that box was carrying. */
+  markedBeyondBox?: number
+}> {
   type Row = {
     id: number; customer: string; unitDispatch: number; unitArrive: number
     pending: number; receipt: string
@@ -1252,6 +1259,16 @@ export async function markProductArrived(data: {
 
   const { allocations, excess: unassignedUnits } = allocateFifo(orders, (o) => o.pending, data.quantityArrived)
   const filledOrderIds: number[] = []
+
+  // What this box was carrying, on paper. Marking more than that is allowed --
+  // loose packing means a box really can hold more than the list says, and
+  // refusing would leave stock in hand and nowhere to put it. But it is worth
+  // saying out loud, because the other possibility is a miscount, and then a
+  // box that lands later brings a unit nobody is waiting for.
+  const boxExpected = openedBox ? (owedByBox.get(openedBox) ?? 0) : undefined
+  const markedBeyondBox = openedBox
+    ? Math.max(0, allocations.reduce((n, a) => n + a.allocated, 0) - (boxExpected ?? 0))
+    : undefined
 
   if (allocations.length > 0) {
     const allocatedBy = new Map(allocations.map(({ item, allocated }) => [item.id, allocated]))
@@ -1290,32 +1307,50 @@ export async function markProductArrived(data: {
       // line is still waiting the receipt means the opposite -- the box that
       // owes it -- which is handled below. One field, two jobs, because a box
       // has nothing more to tell a customer it has finished serving.
-      for (const { item: o, allocated } of allocations) {
-        if (allocated <= 0) continue
-        if (o.unitArrive + allocated < o.unitDispatch) continue
-        if (o.receipt !== openedBox) reassign.set(o.id, openedBox)
-      }
       for (const { o, left } of stillWaiting) {
+        // Her own box first when it still owes what she is waiting for: nobody
+        // should be shuffled for no reason. Otherwise whichever box has most
+        // left to give.
         let box = (owedByBox.get(o.receipt) ?? 0) >= left ? o.receipt : ""
         if (!box) {
           const [best] = [...owedByBox].filter(([, owed]) => owed >= left).sort((a, b) => b[1] - a[1])
           box = best?.[0] ?? o.receipt
         }
         owedByBox.set(box, (owedByBox.get(box) ?? 0) - left)
-        if (box !== o.receipt) reassign.set(o.id, box)
+        // Compare against what the row will say AFTER the fill, not what it
+        // said before. A part-filled line has already been stamped with the
+        // opened box by the write above -- so a line that should go back to
+        // waiting on its own box needs that written explicitly, or it is left
+        // pointing at the box that has already given all it had.
+        const afterFill = (allocatedBy.get(o.id) ?? 0) > 0 && openedBox ? openedBox : o.receipt
+        if (box !== afterFill) reassign.set(o.id, box)
       }
     }
 
     await sql.begin(async (tx) => {
       await tx`SELECT set_config('app.actor', ${actor ?? ""}, true)`
+
+      // The received report reads the audit log, and credits a box by whatever
+      // the row SAID at the moment unit_arrive rose (see getReceivedReport). So
+      // the fill is written with the opened box on the row -- these units did
+      // come out of it -- and any move onto a different box happens in a second
+      // write, which the report ignores because unit_arrive did not change.
       for (const { item: o, allocated } of allocations) {
         const newUnitArrive = o.unitArrive + allocated
         if (newUnitArrive >= o.unitDispatch) filledOrderIds.push(o.id)
-        await tx`
-          UPDATE orders
-          SET unit_arrive = ${newUnitArrive}, updated_at = NOW()
-          WHERE id = ${o.id}
-        `
+        if (openedBox && o.receipt !== openedBox) {
+          await tx`
+            UPDATE orders
+            SET unit_arrive = ${newUnitArrive}, dispatch_receipt = ${openedBox}, updated_at = NOW()
+            WHERE id = ${o.id}
+          `
+        } else {
+          await tx`
+            UPDATE orders
+            SET unit_arrive = ${newUnitArrive}, updated_at = NOW()
+            WHERE id = ${o.id}
+          `
+        }
       }
       for (const [orderId, box] of reassign) {
         await tx`
@@ -1353,7 +1388,7 @@ export async function markProductArrived(data: {
     )
   }
 
-  return { filledOrderIds, unassignedUnits }
+  return { filledOrderIds, unassignedUnits, boxExpected, markedBeyondBox }
 }
 
 export interface NotReceivedResult {

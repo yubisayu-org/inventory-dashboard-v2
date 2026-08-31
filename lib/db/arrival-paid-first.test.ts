@@ -136,6 +136,70 @@ test("an order too big for what arrived is still served, and keeps waiting for t
   await sql`DELETE FROM events WHERE name = ${EV2}`
 })
 
+test("a part-filled order that also moves box keeps both facts straight", async () => {
+  // The awkward one: she is served OUT of the box just opened, but her order is
+  // bigger than what arrived, so she still waits — and the box she was packed
+  // in is not the one that was opened. Two writes, deliberately ordered: the
+  // fill carries the box the units came out of, so the received report credits
+  // it; the move onto the box that still owes her comes after, touching no
+  // quantity, so the report ignores it.
+  const EV4 = `${TAG}_EV4`
+  await sql`INSERT INTO events (name, warehouse_id) SELECT ${EV4}, id FROM warehouses ORDER BY id LIMIT 1`
+  await sql`INSERT INTO customers (instagram_id) VALUES (${`${TAG}_big`})`
+  await sql`INSERT INTO customers (instagram_id) VALUES (${`${TAG}_small`})`
+  // She ordered 2, packed in the box still at sea, and has paid.
+  await sql`
+    INSERT INTO orders (event, customer, product_id, unit_price, unit, unit_buy, unit_dispatch, dispatch_receipt, dispatched_at)
+    VALUES (${EV4}, ${`${TAG}_big`}, ${productId}, 10000, 2, 2, 2, 'KARINA9', NOW())
+  `
+  await sql`
+    INSERT INTO payments (event, customer, amount, account, is_checked, kind)
+    VALUES (${EV4}, ${`${TAG}_big`}, 1000000, 'test', true, 'deposit')
+  `
+  // He ordered 1, packed in the box that arrives, and has not paid.
+  await sql`
+    INSERT INTO orders (event, customer, product_id, unit_price, unit, unit_buy, unit_dispatch, dispatch_receipt, dispatched_at)
+    VALUES (${EV4}, ${`${TAG}_small`}, ${productId}, 10000, 1, 1, 1, 'CJI-88', NOW())
+  `
+
+  await markProductArrived({ event: EV4, productId, quantityArrived: 1, receipt: "CJI-88" })
+
+  const rows = (await sql`
+    SELECT lower(replace(customer, '@', '')) AS customer, COALESCE(unit_arrive, 0)::int AS arrived,
+           unit_dispatch::int AS dispatched, COALESCE(dispatch_receipt, '') AS receipt
+      FROM orders WHERE event = ${EV4} ORDER BY id
+  `) as unknown as { customer: string; arrived: number; dispatched: number; receipt: string }[]
+  const big = rows.find((r) => r.customer === `${TAG}_big`)!
+  const small = rows.find((r) => r.customer === `${TAG}_small`)!
+
+  assert.equal(big.arrived, 1, "she paid, so the one unit is hers")
+  assert.equal(big.receipt, "KARINA9", "she still waits on the box that owes her the second")
+  assert.equal(small.arrived, 0, "the unpaid order waits")
+  assert.equal(small.receipt, "KARINA9", "his box gave its unit away, so he moves to the one that owes")
+
+  // The received report reads the audit log. The unit must be credited to the
+  // box it physically came out of, not to the one she ends up waiting on.
+  const credited = (await sql`
+    SELECT COALESCE(a.new_row->>'dispatch_receipt', '') AS receipt,
+           SUM((a.new_row->>'unit_arrive')::int - COALESCE((a.old_row->>'unit_arrive')::int, 0))::int AS units
+      FROM audit.audit_log a
+     WHERE a.table_name = 'orders' AND (a.new_row->>'event') = ${EV4}
+       AND COALESCE((a.new_row->>'unit_arrive')::int, 0) > COALESCE((a.old_row->>'unit_arrive')::int, 0)
+     GROUP BY 1
+  `) as unknown as { receipt: string; units: number }[]
+  assert.deepEqual(
+    credited.map((r) => ({ receipt: r.receipt, units: r.units })),
+    [{ receipt: "CJI-88", units: 1 }],
+    "one unit received, credited to the box it came out of",
+  )
+
+  await sql`DELETE FROM orders WHERE event = ${EV4}`
+  await sql`DELETE FROM payments WHERE event = ${EV4}`
+  await sql`DELETE FROM customer_shipping_prefs WHERE event = ${EV4}`
+  await sql`DELETE FROM adjustments WHERE event = ${EV4}`
+  await sql`DELETE FROM events WHERE name = ${EV4}`
+})
+
 test("naming no box fills the same way and shuffles nothing", async () => {
   const EV3 = `${TAG}_EV3`
   await sql`INSERT INTO events (name, warehouse_id) SELECT ${EV3}, id FROM warehouses ORDER BY id LIMIT 1`

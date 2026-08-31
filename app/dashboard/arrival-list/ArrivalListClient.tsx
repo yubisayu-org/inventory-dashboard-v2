@@ -273,6 +273,8 @@ export default function ArrivalListClient() {
   // Multi-select for marking several items received.
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [receiveOpen, setReceiveOpen] = useState(false)
+  /** Said after a save went through — a box that held more than its paperwork. */
+  const [notice, setNotice] = useState("")
   const [notReceivedOpen, setNotReceivedOpen] = useState(false)
 
   /**
@@ -323,7 +325,8 @@ export default function ArrivalListClient() {
   // Partial fills change multiple orders' pending qty in non-trivial ways.
   // Refetching is simpler and more correct than incremental local state updates.
   // Silent so the open modal isn't unmounted by the TableSkeleton fallback.
-  function handleArrivedSuccess() {
+  function handleArrivedSuccess(notice?: string) {
+    if (notice) setNotice(notice)
     fetchItems(selectedEvent || undefined, route, true)
   }
 
@@ -501,6 +504,14 @@ export default function ArrivalListClient() {
 
   return (
     <>
+      {notice && (
+        <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex items-start gap-3">
+          <span className="flex-1">{notice}</span>
+          <button onClick={() => setNotice("")} className="shrink-0 underline hover:no-underline">
+            Dismiss
+          </button>
+        </div>
+      )}
       {/* Which parcel to check in. The route is read off each line's dispatch
           receipt, so picking one shows exactly what should have travelled
           together — the hand-carried suitcase, the air cargo, the sea box.
@@ -1109,7 +1120,8 @@ function ArriveModal({
    *  down, so whoever is still waiting moves to the boxes that still owe them. */
   receipt?: string
   onClose: () => void
-  onSuccess: () => void
+  /** `notice` is said after a successful save, never instead of one. */
+  onSuccess: (notice?: string) => void
 }) {
   const [qty, setQty] = useState(String(item.totalPending))
   // "arrive" = normal receipt; "wrong" = different SKU sent; "broken" = arrived
@@ -1137,6 +1149,7 @@ function ArriveModal({
   async function handleSubmit() {
     setSaving(true)
     setSaveError(null)
+    let notice: string | undefined
     try {
       if (mode === "wrong") {
         if (quantityArrived < 1) { setSaveError("Enter how many units arrived."); return }
@@ -1209,20 +1222,31 @@ function ArriveModal({
           })
       } else {
         if (quantityArrived < 1) { setSaveError("Enter how many units arrived."); return }
-        await fetchJson("/api/sheets/arrival-list", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            event: item.event,
-            productId: item.productId,
-            quantityArrived,
-            receipt,
-          }),
+        const res = await fetchJson<{ boxExpected?: number; markedBeyondBox?: number }>(
+          "/api/sheets/arrival-list", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              event: item.event,
+              productId: item.productId,
+              quantityArrived,
+              receipt,
+            }),
           }).catch((e) => {
             throw new Error(e instanceof Error ? e.message : "Failed to mark as arrived")
           })
+        // Saved either way — a box really can hold more than the list said. But
+        // the other explanation is a miscount, and that only shows up weeks
+        // later as a unit nobody is waiting for, so say it now.
+        if (receipt && res?.markedBeyondBox) {
+          notice =
+            `${item.productName}: ${receipt} was carrying ${res.boxExpected} on paper, ` +
+            `and you marked ${quantityArrived} — ${res.markedBeyondBox} more than it owed. ` +
+            `If the box really held more, nothing to do. If it was a miscount, the extra ` +
+            `turns up later as stock nobody is waiting for.`
+        }
       }
-      onSuccess()
+      onSuccess(notice)
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Failed")
     } finally {
