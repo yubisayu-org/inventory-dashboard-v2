@@ -838,6 +838,7 @@ export default function ArrivalListClient() {
       {arrivingItem && (
         <ArriveModal
           item={arrivingItem}
+          route={route}
           itemOptions={(options?.items ?? []).map((it) => ({ value: it.name, label: it.name, meta: `Rp ${fmt(it.price)}` }))}
           onClose={() => setArrivingItem(null)}
           onSuccess={() => {
@@ -892,6 +893,7 @@ export default function ArrivalListClient() {
       {receiveOpen && (
         <ConfirmReceivePanel
           items={selectedItems}
+          route={route}
           onClose={() => setReceiveOpen(false)}
           onSuccess={() => { clearSelection(); setReceiveOpen(false); handleArrivedSuccess() }}
           onPartial={(succeededKeys) => {
@@ -929,11 +931,14 @@ export default function ArrivalListClient() {
 
 function ConfirmReceivePanel({
   items,
+  route,
   onClose,
   onSuccess,
   onPartial,
 }: {
   items: ArrivalListItem[]
+  /** The tab being worked — units can only fill lines in that box. */
+  route: string
   onClose: () => void
   onSuccess: () => void
   onPartial: (succeededKeys: string[]) => void
@@ -988,7 +993,7 @@ function ConfirmReceivePanel({
         fetch("/api/sheets/arrival-list", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ event: t.event, productId: t.productId, quantityArrived: t.qty }),
+          body: JSON.stringify({ event: t.event, productId: t.productId, quantityArrived: t.qty, route }),
         }).then(async (res) => {
           const data = await res.json()
           if (!res.ok) throw new Error(data.error ?? `Failed for ${t.name}`)
@@ -1091,11 +1096,15 @@ function ConfirmReceivePanel({
 function ArriveModal({
   item,
   itemOptions,
+  route,
   onClose,
   onSuccess,
 }: {
   item: ArrivalListItem
   itemOptions: { value: string; label: string; meta?: string }[]
+  /** The tab being worked. Receiving happens in front of one box, so the units
+   *  can only fill lines in that box — see markProductArrived. */
+  route: string
   onClose: () => void
   onSuccess: () => void
 }) {
@@ -1204,6 +1213,7 @@ function ArriveModal({
             event: item.event,
             productId: item.productId,
             quantityArrived,
+            route,
           }),
           }).catch((e) => {
             throw new Error(e instanceof Error ? e.message : "Failed to mark as arrived")

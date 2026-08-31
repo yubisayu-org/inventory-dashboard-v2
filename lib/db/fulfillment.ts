@@ -1199,21 +1199,44 @@ export async function markProductArrived(data: {
   event: string
   productId: number
   quantityArrived: number
+  /**
+   * The route being worked, when one is. Receiving happens in front of ONE box:
+   * without this, marking seven units on the air tab spread them across every
+   * pending line for that product in the trip, paid customers first — so units
+   * physically in the CJI box were credited to customers whose goods were still
+   * in HC/KS, and the air tab kept showing leftovers because its own lines had
+   * not been filled. Six lines were credited to the wrong box on 30 Aug 2026.
+   *
+   * Undefined or "all" allocates across every route, which is what the unfiltered
+   * view means.
+   */
+  route?: string
 }, actor?: string | null): Promise<{ filledOrderIds: number[]; unassignedUnits: number }> {
   type Row = { id: number; customer: string; unitDispatch: number; unitArrive: number; pending: number }
+  const rt = data.route && data.route !== "all" ? data.route : null
   const orders = (await sql`
     SELECT
-      id,
-      customer,
-      unit_dispatch::int AS "unitDispatch",
-      COALESCE(unit_arrive, 0)::int AS "unitArrive",
-      (unit_dispatch - COALESCE(unit_arrive, 0))::int AS pending
-    FROM orders
-    WHERE event = ${data.event}
-      AND product_id = ${data.productId}
-      AND unit_dispatch IS NOT NULL
-      AND (unit_arrive IS NULL OR unit_arrive < unit_dispatch)
-    ORDER BY id ASC
+      o.id,
+      o.customer,
+      o.unit_dispatch::int AS "unitDispatch",
+      COALESCE(o.unit_arrive, 0)::int AS "unitArrive",
+      (o.unit_dispatch - COALESCE(o.unit_arrive, 0))::int AS pending
+    FROM orders o
+    -- The same reading of a receipt the arrival list uses, so what can be
+    -- filled is exactly what is on screen.
+    LEFT JOIN LATERAL (
+      SELECT dp.route_key
+        FROM dispatch_route_prefixes dp
+       WHERE upper(btrim(COALESCE(o.dispatch_receipt, ''))) LIKE dp.prefix || '%'
+       ORDER BY length(dp.prefix) DESC
+       LIMIT 1
+    ) rt_match ON TRUE
+    WHERE o.event = ${data.event}
+      AND o.product_id = ${data.productId}
+      AND o.unit_dispatch IS NOT NULL
+      AND (o.unit_arrive IS NULL OR o.unit_arrive < o.unit_dispatch)
+      AND (${rt}::text IS NULL OR COALESCE(rt_match.route_key, 'other') = ${rt})
+    ORDER BY o.id ASC
   `) as unknown as Row[]
 
   // Allocate arrivals to paid customers first, then partial, then unpaid

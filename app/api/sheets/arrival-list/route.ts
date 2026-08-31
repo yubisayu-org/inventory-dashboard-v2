@@ -169,6 +169,9 @@ export async function POST(req: NextRequest) {
       event,
       productId: Number(productId),
       quantityArrived,
+      // Which tab the receiving was done on. Receiving happens in front of one
+      // box, so the units can only belong to lines in that box.
+      route: typeof body.route === "string" ? body.route : undefined,
     }, session.user.email)
     return NextResponse.json({ success: true, ...result })
   } catch (err) {
