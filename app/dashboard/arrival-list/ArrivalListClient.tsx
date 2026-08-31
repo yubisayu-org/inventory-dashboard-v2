@@ -261,7 +261,7 @@ export default function ArrivalListClient() {
     ],
     [routes],
   )
-  const [arrivingItem, setArrivingItem] = useState<ArrivalListItem | null>(null)
+  const [arrivingItem, setArrivingItem] = useState<ArrivalRow | null>(null)
   const [bulkOpen, setBulkOpen] = useState(false)
   const [collapsedEvents, setCollapsedEvents] = useState<Set<string>>(new Set())
   const [collapsedStores, setCollapsedStores] = useState<Set<string>>(new Set())
@@ -838,7 +838,7 @@ export default function ArrivalListClient() {
       {arrivingItem && (
         <ArriveModal
           item={arrivingItem}
-          route={route}
+          receipt={arrivingItem.parcel}
           itemOptions={(options?.items ?? []).map((it) => ({ value: it.name, label: it.name, meta: `Rp ${fmt(it.price)}` }))}
           onClose={() => setArrivingItem(null)}
           onSuccess={() => {
@@ -936,8 +936,8 @@ function ConfirmReceivePanel({
   onSuccess,
   onPartial,
 }: {
-  items: ArrivalListItem[]
-  /** The tab being worked — units can only fill lines in that box. */
+  items: ArrivalRow[]
+  /** Unused directly: each row carries the box it is shown under. */
   route: string
   onClose: () => void
   onSuccess: () => void
@@ -985,6 +985,8 @@ function ConfirmReceivePanel({
         productId: it.productId,
         name: it.productName,
         qty: Number(qtys[selKey(it)]) || 0,
+        // The box this row is shown under, when a route tab is open.
+        receipt: it.parcel,
       }))
       .filter((t) => t.qty > 0)
 
@@ -993,7 +995,7 @@ function ConfirmReceivePanel({
         fetch("/api/sheets/arrival-list", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ event: t.event, productId: t.productId, quantityArrived: t.qty, route }),
+          body: JSON.stringify({ event: t.event, productId: t.productId, quantityArrived: t.qty, receipt: t.receipt }),
         }).then(async (res) => {
           const data = await res.json()
           if (!res.ok) throw new Error(data.error ?? `Failed for ${t.name}`)
@@ -1096,15 +1098,16 @@ function ConfirmReceivePanel({
 function ArriveModal({
   item,
   itemOptions,
-  route,
+  receipt,
   onClose,
   onSuccess,
 }: {
   item: ArrivalListItem
   itemOptions: { value: string; label: string; meta?: string }[]
-  /** The tab being worked. Receiving happens in front of one box, so the units
-   *  can only fill lines in that box — see markProductArrived. */
-  route: string
+  /** The box being unpacked, when a route tab is showing one. Not a restriction
+   *  on who may be filled — see markProductArrived — but the box whose debt goes
+   *  down, so whoever is still waiting moves to the boxes that still owe them. */
+  receipt?: string
   onClose: () => void
   onSuccess: () => void
 }) {
@@ -1213,7 +1216,7 @@ function ArriveModal({
             event: item.event,
             productId: item.productId,
             quantityArrived,
-            route,
+            receipt,
           }),
           }).catch((e) => {
             throw new Error(e instanceof Error ? e.message : "Failed to mark as arrived")

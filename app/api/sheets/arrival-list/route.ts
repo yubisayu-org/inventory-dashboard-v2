@@ -169,9 +169,11 @@ export async function POST(req: NextRequest) {
       event,
       productId: Number(productId),
       quantityArrived,
-      // Which tab the receiving was done on. Receiving happens in front of one
-      // box, so the units can only belong to lines in that box.
-      route: typeof body.route === "string" ? body.route : undefined,
+      // Which box was opened. Not a restriction on who may be filled -- the
+      // queue is paid-first across the whole trip -- but the box whose debt
+      // just went down, so the ones still waiting can be moved to the boxes
+      // that still owe them.
+      receipt: typeof body.receipt === "string" ? body.receipt : undefined,
     }, session.user.email)
     return NextResponse.json({ success: true, ...result })
   } catch (err) {
