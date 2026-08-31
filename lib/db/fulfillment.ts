@@ -1199,22 +1199,58 @@ export async function markProductArrived(data: {
   event: string
   productId: number
   quantityArrived: number
-}, actor?: string | null): Promise<{ filledOrderIds: number[]; unassignedUnits: number }> {
-  type Row = { id: number; customer: string; unitDispatch: number; unitArrive: number; pending: number }
+  /**
+   * The box being unpacked, when one is named.
+   *
+   * A box holds UNITS, not people. The items inside are loose and identical, so
+   * whoever is next in the queue can be served from whatever box is open — and
+   * that is the point: the queue is paid-first, and until now it could not
+   * reach across boxes, so whoever the packer happened to put in the first box
+   * was served first no matter who had paid.
+   *
+   * Naming the box does not restrict who may be filled. It says which box the
+   * units came out of, so the boxes' outstanding counts can be kept true: this
+   * one now owes that many fewer, and the customers still waiting are moved on
+   * to the boxes that still owe them. Without that, a box you had emptied would
+   * go on showing lines as pending.
+   *
+   * Undefined -- the All tab -- fills the same way and re-stamps nothing, since
+   * no single box was opened.
+   */
+  receipt?: string
+}, actor?: string | null): Promise<{
+  filledOrderIds: number[]
+  unassignedUnits: number
+  /** What the paperwork said was in the opened box, when one was named. */
+  boxExpected?: number
+  /** How many more units were marked than that box was carrying. */
+  markedBeyondBox?: number
+}> {
+  type Row = {
+    id: number; customer: string; unitDispatch: number; unitArrive: number
+    pending: number; receipt: string
+  }
+  const openedBox = (data.receipt ?? "").trim()
   const orders = (await sql`
     SELECT
-      id,
-      customer,
-      unit_dispatch::int AS "unitDispatch",
-      COALESCE(unit_arrive, 0)::int AS "unitArrive",
-      (unit_dispatch - COALESCE(unit_arrive, 0))::int AS pending
-    FROM orders
-    WHERE event = ${data.event}
-      AND product_id = ${data.productId}
-      AND unit_dispatch IS NOT NULL
-      AND (unit_arrive IS NULL OR unit_arrive < unit_dispatch)
-    ORDER BY id ASC
+      o.id,
+      o.customer,
+      o.unit_dispatch::int AS "unitDispatch",
+      COALESCE(o.unit_arrive, 0)::int AS "unitArrive",
+      (o.unit_dispatch - COALESCE(o.unit_arrive, 0))::int AS pending,
+      COALESCE(o.dispatch_receipt, '') AS receipt
+    FROM orders o
+    WHERE o.event = ${data.event}
+      AND o.product_id = ${data.productId}
+      AND o.unit_dispatch IS NOT NULL
+      AND (o.unit_arrive IS NULL OR o.unit_arrive < o.unit_dispatch)
+    ORDER BY o.id ASC
   `) as unknown as Row[]
+
+  // What each box still owes, before anything is taken out of this one. The
+  // sum of these is the total still to arrive.
+  const owedByBox = new Map<string, number>()
+  for (const o of orders) owedByBox.set(o.receipt, (owedByBox.get(o.receipt) ?? 0) + o.pending)
 
   // Allocate arrivals to paid customers first, then partial, then unpaid
   // (earliest order within a tier). Matches the arrive modal's preview ordering.
@@ -1224,16 +1260,102 @@ export async function markProductArrived(data: {
   const { allocations, excess: unassignedUnits } = allocateFifo(orders, (o) => o.pending, data.quantityArrived)
   const filledOrderIds: number[] = []
 
+  // What this box was carrying, on paper. Marking more than that is allowed --
+  // loose packing means a box really can hold more than the list says, and
+  // refusing would leave stock in hand and nowhere to put it. But it is worth
+  // saying out loud, because the other possibility is a miscount, and then a
+  // box that lands later brings a unit nobody is waiting for.
+  const boxExpected = openedBox ? (owedByBox.get(openedBox) ?? 0) : undefined
+  const markedBeyondBox = openedBox
+    ? Math.max(0, allocations.reduce((n, a) => n + a.allocated, 0) - (boxExpected ?? 0))
+    : undefined
+
   if (allocations.length > 0) {
+    const allocatedBy = new Map(allocations.map(({ item, allocated }) => [item.id, allocated]))
+    const taken = allocations.reduce((n, a) => n + a.allocated, 0)
+
+    // Take what was received out of the opened box's debt, and out of the other
+    // boxes only if it owed less than turned up -- which happens when somebody
+    // packs more into a box than the paperwork said.
+    if (openedBox) {
+      let left = taken
+      const fromOpened = Math.min(left, owedByBox.get(openedBox) ?? 0)
+      owedByBox.set(openedBox, (owedByBox.get(openedBox) ?? 0) - fromOpened)
+      left -= fromOpened
+      for (const [box, owed] of [...owedByBox].sort((a, b) => b[1] - a[1])) {
+        if (left <= 0) break
+        const off = Math.min(left, owed)
+        owedByBox.set(box, owed - off)
+        left -= off
+      }
+    }
+
+    // Who is still waiting, and for how many, once this arrival is applied.
+    const stillWaiting = orders
+      .map((o) => ({ o, left: o.pending - (allocatedBy.get(o.id) ?? 0) }))
+      .filter(({ left }) => left > 0)
+
+    // Move each waiting line onto a box that still owes units. Her own box
+    // first when it still owes -- nobody should be shuffled for no reason --
+    // then whichever box has the most left. This is what empties a box you have
+    // finished with: the people it can no longer serve move on to the boxes
+    // that will.
+    const reassign = new Map<number, string>()
+    if (openedBox) {
+      // A line with nothing left to come was served out of the box just opened,
+      // so that is where its units came from and what it should say. While a
+      // line is still waiting the receipt means the opposite -- the box that
+      // owes it -- which is handled below. One field, two jobs, because a box
+      // has nothing more to tell a customer it has finished serving.
+      for (const { o, left } of stillWaiting) {
+        // Her own box first when it still owes what she is waiting for: nobody
+        // should be shuffled for no reason. Otherwise whichever box has most
+        // left to give.
+        let box = (owedByBox.get(o.receipt) ?? 0) >= left ? o.receipt : ""
+        if (!box) {
+          const [best] = [...owedByBox].filter(([, owed]) => owed >= left).sort((a, b) => b[1] - a[1])
+          box = best?.[0] ?? o.receipt
+        }
+        owedByBox.set(box, (owedByBox.get(box) ?? 0) - left)
+        // Compare against what the row will say AFTER the fill, not what it
+        // said before. A part-filled line has already been stamped with the
+        // opened box by the write above -- so a line that should go back to
+        // waiting on its own box needs that written explicitly, or it is left
+        // pointing at the box that has already given all it had.
+        const afterFill = (allocatedBy.get(o.id) ?? 0) > 0 && openedBox ? openedBox : o.receipt
+        if (box !== afterFill) reassign.set(o.id, box)
+      }
+    }
+
     await sql.begin(async (tx) => {
       await tx`SELECT set_config('app.actor', ${actor ?? ""}, true)`
+
+      // The received report reads the audit log, and credits a box by whatever
+      // the row SAID at the moment unit_arrive rose (see getReceivedReport). So
+      // the fill is written with the opened box on the row -- these units did
+      // come out of it -- and any move onto a different box happens in a second
+      // write, which the report ignores because unit_arrive did not change.
       for (const { item: o, allocated } of allocations) {
         const newUnitArrive = o.unitArrive + allocated
         if (newUnitArrive >= o.unitDispatch) filledOrderIds.push(o.id)
+        if (openedBox && o.receipt !== openedBox) {
+          await tx`
+            UPDATE orders
+            SET unit_arrive = ${newUnitArrive}, dispatch_receipt = ${openedBox}, updated_at = NOW()
+            WHERE id = ${o.id}
+          `
+        } else {
+          await tx`
+            UPDATE orders
+            SET unit_arrive = ${newUnitArrive}, updated_at = NOW()
+            WHERE id = ${o.id}
+          `
+        }
+      }
+      for (const [orderId, box] of reassign) {
         await tx`
-          UPDATE orders
-          SET unit_arrive = ${newUnitArrive}, updated_at = NOW()
-          WHERE id = ${o.id}
+          UPDATE orders SET dispatch_receipt = ${box}, updated_at = NOW()
+          WHERE id = ${orderId}
         `
       }
       // Whatever just landed for a customer who asked to hold this event is
@@ -1246,11 +1368,27 @@ export async function markProductArrived(data: {
   // stale fee is a wrong invoice. Priced per customer this arrival touched,
   // never the whole event — another customer's adjustment is not its business.
   // After the transaction, because the reconciler prices what is now true.
-  for (const customer of [...new Set(allocations.map(({ item }) => item.customer))]) {
-    await reconcileParcelPlan(customer, data.event)
+  //
+  // Several at a time, not one after another: each reconcile is half a dozen
+  // round trips, and one arrival on 30 Aug 2026 touched twenty customers — a
+  // hundred and twenty sequential queries inside a single request, with the
+  // receiving list waiting on all of them. They do not read each other's work,
+  // so the order was never load-bearing.
+  //
+  // Four at a time rather than all of them: the pool holds twenty connections
+  // for the whole dashboard, and an arrival that grabbed every one would make
+  // everybody else's page wait instead. Most of the speed, none of the
+  // starvation.
+  const toReconcile = [...new Set(allocations.map(({ item }) => item.customer))]
+  const RECONCILE_AT_ONCE = 4
+  for (let i = 0; i < toReconcile.length; i += RECONCILE_AT_ONCE) {
+    await Promise.all(
+      toReconcile.slice(i, i + RECONCILE_AT_ONCE)
+        .map((customer) => reconcileParcelPlan(customer, data.event)),
+    )
   }
 
-  return { filledOrderIds, unassignedUnits }
+  return { filledOrderIds, unassignedUnits, boxExpected, markedBeyondBox }
 }
 
 export interface NotReceivedResult {

@@ -403,6 +403,22 @@ export async function updateCustomer(id: number, data: CustomerInput, db: DBExec
   // fields, and folding them in would blank the address the catalogue set every
   // time somebody corrected a bank account.
   if (data.kota !== undefined || data.kecamatan !== undefined || data.kodePos !== undefined) {
+    // The stored quote belongs to the area it was bought for. Changing the area
+    // and leaving the quote beside it is how seven corrected customers kept
+    // being priced to the towns they had left on 30 Aug 2026 -- `iinkaila` was
+    // moved from Medan to Pondok Aren and still carried Medan's 47.000.
+    // Read first: only clear when the area actually changed, so an edit to a
+    // bank account does not throw away a quote somebody paid for.
+    const [prev] = (await db`
+      SELECT biteship_area_id AS area FROM customers WHERE id = ${id}
+    `) as unknown as { area: string | null }[]
+    if ((prev?.area ?? null) !== (data.biteshipAreaId ?? null)) {
+      await db`
+        UPDATE customer_warehouse_ongkir
+           SET biteship_ongkir = NULL, biteship_quoted_at = NULL
+         WHERE customer_id = ${id}
+      `
+    }
     await db`
       UPDATE customers
       SET jalan     = ${data.jalan ?? ""},
@@ -514,8 +530,33 @@ export async function registerCustomer(data: {
    *  data_diri and threw the fields away. */
   jalan?: string
   provinsi?: string
+  /** The courier's own id for her address, chosen on the form. */
+  biteshipAreaId?: string | null
+  biteshipAreaName?: string | null
 }): Promise<{ id: number; created: boolean }> {
   const norm = normalizeId(data.instagramId)
+
+  // Where she says she lives now, against where we had her. A customer
+  // re-registers BECAUSE she moved, and until 31 Aug 2026 this function
+  // updated her district and her rate while leaving `biteship_area_id` and
+  // `biteship_ongkir` pointing at the city she left. Harmless while the
+  // invoice prices from `ongkos_kirim`; once it prices from the quote, it
+  // would bill her to the old city forever, silently.
+  const [before] = (await sql`
+    SELECT kota, kecamatan FROM customers
+     WHERE lower(replace(instagram_id, '@', '')) = ${norm}
+  `) as unknown as { kota: string | null; kecamatan: string | null }[]
+  const letters = (v: string) => (v ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "")
+  const moved = before != null &&
+    (letters(before.kota ?? "") !== letters(data.kota) ||
+     letters(before.kecamatan ?? "") !== letters(data.kecamatan))
+
+  // Her area comes from the form when it could name one. Where it could not --
+  // Biteship carries no area for the district, or the lookup was down -- a MOVE
+  // still has to drop the old one: no area prices from `jne_rates`, which is
+  // right, while a stale area prices to the wrong town, which is not.
+  const keepArea = data.biteshipAreaId === undefined && !moved
+
   // Persist the destination so future warehouses can re-derive ongkir without
   // re-collecting it (see migration 034).
   const updated = await sql`
@@ -529,6 +570,9 @@ export async function registerCustomer(data: {
       kode_pos     = ${data.kodePos},
       jalan        = ${data.jalan ?? ""},
       provinsi     = ${data.provinsi ?? ""},
+      ${keepArea ? sql`` : sql`
+      biteship_area_id   = ${data.biteshipAreaId ?? null},
+      biteship_area_name = ${data.biteshipAreaName ?? null},`}
       updated_at   = NOW()
     WHERE lower(replace(instagram_id, '@', '')) = ${norm}
     RETURNING id
@@ -542,10 +586,12 @@ export async function registerCustomer(data: {
   } else {
     const inserted = await sql`
       INSERT INTO customers (instagram_id, name, whatsapp, data_diri, ekspedisi,
-                             kota, kecamatan, kode_pos, jalan, provinsi)
+                             kota, kecamatan, kode_pos, jalan, provinsi,
+                             biteship_area_id, biteship_area_name)
       VALUES (${norm}, ${data.name}, ${data.whatsapp}, ${data.dataDiri}, ${data.ekspedisi},
               ${data.kota}, ${data.kecamatan}, ${data.kodePos},
-              ${data.jalan ?? ""}, ${data.provinsi ?? ""})
+              ${data.jalan ?? ""}, ${data.provinsi ?? ""},
+              ${data.biteshipAreaId ?? null}, ${data.biteshipAreaName ?? null})
       RETURNING id
     `
     id = inserted[0].id as number
@@ -559,6 +605,17 @@ export async function registerCustomer(data: {
     ongkir[w.id as number] = await lookupOngkir(w.code as string, data.kota, data.kecamatan)
   }
   await upsertCustomerOngkir(id, ongkir)
+
+  // A quote belongs to the area it was bought for. She has moved, so it does
+  // not describe her any more -- drop it and let the next sweep re-ask. The
+  // rate written just above carries her until then.
+  if (moved) {
+    await sql`
+      UPDATE customer_warehouse_ongkir
+         SET biteship_ongkir = NULL, biteship_quoted_at = NULL
+       WHERE customer_id = ${id}
+    `
+  }
 
   return { id, created }
 }

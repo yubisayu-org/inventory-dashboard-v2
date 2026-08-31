@@ -2,7 +2,7 @@
 
 import { displayIg, fmt } from "@/lib/format"
 import TableSkeleton from "@/components/TableSkeleton"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { ArrivalListItem, ArrivalListOrder, ExcessTransitItem } from "@/lib/db"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import { allocateFifo } from "@/lib/fifo-fill"
@@ -261,7 +261,7 @@ export default function ArrivalListClient() {
     ],
     [routes],
   )
-  const [arrivingItem, setArrivingItem] = useState<ArrivalListItem | null>(null)
+  const [arrivingItem, setArrivingItem] = useState<ArrivalRow | null>(null)
   const [bulkOpen, setBulkOpen] = useState(false)
   const [collapsedEvents, setCollapsedEvents] = useState<Set<string>>(new Set())
   const [collapsedStores, setCollapsedStores] = useState<Set<string>>(new Set())
@@ -273,9 +273,21 @@ export default function ArrivalListClient() {
   // Multi-select for marking several items received.
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [receiveOpen, setReceiveOpen] = useState(false)
+  /** Said after a save went through — a box that held more than its paperwork. */
+  const [notice, setNotice] = useState("")
   const [notReceivedOpen, setNotReceivedOpen] = useState(false)
 
+  /**
+   * Which load is the newest. A reply from an older one must not repaint the
+   * list, or marking an item shows it still pending: the refresh fired after
+   * the mark can land BEFORE a slower one issued before it, and the older
+   * answer -- which predates the mark -- wins. Pressing again looked like the
+   * only way to make it stick, when the write had succeeded the first time.
+   */
+  const loadSeq = useRef(0)
+
   const fetchItems = useCallback((event?: string, route?: string, silent = false) => {
+    const seq = ++loadSeq.current
     if (!silent) setLoading(true)
     setError("")
     // The route goes to the server now. Filtering in the browser meant every
@@ -288,6 +300,7 @@ export default function ArrivalListClient() {
     const url = qs ? `/api/sheets/arrival-list?${qs}` : "/api/sheets/arrival-list"
     fetchJson<{ items: ArrivalListItem[]; excessPending?: ExcessTransitItem[] }>(url)
       .then((data) => {
+        if (seq !== loadSeq.current) return
         const items = data.items ?? []
         setItems(items)
         setExcessPending(data.excessPending ?? [])
@@ -298,8 +311,11 @@ export default function ArrivalListClient() {
           setCollapsedStores(new Set(items.map((i) => `${i.event}|${i.store || "—"}`)))
         }
       })
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"))
-      .finally(() => { if (!silent) setLoading(false) })
+      .catch((err) => {
+        if (seq !== loadSeq.current) return
+        setError(err instanceof Error ? err.message : "Failed to load")
+      })
+      .finally(() => { if (!silent && seq === loadSeq.current) setLoading(false) })
   }, [])
 
   useEffect(() => {
@@ -309,7 +325,8 @@ export default function ArrivalListClient() {
   // Partial fills change multiple orders' pending qty in non-trivial ways.
   // Refetching is simpler and more correct than incremental local state updates.
   // Silent so the open modal isn't unmounted by the TableSkeleton fallback.
-  function handleArrivedSuccess() {
+  function handleArrivedSuccess(notice?: string) {
+    if (notice) setNotice(notice)
     fetchItems(selectedEvent || undefined, route, true)
   }
 
@@ -447,13 +464,13 @@ export default function ArrivalListClient() {
    * if the new code reads as a different route.
    */
   const renameParcel = useCallback(async (from: string, to: string) => {
-    const res = await fetch("/api/sheets/arrival-list", {
+    await fetchJson("/api/sheets/arrival-list", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "rename_receipt", from, to }),
+    }).catch((e) => {
+      throw new Error(e instanceof Error ? e.message : "Could not rename")
     })
-    const data = await res.json().catch(() => ({}))
-    if (!res.ok) throw new Error(data.error ?? "Could not rename")
     clearSelection()
     fetchItems(selectedEvent || undefined, route, true)
   }, [fetchItems, selectedEvent, route])
@@ -487,6 +504,14 @@ export default function ArrivalListClient() {
 
   return (
     <>
+      {notice && (
+        <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex items-start gap-3">
+          <span className="flex-1">{notice}</span>
+          <button onClick={() => setNotice("")} className="shrink-0 underline hover:no-underline">
+            Dismiss
+          </button>
+        </div>
+      )}
       {/* Which parcel to check in. The route is read off each line's dispatch
           receipt, so picking one shows exactly what should have travelled
           together — the hand-carried suitcase, the air cargo, the sea box.
@@ -824,6 +849,7 @@ export default function ArrivalListClient() {
       {arrivingItem && (
         <ArriveModal
           item={arrivingItem}
+          receipt={arrivingItem.parcel}
           itemOptions={(options?.items ?? []).map((it) => ({ value: it.name, label: it.name, meta: `Rp ${fmt(it.price)}` }))}
           onClose={() => setArrivingItem(null)}
           onSuccess={() => {
@@ -878,6 +904,7 @@ export default function ArrivalListClient() {
       {receiveOpen && (
         <ConfirmReceivePanel
           items={selectedItems}
+          route={route}
           onClose={() => setReceiveOpen(false)}
           onSuccess={() => { clearSelection(); setReceiveOpen(false); handleArrivedSuccess() }}
           onPartial={(succeededKeys) => {
@@ -915,11 +942,14 @@ export default function ArrivalListClient() {
 
 function ConfirmReceivePanel({
   items,
+  route,
   onClose,
   onSuccess,
   onPartial,
 }: {
-  items: ArrivalListItem[]
+  items: ArrivalRow[]
+  /** Unused directly: each row carries the box it is shown under. */
+  route: string
   onClose: () => void
   onSuccess: () => void
   onPartial: (succeededKeys: string[]) => void
@@ -966,6 +996,8 @@ function ConfirmReceivePanel({
         productId: it.productId,
         name: it.productName,
         qty: Number(qtys[selKey(it)]) || 0,
+        // The box this row is shown under, when a route tab is open.
+        receipt: it.parcel,
       }))
       .filter((t) => t.qty > 0)
 
@@ -974,7 +1006,7 @@ function ConfirmReceivePanel({
         fetch("/api/sheets/arrival-list", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ event: t.event, productId: t.productId, quantityArrived: t.qty }),
+          body: JSON.stringify({ event: t.event, productId: t.productId, quantityArrived: t.qty, receipt: t.receipt }),
         }).then(async (res) => {
           const data = await res.json()
           if (!res.ok) throw new Error(data.error ?? `Failed for ${t.name}`)
@@ -1077,13 +1109,19 @@ function ConfirmReceivePanel({
 function ArriveModal({
   item,
   itemOptions,
+  receipt,
   onClose,
   onSuccess,
 }: {
   item: ArrivalListItem
   itemOptions: { value: string; label: string; meta?: string }[]
+  /** The box being unpacked, when a route tab is showing one. Not a restriction
+   *  on who may be filled — see markProductArrived — but the box whose debt goes
+   *  down, so whoever is still waiting moves to the boxes that still owe them. */
+  receipt?: string
   onClose: () => void
-  onSuccess: () => void
+  /** `notice` is said after a successful save, never instead of one. */
+  onSuccess: (notice?: string) => void
 }) {
   const [qty, setQty] = useState(String(item.totalPending))
   // "arrive" = normal receipt; "wrong" = different SKU sent; "broken" = arrived
@@ -1111,6 +1149,7 @@ function ArriveModal({
   async function handleSubmit() {
     setSaving(true)
     setSaveError(null)
+    let notice: string | undefined
     try {
       if (mode === "wrong") {
         if (quantityArrived < 1) { setSaveError("Enter how many units arrived."); return }
@@ -1126,7 +1165,7 @@ function ArriveModal({
         // orders. Their invoices drop, so overpayment refunds auto-materialize
         // for anyone who already paid (overseas — the expected item can't be
         // re-ordered).
-        const res = await fetch("/api/sheets/arrival-list", {
+        await fetchJson("/api/sheets/arrival-list", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1138,15 +1177,15 @@ function ArriveModal({
             qty: quantityArrived,
             cancelOrderIds: [...cancelIds],
           }),
+        }).catch((e) => {
+          throw new Error(e instanceof Error ? e.message : "Failed to log wrong product")
         })
-        const data = await res.json()
-        if (!res.ok) throw new Error(data.error ?? "Failed to log wrong product")
       } else if (mode === "broken") {
         if (quantityArrived < 1) { setSaveError("Enter how many units arrived broken."); return }
         // Broken on arrival: log the broken units to Inventory (flagged broken,
         // never assignable to orders) and cancel the chosen customer orders,
         // refunding whoever had paid for them.
-        const res = await fetch("/api/sheets/arrival-list", {
+        await fetchJson("/api/sheets/arrival-list", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1157,13 +1196,13 @@ function ArriveModal({
             qty: quantityArrived,
             cancelOrderIds: [...cancelIds],
           }),
-        })
-        const data = await res.json()
-        if (!res.ok) throw new Error(data.error ?? "Failed to record broken units")
+          }).catch((e) => {
+            throw new Error(e instanceof Error ? e.message : "Failed to record broken units")
+          })
       } else if (mode === "missing") {
         if (cancelIds.size === 0) { setSaveError("Pick at least one order to cancel."); return }
         // Item never arrived: cancel the chosen orders, log nothing to Inventory.
-        const res = await fetch("/api/sheets/arrival-list", {
+        await fetchJson("/api/sheets/arrival-list", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1178,24 +1217,36 @@ function ArriveModal({
             qty: item.orders.filter((o) => cancelIds.has(o.id)).reduce((sum, o) => sum + o.pending, 0),
             cancelOrderIds: [...cancelIds],
           }),
-        })
-        const data = await res.json()
-        if (!res.ok) throw new Error(data.error ?? "Failed to record missing units")
+          }).catch((e) => {
+            throw new Error(e instanceof Error ? e.message : "Failed to record missing units")
+          })
       } else {
         if (quantityArrived < 1) { setSaveError("Enter how many units arrived."); return }
-        const res = await fetch("/api/sheets/arrival-list", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            event: item.event,
-            productId: item.productId,
-            quantityArrived,
-          }),
-        })
-        const data = await res.json()
-        if (!res.ok) throw new Error(data.error ?? "Failed to mark as arrived")
+        const res = await fetchJson<{ boxExpected?: number; markedBeyondBox?: number }>(
+          "/api/sheets/arrival-list", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              event: item.event,
+              productId: item.productId,
+              quantityArrived,
+              receipt,
+            }),
+          }).catch((e) => {
+            throw new Error(e instanceof Error ? e.message : "Failed to mark as arrived")
+          })
+        // Saved either way — a box really can hold more than the list said. But
+        // the other explanation is a miscount, and that only shows up weeks
+        // later as a unit nobody is waiting for, so say it now.
+        if (receipt && res?.markedBeyondBox) {
+          notice =
+            `${item.productName}: ${receipt} was carrying ${res.boxExpected} on paper, ` +
+            `and you marked ${quantityArrived} — ${res.markedBeyondBox} more than it owed. ` +
+            `If the box really held more, nothing to do. If it was a miscount, the extra ` +
+            `turns up later as stock nobody is waiting for.`
+        }
       }
-      onSuccess()
+      onSuccess(notice)
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Failed")
     } finally {

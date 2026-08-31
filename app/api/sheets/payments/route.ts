@@ -35,6 +35,15 @@ async function handleGET(req: NextRequest) {
         sortDir: (params.get("sortDir") as "asc" | "desc") ?? undefined,
         skipCount: params.get("skipCount") === "true",
       })
+      // The stat cards are the shop's totals for the filtered period, not the
+      // list's. Admins do not get them -- and not merely by not drawing the
+      // cards: the numbers must not reach the browser at all, or they are one
+      // network tab away. The rows themselves still go, because working this
+      // screen means reading them.
+      if (isAdmin(session)) {
+        const { depositSum: _d, refundSum: _r, filteredSum: _f, ...rest } = result
+        return NextResponse.json(rest, { headers: { "Cache-Control": "no-store" } })
+      }
       return NextResponse.json(result, { headers: { "Cache-Control": "no-store" } })
     }
 
