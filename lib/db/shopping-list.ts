@@ -239,7 +239,7 @@ export async function fetchPaidStatusMap(events: string[] | null): Promise<Map<s
           SELECT
             ev.name AS event,
             lower(replace(c.instagram_id, '@', '')) AS norm_id,
-            COALESCE(cwo.ongkos_kirim, 0)::numeric AS ongkir
+            COALESCE(cwo.effective_ongkir, 0)::numeric AS ongkir
           FROM events ev
           JOIN customer_warehouse_ongkir cwo ON cwo.warehouse_id = ev.warehouse_id
           JOIN customers c ON c.id = cwo.customer_id
@@ -293,7 +293,7 @@ export async function fetchPaidStatusMap(events: string[] | null): Promise<Map<s
           SELECT
             ev.name AS event,
             lower(replace(c.instagram_id, '@', '')) AS norm_id,
-            COALESCE(cwo.ongkos_kirim, 0)::numeric AS ongkir
+            COALESCE(cwo.effective_ongkir, 0)::numeric AS ongkir
           FROM events ev
           JOIN customer_warehouse_ongkir cwo ON cwo.warehouse_id = ev.warehouse_id
           JOIN customers c ON c.id = cwo.customer_id
