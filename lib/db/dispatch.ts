@@ -222,17 +222,22 @@ export interface DispatchDocLine {
  * every dispatched batch for the event. valas/currency come from the product and
  * its country, so the cargo template can price and group the lines by currency.
  *
- * Read from the append-only `audit.audit_log` (migration 029) rather than the
- * orders table, because a single order dispatched in several batches accumulates
- * its receipts comma-joined in one `dispatch_receipt` field (the dispatch route
- * appends `"<existing>, <new>"`) while `unit_dispatch` holds only the running
- * total — so the orders row alone can't say how many units went under each
- * receipt. Each dispatch UPDATE is one audit entry: the per-row delta
- * `new.unit_dispatch − old.unit_dispatch` is that batch's qty, and the newly
- * appended tail of `dispatch_receipt` (everything after the old value + ", ") is
- * that batch's receipt. Summing per (receipt, product) gives an accurate row for
- * each receipt. A batch dispatched without a tracking ref leaves the string
- * unchanged, so its receipt resolves to '' (shown as "—").
+ * Read from `dispatch_manifest` (migration 123), which records a row per box,
+ * product and dispatch as it happens.
+ *
+ * It used to reconstruct this from `audit.audit_log` — the orders row cannot
+ * answer it, because a line dispatched in several batches accumulates its
+ * receipts comma-joined in one `dispatch_receipt` while `unit_dispatch` holds
+ * only the running total. That worked, at the cost of slicing a string out of
+ * JSON in an append-only log on every read, and it answered a question the
+ * database had no table for.
+ *
+ * The manifest is now that table, and it says something the audit log could
+ * only imply: what was PACKED, as opposed to who was served. Arrival reassigns
+ * `orders.dispatch_receipt` to whoever paid first; the manifest does not move.
+ *
+ * A dispatch recorded without a tracking ref writes no manifest row — a box
+ * with no name is not one anybody can look up.
  */
 export async function getDispatchDocument(
   event: string,
@@ -249,29 +254,10 @@ export async function getDispatchDocument(
       COALESCE(c.currency, '') AS currency,
       batch.receipt AS receipt,
       SUM(batch.qty)::int AS qty
-    FROM (
-      SELECT
-        (a.new_row->>'product_id')::int AS product_id,
-        COALESCE((a.new_row->>'unit_dispatch')::int, 0)
-          - COALESCE((a.old_row->>'unit_dispatch')::int, 0) AS qty,
-        CASE
-          WHEN COALESCE(a.old_row->>'dispatch_receipt', '') = ''
-            THEN COALESCE(a.new_row->>'dispatch_receipt', '')
-          ELSE substring(
-            COALESCE(a.new_row->>'dispatch_receipt', '')
-            FROM char_length(a.old_row->>'dispatch_receipt') + 3
-          )
-        END AS receipt
-      FROM audit.audit_log a
-      WHERE a.table_name = 'orders'
-        AND a.action IN ('INSERT', 'UPDATE')
-        AND (a.new_row->>'event') = ${event}
-        AND COALESCE((a.new_row->>'unit_dispatch')::int, 0)
-            > COALESCE((a.old_row->>'unit_dispatch')::int, 0)
-    ) batch
+    FROM dispatch_manifest batch
     JOIN products p ON p.id = batch.product_id
     LEFT JOIN countries c ON c.id = p.country_id
-    WHERE TRUE
+    WHERE batch.event = ${event}
       ${receiptFilter}
     GROUP BY p.id, c.currency, batch.receipt
     HAVING SUM(batch.qty) > 0

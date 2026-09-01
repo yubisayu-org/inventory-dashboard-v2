@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireOwner } from "@/lib/api"
-import { getDispatchList, getExcessDispatchPending, getDuplicateFormRowsForEvent, bulkUpdateDispatch, cancelUndispatchedRemainder, withActor, fetchPaidStatusMap, PAID_PRIORITY_RANK, type PaidStatus } from "@/lib/db"
+import { getDispatchList, getExcessDispatchPending, getDuplicateFormRowsForEvent, bulkUpdateDispatch, recordDispatchManifest, cancelUndispatchedRemainder, withActor, fetchPaidStatusMap, PAID_PRIORITY_RANK, type PaidStatus } from "@/lib/db"
 import { withServerTiming } from "@/lib/server-timing"
 
 type ItemLine = { item: string; qty: number }
@@ -37,11 +37,11 @@ function distribute(
   qty: number,
   receipt: string,
 ): {
-  updates: (UpdatedRow & { dispatchReceipt: string })[]
+  updates: (UpdatedRow & { dispatchReceipt: string; productId: number })[]
   itemResult: { item: string; rows: UpdatedRow[]; excess: number }
 } {
   let remaining = qty
-  const updates: (UpdatedRow & { dispatchReceipt: string })[] = []
+  const updates: (UpdatedRow & { dispatchReceipt: string; productId: number })[] = []
 
   for (const row of eligible) {
     if (remaining <= 0) break
@@ -58,6 +58,7 @@ function distribute(
       oldUnitDispatch: current,
       unitDispatch: current + allocate,
       dispatchReceipt: combinedReceipt,
+      productId: row.productId,
     })
     remaining -= allocate
   }
@@ -66,7 +67,7 @@ function distribute(
     updates,
     itemResult: {
       item,
-      rows: updates.map(({ dispatchReceipt: _r, ...rest }) => rest),
+      rows: updates.map(({ dispatchReceipt: _r, productId: _p, ...rest }) => rest),
       excess: remaining,
     },
   }
@@ -147,7 +148,7 @@ export async function POST(req: NextRequest) {
     const receiptStr = receipt ? String(receipt) : ""
     const eligibleMap = buildEligibleMap(rows, event, statusMap)
 
-    const allUpdates: (UpdatedRow & { dispatchReceipt: string })[] = []
+    const allUpdates: (UpdatedRow & { dispatchReceipt: string; productId: number })[] = []
     const results: { item: string; rows: UpdatedRow[]; excess: number }[] = []
 
     for (const line of items) {
@@ -157,10 +158,29 @@ export async function POST(req: NextRequest) {
       results.push(itemResult)
     }
 
-    await withActor(session.user.email, (tx) => bulkUpdateDispatch(
-      allUpdates.map(({ rowNumber, unitDispatch, dispatchReceipt }) => ({ rowNumber, unitDispatch, dispatchReceipt })),
-      tx,
-    ))
+    await withActor(session.user.email, async (tx) => {
+      await bulkUpdateDispatch(
+        allUpdates.map(({ rowNumber, unitDispatch, dispatchReceipt }) => ({ rowNumber, unitDispatch, dispatchReceipt })),
+        tx,
+      )
+      // What physically went in the box, written in the same transaction so the
+      // two can never disagree about a dispatch that half-happened. This is the
+      // record a short or disputed parcel is checked against later, and unlike
+      // orders.dispatch_receipt it does not move when arrival reassigns a unit
+      // to whoever paid first.
+      //
+      // Nothing is recorded when no receipt was typed: a box with no name is
+      // one nobody can look up, and most of the shop's history is exactly that.
+      await recordDispatchManifest(
+        allUpdates.map(({ productId, unitDispatch, oldUnitDispatch }) => ({
+          event,
+          productId,
+          receipt: receiptStr,
+          qty: unitDispatch - oldUnitDispatch,
+        })),
+        tx,
+      )
+    })
 
     return NextResponse.json({ results })
   } catch (err) {

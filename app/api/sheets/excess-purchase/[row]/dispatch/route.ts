@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { getExcessPurchaseRows, bulkUpdateExcessDispatch, withActor } from "@/lib/db"
+import { getExcessPurchaseRows, bulkUpdateExcessDispatch, recordExcessDispatchManifest, withActor } from "@/lib/db"
 
 type Params = { params: Promise<{ row: string }> }
 
@@ -42,10 +42,21 @@ export async function POST(req: NextRequest, { params }: Params) {
       ? (existingReceipt ? `${existingReceipt}, ${receipt}` : receipt)
       : existingReceipt
 
-    await withActor(session.user.email, (tx) => bulkUpdateExcessDispatch(
-      [{ rowNumber, unitDispatch: current + qty, dispatchReceipt: combinedReceipt }],
-      tx,
-    ))
+    await withActor(session.user.email, async (tx) => {
+      await bulkUpdateExcessDispatch(
+        [{ rowNumber, unitDispatch: current + qty, dispatchReceipt: combinedReceipt }],
+        tx,
+      )
+      // Surplus rides in the same parcel as the customer orders, so it belongs
+      // on the same manifest -- otherwise a box carrying it reads light against
+      // what the courier weighed. Only when a box was actually named: nothing
+      // is recorded for a dispatch with no tracking number, exactly as on the
+      // orders side.
+      await recordExcessDispatchManifest(
+        { event: excessRow.event, itemName: excessRow.items, receipt, qty },
+        tx,
+      )
+    })
 
     return NextResponse.json({ success: true, unitDispatch: current + qty })
   } catch (err) {
