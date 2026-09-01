@@ -117,6 +117,8 @@ export default function CustomersClient() {
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: PAGE_SIZE })
 
   // Mobile-only balance-status filter, sent to the server (customer_invoice_summary).
+  // Show only customers who cannot be priced from at least one warehouse.
+  const [noRateOnly, setNoRateOnly] = useState(false)
   const [balanceFilter, setBalanceFilter] = useState<"" | "outstanding" | "overpayment" | "settled">("")
   const [balanceFilterOpen, setBalanceFilterOpen] = useState(false)
   const balanceFilterRef = useRef<HTMLDivElement>(null)
@@ -166,8 +168,9 @@ export default function CustomersClient() {
       else if (cf.id === "bankName") f.bankName = v
     }
     if (balanceFilter) f.balanceStatus = balanceFilter
+    if (noRateOnly) f.ongkirStatus = "unpriceable"
     return f
-  }, [columnFilters, balanceFilter])
+  }, [columnFilters, balanceFilter, noRateOnly])
 
   const fetchSort = useMemo(() => {
     if (sorting.length === 0) return null
@@ -511,6 +514,30 @@ export default function CustomersClient() {
 
   const toolbarExtra = (
     <>
+      {/* A parcel for a customer with no usable rate bills its shipping at zero
+          and says so nowhere. This is where you find them in a batch — the ship
+          screen catches the one already in your hands. */}
+      <button
+        type="button"
+        onClick={() => {
+          setNoRateOnly((v) => !v)
+          setPagination((p) => ({ ...p, pageIndex: 0 }))
+        }}
+        aria-pressed={noRateOnly}
+        title="Customers with no shipping rate from at least one warehouse"
+        className={`shrink-0 inline-flex items-center gap-1.5 h-[38px] px-3 rounded-lg border text-sm transition-colors ${
+          noRateOnly
+            ? "border-amber-300 bg-amber-50 text-amber-800 font-medium"
+            : "border-cream-border bg-white text-muted-strong hover:border-brand hover:text-brand"
+        }`}
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+          <path d="M12 9v4" /><path d="M12 17h.01" />
+        </svg>
+        <span className="hidden sm:inline">No rate</span>
+      </button>
+
       {/* Mobile: sort by total invoiced + filter by balance status (server-side). */}
       <button
         type="button"

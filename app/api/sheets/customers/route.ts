@@ -34,6 +34,8 @@ async function handleGET(req: NextRequest) {
         ongkirWarehouseId: params.get("ongkirWarehouseId") ? Number(params.get("ongkirWarehouseId")) : undefined,
         ongkirOp: (params.get("ongkirOp") as "eq" | "gt" | "lt" | "gte" | "lte") ?? undefined,
         ongkirValue: params.get("ongkirValue") ? Number(params.get("ongkirValue")) : undefined,
+        ongkirStatus:
+          (params.get("ongkirStatus") as "unpriceable" | "unpriceable_with_address") ?? undefined,
       })
       return NextResponse.json(result, { headers: { "Cache-Control": "no-store" } })
     }

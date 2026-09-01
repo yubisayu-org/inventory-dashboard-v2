@@ -215,6 +215,17 @@ export async function getCustomersPaginated(opts: {
   ongkirWarehouseId?: number
   ongkirOp?: "eq" | "gt" | "lt" | "gte" | "lte"
   ongkirValue?: number
+  /**
+   * Customers who cannot be priced from at least one warehouse — no rate row at
+   * all, or one that resolves to nothing. A parcel for one of these bills its
+   * shipping at zero and says so nowhere.
+   *
+   * `unpriceable` is everyone in that state. `unpriceable_with_address` is the
+   * actionable half: she has an address, so a rate is derivable and somebody
+   * only has to fetch it. The rest have no address to price from, which is a
+   * different problem and one already tracked elsewhere.
+   */
+  ongkirStatus?: "unpriceable" | "unpriceable_with_address"
 }): Promise<PaginatedCustomers> {
   const { page, pageSize, search, skipCount } = opts
   const offset = (page - 1) * pageSize
@@ -294,6 +305,23 @@ export async function getCustomersPaginated(opts: {
     conditions.push(`COALESCE(cis.invoice_count, 0) > 0 AND COALESCE(cis.total_outstanding, 0) < 0`)
   } else if (opts.balanceStatus === "settled") {
     conditions.push(`COALESCE(cis.invoice_count, 0) > 0 AND COALESCE(cis.total_outstanding, 0) = 0`)
+  }
+
+  // "Cannot be priced" is a per-warehouse fact, so it is asked as a NOT EXISTS
+  // over warehouses rather than joined: one bad warehouse is enough, and the
+  // customer must still appear once. No params — the shape is fixed.
+  if (opts.ongkirStatus) {
+    conditions.push(
+      `EXISTS (SELECT 1 FROM warehouses w
+                WHERE NOT EXISTS (
+                  SELECT 1 FROM customer_warehouse_ongkir cwo_g
+                   WHERE cwo_g.customer_id = c.id
+                     AND cwo_g.warehouse_id = w.id
+                     AND cwo_g.effective_ongkir > 0))`,
+    )
+    if (opts.ongkirStatus === "unpriceable_with_address") {
+      conditions.push(`COALESCE(c.kota, '') <> '' AND COALESCE(c.kecamatan, '') <> ''`)
+    }
   }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""
