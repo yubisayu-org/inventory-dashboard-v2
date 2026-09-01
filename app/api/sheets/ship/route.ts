@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { getShipOrdersFiltered, shipCustomerOrders, shipMergedCustomerOrders, PairedShipmentError, type ShipSegment } from "@/lib/db"
+import { getShipOrdersFiltered, shipCustomerOrders, shipMergedCustomerOrders, PairedShipmentError, NoShippingRateError, type ShipSegment } from "@/lib/db"
 
 export async function GET(req: NextRequest) {
   const { session, error: authError } = await requireSession()
@@ -41,6 +41,11 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     // Not a failure: the customer asked for these to travel together, and the
     // screen turns this into a confirm rather than an error.
+    // Also not a server failure: somebody has to set a rate, and saying so is
+    // more use than "Failed to ship orders".
+    if (err instanceof NoShippingRateError) {
+      return NextResponse.json({ error: err.message, noRate: true, events: err.events }, { status: 409 })
+    }
     if (err instanceof PairedShipmentError) {
       return NextResponse.json(
         { error: err.message, paired: true, partners: err.partners },

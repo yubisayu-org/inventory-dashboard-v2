@@ -11,6 +11,29 @@ import { fetchPaidStatusMap, compareOrderPriority, type PaidStatus } from "./sho
 import { appendExcessPurchase, reduceOrderRefundOnly } from "./orders"
 import { notifyCustomer } from "./announcements"
 
+/**
+ * Refusal to ship a parcel that would be billed nothing.
+ *
+ * ongkirPerKg reaches this file from the request body and is written straight
+ * onto the shipment, so a zero is not an error state — it is the price. The
+ * card carried an amber "Ongkir belum ada" pill and nothing else: a warning
+ * where a block belonged, and bulk ship never showed it at all, sending any
+ * number of unbilled parcels in one press.
+ *
+ * The rest of this codebase is emphatic that a missing rate must never become
+ * free shipping — "never written as 0 either, because 0 is free shipping" —
+ * and this was the one path that let it.
+ */
+export class NoShippingRateError extends Error {
+  constructor(readonly events: string[]) {
+    super(
+      `Belum ada ongkir untuk ${events.join(", ")} — atur tarifnya dulu, `
+      + "paket ini akan tercatat tanpa biaya kirim.",
+    )
+    this.name = "NoShippingRateError"
+  }
+}
+
 /** Refusal to ship one half of a pair without saying so out loud. */
 export class PairedShipmentError extends Error {
   constructor(message: string, readonly partners: string[]) {
@@ -496,6 +519,10 @@ async function clearHonouredRedirect(
 
 export async function shipCustomerOrders(params: ShipOrdersParams, actor?: string | null): Promise<{ shippingId: string }> {
   const { customer, event, orders, weightKg, ongkirPerKg, tempAddress, force } = params
+  // Before anything is written. A parcel billed nothing is not recoverable by
+  // editing the rate afterwards: the shipment row keeps the figure it was
+  // sent, and she has already been told what she owes.
+  if (!(ongkirPerKg > 0)) throw new NoShippingRateError([event])
   // Empty-string and undefined both mean "no override" — store NULL so the
   // label flow can fall back to the customer's profile address.
   const tempAddressValue = tempAddress && tempAddress.trim() ? tempAddress : null
@@ -589,6 +616,8 @@ export async function shipCustomerOrders(params: ShipOrdersParams, actor?: strin
  */
 export async function shipMergedCustomerOrders(params: ShipMergedParams, actor?: string | null): Promise<ShipMergedResult> {
   const { customer, ongkirPerKg, groups, tempAddress } = params
+  // One rate covers the whole box, so one missing rate voids the whole merge.
+  if (!(ongkirPerKg > 0)) throw new NoShippingRateError(groups.map((g) => g.event))
   // Same value written to every row in the merge_group — one physical box,
   // one receiving address. NULL means "use the customer's profile address."
   const tempAddressValue = tempAddress && tempAddress.trim() ? tempAddress : null
