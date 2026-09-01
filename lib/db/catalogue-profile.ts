@@ -1,6 +1,7 @@
 import sql from "../db-pool"
 import type { DBExecutor } from "./actor"
 import { lookupOngkir } from "./customers"
+import { composeLabel, canCompose } from "../address"
 
 // The profile a signed-in customer may see and edit on the catalogue site.
 //
@@ -12,6 +13,11 @@ export type CustomerProfile = {
   instagramId: string
   name: string
   whatsapp: string
+  /** Her street, and the field the label is built from. */
+  jalan: string
+  provinsi: string
+  /** Generated from the parts beside it — see updateCustomerProfile. Returned
+   *  so the caller can show what the label says, never so it can be typed. */
   dataDiri: string
   kota: string
   kecamatan: string
@@ -20,10 +26,25 @@ export type CustomerProfile = {
   biteshipAreaName: string | null
 }
 
+/**
+ * Two shapes, for the two callers that exist while the catalogue catches up.
+ *
+ * A caller that sends `jalan` gets the current behaviour: the street is stored
+ * and the label is composed from the parts, as the staff form does.
+ *
+ * A caller that sends only `dataDiri` is the catalogue as it stands today,
+ * which has no separate street to send. Its string is written verbatim and
+ * `jalan` is left alone — exactly what this function did before. It must NOT
+ * be treated as a street: what that caller sends is the whole composed label,
+ * and storing it as one would put a label inside a label.
+ */
 export type CustomerProfileInput = {
   name: string
   whatsapp: string
-  dataDiri: string
+  jalan?: string
+  provinsi?: string
+  /** Legacy path only. Ignored whenever `jalan` is given. */
+  dataDiri?: string
   kota: string
   kecamatan: string
   kodePos: string
@@ -48,6 +69,8 @@ export async function getCustomerProfile(
       instagram_id: string
       name: string
       whatsapp: string
+      jalan: string
+      provinsi: string
       data_diri: string
       kota: string
       kecamatan: string
@@ -56,7 +79,8 @@ export async function getCustomerProfile(
       biteship_area_name: string | null
     }[]
   >`
-    SELECT instagram_id, name, whatsapp, data_diri, kota, kecamatan, kode_pos,
+    SELECT instagram_id, name, whatsapp, jalan, provinsi, data_diri,
+           kota, kecamatan, kode_pos,
            biteship_area_id, biteship_area_name
       FROM customers WHERE id = ${customerId}
   `
@@ -65,6 +89,8 @@ export async function getCustomerProfile(
     instagramId: row.instagram_id,
     name: row.name,
     whatsapp: row.whatsapp,
+    jalan: row.jalan,
+    provinsi: row.provinsi,
     dataDiri: row.data_diri,
     kota: row.kota,
     kecamatan: row.kecamatan,
@@ -85,6 +111,13 @@ export async function getCustomerProfile(
  * Re-pricing follows the rule that a move must not silently become free
  * shipping: a destination that matches no rate leaves the previous ongkir
  * untouched and raises ongkir_needs_review instead of writing 0.
+ *
+ * data_diri is COMPOSED here, exactly as lib/db/customers.ts composes it for
+ * the staff form. This path used to write whatever the caller sent and never
+ * wrote jalan at all — so a customer who moved house updated her city and
+ * district while her street stayed where it was, her label kept the old one,
+ * and the next save that regenerated the string from the parts undid her edit
+ * entirely. The parts are the truth; the string is made from them.
  */
 export async function updateCustomerProfile(
   customerId: number,
@@ -110,12 +143,33 @@ export async function updateCustomerProfile(
   // Never written as 0 either, because 0 is free shipping.
   const needsReview = priceable.length < resolved.length
 
+  // Composed only from a real street. Without one there is nothing to build a
+  // better label out of, so the stored string stands: a customer whose street
+  // was never recorded separately keeps a hand-written label that works rather
+  // than getting a generated one with a hole where the street should be.
+  const parts = {
+    name: input.name,
+    whatsapp: input.whatsapp,
+    jalan: input.jalan ?? "",
+    kecamatan: input.kecamatan,
+    kota: input.kota,
+    provinsi: input.provinsi ?? "",
+    kodePos: input.kodePos,
+    areaName: input.biteshipAreaName ?? "",
+  }
+  // The legacy string is the fallback, never the street. See the input type.
+  const dataDiri = canCompose(parts) ? composeLabel(parts) : (input.dataDiri || null)
+
   await sql.begin(async (tx) => {
+    // COALESCE on the two new columns so the legacy caller, which knows
+    // nothing about them, leaves them as they are instead of blanking them.
     await tx`
       UPDATE customers SET
         name                = ${input.name},
         whatsapp            = ${input.whatsapp},
-        data_diri           = ${input.dataDiri},
+        jalan               = COALESCE(${input.jalan ?? null}, jalan),
+        provinsi            = COALESCE(${input.provinsi ?? null}, provinsi),
+        data_diri           = COALESCE(${dataDiri}, data_diri),
         kota                = ${input.kota},
         kecamatan           = ${input.kecamatan},
         kode_pos            = ${input.kodePos},

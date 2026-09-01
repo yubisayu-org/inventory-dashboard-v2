@@ -41,7 +41,8 @@ test("saves contact and address changes", async () => {
   await updateCustomerProfile(id, {
     name: "Shinta",
     whatsapp: "08999",
-    dataDiri: "Jl. Baru 42",
+    jalan: "Jl. Baru 42",
+    provinsi: "JAWA BARAT",
     biteshipAreaId: "IDNP6IDNC148IDND843IDZ12250",
     biteshipAreaName: "Jakarta Selatan, Kebayoran Baru, 12250",
     kota: "JAKARTA SELATAN",
@@ -50,9 +51,66 @@ test("saves contact and address changes", async () => {
   })
   const p = await getCustomerProfile(id)
   assert.equal(p?.name, "Shinta")
-  assert.equal(p?.dataDiri, "Jl. Baru 42")
   assert.equal(p?.kota, "JAKARTA SELATAN")
   assert.equal(p?.biteshipAreaId, "IDNP6IDNC148IDND843IDZ12250")
+
+  // Her street lands in the column the label is built from. It used not to be
+  // written at all here: a customer who moved changed her city and district
+  // while her street stayed where it was.
+  assert.equal(p?.jalan, "Jl. Baru 42")
+  assert.equal(p?.provinsi, "JAWA BARAT")
+
+  // And the label is composed from those parts rather than stored as sent —
+  // the same rule the staff form follows. Nothing a caller writes appears on
+  // a parcel except through here.
+  assert.match(p?.dataDiri ?? "", /^Nama: Shinta$/m)
+  assert.match(p?.dataDiri ?? "", /^Telepon: 08999$/m)
+  assert.match(p?.dataDiri ?? "", /^Jl\. Baru 42$/m)
+  assert.match(p?.dataDiri ?? "", /12250/)
+})
+
+// The catalogue as it stands today sends only dataDiri, and what it sends is
+// the whole composed LABEL. Storing that as a street would put a label inside
+// a label — and the street column is the one the real label is built from, so
+// the damage would outlive the caller.
+test("a legacy save writes the string it sent and never touches the street", async () => {
+  const id = await makeCustomer()
+  await sql`UPDATE customers SET jalan = 'Jl. Asli 7' WHERE id = ${id}`
+  const block = "Nama: Shinta\nTelepon: 08999\nAlamat Lengkap:\nJl. Asli 7\nCOBLONG, KOTA BANDUNG 40132"
+
+  await updateCustomerProfile(id, {
+    name: "Shinta",
+    whatsapp: "08999",
+    dataDiri: block,
+    biteshipAreaId: null,
+    biteshipAreaName: null,
+    kota: "KOTA BANDUNG",
+    kecamatan: "COBLONG",
+    kodePos: "40132",
+  })
+
+  const p = await getCustomerProfile(id)
+  assert.equal(p?.jalan, "Jl. Asli 7", "a label must never be stored as a street")
+  assert.equal(p?.dataDiri, block, "the legacy string is written as it always was")
+})
+
+test("a save with no street to compose from leaves the stored label alone", async () => {
+  const id = await makeCustomer()
+  const before = (await getCustomerProfile(id))?.dataDiri
+  await updateCustomerProfile(id, {
+    name: "Shinta",
+    whatsapp: "08999",
+    // Nothing to build a label out of. Replacing a working hand-written one
+    // with a version missing its street would be a downgrade, so it stands.
+    jalan: "",
+    provinsi: "",
+    biteshipAreaId: null,
+    biteshipAreaName: null,
+    kota: "KOTA BANDUNG",
+    kecamatan: "COBLONG",
+    kodePos: "40132",
+  })
+  assert.equal((await getCustomerProfile(id))?.dataDiri, before)
 })
 
 test("an unpriceable address keeps the old ongkir and flags for review", async () => {
@@ -60,7 +118,8 @@ test("an unpriceable address keeps the old ongkir and flags for review", async (
   await updateCustomerProfile(id, {
     name: "Shinta",
     whatsapp: "08999",
-    dataDiri: "Jl. Baru 42",
+    jalan: "Jl. Baru 42",
+    provinsi: "JAWA BARAT",
     biteshipAreaId: "IDNXXX",
     biteshipAreaName: "Nowhere, Nowhere, 00000",
     kota: "NOWHERE AT ALL",
@@ -114,7 +173,8 @@ test("a priceable address clears the review flag", async () => {
   await updateCustomerProfile(id, {
     name: "Shinta",
     whatsapp: "08999",
-    dataDiri: "Jl. Baru 42",
+    jalan: "Jl. Baru 42",
+    provinsi: "JAWA BARAT",
     biteshipAreaId: "IDNOK",
     biteshipAreaName: "somewhere real",
     kota: rate.kab_kota_nama,
@@ -149,7 +209,8 @@ test("one unpriceable warehouse out of several still flags for review", async ()
     await updateCustomerProfile(id, {
       name: "Shinta",
       whatsapp: "08999",
-      dataDiri: "Jl. Baru 42",
+      jalan: "Jl. Baru 42",
+      provinsi: "JAWA BARAT",
       biteshipAreaId: null,
       biteshipAreaName: null,
       kota: rate.kab_kota_nama,
