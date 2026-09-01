@@ -82,21 +82,43 @@ export async function updateCustomerBankInfo(
   `
 }
 
-/** Group the per-warehouse rates by customer id, so each customer row can carry its own map. */
-function groupOngkirByCustomer(
-  ongkirRows: readonly Record<string, unknown>[],
-): Map<number, OngkirByWarehouse> {
-  const byCustomer = new Map<number, OngkirByWarehouse>()
+/**
+ * Group the per-warehouse rates by customer id, so each customer row can carry
+ * its own map.
+ *
+ * Two maps, not one. `effective` is what a parcel is priced at and what the
+ * list must show, so that reading a rate here and reading an invoice give the
+ * same number. `fallback` is the raw `ongkos_kirim`, which the editor needs
+ * because it is the only one of the two that can be written — seeding an edit
+ * form from the effective rate would quietly copy a courier quote into our own
+ * table the moment somebody pressed Save.
+ */
+function groupOngkirByCustomer(ongkirRows: readonly Record<string, unknown>[]): {
+  effective: Map<number, OngkirByWarehouse>
+  fallback: Map<number, OngkirByWarehouse>
+} {
+  const effective = new Map<number, OngkirByWarehouse>()
+  const fallback = new Map<number, OngkirByWarehouse>()
   for (const o of ongkirRows) {
     const cid = o.customer_id as number
-    const map = byCustomer.get(cid) ?? {}
-    map[o.warehouse_id as number] = (o.ongkos_kirim as number) ?? 0
-    byCustomer.set(cid, map)
+    const wid = o.warehouse_id as number
+
+    const eff = effective.get(cid) ?? {}
+    eff[wid] = (o.effective_ongkir as number) ?? 0
+    effective.set(cid, eff)
+
+    const fall = fallback.get(cid) ?? {}
+    fall[wid] = (o.ongkos_kirim as number) ?? 0
+    fallback.set(cid, fall)
   }
-  return byCustomer
+  return { effective, fallback }
 }
 
-function mapCustomerRow(r: Record<string, unknown>, ongkir: OngkirByWarehouse): CustomerRow {
+function mapCustomerRow(
+  r: Record<string, unknown>,
+  ongkir: OngkirByWarehouse,
+  ongkirFallback: OngkirByWarehouse,
+): CustomerRow {
   return {
     id: r.id as number,
     instagramId: (r.instagram_id as string) ?? "",
@@ -105,6 +127,7 @@ function mapCustomerRow(r: Record<string, unknown>, ongkir: OngkirByWarehouse): 
     dataDiri: (r.data_diri as string) ?? "",
     ekspedisi: (r.ekspedisi as string) ?? "",
     ongkir,
+    ongkirFallback,
     bankName: (r.bank_name as string) ?? "",
     bankAccountNumber: (r.bank_account_number as string) ?? "",
     bankAccountHolder: (r.bank_account_holder as string) ?? "",
@@ -143,11 +166,15 @@ export async function getCustomers(): Promise<CustomerRow[]> {
       FROM customers
       ORDER BY instagram_id ASC
     `,
-    sql`SELECT customer_id, warehouse_id, ongkos_kirim FROM customer_warehouse_ongkir`,
+    sql`SELECT customer_id, warehouse_id, ongkos_kirim, effective_ongkir FROM customer_warehouse_ongkir`,
   ])
 
   const ongkirByCustomer = groupOngkirByCustomer(ongkirRows)
-  return rows.map((r) => mapCustomerRow(r, ongkirByCustomer.get(r.id as number) ?? {}))
+  return rows.map((r) => mapCustomerRow(
+      r,
+      ongkirByCustomer.effective.get(r.id as number) ?? {},
+      ongkirByCustomer.fallback.get(r.id as number) ?? {},
+    ))
 }
 
 export interface PaginatedCustomers {
@@ -237,18 +264,18 @@ export async function getCustomersPaginated(opts: {
   if (sameWarehouse) {
     params.push(sortWarehouseId!)
     joinSql = ` LEFT JOIN customer_warehouse_ongkir ongkir_sf ON ongkir_sf.customer_id = c.id AND ongkir_sf.warehouse_id = $${params.length}`
-    sortOngkirExpr = "COALESCE(ongkir_sf.ongkos_kirim, 0)"
-    filterOngkirExpr = "COALESCE(ongkir_sf.ongkos_kirim, 0)"
+    sortOngkirExpr = "COALESCE(ongkir_sf.effective_ongkir, 0)"
+    filterOngkirExpr = "COALESCE(ongkir_sf.effective_ongkir, 0)"
   } else {
     if (sortWarehouseId != null) {
       params.push(sortWarehouseId)
       joinSql += ` LEFT JOIN customer_warehouse_ongkir ongkir_sort ON ongkir_sort.customer_id = c.id AND ongkir_sort.warehouse_id = $${params.length}`
-      sortOngkirExpr = "COALESCE(ongkir_sort.ongkos_kirim, 0)"
+      sortOngkirExpr = "COALESCE(ongkir_sort.effective_ongkir, 0)"
     }
     if (filterWarehouseId != null) {
       params.push(filterWarehouseId)
       joinSql += ` LEFT JOIN customer_warehouse_ongkir ongkir_filter ON ongkir_filter.customer_id = c.id AND ongkir_filter.warehouse_id = $${params.length}`
-      filterOngkirExpr = "COALESCE(ongkir_filter.ongkos_kirim, 0)"
+      filterOngkirExpr = "COALESCE(ongkir_filter.effective_ongkir, 0)"
     }
   }
 
@@ -304,7 +331,7 @@ export async function getCustomersPaginated(opts: {
   const pageIds = dataRows.map((r) => r.id as number)
   const [ongkirRows, countRows] = await Promise.all([
     pageIds.length
-      ? sql`SELECT customer_id, warehouse_id, ongkos_kirim FROM customer_warehouse_ongkir WHERE customer_id = ANY(${pageIds})`
+      ? sql`SELECT customer_id, warehouse_id, ongkos_kirim, effective_ongkir FROM customer_warehouse_ongkir WHERE customer_id = ANY(${pageIds})`
       : Promise.resolve([] as Record<string, unknown>[]),
     skipCount
       ? Promise.resolve(null)
@@ -312,7 +339,11 @@ export async function getCustomersPaginated(opts: {
   ])
 
   const ongkirByCustomer = groupOngkirByCustomer(ongkirRows)
-  const rows = dataRows.map((r) => mapCustomerRow(r, ongkirByCustomer.get(r.id as number) ?? {}))
+  const rows = dataRows.map((r) => mapCustomerRow(
+      r,
+      ongkirByCustomer.effective.get(r.id as number) ?? {},
+      ongkirByCustomer.fallback.get(r.id as number) ?? {},
+    ))
 
   if (!countRows) {
     return {

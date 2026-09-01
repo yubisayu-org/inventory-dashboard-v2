@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import type { CustomerRow, WarehouseRow } from "@/lib/db"
+import type { CustomerRow, OngkirByWarehouse, WarehouseRow } from "@/lib/db"
 import DataGrid, {
   numericFilter,
   type ColumnDef,
@@ -69,8 +69,12 @@ const EMPTY_DRAFT: DraftCustomer = {
 }
 
 function rowToDraft(row: CustomerRow): DraftCustomer {
+  // Seeded from the fallback, never from `ongkir`. `ongkir` is what the invoice
+  // charges — the courier's quote where there is one — and the form writes what
+  // it holds straight back into `ongkos_kirim`, so seeding it from the charged
+  // rate would copy a quote into our own table the first time anybody saved.
   const ongkir: Record<number, string> = {}
-  for (const [wid, val] of Object.entries(row.ongkir ?? {})) {
+  for (const [wid, val] of Object.entries(row.ongkirFallback ?? {})) {
     ongkir[Number(wid)] = val ? String(val) : ""
   }
   return {
@@ -618,6 +622,7 @@ export default function CustomersClient() {
           rowId={editRow.id}
           warehouses={warehouses}
           initial={rowToDraft(editRow)}
+          charged={editRow.ongkir}
           onSaved={() => { setEditRow(null); refreshRef.current() }}
           onCancel={() => setEditRow(null)}
           onDelete={() => { const r = editRow; setEditRow(null); handleDelete(r) }}
@@ -636,13 +641,20 @@ export default function CustomersClient() {
 
 // Shared field set for the Add card and the Edit modal below.
 function CustomerFields({
-  draft, setDraft, warehouses, saving, firstInputRef,
+  draft, setDraft, warehouses, saving, firstInputRef, charged,
 }: {
   draft: DraftCustomer
   setDraft: React.Dispatch<React.SetStateAction<DraftCustomer>>
   warehouses: WarehouseRow[]
   saving: boolean
   firstInputRef?: React.RefObject<HTMLInputElement | null>
+  /**
+   * What the invoice actually charges per warehouse, when this is an existing
+   * customer. Shown beside the field it overrides — otherwise a rate typed here
+   * looks like it took effect when the quote is what gets billed. Absent on the
+   * Add card, which has no quotes yet.
+   */
+  charged?: OngkirByWarehouse
 }) {
   // Only the plain string fields go through this helper; ongkir is a map and is
   // handled with its own per-warehouse inputs below.
@@ -705,26 +717,42 @@ function CustomerFields({
 
       <div className="flex flex-col gap-1">
         <span className="text-xs font-medium text-muted">Ongkos kirim per kg</span>
+        <span className="text-[11px] text-faint -mt-0.5">
+          Our own rate. Used only where the courier has no quote for her area.
+        </span>
         {warehouses.length === 0 ? (
           <span className="text-xs text-faint">No warehouses configured.</span>
         ) : (
           <div className="grid grid-cols-2 gap-3">
-            {warehouses.map((wh) => (
-              <label key={wh.id} className="flex flex-col gap-1">
-                <span className="text-[11px] font-medium text-faint">{wh.name} ({wh.code})</span>
-                <input
-                  value={draft.ongkir[wh.id] ?? ""}
-                  onChange={(e) =>
-                    setDraft((d) => ({ ...d, ongkir: { ...d.ongkir, [wh.id]: e.target.value } }))
-                  }
-                  disabled={saving}
-                  type="number"
-                  min="0"
-                  placeholder="0"
-                  className={modalInputCls}
-                />
-              </label>
-            ))}
+            {warehouses.map((wh) => {
+              // A quote overrides this field. Say so, rather than letting a rate
+              // be typed in three times before anybody works out why the invoice
+              // will not budge.
+              const billed = charged?.[wh.id]
+              const overridden =
+                billed != null && billed !== (Number(draft.ongkir[wh.id]) || 0)
+              return (
+                <label key={wh.id} className="flex flex-col gap-1">
+                  <span className="text-[11px] font-medium text-faint">{wh.name} ({wh.code})</span>
+                  <input
+                    value={draft.ongkir[wh.id] ?? ""}
+                    onChange={(e) =>
+                      setDraft((d) => ({ ...d, ongkir: { ...d.ongkir, [wh.id]: e.target.value } }))
+                    }
+                    disabled={saving}
+                    type="number"
+                    min="0"
+                    placeholder="0"
+                    className={modalInputCls}
+                  />
+                  {overridden && (
+                    <span className="text-[11px] text-amber-700 tabular-nums">
+                      Invoice charges Rp {fmt(billed)} — courier quote
+                    </span>
+                  )}
+                </label>
+              )
+            })}
           </div>
         )}
       </div>
@@ -1196,6 +1224,7 @@ function EditCustomerModal({
   rowId,
   warehouses,
   initial,
+  charged,
   onSaved,
   onCancel,
   onDelete,
@@ -1203,6 +1232,8 @@ function EditCustomerModal({
   rowId: number
   warehouses: WarehouseRow[]
   initial: DraftCustomer
+  /** What the invoice charges today, so the form can say which fields it overrides. */
+  charged: OngkirByWarehouse
   onSaved: () => void
   onCancel: () => void
   onDelete: () => void
@@ -1253,7 +1284,7 @@ function EditCustomerModal({
           <span className="text-xs text-faint">ID: {rowId}</span>
         </div>
 
-        <CustomerFields draft={draft} setDraft={setDraft} warehouses={warehouses} saving={saving} />
+        <CustomerFields draft={draft} setDraft={setDraft} warehouses={warehouses} saving={saving} charged={charged} />
 
         {saveError && <p className="text-xs text-red-500">{saveError}</p>}
 
