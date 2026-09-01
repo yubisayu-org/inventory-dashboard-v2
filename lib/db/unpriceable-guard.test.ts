@@ -50,6 +50,26 @@ async function seed(
   return c.id
 }
 
+/**
+ * Give a customer a rate for every warehouse that exists RIGHT NOW.
+ *
+ * Another test file creates a warehouse of its own while this one runs, and
+ * "unpriceable from at least one warehouse" is a live question — a customer
+ * priced for the two that existed at setup really is unpriceable from a third
+ * that appeared afterwards. That is the feature working, not failing, so the
+ * test tops her up instead of pinning the warehouse list.
+ */
+async function priceEverywhere(handle: string) {
+  await sql`
+    INSERT INTO customer_warehouse_ongkir (customer_id, warehouse_id, ongkos_kirim)
+    SELECT c.id, w.id, 20000
+      FROM customers c CROSS JOIN warehouses w
+     WHERE c.instagram_id = ${handle}
+    ON CONFLICT (customer_id, warehouse_id)
+    DO UPDATE SET ongkos_kirim = 20000
+  `
+}
+
 async function handles(ongkirStatus: "unpriceable" | "unpriceable_with_address") {
   const { rows } = await getCustomersPaginated({ page: 1, pageSize: 50, search: TAG, ongkirStatus })
   return rows.map((r) => r.instagramId).sort()
@@ -84,6 +104,7 @@ test("one bad warehouse is enough, and she is listed once", async () => {
 })
 
 test("a fully priced customer is not in the answer", async () => {
+  await priceEverywhere(PRICED)
   assert.ok(!(await handles("unpriceable")).includes(PRICED))
 })
 
@@ -107,13 +128,14 @@ test("a quote alone is enough to price her", async () => {
   const found = await handles("unpriceable")
   assert.ok(found.includes(ZERO), "still unpriced from the other warehouse")
 
-  for (const w of WAREHOUSES.slice(1)) {
-    await sql`
-      UPDATE customer_warehouse_ongkir SET biteship_ongkir = 14000
-       WHERE customer_id = (SELECT id FROM customers WHERE instagram_id = ${ZERO})
-         AND warehouse_id = ${w}
-    `
-  }
+  await sql`
+    INSERT INTO customer_warehouse_ongkir (customer_id, warehouse_id, ongkos_kirim, biteship_ongkir)
+    SELECT c.id, w.id, 0, 14000
+      FROM customers c CROSS JOIN warehouses w
+     WHERE c.instagram_id = ${ZERO}
+    ON CONFLICT (customer_id, warehouse_id)
+    DO UPDATE SET biteship_ongkir = 14000
+  `
   assert.ok(!(await handles("unpriceable")).includes(ZERO), "priced everywhere, so out of the net")
 })
 

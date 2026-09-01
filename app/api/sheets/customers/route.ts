@@ -24,7 +24,7 @@ async function handleGET(req: NextRequest) {
         instagramId: params.get("instagramId") ?? undefined,
         name: params.get("name") ?? undefined,
         whatsapp: params.get("whatsapp") ?? undefined,
-        ekspedisi: params.get("ekspedisi") ?? undefined,
+        biteshipArea: params.get("biteshipArea") ?? undefined,
         dataDiri: params.get("dataDiri") ?? undefined,
         bankName: params.get("bankName") ?? undefined,
         sortKey: params.get("sortKey") ?? undefined,
