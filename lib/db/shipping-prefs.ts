@@ -70,10 +70,10 @@ export async function getShippingPrefs(
  *
  * Two bars, both about facts the customer cannot argue with:
  *
- *  - **Paid.** Every choice here moves a parcel or splits a delivery fee, and
- *    an unsettled order is not hers to route yet. Read from the same per-event
- *    invoice arithmetic the customer's own Order history shows, so the gate and
- *    the balance she is looking at can never disagree.
+ *  - **Paid for.** The ITEMS, not the invoice. Every other charge on a trip —
+ *    the delivery fee, an early-shipping extra, a courier reweigh — is a
+ *    consequence of the very plan she is asking to change, so counting them
+ *    would let one of her choices forbid the next. See ineligibleReason.
  *  - **Not gone.** Once every unit has shipped there is nothing left to decide.
  *
  * Returns null when the event is fine, or the reason it is not.
@@ -88,11 +88,7 @@ export async function ineligibleReason(
       units: string
       shipped: string
       subtotal: string
-      gram: string
       paid: string
-      adjustments: string
-      plan_fee: string
-      ongkir: string
     }[]
   >`
     WITH me AS (
@@ -102,33 +98,15 @@ export async function ineligibleReason(
     lines AS (
       SELECT COALESCE(SUM(o.unit), 0) AS units,
              COALESCE(SUM(o.unit_ship), 0) AS shipped,
-             COALESCE(SUM(o.unit_price * o.unit), 0) AS subtotal,
-             COALESCE(SUM(COALESCE(p.gram, 0) * o.unit), 0) AS gram
+             COALESCE(SUM(o.unit_price * o.unit), 0) AS subtotal
         FROM orders o
-        JOIN products p ON p.id = o.product_id
         JOIN me ON lower(replace(o.customer, '@', '')) = me.cust_key
        WHERE o.event = ${event}
     )
-    SELECT lines.units, lines.shipped, lines.subtotal, lines.gram,
+    SELECT lines.units, lines.shipped, lines.subtotal,
            COALESCE((SELECT SUM(amount) FROM payments pay, me
                       WHERE pay.event = ${event} AND pay.is_checked
-                        AND lower(replace(pay.customer, '@', '')) = me.cust_key), 0) AS paid,
-           COALESCE((SELECT SUM(amount) FROM adjustments adj, me
-                      WHERE adj.event = ${event}
-                        AND lower(replace(adj.customer, '@', '')) = me.cust_key), 0) AS adjustments,
-           -- The parcel-plan row on its own, identified the way parcel-plan.ts
-           -- identifies it: automatic, and not the JNE reconciliation. This is
-           -- the fee her own plan created, and it is separated so it cannot
-           -- lock her out of changing that plan. See below.
-           COALESCE((SELECT SUM(amount) FROM adjustments adj, me
-                      WHERE adj.event = ${event}
-                        AND lower(replace(adj.customer, '@', '')) = me.cust_key
-                        AND adj.auto
-                        AND adj.description NOT LIKE 'Selisih ongkir JNE%'), 0) AS plan_fee,
-           COALESCE((SELECT cwo.effective_ongkir
-                       FROM events ev
-                       JOIN customer_warehouse_ongkir cwo ON cwo.warehouse_id = ev.warehouse_id
-                      WHERE ev.name = ${event} AND cwo.customer_id = ${customerId}), 0) AS ongkir
+                        AND lower(replace(pay.customer, '@', '')) = me.cust_key), 0) AS paid
       FROM lines
   `
 
@@ -136,38 +114,29 @@ export async function ineligibleReason(
   if (units <= 0) return "unknown"
   if (Number(row.shipped) >= units) return "shipped"
 
-  // Same arithmetic as customer_invoice_summary: subtotal + ongkir per rounded
-  // kilo + adjustments, against what has been paid.
-  const kg = Math.ceil(Number(row.gram) / 1000)
-  const invoiced = Number(row.subtotal) + Number(row.ongkir) * kg + Number(row.adjustments)
-  const outstanding = invoiced - Number(row.paid)
-
   /*
-   * What she owes APART FROM the fee her own plan created.
+   * Has she paid for the ITEMS?
    *
-   * The rule below asks whether she has settled this trip before letting her
-   * rearrange it. Counting the parcel-plan fee in that answer made the rule
-   * eat itself: asking to send early adds the fee, the fee makes her unpaid,
-   * and being unpaid forbids the change — including changing her mind. The
-   * comment on blocks() has always named this ("a split could otherwise never
-   * be undone, because its own fee is what makes her unpaid"); the shop was
-   * exempted so somebody could still act, and the customer was left with the
-   * dead end. She now has a Cancel button of her own, and it needs the same
-   * way out.
+   * That is the whole question. It used to be "has she settled the invoice",
+   * shipping and adjustments included, which is circular: every charge in
+   * that total except the goods is a consequence of the plan she is trying to
+   * change. Asking to send early adds a fee, the fee makes her unpaid, and
+   * unpaid forbids the change — including changing her mind. Setting the
+   * plan's own fee aside fixed that one case and left its neighbours: a
+   * courier reweigh, a delivery fee not yet settled, anything else the
+   * shipping arithmetic produced would still shut a door it had opened.
    *
-   * Only a positive fee is set aside. A merge discount is negative, has already
-   * reduced what she owes, and is not something she needs excusing from.
+   * The goods are the commitment that does not move. Once they are paid for,
+   * how her parcels travel is a question about shipping, and she is allowed to
+   * answer it.
    *
-   * Safe because the plan is priced from scratch on every change: whatever she
-   * rearranges, reconcileParcelPlan writes the row her final plan is owed. And
-   * this decides who may write down a plan, never who may send a box — the
-   * Ship button keeps its own payment gate.
+   * Nothing here decides who may SEND a box. The Ship button keeps its own
+   * payment gate, so a parcel whose extra is unbilled still cannot leave — and
+   * the plan is priced from scratch on every change, so whatever she
+   * rearranges, reconcileParcelPlan writes the row her final plan is owed.
    */
-  const planFee = Math.max(Number(row.plan_fee), 0)
-  const owedBeyondHerOwnPlan = outstanding - planFee
-
-  // Paid or overpaid. A zero invoice is settled by definition.
-  return owedBeyondHerOwnPlan > 0 ? "unpaid" : null
+  const owedForItems = Number(row.subtotal) - Number(row.paid)
+  return owedForItems > 0 ? "unpaid" : null
 }
 
 /** How much of an event has shipped, for the guards that care. */

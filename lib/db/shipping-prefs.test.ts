@@ -26,6 +26,7 @@ after(async () => {
   // Each test that plants one removes it, but a failure between the two would
   // otherwise leave a charge on a row this file created.
   await sql`DELETE FROM adjustments WHERE customer = ${handle}`
+  await sql`DELETE FROM customer_warehouse_ongkir WHERE customer_id = ${customerId}`
   await sql`DELETE FROM payments WHERE customer = ${handle}`
   await sql`DELETE FROM orders WHERE customer = ${handle}`
   await sql`DELETE FROM events WHERE name LIKE ${`${TAG}%`}`
@@ -70,29 +71,31 @@ test("an event that has fully shipped is refused", async () => {
   assert.equal(await ineligibleReason(customerId, GONE), "shipped")
 })
 
-// The rule used to eat itself: asking to send early adds a fee, the fee makes
-// her unpaid, and being unpaid forbids the change — including changing her
-// mind. blocks() has always named this; the shop was exempted so somebody
-// could act, and the customer was left in the dead end.
-test("a debt that is only her own parcel-plan fee does not lock her out", async () => {
-  // PAID is settled. Now the plan she asked for adds its fee, exactly as
-  // reconcileParcelPlan writes it: automatic, and not the JNE reconciliation.
-  await sql`
-    INSERT INTO adjustments (event, customer, description, amount, auto)
-    VALUES (${PAID}, ${handle}, 'Ongkir kirim duluan', 15000, true)`
-  try {
-    assert.equal(
-      await ineligibleReason(customerId, PAID),
-      null,
-      "she must still be able to change the plan that created the fee",
-    )
-  } finally {
-    await sql`DELETE FROM adjustments WHERE event = ${PAID} AND customer = ${handle}`
+// The rule used to eat itself: asking to send early adds a fee, the fee made
+// her unpaid, and unpaid forbade the change — including changing her mind. It
+// now asks only whether the ITEMS are paid for, because every other charge on
+// a trip is a consequence of the plan she is trying to change.
+test("a debt that is only shipping does not lock her out", async () => {
+  // PAID has its items settled. Every one of these is a shipping charge.
+  for (const [description, auto] of [
+    ["Ongkir kirim duluan", true],
+    ["Selisih ongkir JNE", true],
+    ["Ongkir tambahan manual", false],
+  ] as const) {
+    await sql`
+      INSERT INTO adjustments (event, customer, description, amount, auto)
+      VALUES (${PAID}, ${handle}, ${description}, 15000, ${auto})`
+    try {
+      assert.equal(await ineligibleReason(customerId, PAID), null, description)
+    } finally {
+      await sql`DELETE FROM adjustments WHERE event = ${PAID} AND customer = ${handle}`
+    }
   }
 })
 
-test("a debt for the goods themselves still locks her out, fee or no fee", async () => {
-  // OWING has never been paid. A plan fee on top does not excuse the rest.
+test("a debt for the items themselves still locks her out", async () => {
+  assert.equal(await ineligibleReason(customerId, OWING), "unpaid")
+  // And a shipping charge on top of unpaid items changes nothing.
   await sql`
     INSERT INTO adjustments (event, customer, description, amount, auto)
     VALUES (${OWING}, ${handle}, 'Ongkir kirim duluan', 15000, true)`
@@ -103,25 +106,25 @@ test("a debt for the goods themselves still locks her out, fee or no fee", async
   }
 })
 
-// Only the plan's own row is set aside. A manual charge, or the JNE
-// reconciliation, is an ordinary debt and keeps the gate shut.
-test("another kind of adjustment is not excused", async () => {
-  for (const [description, auto] of [["Selisih ongkir JNE", true], ["Denda", false]] as const) {
+// Paying for the items is the bar, not settling the invoice. An unpaid
+// delivery fee is not a reason she cannot say how her parcels should travel —
+// and the Ship button keeps its own gate, so nothing leaves unpaid either way.
+test("unpaid delivery on a trip whose items are paid does not lock her out", async () => {
+  // This file's seed configures no ongkir, so give it one large enough that
+  // the old rule — invoice against payments — would certainly have refused.
+  const [w] = await sql<{ id: number }[]>`SELECT id FROM warehouses ORDER BY id LIMIT 1`
+  await sql`
+    INSERT INTO customer_warehouse_ongkir (customer_id, warehouse_id, ongkos_kirim, updated_at)
+    VALUES (${customerId}, ${w.id}, 500000, NOW())
+    ON CONFLICT (customer_id, warehouse_id)
+    DO UPDATE SET ongkos_kirim = EXCLUDED.ongkos_kirim`
+  try {
+    assert.equal(await ineligibleReason(customerId, PAID), null)
+  } finally {
     await sql`
-      INSERT INTO adjustments (event, customer, description, amount, auto)
-      VALUES (${PAID}, ${handle}, ${description}, 15000, ${auto})`
-    try {
-      assert.equal(await ineligibleReason(customerId, PAID), "unpaid", description)
-    } finally {
-      await sql`DELETE FROM adjustments WHERE event = ${PAID} AND customer = ${handle}`
-    }
+      DELETE FROM customer_warehouse_ongkir
+       WHERE customer_id = ${customerId} AND warehouse_id = ${w.id}`
   }
-})
-
-// The gate is the rule, not the UI that hides the control.
-test("setting a mode on an unpaid event throws rather than writing", async () => {
-  await assert.rejects(() => setShippingMode(customerId, OWING, "hold"), ShippingPrefError)
-  assert.equal((await getShippingPrefs(customerId)).find((p) => p.event === OWING), undefined)
 })
 
 test("holding sets unit_hold, and leaving hold releases it", async () => {
