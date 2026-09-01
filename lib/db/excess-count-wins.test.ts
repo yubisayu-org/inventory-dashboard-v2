@@ -121,6 +121,41 @@ test("what the row used to say survives in the audit log", async () => {
   assert.equal(entry?.now, 2, "two were kept")
 })
 
+test("packing more than the row says was bought raises it at dispatch", async () => {
+  // Learnt at the hotel, with the goods in hand: the row says two spare units,
+  // there are five on the table. Correcting it here means not carrying "there
+  // were really five" in her head until the parcel is opened weeks later.
+  const id = await seed(2, 0, 0)
+  await reconcileExcessOnArrival({ rowNumber: id, unitBuy: 5, unitDispatch: 5, unitArrive: 0 })
+
+  const r = await row(id)
+  assert.equal(r.unitBuy, 5)
+  assert.equal(r.unitDispatch, 5)
+  assert.equal(r.unitArrive, 0, "nothing has arrived yet — this is the dispatch stage")
+})
+
+test("a correction at dispatch carries through receiving and onto the shelf", async () => {
+  // Each stage is capped by the one before it, so raising unit_dispatch without
+  // unit_buy would leave ready stock clamped by LEAST(unit_arrive, unit_buy)
+  // and strand three real units nobody can order.
+  const id = await seed(2, 0, 0)
+  await reconcileExcessOnArrival({ rowNumber: id, unitBuy: 5, unitDispatch: 5, unitArrive: 0 })
+
+  const pending = (await getExcessArrivalPending(EVENT)).find((x) => x.rowNumber === id)
+  assert.equal(pending?.pending, 5, "the receiving list asks for all five")
+
+  await sql`UPDATE excess_purchase SET unit_arrive = 5 WHERE id = ${id}`
+  const [shelf] = (await sql`
+    SELECT LEAST(COALESCE(unit_arrive, 0), unit_buy)::int AS ready
+      FROM excess_purchase WHERE id = ${id}
+  `) as unknown as { ready: number }[]
+  assert.equal(shelf.ready, 5, "and all five reach the shelf")
+
+  const arriving = (await getExcessArrivalPending(EVENT)).map((x) => x.rowNumber)
+  const dispatching = (await getExcessDispatchPending(EVENT)).map((x) => x.rowNumber)
+  assert.ok(!arriving.includes(id) && !dispatching.includes(id), "settled, in both lists")
+})
+
 after(async () => {
   if (ids.length > 0) await sql`DELETE FROM excess_purchase WHERE id = ANY(${ids})`
   await sql`DELETE FROM events WHERE name = ${EVENT}`

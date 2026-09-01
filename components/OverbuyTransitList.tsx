@@ -519,15 +519,18 @@ function MarkStageModal({
   const [receipt, setReceipt] = useState("")
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // Set when the server refuses a count above what the row was carrying. The
-  // numbers come back with the refusal so the question can name both.
-  const [overCount, setOverCount] = useState<{ dispatched: number; counted: number; extra: number } | null>(null)
+  // Set when the server refuses a count above what the row says. The numbers
+  // come back with the refusal so the question can name both. `had` is what the
+  // row claimed — units bought at the dispatch stage, units in the box at the
+  // arrival one.
+  const [overCount, setOverCount] = useState<{ had: number; counted: number; extra: number } | null>(null)
   // Ticked when she counted fewer and nothing more is coming.
   const [closeShort, setCloseShort] = useState(false)
 
   const quantity = Math.max(0, Number(qty) || 0)
   const actionLabel = stage === "dispatch" ? "Mark dispatched" : "Mark arrived"
-  // Only arrivals reconcile: on dispatch the count IS the paperwork being made.
+  // Only arrivals can close short: at dispatch the goods are in her hands, so
+  // packing fewer is simply packing fewer, not a shortfall to write off.
   const short = stage === "arrive" && quantity > 0 && quantity < item.pending
 
   async function post(extra: { adjust?: boolean; closeShort?: boolean } = {}) {
@@ -546,7 +549,11 @@ function MarkStageModal({
       if (!res.ok) {
         // Counted more than the box was carrying: ask rather than refuse.
         if (data.needsAdjust) {
-          setOverCount({ dispatched: data.dispatched, counted: data.counted, extra: data.extra })
+          setOverCount({
+            had: stage === "dispatch" ? data.bought : data.dispatched,
+            counted: data.counted,
+            extra: data.extra,
+          })
           return
         }
         throw new Error(data.error ?? "Failed")
@@ -574,13 +581,13 @@ function MarkStageModal({
         <p className="text-sm text-muted-strong">{item.items} — {item.event}</p>
         <label className="flex flex-col gap-1">
           <span className="text-xs font-medium text-muted">Quantity <span className="text-faint">(pending: {item.pending})</span></span>
-          {/* No max on an arrival. How many spare units were bought is a number
-              nobody knows until the box is open, so the count is allowed to
-              disagree with the paperwork and the paperwork is what gives way. */}
+          {/* No max at either stage. How many spare units were bought is a
+              number learnt with the goods in hand — at the hotel while packing,
+              or when the parcel is opened — so the count is allowed to disagree
+              with the paperwork and the paperwork is what gives way. */}
           <input
             type="number"
             min={1}
-            max={stage === "dispatch" ? item.pending : undefined}
             value={qty}
             onChange={(e) => { setQty(e.target.value); setOverCount(null) }}
             autoFocus
@@ -608,12 +615,15 @@ function MarkStageModal({
         )}
 
         {/* Counted more. The two numbers are named, because this is the one
-            place a mistyped quantity would become stock. */}
+            place a mistyped quantity would become stock. Same question at both
+            stages, so they read as one behaviour at two moments. */}
         {overCount && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 flex flex-col gap-2">
             <p className="text-xs text-amber-800">
-              The box was carrying <b>{overCount.dispatched}</b>. You counted <b>{overCount.counted}</b>.
-              Record {overCount.extra} more bought{item.receipt ? ` under ${item.receipt}` : ""}?
+              {stage === "dispatch"
+                ? <>The row says <b>{overCount.had}</b> were bought. You are packing <b>{overCount.counted}</b>.</>
+                : <>The box was carrying <b>{overCount.had}</b>. You counted <b>{overCount.counted}</b>.</>}
+              {" "}Record {overCount.extra} more bought{item.receipt ? ` under ${item.receipt}` : ""}?
             </p>
             <button
               type="button"
@@ -621,7 +631,11 @@ function MarkStageModal({
               disabled={saving}
               className="self-start px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-medium hover:bg-amber-700 disabled:opacity-50 transition-colors"
             >
-              {saving ? "Saving…" : `Yes, ${overCount.counted} arrived`}
+              {saving
+                ? "Saving…"
+                : stage === "dispatch"
+                  ? `Yes, ${overCount.counted} packed`
+                  : `Yes, ${overCount.counted} arrived`}
             </button>
           </div>
         )}
