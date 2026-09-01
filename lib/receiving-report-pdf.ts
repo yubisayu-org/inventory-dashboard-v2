@@ -1,4 +1,10 @@
 import type { ReceivedReportItem } from "@/lib/db"
+import {
+  buildReportGroups,
+  type ReportCopy,
+  type ReportGroup,
+  type ReportLayout,
+} from "./receiving-report-groups"
 
 // Brand red (matches --brand in globals.css), as RGB for jsPDF.
 const BRAND: [number, number, number] = [0x7b, 0x1a, 0x1a]
@@ -11,6 +17,10 @@ export interface ReceivedReportData {
   receipt?: string | null
   items: ReceivedReportItem[]
   totalUnits: number
+  /** A page per parcel, or a page per shop. Defaults to the parcel. */
+  layout?: ReportLayout
+  /** Only meaningful per store: the staff copy withholds shop and receipts. */
+  copy?: ReportCopy
 }
 
 // "25 Jun 2026" for a single day, "20 – 22 Jun 2026" / "29 Jun – 02 Jul 2026"
@@ -34,26 +44,34 @@ function formatRange(from: string, to: string): string {
 const PAGE_W = 210
 const PAGE_H = 297
 const MARGIN = 14
-const CONTENT_W = PAGE_W - MARGIN * 2
-const BOTTOM = PAGE_H - MARGIN
+const BOTTOM = PAGE_H - MARGIN - 8 // the footer sits in the last 8mm
 
-// Column x-positions / widths. Units is right-aligned at the right edge.
-// Columns: EVENT · RECEIPT · PRODUCT · UNITS (store intentionally omitted).
-const COL_EVENT_X = MARGIN
-const COL_RECEIPT_X = MARGIN + 36
-const COL_PRODUCT_X = MARGIN + 78
-const COL_UNITS_R = PAGE_W - MARGIN
-const PRODUCT_W = COL_UNITS_R - COL_PRODUCT_X - 14
-const EVENT_W = COL_RECEIPT_X - COL_EVENT_X - 3
-const RECEIPT_W = COL_PRODUCT_X - COL_RECEIPT_X - 3
+// Columns, right to left. The tick box closes every table: counting against the
+// paper is what the paper is for, and a report you cannot mark gets marked in
+// the margin anyway.
+const TICK_SIZE = 4
+const TICK_X = PAGE_W - MARGIN - TICK_SIZE
+const COL_UNITS_R = TICK_X - 5
+// The left column carries the store (per box) or the boxes (per store). A staff
+// copy has neither, and hands the width to the product.
+const KEY_X = MARGIN
+const KEY_W = 38
+const PRODUCT_X_OWNER = MARGIN + 42
+const PRODUCT_X_STAFF = MARGIN
+const PRODUCT_PAD = 12 // keeps a long name off the units column
 
 const LINE_H = 5
 
 /**
- * Build the printable "Items Received" report as a PDF Blob. Per-product totals
- * in the query's order (event → dispatch receipt → store → product). Mirrors the
- * client-side jsPDF approach in lib/shipping-label.ts (hand-drawn table, no
- * autotable dependency) and returns a Blob for the standard download flow.
+ * Build the printable "Items Received" report as a PDF Blob.
+ *
+ * Two layouts, chosen at download time: a page per parcel for unpacking, or a
+ * page per shop for handing over. Each group starts a new page — a pile shared
+ * with another pile is worse at the packing table than an extra sheet.
+ *
+ * The grouping itself lives in receiving-report-groups.ts and is tested there;
+ * everything here is drawing. Mirrors the client-side jsPDF approach in
+ * lib/shipping-label.ts (hand-drawn table, no autotable dependency).
  */
 export async function generateReceivedReport({
   event,
@@ -62,13 +80,22 @@ export async function generateReceivedReport({
   receipt,
   items,
   totalUnits,
+  layout = "per-box",
+  copy = "owner",
 }: ReceivedReportData): Promise<Blob> {
   const { default: jsPDF } = await import("jspdf")
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" })
 
+  const staff = copy === "staff"
+  const productX = staff ? PRODUCT_X_STAFF : PRODUCT_X_OWNER
+  const productW = COL_UNITS_R - PRODUCT_PAD - productX
+
   // Date subtitle: the range when given, else "All dates".
   const dateText = from && to ? formatRange(from, to) : "All dates"
 
+  // Which group each page belongs to, so footers can be drawn at the end —
+  // "Page 3 of 7" is not knowable until the last row is placed.
+  const pageLabels: string[] = []
   let y = MARGIN
 
   function header() {
@@ -84,7 +111,7 @@ export async function generateReceivedReport({
     doc.setTextColor(80)
     doc.setFont("helvetica", "normal")
     doc.setFontSize(11)
-    doc.text(dateText, COL_UNITS_R, y + 11, { align: "right" })
+    doc.text(dateText, PAGE_W - MARGIN, y + 11, { align: "right" })
 
     doc.setDrawColor(...BRAND)
     doc.setLineWidth(0.4)
@@ -92,14 +119,33 @@ export async function generateReceivedReport({
     y += 20
   }
 
+  /** The thing that earned this page: a receipt, a shop, or a batch number. */
+  function groupHeading(group: ReportGroup) {
+    doc.setTextColor(30)
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(15)
+    doc.text(group.heading, MARGIN, y + 5)
+
+    doc.setTextColor(120)
+    doc.setFont("helvetica", "normal")
+    doc.setFontSize(9.5)
+    doc.text(group.meta, PAGE_W - MARGIN, y + 5, { align: "right" })
+    y += 11
+  }
+
   function columnHeads() {
     doc.setTextColor(120)
     doc.setFont("helvetica", "bold")
     doc.setFontSize(8.5)
-    doc.text("EVENT", COL_EVENT_X, y)
-    doc.text("RECEIPT", COL_RECEIPT_X, y)
-    doc.text("PRODUCT", COL_PRODUCT_X, y)
+    if (!staff) doc.text(layout === "per-store" ? "RECEIPT" : "STORE", KEY_X, y)
+    doc.text("PRODUCT", productX, y)
     doc.text("UNITS", COL_UNITS_R, y, { align: "right" })
+    // Drawn, not typed: helvetica's WinAnsi encoding has no check mark, and an
+    // unencodable character prints as a stray tick of punctuation.
+    doc.setDrawColor(120)
+    doc.setLineWidth(0.35)
+    doc.line(TICK_X + 0.5, y - 1.5, TICK_X + 1.5, y - 0.5)
+    doc.line(TICK_X + 1.5, y - 0.5, TICK_X + 3.5, y - 3)
     y += 2
     doc.setDrawColor(220)
     doc.setLineWidth(0.2)
@@ -107,10 +153,17 @@ export async function generateReceivedReport({
     y += 4
   }
 
-  header()
-  columnHeads()
+  function bodyType() {
+    doc.setTextColor(30)
+    doc.setFont("helvetica", "normal")
+    doc.setFontSize(10)
+  }
 
-  if (items.length === 0) {
+  const groups = buildReportGroups(items, layout, copy)
+
+  if (groups.length === 0) {
+    header()
+    columnHeads()
     doc.setTextColor(120)
     doc.setFont("helvetica", "italic")
     doc.setFontSize(11)
@@ -118,42 +171,68 @@ export async function generateReceivedReport({
     return doc.output("blob")
   }
 
-  doc.setTextColor(30)
-  doc.setFont("helvetica", "normal")
-  doc.setFontSize(10)
+  groups.forEach((group, index) => {
+    // Every group starts a page. The first one is already on it.
+    if (index > 0) doc.addPage()
+    y = MARGIN
+    pageLabels.push(group.label)
+    header()
+    groupHeading(group)
+    columnHeads()
+    bodyType()
 
-  for (const item of items) {
-    const productLines = doc.splitTextToSize(item.productName, PRODUCT_W) as string[]
-    const eventLines = doc.splitTextToSize(item.event, EVENT_W) as string[]
-    const receiptLines = doc.splitTextToSize(item.dispatchReceipt || "—", RECEIPT_W) as string[]
-    const rowH = Math.max(productLines.length, eventLines.length, receiptLines.length) * LINE_H
+    for (const line of group.lines) {
+      const productLines = doc.splitTextToSize(line.product, productW) as string[]
+      const rowH = Math.max(productLines.length, line.key.length, 1) * LINE_H
 
-    // Page break before drawing a row that would overflow.
-    if (y + rowH > BOTTOM) {
-      doc.addPage()
-      y = MARGIN
-      columnHeads()
-      doc.setTextColor(30)
-      doc.setFont("helvetica", "normal")
-      doc.setFontSize(10)
+      // Page break before drawing a row that would overflow. The heading is not
+      // repeated — the page footer carries it, and a second heading would read
+      // as a second group.
+      if (y + rowH > BOTTOM) {
+        doc.addPage()
+        y = MARGIN
+        pageLabels.push(group.label)
+        header()
+        columnHeads()
+        bodyType()
+      }
+
+      if (line.key.length > 0) {
+        doc.setTextColor(105)
+        doc.text(doc.splitTextToSize(line.key.join("\n"), KEY_W) as string[], KEY_X, y + 3.5)
+        doc.setTextColor(30)
+      }
+      doc.text(productLines, productX, y + 3.5)
+      doc.text(String(line.units), COL_UNITS_R, y + 3.5, { align: "right" })
+      doc.setDrawColor(185)
+      doc.setLineWidth(0.2)
+      doc.roundedRect(TICK_X, y + 0.4, TICK_SIZE, TICK_SIZE, 0.6, 0.6, "S")
+
+      y += rowH + 1
+      doc.setDrawColor(235)
+      doc.setLineWidth(0.1)
+      doc.line(MARGIN, y - 0.5, PAGE_W - MARGIN, y - 0.5)
     }
 
-    doc.text(eventLines, COL_EVENT_X, y + 3.5)
-    doc.text(receiptLines, COL_RECEIPT_X, y + 3.5)
-    doc.text(productLines, COL_PRODUCT_X, y + 3.5)
-    doc.text(String(item.unitsReceived), COL_UNITS_R, y + 3.5, { align: "right" })
+    // Subtotal, always with its group.
+    y += 2
+    doc.setDrawColor(200)
+    doc.setLineWidth(0.3)
+    doc.line(MARGIN, y, PAGE_W - MARGIN, y)
+    y += 6
+    doc.setTextColor(30)
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(10.5)
+    doc.text(`Subtotal · ${group.label}`, productX, y)
+    doc.text(String(group.subtotal), COL_UNITS_R, y, { align: "right" })
+  })
 
-    y += rowH + 1
-    doc.setDrawColor(235)
-    doc.setLineWidth(0.1)
-    doc.line(MARGIN, y - 0.5, PAGE_W - MARGIN, y - 0.5)
-  }
-
-  // Grand total.
-  y += 2
+  // Grand total, on the last page only.
+  y += 4
   if (y + 8 > BOTTOM) {
     doc.addPage()
     y = MARGIN
+    pageLabels.push(pageLabels.at(-1) ?? "")
   }
   doc.setDrawColor(...BRAND)
   doc.setLineWidth(0.4)
@@ -162,8 +241,23 @@ export async function generateReceivedReport({
   doc.setFont("helvetica", "bold")
   doc.setFontSize(11)
   doc.setTextColor(...BRAND)
-  doc.text("TOTAL UNITS RECEIVED", COL_EVENT_X, y)
+  doc.text("TOTAL UNITS RECEIVED", productX, y)
   doc.text(String(totalUnits), COL_UNITS_R, y, { align: "right" })
+
+  // Footers last: the page count is only known now, and sheets get separated on
+  // the packing table, so each one has to say which group it belongs to.
+  const pages = doc.getNumberOfPages()
+  for (let page = 1; page <= pages; page++) {
+    doc.setPage(page)
+    doc.setDrawColor(235)
+    doc.setLineWidth(0.15)
+    doc.line(MARGIN, PAGE_H - MARGIN - 5, PAGE_W - MARGIN, PAGE_H - MARGIN - 5)
+    doc.setFont("helvetica", "normal")
+    doc.setFontSize(8.5)
+    doc.setTextColor(150)
+    doc.text(pageLabels[page - 1] ?? "", MARGIN, PAGE_H - MARGIN)
+    doc.text(`Page ${page} of ${pages}`, PAGE_W - MARGIN, PAGE_H - MARGIN, { align: "right" })
+  }
 
   return doc.output("blob")
 }

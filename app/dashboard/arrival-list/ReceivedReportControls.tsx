@@ -1,8 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { fetchJson } from "@/lib/api-fetch"
 import { generateReceivedReport } from "@/lib/receiving-report-pdf"
+import type { ReportCopy, ReportLayout } from "@/lib/receiving-report-groups"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import DateRangeField from "@/components/DateRangeField"
 import EventSelect from "@/components/EventSelect"
@@ -15,6 +16,68 @@ const INPUT_CLASS =
 // picker caps on the business day regardless of the browser's timezone.
 function jakartaToday(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date())
+}
+
+// The two pickers hold across visits: a trip is worked over days, and re-picking
+// the same layout every morning is the kind of small friction that gets a wrong
+// sheet printed. Browser-local and disposable — storage that refuses to work
+// (private windows, blocked site data) just means the defaults.
+const PREFS_KEY = "receiving-report-prefs"
+
+function readPrefs(): { layout: ReportLayout; copy: ReportCopy } {
+  try {
+    const raw = window.localStorage.getItem(PREFS_KEY)
+    if (raw) {
+      const saved = JSON.parse(raw) as Partial<{ layout: ReportLayout; copy: ReportCopy }>
+      return {
+        layout: saved.layout === "per-store" ? "per-store" : "per-box",
+        copy: saved.copy === "staff" ? "staff" : "owner",
+      }
+    }
+  } catch {
+    // Fall through to the defaults.
+  }
+  return { layout: "per-box", copy: "owner" }
+}
+
+const SEG_BASE =
+  "h-[38px] px-3 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-brand/30 first:rounded-l-lg last:rounded-r-lg"
+
+function Segmented<T extends string>({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string
+  value: T
+  onChange: (v: T) => void
+  options: { value: T; label: string }[]
+}) {
+  return (
+    <div
+      role="group"
+      aria-label={label}
+      className="flex shrink-0 overflow-hidden rounded-lg border border-cream-border bg-white"
+    >
+      {options.map((opt, i) => (
+        <button
+          key={opt.value}
+          type="button"
+          onClick={() => onChange(opt.value)}
+          aria-pressed={value === opt.value}
+          className={
+            `${SEG_BASE} ${i > 0 ? "border-l border-cream-border" : ""} ` +
+            (value === opt.value
+              ? "bg-brand text-white font-medium"
+              : "text-muted-strong hover:text-brand")
+          }
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  )
 }
 
 type Report = {
@@ -38,8 +101,32 @@ export default function ReceivedReportControls() {
   // Same field the dispatch document has, for the same reason — a report of a
   // whole trip is rarely what you want when a single box has just landed.
   const [receipt, setReceipt] = useState("")
+  // A page per parcel while unpacking; a page per shop when handing over.
+  const [layout, setLayout] = useState<ReportLayout>("per-box")
+  const [copy, setCopy] = useState<ReportCopy>("owner")
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+
+  // After mount, so the server and the first client render agree.
+  useEffect(() => {
+    const prefs = readPrefs()
+    setLayout(prefs.layout)
+    setCopy(prefs.copy)
+  }, [])
+
+  function remember(next: { layout: ReportLayout; copy: ReportCopy }) {
+    setLayout(next.layout)
+    setCopy(next.copy)
+    try {
+      window.localStorage.setItem(PREFS_KEY, JSON.stringify(next))
+    } catch {
+      // A forgotten preference is not worth a failed download.
+    }
+  }
+
+  // Only the per-store sheet is ever handed over, and only its heading has a
+  // shop name to withhold. A per-box sheet is yours by definition.
+  const effectiveCopy: ReportCopy = layout === "per-store" ? copy : "owner"
 
   // Order the range so a reversed selection still works (mirrors the API).
   const start = from && to ? (from <= to ? from : to) : from
@@ -69,7 +156,7 @@ export default function ReceivedReportControls() {
         )
         return
       }
-      const blob = await generateReceivedReport(report)
+      const blob = await generateReceivedReport({ ...report, layout, copy: effectiveCopy })
       const url = URL.createObjectURL(blob)
       try {
         const datePart =
@@ -78,9 +165,12 @@ export default function ReceivedReportControls() {
               ? `-${report.from}`
               : `-${report.from}_to_${report.to}`
             : ""
+        // The layout and the copy go in the name: two of these in one folder,
+        // and the wrong one gets printed and handed over.
+        const copyPart = layout === "per-store" ? `-${effectiveCopy}` : ""
         const a = document.createElement("a")
         a.href = url
-        a.download = `received-${report.event}${datePart}.pdf`
+        a.download = `received-${report.event}${datePart}-${layout}${copyPart}.pdf`
         document.body.appendChild(a)
         a.click()
         document.body.removeChild(a)
@@ -121,6 +211,27 @@ export default function ReceivedReportControls() {
         placeholder="Receipt (optional)"
         className={`${INPUT_CLASS} h-[38px] flex-1 min-w-0 sm:min-w-[160px]`}
       />
+      <Segmented
+        label="Report layout"
+        value={layout}
+        onChange={(v) => remember({ layout: v, copy })}
+        options={[
+          { value: "per-box", label: "Per box" },
+          { value: "per-store", label: "Per store" },
+        ]}
+      />
+      {/* Only the handed-over sheet has anything to withhold. */}
+      {layout === "per-store" && (
+        <Segmented
+          label="Copy"
+          value={copy}
+          onChange={(v) => remember({ layout, copy: v })}
+          options={[
+            { value: "owner", label: "Owner" },
+            { value: "staff", label: "Staff" },
+          ]}
+        />
+      )}
       <button
         type="button"
         onClick={download}
