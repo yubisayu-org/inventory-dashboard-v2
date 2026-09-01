@@ -171,7 +171,7 @@ export async function getInvoiceForCustomer(
                    AND s.tracking_number <> ''
                  ORDER BY s.id DESC
                  LIMIT 1),
-               cwo.ongkos_kirim, 0
+               cwo.effective_ongkir, 0
              ) AS ongkir
       FROM orders o
       JOIN products p ON p.id = o.product_id
@@ -318,8 +318,8 @@ function derivePublicStatus(group: readonly OrderRowLike[], hasResi: boolean): s
  *
  * Deliberately separate from getInvoiceForCustomer: it returns ONLY orders,
  * payment status, derived shipping status, and tracking numbers (what the
- * public page shows) and reads ONLY ongkos_kirim from customers — never name,
- * WhatsApp, data_diri, or bank details. Pass the read-only `invoice_reader`
+ * public page shows) and reads ONLY the shipping rate from customers — never
+ * name, WhatsApp, data_diri, or bank details. Pass the read-only `invoice_reader`
  * connection (lib/db-public.ts) as `db` so the PII columns are physically
  * unreadable on this path. The seller's payment/bank block is a frontend
  * constant and is intentionally not returned here.
@@ -347,7 +347,7 @@ export async function getPublicInvoiceForCustomer(
                    AND s.tracking_number <> ''
                  ORDER BY s.id DESC
                  LIMIT 1),
-               cwo.ongkos_kirim, 0
+               cwo.effective_ongkir, 0
              ) AS ongkir
       FROM orders o
       JOIN products p ON p.id = o.product_id

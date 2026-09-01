@@ -115,7 +115,7 @@ export async function ineligibleReason(
            COALESCE((SELECT SUM(amount) FROM adjustments adj, me
                       WHERE adj.event = ${event}
                         AND lower(replace(adj.customer, '@', '')) = me.cust_key), 0) AS adjustments,
-           COALESCE((SELECT cwo.ongkos_kirim
+           COALESCE((SELECT cwo.effective_ongkir
                        FROM events ev
                        JOIN customer_warehouse_ongkir cwo ON cwo.warehouse_id = ev.warehouse_id
                       WHERE ev.name = ${event} AND cwo.customer_id = ${customerId}), 0) AS ongkir

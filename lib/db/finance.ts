@@ -1149,7 +1149,7 @@ export async function materializeOverpaymentRefunds(): Promise<RefundRow[]> {
         oa.event,
         oa.customer,
         (oa.subtotal
-          + COALESCE(cwo.ongkos_kirim, 0) * CEIL(oa.total_gram::numeric / 1000)
+          + COALESCE(cwo.effective_ongkir, 0) * CEIL(oa.total_gram::numeric / 1000)
           + COALESCE(adj.total_adj, 0))::int AS invoice_total,
         COALESCE(pa.total_paid, 0)::int AS total_paid
       FROM order_aggregates oa
@@ -1290,7 +1290,7 @@ export async function getPaymentStatus(event?: string): Promise<PaymentStatusRow
           -- Per-(event, customer) ongkir from the event's warehouse.
           SELECT ev.name AS event,
                  lower(replace(c.instagram_id, '@', '')) AS cust_key,
-                 COALESCE(cwo.ongkos_kirim, 0) AS ongkos_kirim
+                 COALESCE(cwo.effective_ongkir, 0) AS ongkir
           FROM events ev
           JOIN customer_warehouse_ongkir cwo ON cwo.warehouse_id = ev.warehouse_id
           JOIN customers c ON c.id = cwo.customer_id
@@ -1306,7 +1306,7 @@ export async function getPaymentStatus(event?: string): Promise<PaymentStatusRow
           k.event AS event,
           k.cust_key AS customer,
           (COALESCE(oa.subtotal, 0)
-            + COALESCE(c.ongkos_kirim, 0) * CEIL(COALESCE(oa.total_gram, 0)::numeric / 1000)
+            + COALESCE(c.ongkir, 0) * CEIL(COALESCE(oa.total_gram, 0)::numeric / 1000)
             + COALESCE(adj.total_adj, 0))::int AS invoice_total,
           COALESCE(pa.total_paid, 0)::int AS total_paid,
           COALESCE(oa.total_items, 0)::int AS total_items
@@ -1343,7 +1343,7 @@ export async function getPaymentStatus(event?: string): Promise<PaymentStatusRow
           -- Per-(event, customer) ongkir from the event's warehouse.
           SELECT ev.name AS event,
                  lower(replace(c.instagram_id, '@', '')) AS cust_key,
-                 COALESCE(cwo.ongkos_kirim, 0) AS ongkos_kirim
+                 COALESCE(cwo.effective_ongkir, 0) AS ongkir
           FROM events ev
           JOIN customer_warehouse_ongkir cwo ON cwo.warehouse_id = ev.warehouse_id
           JOIN customers c ON c.id = cwo.customer_id
@@ -1359,7 +1359,7 @@ export async function getPaymentStatus(event?: string): Promise<PaymentStatusRow
           k.event AS event,
           k.cust_key AS customer,
           (COALESCE(oa.subtotal, 0)
-            + COALESCE(c.ongkos_kirim, 0) * CEIL(COALESCE(oa.total_gram, 0)::numeric / 1000)
+            + COALESCE(c.ongkir, 0) * CEIL(COALESCE(oa.total_gram, 0)::numeric / 1000)
             + COALESCE(adj.total_adj, 0))::int AS invoice_total,
           COALESCE(pa.total_paid, 0)::int AS total_paid,
           COALESCE(oa.total_items, 0)::int AS total_items

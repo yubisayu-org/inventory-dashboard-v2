@@ -69,7 +69,7 @@ export async function refundForReduction(
   // Her ongkir rate for this trip, so a reduction's own maximum cost can be
   // worked out without asking the invoice.
   const [rateRow] = (await sql`
-    SELECT COALESCE(cwo.ongkos_kirim, 0)::int AS rate
+    SELECT COALESCE(cwo.effective_ongkir, 0)::int AS rate
       FROM events e
       JOIN customer_warehouse_ongkir cwo ON cwo.warehouse_id = e.warehouse_id
       JOIN customers c ON c.id = cwo.customer_id

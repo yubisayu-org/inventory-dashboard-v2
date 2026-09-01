@@ -333,7 +333,7 @@ async function fetchEventOngkir(
   const rows = await sql`
     SELECT ev.name AS event,
            lower(replace(c.instagram_id, '@', '')) AS norm_cust,
-           COALESCE(cwo.ongkos_kirim, 0)::int AS ongkir
+           COALESCE(cwo.effective_ongkir, 0)::int AS ongkir
     FROM events ev
     JOIN customer_warehouse_ongkir cwo ON cwo.warehouse_id = ev.warehouse_id
     JOIN customers c ON c.id = cwo.customer_id

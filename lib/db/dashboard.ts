@@ -88,18 +88,18 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
         COUNT(*)::int AS invoice_count,
         COALESCE(SUM(
           oa.subtotal
-          + COALESCE(cwo.ongkos_kirim, 0) * CEIL(oa.total_gram::numeric / 1000)
+          + COALESCE(cwo.effective_ongkir, 0) * CEIL(oa.total_gram::numeric / 1000)
           + COALESCE(adj.total_adj, 0)
         ), 0)::bigint AS omzet,
         COALESCE(SUM(GREATEST(
           oa.subtotal
-          + COALESCE(cwo.ongkos_kirim, 0) * CEIL(oa.total_gram::numeric / 1000)
+          + COALESCE(cwo.effective_ongkir, 0) * CEIL(oa.total_gram::numeric / 1000)
           + COALESCE(adj.total_adj, 0)
           - COALESCE(pa.total_paid, 0)
         , 0)), 0)::bigint AS outstanding,
         COUNT(*) FILTER (WHERE
           oa.subtotal
-          + COALESCE(cwo.ongkos_kirim, 0) * CEIL(oa.total_gram::numeric / 1000)
+          + COALESCE(cwo.effective_ongkir, 0) * CEIL(oa.total_gram::numeric / 1000)
           + COALESCE(adj.total_adj, 0)
           - COALESCE(pa.total_paid, 0) > 0
         )::int AS outstanding_count,
@@ -112,7 +112,7 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
         COUNT(*) FILTER (WHERE
           COALESCE(pa.total_paid, 0) - (
             oa.subtotal
-            + COALESCE(cwo.ongkos_kirim, 0) * CEIL(oa.total_gram::numeric / 1000)
+            + COALESCE(cwo.effective_ongkir, 0) * CEIL(oa.total_gram::numeric / 1000)
             + COALESCE(adj.total_adj, 0)
           ) > COALESCE((
             SELECT SUM(r.refund_amount) FROM refunds r
@@ -305,7 +305,7 @@ export async function getEventPerformance(): Promise<EventPerformance[]> {
       SELECT
         oi.event,
         oi.subtotal
-          + COALESCE(cwo.ongkos_kirim, 0) * CEIL(oi.total_gram::numeric / 1000)
+          + COALESCE(cwo.effective_ongkir, 0) * CEIL(oi.total_gram::numeric / 1000)
           + COALESCE(aj.total_adj, 0) AS invoice_total,
         COALESCE(pi.total_paid, 0) AS paid
       FROM order_inv oi

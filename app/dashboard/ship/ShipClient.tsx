@@ -705,6 +705,17 @@ function CustomerCard({
             <span className={`hidden md:inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${PAYMENT_BADGE[c.paymentStatus].cls}`}>
               {PAYMENT_BADGE[c.paymentStatus].label}
             </span>
+            {/* No rate for her area from this event's warehouse. Shipping bills
+                at nothing, and the invoice looks finished either way — so it is
+                said on the card, before the parcel is in anyone's hands. */}
+            {c.ongkirPerKg <= 0 && (
+              <span
+                title="Belum ada ongkir untuk areanya dari gudang event ini — paket ini akan tercatat tanpa biaya kirim."
+                className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800"
+              >
+                Ongkir belum ada
+              </span>
+            )}
             {/* Surfaces a hold on a card whose status badge is something else
                 (e.g. "Tiba Sebagian") — the "hold" status only wins once every
                 line has arrived, so without this a held unit on a partial event
@@ -1300,6 +1311,15 @@ function ShipConfirmModal({
                 <span className="font-semibold">Rp {(c.weightKg * c.ongkirPerKg).toLocaleString("id-ID")}</span>
               </div>
             </div>
+
+            {/* A warning, not a block: sometimes the parcel has to go today and
+                the rate is fixed afterwards. It just must not go unnoticed. */}
+            {c.ongkirPerKg <= 0 && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                Belum ada ongkir untuk areanya dari gudang event ini. Paket ini bisa tetap dikirim,
+                tapi invoicenya tidak akan menagih ongkir sama sekali.
+              </div>
+            )}
 
             {error && (
               <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
