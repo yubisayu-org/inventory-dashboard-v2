@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { updateCustomer, deleteCustomer, parseOngkir, withActor } from "@/lib/db"
+import { updateCustomer, deleteCustomer, parseOngkir, requoteCustomerArea, withActor } from "@/lib/db"
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -52,7 +52,23 @@ export async function PUT(req: NextRequest, { params }: Params) {
         : {}),
     }, tx))
 
-    return NextResponse.json({ success: true })
+    // The update above drops her stored quote when the area changed, because a
+    // quote belongs to the area it was bought for. Buy the new one straight
+    // away rather than leaving her on the fallback until the next sweep --
+    // twenty-eight customers have a fallback of zero, and for them "until the
+    // next sweep" means a parcel that ships free.
+    //
+    // After the transaction, never inside it: this can reach the courier, and a
+    // network call has no business holding a database connection open. It also
+    // cannot fail the save -- a customer with no quote is a customer the "No
+    // rate" filter and the ship-screen warning already know how to catch.
+    const areaId = body.biteshipAreaId ? String(body.biteshipAreaId).trim() : ""
+    let requoted: Awaited<ReturnType<typeof requoteCustomerArea>> = []
+    if (areaId) {
+      requoted = await requoteCustomerArea(id, areaId)
+    }
+
+    return NextResponse.json({ success: true, requoted })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     if (msg.includes("duplicate") || msg.includes("unique")) {
