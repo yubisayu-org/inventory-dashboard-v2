@@ -152,11 +152,38 @@ export async function chooseRefundCredit(
 }
 
 /**
+ * What she still owes across every trip, or 0.
+ *
+ * customer_invoice_summary is the same view the balance strip on her Orders
+ * page reads, so the server and the page cannot disagree about whether she
+ * owes — which is the whole point of not recomputing it here.
+ */
+async function outstandingFor(handle: string, db: DBExecutor): Promise<number> {
+  const [row] = await db<{ total_outstanding: string }[]>`
+    SELECT total_outstanding FROM customer_invoice_summary
+     WHERE cust_key = ${normalizeId(handle)}
+  `
+  return Number(row?.total_outstanding ?? 0)
+}
+
+/**
  * Send it to her bank.
  *
  * The details land on the refund, never on `customers`: where one refund goes
  * is a decision about that refund, and a number copied to her profile would
  * still be there six months later when the account has closed.
+ *
+ * Refused while she owes. The page already greys the button, but a page is not
+ * a rule: a tab that rendered before her latest invoice still has a live one,
+ * and anything posting here that is not the page never saw it at all. Sending
+ * money back to an account still in the red is two transfers to close one gap,
+ * and both cost a fee.
+ *
+ * Only this way out is closed. chooseRefundCredit stays open because credit is
+ * the option that works when she owes: it closes the same gap with nothing
+ * moving. And this is the CUSTOMER path only — the shop refunds through its own
+ * screens, so the shop can still send money to someone who owes when it means
+ * to.
  */
 export async function chooseRefundBank(
   id: number,
@@ -174,6 +201,12 @@ export async function chooseRefundBank(
   if (bank.length > 80 || holder.length > 120) throw new Error("Isian terlalu panjang")
 
   await openRefundOf(id, handle, db)
+
+  if ((await outstandingFor(handle, db)) > 0) {
+    throw new Error(
+      "Masih ada pesanan yang belum lunas, jadi pengembalian ini dipotong dari situ dulu.",
+    )
+  }
   await db`
     UPDATE refunds
        SET status = 'ready_to_refund',

@@ -15,6 +15,12 @@ export type CustomerBalance = {
   totalOutstanding: number
 }
 
+/** A credit she chose to keep, and the trip it came from. */
+export type HeldCredit = {
+  event: string
+  amount: number
+}
+
 /**
  * What this customer has been invoiced and what is still outstanding.
  *
@@ -40,4 +46,38 @@ export async function getCustomerBalance(
     totalInvoiced: Number(row?.total_invoiced ?? 0),
     totalOutstanding: Number(row?.total_outstanding ?? 0),
   }
+}
+
+/**
+ * Credits she has chosen to keep for a future order.
+ *
+ * Her card already says "Rp 209.400 is waiting on your account" — but it says
+ * it on the order the money came FROM, not the one she will spend it on. With
+ * two or three she has to find them among unrelated orders and add them up.
+ * This is the same money in one place, not new money.
+ *
+ * The predicate is isCreditPromised's, and deliberately not a copy of
+ * allHeldDeposits: that one scans every refund in the shop to build a map for
+ * the Invoice list, which is the wrong shape for one customer opening her own
+ * page. Same rule, scoped to her.
+ *
+ * Every column here is one catalogue_public may select. It reads created_at
+ * rather than updated_at — "how long has this sat there" is the shop's
+ * question, asked on the Refunds screen, and updated_at is not granted to this
+ * role.
+ */
+export async function getHeldCredits(
+  instagramId: string,
+  db: DBExecutor = sql,
+): Promise<HeldCredit[]> {
+  const key = normalizeId(instagramId)
+  const rows = await db<{ event: string; refund_amount: string }[]>`
+    SELECT event, refund_amount
+      FROM refunds
+     WHERE lower(replace(customer, '@', '')) = ${key}
+       AND status = 'applied_to_next_order'
+       AND refund_amount > 0
+     ORDER BY created_at, id
+  `
+  return rows.map((r) => ({ event: r.event, amount: Number(r.refund_amount) }))
 }
