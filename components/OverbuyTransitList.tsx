@@ -519,16 +519,23 @@ function MarkStageModal({
   const [receipt, setReceipt] = useState("")
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Set when the server refuses a count above what the row was carrying. The
+  // numbers come back with the refusal so the question can name both.
+  const [overCount, setOverCount] = useState<{ dispatched: number; counted: number; extra: number } | null>(null)
+  // Ticked when she counted fewer and nothing more is coming.
+  const [closeShort, setCloseShort] = useState(false)
 
   const quantity = Math.max(0, Number(qty) || 0)
   const actionLabel = stage === "dispatch" ? "Mark dispatched" : "Mark arrived"
+  // Only arrivals reconcile: on dispatch the count IS the paperwork being made.
+  const short = stage === "arrive" && quantity > 0 && quantity < item.pending
 
-  async function handleSubmit() {
-    if (quantity < 1) return
+  async function post(extra: { adjust?: boolean; closeShort?: boolean } = {}) {
     setSaving(true)
     setError(null)
     try {
-      const body: { qty: number; receipt?: string } = { qty: quantity }
+      const body: { qty: number; receipt?: string; adjust?: boolean; closeShort?: boolean } =
+        { qty: quantity, ...extra }
       if (stage === "dispatch") body.receipt = receipt.trim()
       const res = await fetch(`/api/sheets/excess-purchase/${item.rowNumber}/${stage}`, {
         method: "POST",
@@ -536,13 +543,25 @@ function MarkStageModal({
         body: JSON.stringify(body),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? "Failed")
+      if (!res.ok) {
+        // Counted more than the box was carrying: ask rather than refuse.
+        if (data.needsAdjust) {
+          setOverCount({ dispatched: data.dispatched, counted: data.counted, extra: data.extra })
+          return
+        }
+        throw new Error(data.error ?? "Failed")
+      }
       onSuccess()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed")
     } finally {
       setSaving(false)
     }
+  }
+
+  async function handleSubmit() {
+    if (quantity < 1) return
+    await post(short && closeShort ? { closeShort: true } : {})
   }
 
   return (
@@ -555,16 +574,57 @@ function MarkStageModal({
         <p className="text-sm text-muted-strong">{item.items} — {item.event}</p>
         <label className="flex flex-col gap-1">
           <span className="text-xs font-medium text-muted">Quantity <span className="text-faint">(pending: {item.pending})</span></span>
+          {/* No max on an arrival. How many spare units were bought is a number
+              nobody knows until the box is open, so the count is allowed to
+              disagree with the paperwork and the paperwork is what gives way. */}
           <input
             type="number"
             min={1}
-            max={item.pending}
+            max={stage === "dispatch" ? item.pending : undefined}
             value={qty}
-            onChange={(e) => setQty(e.target.value)}
+            onChange={(e) => { setQty(e.target.value); setOverCount(null) }}
             autoFocus
             className="border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
           />
         </label>
+
+        {/* Counted fewer. Offered, not assumed — the rest may simply be on the
+            next boat, and a row written down cannot be un-written. */}
+        {short && !overCount && (
+          <label className="flex items-start gap-2 text-xs text-muted-strong">
+            <input
+              type="checkbox"
+              checked={closeShort}
+              onChange={(e) => setCloseShort(e.target.checked)}
+              className="mt-0.5 accent-brand"
+            />
+            <span>
+              Nothing more is coming — close this row at {quantity}.
+              <span className="block text-faint">
+                {item.pending - quantity} unit(s) written off. Otherwise the row keeps them pending.
+              </span>
+            </span>
+          </label>
+        )}
+
+        {/* Counted more. The two numbers are named, because this is the one
+            place a mistyped quantity would become stock. */}
+        {overCount && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 flex flex-col gap-2">
+            <p className="text-xs text-amber-800">
+              The box was carrying <b>{overCount.dispatched}</b>. You counted <b>{overCount.counted}</b>.
+              Record {overCount.extra} more bought{item.receipt ? ` under ${item.receipt}` : ""}?
+            </p>
+            <button
+              type="button"
+              onClick={() => post({ adjust: true })}
+              disabled={saving}
+              className="self-start px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-medium hover:bg-amber-700 disabled:opacity-50 transition-colors"
+            >
+              {saving ? "Saving…" : `Yes, ${overCount.counted} arrived`}
+            </button>
+          </div>
+        )}
         {stage === "dispatch" && (
           <label className="flex flex-col gap-1">
             <span className="text-xs font-medium text-muted">Dispatch tracking <span className="text-faint font-normal">(optional)</span></span>

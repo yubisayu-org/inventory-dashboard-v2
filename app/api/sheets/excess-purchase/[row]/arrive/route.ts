@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { getExcessPurchaseRows, bulkUpdateExcessArrive, withActor } from "@/lib/db"
+import { getExcessPurchaseRows, bulkUpdateExcessArrive, reconcileExcessOnArrival, withActor } from "@/lib/db"
 
 type Params = { params: Promise<{ row: string }> }
 
@@ -19,7 +19,13 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   try {
-    const body = await req.json().catch(() => ({})) as { qty?: number }
+    const body = await req.json().catch(() => ({})) as {
+      qty?: number
+      /** Counted more than the row was carrying, and said to record it. */
+      adjust?: boolean
+      /** Counted fewer, and said nothing more is coming. */
+      closeShort?: boolean
+    }
     const qty = Number(body.qty)
     if (!Number.isFinite(qty) || qty <= 0) {
       return NextResponse.json({ error: "qty must be a positive number" }, { status: 400 })
@@ -31,17 +37,56 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
 
     const current = excessRow.unitArrive ?? 0
-    const cap = (excessRow.unitDispatch ?? 0) - current
+    const dispatched = excessRow.unitDispatch ?? 0
+    const bought = excessRow.unitBuy ?? 0
+    const arrived = current + qty
+    const cap = dispatched - current
+
+    // More in the box than the paperwork said. Refused unless she has been
+    // shown the two numbers and chosen -- a fat-fingered 50 must not silently
+    // become fifty units of stock.
+    if (qty > cap && !body.adjust) {
+      return NextResponse.json(
+        {
+          error: `Only ${cap} unit(s) pending arrival`,
+          needsAdjust: true,
+          dispatched,
+          counted: arrived,
+          extra: arrived - dispatched,
+        },
+        { status: 409 },
+      )
+    }
+
     if (qty > cap) {
-      return NextResponse.json({ error: `Only ${cap} unit(s) pending arrival` }, { status: 400 })
+      // The units were always hers; the row had the wrong number on it.
+      await withActor(session.user.email, (tx) => reconcileExcessOnArrival({
+        rowNumber,
+        unitBuy: Math.max(bought, arrived),
+        unitDispatch: arrived,
+        unitArrive: arrived,
+      }, tx))
+      return NextResponse.json({ success: true, unitArrive: arrived, adjusted: arrived - dispatched })
+    }
+
+    if (body.closeShort && arrived < dispatched) {
+      // Nothing more is coming. Write the row down to what landed, so it stops
+      // looking like something still on a boat.
+      await withActor(session.user.email, (tx) => reconcileExcessOnArrival({
+        rowNumber,
+        unitBuy: Math.min(bought, arrived),
+        unitDispatch: arrived,
+        unitArrive: arrived,
+      }, tx))
+      return NextResponse.json({ success: true, unitArrive: arrived, closedShort: dispatched - arrived })
     }
 
     await withActor(session.user.email, (tx) => bulkUpdateExcessArrive(
-      [{ rowNumber, unitArrive: current + qty }],
+      [{ rowNumber, unitArrive: arrived }],
       tx,
     ))
 
-    return NextResponse.json({ success: true, unitArrive: current + qty })
+    return NextResponse.json({ success: true, unitArrive: arrived })
   } catch (err) {
     console.error("Failed to mark excess arrived:", err)
     return NextResponse.json({ error: "Failed to mark arrived" }, { status: 500 })

@@ -776,6 +776,44 @@ export async function bulkUpdateExcessDispatch(updates: ExcessDispatchUpdate[], 
   `
 }
 
+/**
+ * Settle an excess row against what was actually counted in the box.
+ *
+ * The three counters on an excess row -- bought, dispatched, arrived -- have to
+ * climb in that order, and each stage is capped by the one before it. That is
+ * right for a customer's order, where `unit_dispatch` is a promise. It is wrong
+ * for surplus: how many spare units were bought is a number nobody knows until
+ * the box is open, and it was being asked for weeks earlier at a desk, in a
+ * place that has no idea which parcel they would travel in.
+ *
+ * So the count wins. Counting MORE than the row says raises bought and
+ * dispatched to match -- the units were always hers, the row simply had the
+ * wrong number on it. Counting FEWER and declaring the row closed lowers both,
+ * because a row left showing one unit pending forever is a row nobody can tell
+ * apart from one still on a boat.
+ *
+ * What the write-down costs: `unit_buy` stops saying three were bought. That
+ * fact survives in `audit.audit_log`, which keeps old_row and new_row for every
+ * write -- but it is no longer on the page. Giving the loss a home of its own
+ * would need a column; nothing here pretends otherwise.
+ *
+ * Never called for a customer's order line, where the same edit would quietly
+ * rewrite what somebody was promised.
+ */
+export async function reconcileExcessOnArrival(
+  data: { rowNumber: number; unitBuy: number; unitDispatch: number; unitArrive: number },
+  db: DBExecutor = sql,
+): Promise<void> {
+  await db`
+    UPDATE excess_purchase SET
+      unit_buy      = ${data.unitBuy},
+      unit_dispatch = ${data.unitDispatch},
+      unit_arrive   = ${data.unitArrive},
+      updated_at    = NOW()
+    WHERE id = ${data.rowNumber}
+  `
+}
+
 export async function bulkUpdateExcessArrive(updates: ExcessArriveUpdate[], db: DBExecutor = sql): Promise<void> {
   if (updates.length === 0) return
   const ids = updates.map((u) => u.rowNumber)
