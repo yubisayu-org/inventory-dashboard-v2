@@ -61,11 +61,27 @@ export async function PATCH(req: NextRequest) {
   const kota = text(b.kota)
   const kecamatan = text(b.kecamatan)
 
-  if (!name || !whatsapp || !(jalan || dataDiri) || !kota || !kecamatan) {
-    return NextResponse.json(
-      { error: "Name, WhatsApp, address and area are all required" },
-      { status: 400, headers: corsHeaders() },
-    )
+  // Named, not listed.
+  //
+  // This used to answer "Name, WhatsApp, address and area are all required" to
+  // every one of five different causes, leaving the customer to guess which
+  // box was the problem — on a form where all five look filled in, because the
+  // empty one is a value she never typed and cannot see. It cost an afternoon
+  // to find one of these from the outside.
+  //
+  // `field` is for us; `error` is for her, and says the one thing she can act
+  // on. City and district are not boxes she fills in — they come from the area
+  // she picks — so they are described as the area.
+  const missing = (
+    !name ? { field: "name", error: "Please enter your name." }
+      : !whatsapp ? { field: "whatsapp", error: "Please enter your WhatsApp number." }
+        : !(jalan || dataDiri) ? { field: "jalan", error: "Please enter your street address." }
+          : !kota ? { field: "kota", error: "Please search for and choose your area again." }
+            : !kecamatan ? { field: "kecamatan", error: "Please search for and choose your area again." }
+              : null
+  )
+  if (missing) {
+    return NextResponse.json(missing, { status: 400, headers: corsHeaders() })
   }
 
   try {
