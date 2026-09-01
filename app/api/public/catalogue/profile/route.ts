@@ -48,11 +48,20 @@ export async function PATCH(req: NextRequest) {
   const text = (v: unknown) => String(v ?? "").trim().slice(0, MAX_TEXT)
   const name = text(b.name)
   const whatsapp = text(b.whatsapp)
+  // Her street, and the legacy string, kept apart on purpose.
+  //
+  // A catalogue that has not shipped the new field yet sends only `dataDiri`,
+  // and what it sends is the whole composed LABEL, not a street. Reading one
+  // as the other would store a label in the street column and then compose a
+  // second label around it. So the old string travels its old path and the
+  // street column is left untouched; only a caller that names `jalan` writes
+  // a street.
+  const jalan = text(b.jalan)
   const dataDiri = text(b.dataDiri)
   const kota = text(b.kota)
   const kecamatan = text(b.kecamatan)
 
-  if (!name || !whatsapp || !dataDiri || !kota || !kecamatan) {
+  if (!name || !whatsapp || !(jalan || dataDiri) || !kota || !kecamatan) {
     return NextResponse.json(
       { error: "Name, WhatsApp, address and area are all required" },
       { status: 400, headers: corsHeaders() },
@@ -62,10 +71,16 @@ export async function PATCH(req: NextRequest) {
   try {
     // The customer id comes from the verified session, never the body — this
     // write runs on the main pool and could otherwise edit anyone.
+    //
+    // Once a street arrives the label is composed from the parts and the sent
+    // string is dropped: a caller that could write data_diri directly could
+    // put anything at all on a parcel.
     const { needsReview } = await updateCustomerProfile(customer.id, {
       name,
       whatsapp,
-      dataDiri,
+      ...(jalan
+        ? { jalan, provinsi: text(b.provinsi) }
+        : { dataDiri }),
       kota,
       kecamatan,
       kodePos: text(b.kodePos),
