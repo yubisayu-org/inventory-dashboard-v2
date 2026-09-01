@@ -42,8 +42,16 @@ async function announce(
   customer: string,
   row: PlanRow,
   db: DBExecutor,
+  /**
+   * The row is going away rather than arriving. `row` is then what it USED to
+   * say, which is the only thing worth telling her: the amount she is no
+   * longer being charged, or no longer saving.
+   */
+  cleared = false,
 ): Promise<void> {
-  const key = row.amount > 0 ? "inbox_ongkir_extra" : "inbox_ongkir_credit"
+  const key = cleared
+    ? (row.amount > 0 ? "inbox_ongkir_extra_cleared" : "inbox_ongkir_credit_cleared")
+    : (row.amount > 0 ? "inbox_ongkir_extra" : "inbox_ongkir_credit")
   const template = NOTICE_TEMPLATES.find((t) => t.key === key)!
   const tokens = { "{event}": event, "{customer}": customer, "{amount}": rupiah(row.amount) }
   await sendInvoiceNotice({
@@ -244,7 +252,15 @@ export async function reconcileParcelPlan(
   if (!wanted) {
     // Nothing owed by today's arithmetic — but if a box has gone, today's
     // arithmetic is not the whole story.
-    if (existing && !inFlight) await db`DELETE FROM adjustments WHERE id = ${existing.id}`
+    if (existing && !inFlight) {
+      await db`DELETE FROM adjustments WHERE id = ${existing.id}`
+      // Told, the same as its arrival was. This branch used to be the silent
+      // one: a merge announced its discount and an un-merge removed it without
+      // a word, leaving the newest message in her inbox describing a saving
+      // she no longer had. Insert and change both announce; going away is the
+      // third thing that happens to this row and it is no less her business.
+      await announce(event, customer, existing, db, true)
+    }
     return existing && inFlight
       ? { description: existing.description, amount: existing.amount }
       : null
