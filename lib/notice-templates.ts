@@ -19,6 +19,8 @@ export type NoticeKey =
   | "inbox_order_cancelled"
   | "inbox_ongkir_extra"
   | "inbox_ongkir_credit"
+  | "inbox_ongkir_extra_cleared"
+  | "inbox_ongkir_credit_cleared"
   | "inbox_ongkir_reweighed"
   | "inbox_ongkir_reweighed_less"
   | "inbox_custom"
@@ -69,6 +71,29 @@ export const NOTICE_TEMPLATES: NoticeTemplate[] = [
     body:
       "Pesanan Anda kami gabung menjadi satu paket, sehingga ongkir berkurang {amount}. "
       + "Tagihan Anda sudah kami sesuaikan.",
+  },
+  // The two above, undone. A notice that arrives for the good news and stays
+  // silent when it ends does not merely go stale: the newest thing the shop
+  // said to her goes on describing a discount she no longer has, and an inbox
+  // is read as a running account of what is true.
+  {
+    key: "inbox_ongkir_extra_cleared",
+    label: "Extra shipping fee no longer applies",
+    title: "Ongkir tambahan dibatalkan · {event}",
+    // Her own doing, said as her own doing: "dibatalkan" alone reads as
+    // something the shop decided about her order.
+    body:
+      "Rencana pengiriman {event} berubah, jadi tambahan ongkir {amount} tidak lagi berlaku. "
+      + "Tagihan Anda sudah kami sesuaikan.",
+  },
+  {
+    key: "inbox_ongkir_credit_cleared",
+    label: "Shipping discount no longer applies",
+    title: "Diskon ongkir dibatalkan · {event}",
+    // This one costs her money, so it says why before it says what.
+    body:
+      "Pesanan {event} tidak lagi digabung menjadi satu paket, jadi diskon ongkir {amount} "
+      + "tidak lagi berlaku. Tagihan Anda sudah kami sesuaikan.",
   },
   {
     key: "inbox_ongkir_reweighed",
@@ -368,6 +393,11 @@ export const NOTICE_TOKENS_FOR: Record<NoticeKey, string[]> = {
   inbox_order_cancelled: ["{customer}", "{event}", "{itemsList}", "{amount}"],
   inbox_ongkir_extra: ["{customer}", "{event}", "{amount}"],
   inbox_ongkir_credit: ["{customer}", "{event}", "{amount}"],
+  // {amount} is what the charge or the saving USED to be — the row is gone by
+  // the time these are sent, and the figure she remembers is the one worth
+  // naming.
+  inbox_ongkir_extra_cleared: ["{customer}", "{event}", "{amount}"],
+  inbox_ongkir_credit_cleared: ["{customer}", "{event}", "{amount}"],
   inbox_ongkir_reweighed: ["{customer}", "{event}", "{amount}", "{chargedKg}", "{estimatedKg}"],
   inbox_ongkir_reweighed_less: ["{customer}", "{event}", "{amount}", "{chargedKg}", "{estimatedKg}"],
   inbox_custom: [...NOTICE_TOKENS],
