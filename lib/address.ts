@@ -92,6 +92,39 @@ const POSTAL = /\b(\d{5})\b\s*$/
  * Returns nulls rather than guesses. A blob that does not have this shape is
  * one row for a person to look at, not one to overwrite.
  */
+/**
+ * The street, from a label that was stored in the street column.
+ *
+ * Returns null rather than guessing: a row this cannot read keeps what it has
+ * and is listed at the end, because a wrong street ships a parcel to the wrong
+ * place just as surely as a label does.
+ */
+export function recoverStreet(
+  stored: string,
+  known: { kecamatan?: string; kota?: string },
+): string | null {
+  let s = String(stored ?? "").replace(/[\r\n]+/g, " ").trim()
+
+  // Everything up to and including the heading belongs to the label, not to
+  // her address. No heading means this is not the shape we know how to read.
+  const heading = /alamat\s*lengkap\s*:?/i.exec(s)
+  if (!heading) return null
+  s = s.slice(heading.index + heading[0].length)
+
+  // The region tail. Her own district names where it starts; the city is the
+  // fallback for a label that omitted the district. lastIndexOf because a
+  // street can legitimately contain the district's name ("Jl. Limo Raya") and
+  // the tail is the occurrence we want.
+  for (const anchor of [known.kecamatan, known.kota].map((a) => (a ?? "").trim()).filter(Boolean)) {
+    const at = s.toUpperCase().lastIndexOf(anchor.toUpperCase())
+    if (at > 0) { s = s.slice(0, at); break }
+  }
+
+  s = s.replace(/[\s,.·•-]+$/, "").trim()
+  // A couple of characters is not an address. Better left alone and reported.
+  return s.length >= 4 ? s : null
+}
+
 export function parseAddressBlob(
   text: string,
   known: { kota?: string; kecamatan?: string; kodePos?: string } = {},
