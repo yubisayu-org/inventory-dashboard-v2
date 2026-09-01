@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { customerFromRequest } from "@/lib/catalogue-bearer"
 import { corsHeaders, privateHeaders } from "@/lib/catalogue-cors"
-import { getCustomerBalance } from "@/lib/db/catalogue-orders"
+import { getCustomerBalance, getHeldCredits } from "@/lib/db/catalogue-orders"
 import { getPublicInvoiceForCustomer } from "@/lib/db"
 import catalogueSql from "@/lib/db-catalogue-public"
 import publicSql from "@/lib/db-public"
@@ -24,12 +24,16 @@ export async function GET(req: NextRequest) {
     // address or bank columns being selectable at all. Reusing it means the
     // catalogue shows the invoice the shop shows, rather than a second
     // rendering of the same numbers that can drift from it.
-    const [invoice, balance] = await Promise.all([
+    const [invoice, balance, heldCredits] = await Promise.all([
       getPublicInvoiceForCustomer(customer.instagramId, publicSql),
       getCustomerBalance(customer.instagramId, catalogueSql),
+      // The same refunds her cards already show as "waiting on your account",
+      // gathered so the page can total them in one place instead of leaving
+      // her to find them among unrelated orders.
+      getHeldCredits(customer.instagramId, catalogueSql),
     ])
     return NextResponse.json(
-      { events: invoice.events, balance },
+      { events: invoice.events, balance, heldCredits },
       { headers: privateHeaders() },
     )
   } catch (err) {
