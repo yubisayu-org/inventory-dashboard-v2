@@ -21,6 +21,7 @@ let mine = 0
 let theirs = 0
 
 after(async () => {
+  await sql`DELETE FROM orders WHERE event = ${EVENT}`
   await sql`DELETE FROM refunds WHERE customer IN (${handle}, ${OTHER})`
   await sql`DELETE FROM events WHERE name = ${EVENT}`
   await sql`DELETE FROM customers WHERE instagram_id LIKE ${`${TAG}%`}`
@@ -54,7 +55,11 @@ test("a refund reads back with its cause and its amount", async () => {
  *  which test ran before them, and the lock below makes that dependency real
  *  rather than merely untidy. */
 async function reopen() {
-  await sql`UPDATE refunds SET status = 'pending' WHERE id = ${mine}`
+  await sql`
+    UPDATE refunds
+       SET status = 'pending', bank_name = '', bank_account_number = '',
+           bank_account_holder = ''
+     WHERE id = ${mine}`
 }
 
 test("keeping it on her account asks for nothing and stores nothing", async () => {
@@ -131,6 +136,60 @@ test("another customer's refund is not hers to move", async () => {
   // And it never appears on her page either.
   const hers = await getCustomerRefunds(handle)
   assert.ok(!hers.some((r) => r.id === theirs))
+})
+
+// The page greys the button when she owes, but a page is not a rule: a tab
+// that rendered before her latest invoice still has a live one. This is the
+// half that holds.
+test("a bank refund is refused while she still owes", async () => {
+  await reopen()
+  await sql`
+    INSERT INTO orders (event, customer, product_id, unit_price, unit, unit_arrive)
+    SELECT ${EVENT}, ${handle}, id, 500000, 1, 1 FROM products ORDER BY id LIMIT 1`
+  try {
+
+  const [owed] = await sql<{ total_outstanding: string }[]>`
+    SELECT total_outstanding FROM customer_invoice_summary
+     WHERE cust_key = ${handle.toLowerCase().replace("@", "")}`
+  assert.ok(Number(owed?.total_outstanding ?? 0) > 0, "she has to owe for this to test anything")
+
+  await assert.rejects(
+    () => chooseRefundBank(mine, handle, {
+      bank: "BCA", accountNumber: "4419051991", accountHolder: "Fandrian R",
+    }),
+    /belum lunas/,
+  )
+
+  const [row] = await sql<{ status: string; bank_name: string }[]>`
+    SELECT status, bank_name FROM refunds WHERE id = ${mine}`
+  assert.equal(row.status, "pending", "and nothing was written")
+  assert.equal(row.bank_name, "")
+
+  // Credit is the way out that works when she owes, so it stays open.
+    await chooseRefundCredit(mine, handle)
+    const [after] = await sql<{ status: string }[]>`
+      SELECT status FROM refunds WHERE id = ${mine}`
+    assert.equal(after.status, "applied_to_next_order")
+  } finally {
+    // Even when an assertion above threw. Left behind, this invoice makes her
+    // owe for the rest of the file and every later test fails for the wrong
+    // reason — which is exactly what happened the first time.
+    await sql`DELETE FROM orders WHERE event = ${EVENT} AND customer = ${handle}`
+  }
+})
+
+test("with nothing owing, the bank is open again", async () => {
+  await reopen()
+  const [owed] = await sql<{ total_outstanding: string }[]>`
+    SELECT total_outstanding FROM customer_invoice_summary
+     WHERE cust_key = ${handle.toLowerCase().replace("@", "")}`
+  assert.equal(Number(owed?.total_outstanding ?? 0), 0, "the order above must be gone")
+
+  await chooseRefundBank(mine, handle, {
+    bank: "BCA", accountNumber: "4419051991", accountHolder: "Fandrian R",
+  })
+  const [row] = await sql<{ status: string }[]>`SELECT status FROM refunds WHERE id = ${mine}`
+  assert.equal(row.status, "ready_to_refund")
 })
 
 // The shop transfers by hand and marks the row afterwards, sometimes much
