@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { CustomerRow, OngkirByWarehouse, WarehouseRow } from "@/lib/db"
+import type { Role } from "@/lib/roles"
 import DataGrid, {
   numericFilter,
   type ColumnDef,
@@ -97,7 +98,9 @@ function rowToDraft(row: CustomerRow): DraftCustomer {
   }
 }
 
-export default function CustomersClient() {
+export default function CustomersClient({ role }: { role: Role | null }) {
+  // Staff may pick an area; only the owner may type the four fields it fills.
+  const canUnlockAddress = role === "owner"
   // Current page of rows + total — both come from the server now.
   const [data, setData] = useState<CustomerRow[]>([])
   const [totalCount, setTotalCount] = useState(0)
@@ -658,6 +661,7 @@ export default function CustomersClient() {
       {creating && (
         <CreateCustomerModal
           warehouses={warehouses}
+          canUnlockAddress={canUnlockAddress}
           onSaved={() => { setCreating(false); refreshRef.current() }}
           onCancel={() => setCreating(false)}
         />
@@ -669,6 +673,7 @@ export default function CustomersClient() {
           warehouses={warehouses}
           initial={rowToDraft(editRow)}
           charged={editRow.ongkir}
+          canUnlockAddress={canUnlockAddress}
           onSaved={() => { setEditRow(null); refreshRef.current() }}
           onCancel={() => setEditRow(null)}
           onDelete={() => { const r = editRow; setEditRow(null); handleDelete(r) }}
@@ -687,7 +692,7 @@ export default function CustomersClient() {
 
 // Shared field set for the Add card and the Edit modal below.
 function CustomerFields({
-  draft, setDraft, warehouses, saving, firstInputRef, charged,
+  draft, setDraft, warehouses, saving, firstInputRef, charged, canUnlockAddress,
 }: {
   draft: DraftCustomer
   setDraft: React.Dispatch<React.SetStateAction<DraftCustomer>>
@@ -701,6 +706,8 @@ function CustomerFields({
    * Add card, which has no quotes yet.
    */
   charged?: OngkirByWarehouse
+  /** Whether this user may type the four fields the area picker fills. */
+  canUnlockAddress: boolean
 }) {
   // Only the plain string fields go through this helper; ongkir is a map and is
   // handled with its own per-warehouse inputs below.
@@ -750,6 +757,7 @@ function CustomerFields({
         setDraft={setDraft}
         warehouses={warehouses}
         saving={saving}
+        canUnlock={canUnlockAddress}
       />
 
       <div className="flex flex-col gap-1">
@@ -868,16 +876,31 @@ function fillFromArea(area: AreaChoice): Partial<DraftCustomer> {
  * areas are hers to choose from, since which of a district's postal codes she
  * lives in is a question the office cannot answer and she can.
  */
-function AddressFields({ draft, setDraft, warehouses, saving }: {
+function AddressFields({ draft, setDraft, warehouses, saving, canUnlock }: {
   draft: DraftCustomer
   setDraft: React.Dispatch<React.SetStateAction<DraftCustomer>>
   warehouses: WarehouseRow[]
   saving: boolean
+  /**
+   * Whether this user may type the four fields the picker fills. Staff may not:
+   * a district typed by hand that `jne_rates` does not recognise prices the
+   * parcel at nothing and says so nowhere, whereas an area chosen from the
+   * lookup carries the rates table's own spelling and always prices.
+   *
+   * It cannot be a lock with no key. Some addresses the lookup genuinely will
+   * not serve -- fourteen districts JNE refuses to quote at all -- and without
+   * a way through, those customers could never be saved. So the owner has one.
+   */
+  canUnlock: boolean
 }) {
   const [query, setQuery] = useState("")
   const [areas, setAreas] = useState<AreaChoice[] | null>(null)
   const [searching, setSearching] = useState(false)
   const [searchError, setSearchError] = useState("")
+  // Locked until the owner says otherwise; staff have no way to set this.
+  const [unlocked, setUnlocked] = useState(false)
+  const locked = !unlocked
+  const addressCls = `${modalInputCls} ${locked ? "bg-cream text-muted cursor-not-allowed" : ""}`
   // What the rates table would charge for this address, once it is asked for.
   // Never applied on its own -- see the note on the route.
   const [quote, setQuote] = useState<{ warehouseId: number; code: string; rate: number }[] | null>(null)
@@ -1036,6 +1059,28 @@ function AddressFields({ draft, setDraft, warehouses, saving }: {
           result priceable. Read-only by default for exactly that reason: a
           district typed here by hand may be one `jne_rates` has never heard of,
           and the parcel then prices at nothing without a word. */}
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-[11px] text-faint">
+          {locked
+            ? "Filled by choosing an area above."
+            : "Typing by hand — the rates table may not recognise what you write."}
+        </span>
+        {canUnlock ? (
+          <button
+            type="button"
+            onClick={() => setUnlocked((v) => !v)}
+            disabled={saving}
+            className="shrink-0 text-[11px] text-muted hover:text-brand underline transition-colors"
+          >
+            {locked ? "Edit manually" : "Done editing"}
+          </button>
+        ) : (
+          // No key for staff. The addresses the lookup cannot serve -- the
+          // fourteen districts JNE will not quote -- need a decision, not a
+          // typed guess, so they come to the owner.
+          <span className="shrink-0 text-[11px] text-faint">Ask the owner to edit by hand</span>
+        )}
+      </div>
       <div className="grid grid-cols-2 gap-3">
         <label className="flex flex-col gap-1">
           <span className="text-xs font-medium text-muted">Kota / Kabupaten</span>
@@ -1043,8 +1088,9 @@ function AddressFields({ draft, setDraft, warehouses, saving }: {
             value={draft.kota}
             onChange={(e) => setDraft((d) => ({ ...d, kota: e.target.value }))}
             disabled={saving}
+            readOnly={locked}
             placeholder="KOTA BANDUNG"
-            className={modalInputCls}
+            className={addressCls}
           />
         </label>
         <label className="flex flex-col gap-1">
@@ -1053,8 +1099,9 @@ function AddressFields({ draft, setDraft, warehouses, saving }: {
             value={draft.provinsi}
             onChange={(e) => setDraft((d) => ({ ...d, provinsi: e.target.value }))}
             disabled={saving}
+            readOnly={locked}
             placeholder="Jawa Barat"
-            className={modalInputCls}
+            className={addressCls}
           />
         </label>
       </div>
@@ -1066,8 +1113,9 @@ function AddressFields({ draft, setDraft, warehouses, saving }: {
             value={draft.kecamatan}
             onChange={(e) => setDraft((d) => ({ ...d, kecamatan: e.target.value }))}
             disabled={saving}
+            readOnly={locked}
             placeholder="COBLONG"
-            className={modalInputCls}
+            className={addressCls}
           />
         </label>
         <label className="flex flex-col gap-1">
@@ -1076,9 +1124,10 @@ function AddressFields({ draft, setDraft, warehouses, saving }: {
             value={draft.kodePos}
             onChange={(e) => setDraft((d) => ({ ...d, kodePos: e.target.value }))}
             disabled={saving}
+            readOnly={locked}
             placeholder="40132"
             inputMode="numeric"
-            className={modalInputCls}
+            className={addressCls}
           />
         </label>
       </div>
@@ -1179,10 +1228,12 @@ function buildCustomerPayload(draft: DraftCustomer, warehouses: WarehouseRow[]) 
 
 function CreateCustomerModal({
   warehouses,
+  canUnlockAddress,
   onSaved,
   onCancel,
 }: {
   warehouses: WarehouseRow[]
+  canUnlockAddress: boolean
   onSaved: () => void
   onCancel: () => void
 }) {
@@ -1231,7 +1282,7 @@ function CreateCustomerModal({
           <span className="text-sm font-semibold text-foreground">Add Customer</span>
         </div>
 
-        <CustomerFields draft={draft} setDraft={setDraft} warehouses={warehouses} saving={saving} firstInputRef={firstInputRef} />
+        <CustomerFields draft={draft} setDraft={setDraft} warehouses={warehouses} saving={saving} firstInputRef={firstInputRef} canUnlockAddress={canUnlockAddress} />
 
         {saveError && <p className="text-xs text-red-500">{saveError}</p>}
 
@@ -1261,6 +1312,7 @@ function CreateCustomerModal({
 function EditCustomerModal({
   rowId,
   warehouses,
+  canUnlockAddress,
   initial,
   charged,
   onSaved,
@@ -1272,6 +1324,7 @@ function EditCustomerModal({
   initial: DraftCustomer
   /** What the invoice charges today, so the form can say which fields it overrides. */
   charged: OngkirByWarehouse
+  canUnlockAddress: boolean
   onSaved: () => void
   onCancel: () => void
   onDelete: () => void
@@ -1322,7 +1375,7 @@ function EditCustomerModal({
           <span className="text-xs text-faint">ID: {rowId}</span>
         </div>
 
-        <CustomerFields draft={draft} setDraft={setDraft} warehouses={warehouses} saving={saving} charged={charged} />
+        <CustomerFields draft={draft} setDraft={setDraft} warehouses={warehouses} saving={saving} charged={charged} canUnlockAddress={canUnlockAddress} />
 
         {saveError && <p className="text-xs text-red-500">{saveError}</p>}
 
