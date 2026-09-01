@@ -205,7 +205,12 @@ export default function ShipClient() {
       })
   })()
 
-  const readyFiltered = groups.filter((c) => c.totalToShip > 0)
+  // Ready means billable as well as physically here. A card with no rate for
+  // her area bills nothing, and bulk ship never showed the amber pill that
+  // said so — one press could send any number of unbilled parcels.
+  const readyFiltered = groups.filter((c) => c.totalToShip > 0 && c.ongkirPerKg > 0)
+  /** On the bench, but nobody has priced the delivery. */
+  const readyNoRate = groups.filter((c) => c.totalToShip > 0 && c.ongkirPerKg <= 0)
   const allSelected = readyFiltered.length > 0 && readyFiltered.every((c) => selected.has(`${c.customer}|${c.event}`))
 
   // Anything with units still to send can be picked, not only what is on the
@@ -362,6 +367,16 @@ export default function ShipClient() {
       {/* Results */}
       {!loading && !error && groups.length > 0 && (
         <>
+          {/* Select-all now skips cards with no rate, because shipping them
+              would bill nothing. Skipping quietly is how "I selected all" ends
+              up meaning "most of them went" — so it says how many, and why. */}
+          {segment === "ready" && readyNoRate.length > 0 && (
+            <p className="px-1 pb-2 text-xs text-amber-800">
+              {readyNoRate.length} tidak bisa dikirim — belum ada ongkir untuk areanya
+              {": "}{readyNoRate.map((c) => c.event).join(", ")}
+            </p>
+          )}
+
           {/* Mobile select-all FAB — round icon button like the Events "+" FAB.
               Only on the "Siap Dikirim" tab, matching desktop. */}
           {segment === "ready" && readyFiltered.length > 0 && (
@@ -818,12 +833,16 @@ function CustomerCard({
                     // That is the whole order of events the shop asked for:
                     // she settles the extra ongkir, then the box goes.
                     disabled={holdBusy || splitBusy || c.totalToShip === 0
+                      || c.ongkirPerKg <= 0
                       || (c.splitRequested && !paymentClear)}
                     // What it costs, on the control that does it. A strip
                     // saying the same thing an inch away made the card busy
                     // for a fact most cards do not have to act on.
                     title={
-                      c.totalToShip === 0
+                      c.ongkirPerKg <= 0
+                        ? "Belum ada ongkir untuk areanya — atur tarifnya dulu, "
+                          + "paket ini akan tercatat tanpa biaya kirim"
+                        : c.totalToShip === 0
                         ? "Menunggu sisanya tiba — kotak pertama sudah berangkat"
                         : c.splitRequested
                         ? c.splitExtraOngkir > 0
@@ -1445,6 +1464,8 @@ function BundleCard({
     ongkirPerKg,
   )
   const charged = b.members.some((m) => m.splitCharged)
+  // One rate covers the whole box, so one missing rate voids the merge.
+  const noRate = ongkirPerKg <= 0
   const owesForEarly = planExtra > 0 && !charged
 
   /** Take the group apart. Each trip is priced as its own parcel again. */
@@ -1516,13 +1537,16 @@ function BundleCard({
           <button
             type="button"
             onClick={() => setMerging(true)}
-            disabled={!b.ready || unpaid.length > 0 || units === 0 || owesForEarly}
+            disabled={!b.ready || unpaid.length > 0 || units === 0 || owesForEarly || noRate}
             // Why it is greyed comes first: a header badge listing five trip
             // codes explains a disabled button from an inch away, and the
             // header is where you look to identify the card, not to find out
             // why you cannot press something.
             title={
-              unpaid.length > 0
+              noRate
+                ? "Belum ada ongkir untuk areanya — atur tarifnya dulu, "
+                  + "paket ini akan tercatat tanpa biaya kirim"
+                : unpaid.length > 0
                 ? `Menunggu pembayaran — ${unpaid.map((m) => m.event).join(", ")}`
                 : !b.ready
                   ? `Menunggu ${b.waitingFor.join(", ")} tiba`
