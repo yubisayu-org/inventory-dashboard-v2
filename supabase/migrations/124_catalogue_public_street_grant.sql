@@ -1,0 +1,18 @@
+-- The catalogue may read the street it is now asked to edit.
+--
+-- 095 granted catalogue_public a column list on customers, and 121 added
+-- `jalan` and `provinsi` afterwards without extending it. A column-level
+-- GRANT does not follow the table: a column added later is unreadable to the
+-- role until it is named, and the catalogue's profile query — which started
+-- selecting both — failed outright rather than returning them empty. My
+-- details showed "Failed to load".
+--
+-- Read only. The role still has no UPDATE on customers: profile writes go
+-- through the main pool once the session is verified, because saving an
+-- address also writes customer_warehouse_ongkir, and 095 declined to widen
+-- the boundary for that.
+--
+-- Still withheld, deliberately, and listed here so the boundary stays legible
+-- next to the thing that widened it: bank_name, bank_account_number,
+-- bank_account_holder, ongkos_kirim.
+GRANT SELECT (jalan, provinsi) ON customers TO catalogue_public;
