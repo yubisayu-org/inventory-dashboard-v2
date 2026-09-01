@@ -163,7 +163,7 @@ export default function CustomersClient() {
       if (cf.id === "instagramId") f.instagramId = v
       else if (cf.id === "name") f.name = v
       else if (cf.id === "whatsapp") f.whatsapp = v
-      else if (cf.id === "ekspedisi") f.ekspedisi = v
+      else if (cf.id === "biteshipArea") f.biteshipArea = v
       else if (cf.id === "dataDiri") f.dataDiri = v
       else if (cf.id === "bankName") f.bankName = v
     }
@@ -275,14 +275,33 @@ export default function CustomersClient() {
         return <span className={v ? "text-muted-strong tabular-nums" : "text-faint"}>{v || "—"}</span>
       },
     },
+    // Replaces the old "Ekspedisi" column. That field was the courier service
+    // once, but 3.027 of its 3.375 values were a copy of the district, put
+    // there before there was a kecamatan column to hold one -- so what the
+    // column was really used for was seeing where somebody lives. This says
+    // that outright, in the courier's own words, and an unmapped customer is
+    // the one fact worth spotting from across the table.
     {
-      accessorKey: "ekspedisi",
-      header: "Ekspedisi",
-      size: 120,
+      accessorKey: "biteshipAreaName",
+      id: "biteshipArea",
+      header: "Area",
+      size: 220,
       filterFn: "textContains",
-      cell: ({ getValue }) => {
-        const v = getValue<string>()
-        return <span className={v ? "text-muted-strong" : "text-faint"}>{v || "—"}</span>
+      cell: ({ row }) => {
+        const v = row.original.biteshipAreaName
+        if (v) return <span className="text-muted-strong">{v}</span>
+        const hasAddress = Boolean(row.original.kota?.trim() && row.original.kecamatan?.trim())
+        return (
+          <span className="inline-flex items-center gap-1.5 text-faint">
+            {hasAddress && (
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-500 shrink-0" aria-label="Address filled but no area picked">
+                <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                <path d="M12 9v4" /><path d="M12 17h.01" />
+              </svg>
+            )}
+            {hasAddress ? `${row.original.kecamatan}, ${row.original.kota}` : "—"}
+          </span>
+        )
       },
     },
     // One ongkir column per warehouse (origin). Header shows the warehouse code.
@@ -733,15 +752,6 @@ function CustomerFields({
         saving={saving}
       />
 
-      <label className="flex flex-col gap-1">
-        <span className="text-xs font-medium text-muted">Ekspedisi</span>
-        <input
-          {...field("ekspedisi")}
-          placeholder="e.g. JNE, J&T"
-          className={modalInputCls}
-        />
-      </label>
-
       <div className="flex flex-col gap-1">
         <span className="text-xs font-medium text-muted">Ongkos kirim per kg</span>
         <span className="text-[11px] text-faint -mt-0.5">
@@ -1021,10 +1031,11 @@ function AddressFields({ draft, setDraft, warehouses, saving }: {
         )}
       </div>
 
-      {/* Filled from the area above, and only where they are empty --
-          see fillFromArea. Typed by hand for the customers no area can
-          be found for, which is what keeps them fields rather than a
-          read-out. */}
+      {/* Filled from the area above -- all four, every time, in the rates
+          table's own spelling rather than Biteship's, which is what makes the
+          result priceable. Read-only by default for exactly that reason: a
+          district typed here by hand may be one `jne_rates` has never heard of,
+          and the parcel then prices at nothing without a word. */}
       <div className="grid grid-cols-2 gap-3">
         <label className="flex flex-col gap-1">
           <span className="text-xs font-medium text-muted">Kota / Kabupaten</span>

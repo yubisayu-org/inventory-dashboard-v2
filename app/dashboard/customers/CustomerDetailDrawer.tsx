@@ -136,7 +136,9 @@ export function CustomerDetailDrawer({
               {data.invoices.customerDetail && (
                 <div className="rounded-xl border border-cream-border bg-white p-4 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                   <DetailField label="WhatsApp" value={data.invoices.customerDetail.whatsapp} />
-                  <DetailField label="Ekspedisi" value={data.invoices.customerDetail.ekspedisi} />
+                  {/* "Ekspedisi" was here, and for most customers it printed
+                      their district a second time -- the address below already
+                      says it, and says it in full. */}
                   <DetailField label="Alamat" value={data.invoices.customerDetail.dataDiri} className="col-span-2" valueClassName="whitespace-pre-line" />
                   <DetailField label="Bank" value={data.invoices.customerDetail.bankName} />
                   <DetailField label="No. Rekening" value={data.invoices.customerDetail.bankAccountNumber} />

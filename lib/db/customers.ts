@@ -201,7 +201,9 @@ export async function getCustomersPaginated(opts: {
   instagramId?: string
   name?: string
   whatsapp?: string
-  ekspedisi?: string
+  /** The courier's own name for her area — what the grid shows now that
+   *  `ekspedisi` is gone. */
+  biteshipArea?: string
   dataDiri?: string
   bankName?: string
   sortKey?: string
@@ -236,10 +238,16 @@ export async function getCustomersPaginated(opts: {
   if (search) {
     params.push(`%${search.toLowerCase()}%`)
     const p = `$${params.length}`
+    // `ekspedisi` used to be searched, and searching it worked -- not because
+    // it holds a courier but because 3.027 of its 3.375 values are a copy of the
+    // district, put there before there was a kecamatan column. The district is
+    // now searched where it actually lives, along with the courier's own name
+    // for the place, so searching by area keeps working after the column goes.
     conditions.push(
       `(lower(c.instagram_id) LIKE ${p} OR lower(COALESCE(c.name,'')) LIKE ${p} OR ` +
-        `lower(COALESCE(c.whatsapp,'')) LIKE ${p} OR lower(COALESCE(c.ekspedisi,'')) LIKE ${p} OR ` +
-        `lower(COALESCE(c.data_diri,'')) LIKE ${p} OR lower(COALESCE(c.bank_name,'')) LIKE ${p})`,
+        `lower(COALESCE(c.whatsapp,'')) LIKE ${p} OR lower(COALESCE(c.data_diri,'')) LIKE ${p} OR ` +
+        `lower(COALESCE(c.bank_name,'')) LIKE ${p} OR lower(COALESCE(c.kecamatan,'')) LIKE ${p} OR ` +
+        `lower(COALESCE(c.kota,'')) LIKE ${p} OR lower(COALESCE(c.biteship_area_name,'')) LIKE ${p})`,
     )
   }
 
@@ -248,7 +256,7 @@ export async function getCustomersPaginated(opts: {
     [opts.instagramId, "instagram_id"],
     [opts.name, "name"],
     [opts.whatsapp, "whatsapp"],
-    [opts.ekspedisi, "ekspedisi"],
+    [opts.biteshipArea, "biteship_area_name"],
     [opts.dataDiri, "data_diri"],
     [opts.bankName, "bank_name"],
   ]
@@ -328,7 +336,7 @@ export async function getCustomersPaginated(opts: {
 
   const SORT_COLUMNS: Record<string, string> = {
     instagramId: "c.instagram_id", name: "c.name", whatsapp: "c.whatsapp",
-    ekspedisi: "c.ekspedisi", dataDiri: "c.data_diri", bankName: "c.bank_name",
+    biteshipArea: "c.biteship_area_name", dataDiri: "c.data_diri", bankName: "c.bank_name",
     createdAt: "c.created_at", updatedAt: "c.updated_at",
     totalInvoiced: "COALESCE(cis.total_invoiced, 0)",
     invoiceCount: "COALESCE(cis.invoice_count, 0)",
