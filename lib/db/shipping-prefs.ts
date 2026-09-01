@@ -91,6 +91,7 @@ export async function ineligibleReason(
       gram: string
       paid: string
       adjustments: string
+      plan_fee: string
       ongkir: string
     }[]
   >`
@@ -115,6 +116,15 @@ export async function ineligibleReason(
            COALESCE((SELECT SUM(amount) FROM adjustments adj, me
                       WHERE adj.event = ${event}
                         AND lower(replace(adj.customer, '@', '')) = me.cust_key), 0) AS adjustments,
+           -- The parcel-plan row on its own, identified the way parcel-plan.ts
+           -- identifies it: automatic, and not the JNE reconciliation. This is
+           -- the fee her own plan created, and it is separated so it cannot
+           -- lock her out of changing that plan. See below.
+           COALESCE((SELECT SUM(amount) FROM adjustments adj, me
+                      WHERE adj.event = ${event}
+                        AND lower(replace(adj.customer, '@', '')) = me.cust_key
+                        AND adj.auto
+                        AND adj.description NOT LIKE 'Selisih ongkir JNE%'), 0) AS plan_fee,
            COALESCE((SELECT cwo.effective_ongkir
                        FROM events ev
                        JOIN customer_warehouse_ongkir cwo ON cwo.warehouse_id = ev.warehouse_id
@@ -131,8 +141,33 @@ export async function ineligibleReason(
   const kg = Math.ceil(Number(row.gram) / 1000)
   const invoiced = Number(row.subtotal) + Number(row.ongkir) * kg + Number(row.adjustments)
   const outstanding = invoiced - Number(row.paid)
+
+  /*
+   * What she owes APART FROM the fee her own plan created.
+   *
+   * The rule below asks whether she has settled this trip before letting her
+   * rearrange it. Counting the parcel-plan fee in that answer made the rule
+   * eat itself: asking to send early adds the fee, the fee makes her unpaid,
+   * and being unpaid forbids the change — including changing her mind. The
+   * comment on blocks() has always named this ("a split could otherwise never
+   * be undone, because its own fee is what makes her unpaid"); the shop was
+   * exempted so somebody could still act, and the customer was left with the
+   * dead end. She now has a Cancel button of her own, and it needs the same
+   * way out.
+   *
+   * Only a positive fee is set aside. A merge discount is negative, has already
+   * reduced what she owes, and is not something she needs excusing from.
+   *
+   * Safe because the plan is priced from scratch on every change: whatever she
+   * rearranges, reconcileParcelPlan writes the row her final plan is owed. And
+   * this decides who may write down a plan, never who may send a box — the
+   * Ship button keeps its own payment gate.
+   */
+  const planFee = Math.max(Number(row.plan_fee), 0)
+  const owedBeyondHerOwnPlan = outstanding - planFee
+
   // Paid or overpaid. A zero invoice is settled by definition.
-  return outstanding > 0 ? "unpaid" : null
+  return owedBeyondHerOwnPlan > 0 ? "unpaid" : null
 }
 
 /** How much of an event has shipped, for the guards that care. */
