@@ -22,6 +22,7 @@ let customerId = 0
 let handle = ""
 
 after(async () => {
+  await sql`DELETE FROM announcements WHERE customer_id = ${customerId}`
   await sql`DELETE FROM customer_shipping_prefs WHERE customer_id = ${customerId}`
   // Each test that plants one removes it, but a failure between the two would
   // otherwise leave a charge on a row this file created.
@@ -289,4 +290,78 @@ test("the chosen area is stored with the address and cleared with it", async () 
   const cleared = (await getShippingPrefs(customerId)).find((p) => p.event === PAID)
   assert.equal(cleared?.tempAddress, null)
   assert.equal(cleared?.tempAreaId, null, "an area with nowhere to deliver is not kept")
+})
+
+// ── every plan change is announced ───────────────────
+// A customer held an order, released it and held it again, and heard back
+// about none of the three. The ongkir notices announce money, and holding
+// costs nothing — so the change she made most often was the one nothing said.
+async function planNotices(): Promise<{ title: string; body: string }[]> {
+  return (await sql`
+    SELECT title, body FROM announcements
+     WHERE customer_id = ${customerId} ORDER BY id`) as unknown as
+    { title: string; body: string }[]
+}
+
+test("holding, releasing and holding again are each announced", async () => {
+  const before = (await planNotices()).length
+  await setShippingMode(customerId, PAID, "hold")
+  await setShippingMode(customerId, PAID, "wait")
+  await setShippingMode(customerId, PAID, "hold")
+
+  const after = await planNotices()
+  assert.equal(after.length, before + 3, "three changes, three notices")
+  assert.match(after[after.length - 3].title, /ditahan/)
+  assert.match(after[after.length - 2].title, /Menunggu lengkap/)
+  assert.match(after[after.length - 1].title, /ditahan/)
+
+  // Cleaned up so the tests after this one start from a known mode.
+  await setShippingMode(customerId, PAID, "wait")
+})
+
+test("choosing the mode it already has says nothing", async () => {
+  await setShippingMode(customerId, PAID, "split")
+  const before = (await planNotices()).length
+  await setShippingMode(customerId, PAID, "split")
+  await setShippingMode(customerId, PAID, "split")
+  assert.equal((await planNotices()).length, before, "this runs on every save")
+  await setShippingMode(customerId, PAID, "wait")
+})
+
+// Who decided it is the part that is news. What she did herself she already
+// knows; what the shop did to her order she does not.
+test("a change the shop made says so, and one she made does not", async () => {
+  await setShippingMode(customerId, PAID, "hold", sql, "shop")
+  const shopSaid = (await planNotices()).pop()!
+  assert.match(shopSaid.body, /oleh Yubisayu/)
+
+  await setShippingMode(customerId, PAID, "wait", sql, "customer")
+  const sheSaid = (await planNotices()).pop()!
+  assert.doesNotMatch(sheSaid.body, /oleh Yubisayu/)
+  assert.doesNotMatch(`${sheSaid.title} ${sheSaid.body}`, /\{\w+\}/, "no placeholder reaches her")
+})
+
+// A pairing is one decision about two parcels. Telling her twice about one box
+// is how an inbox stops being read.
+test("pairing and separating are announced once, naming the other order", async () => {
+  const before = (await planNotices()).length
+  await setMergeGroup(customerId, [PAID, OTHER])
+  const merged = await planNotices()
+  assert.equal(merged.length, before + 1, "one notice for one decision")
+  assert.match(merged[merged.length - 1].title, /Digabung/)
+  assert.match(merged[merged.length - 1].body, new RegExp(OTHER))
+
+  await setMergeGroup(customerId, [PAID])
+  const apart = await planNotices()
+  assert.equal(apart.length, before + 2)
+  assert.match(apart[apart.length - 1].title, /Tidak lagi digabung/)
+  assert.match(apart[apart.length - 1].body, new RegExp(OTHER), "it names what it left")
+})
+
+test("re-confirming a pairing it already had says nothing", async () => {
+  await setMergeGroup(customerId, [PAID, OTHER])
+  const before = (await planNotices()).length
+  await setMergeGroup(customerId, [PAID, OTHER])
+  assert.equal((await planNotices()).length, before)
+  await setMergeGroup(customerId, [PAID])
 })

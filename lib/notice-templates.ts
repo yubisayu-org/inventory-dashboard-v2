@@ -21,6 +21,11 @@ export type NoticeKey =
   | "inbox_ongkir_credit"
   | "inbox_ongkir_extra_cleared"
   | "inbox_ongkir_credit_cleared"
+  | "inbox_plan_hold"
+  | "inbox_plan_split"
+  | "inbox_plan_wait"
+  | "inbox_plan_merged"
+  | "inbox_plan_unmerged"
   | "inbox_ongkir_reweighed"
   | "inbox_ongkir_reweighed_less"
   | "inbox_custom"
@@ -94,6 +99,51 @@ export const NOTICE_TEMPLATES: NoticeTemplate[] = [
     body:
       "Pesanan {event} tidak lagi digabung menjadi satu paket, jadi diskon ongkir {amount} "
       + "tidak lagi berlaku. Tagihan Anda sudah kami sesuaikan.",
+  },
+  // What her parcel is now going to do, said whoever decided it.
+  //
+  // The ongkir notices above announce money, and a plan change that costs
+  // nothing said nothing at all — a customer held an order, released it and
+  // held it again, and heard back three times about none of them. Holding is
+  // also the change the SHOP most often makes on her behalf, and her only clue
+  // was a caption on a card she had to go and open.
+  //
+  // {by} is empty when she did it herself. Telling her what she just did is a
+  // receipt; telling her who did it, when it was not her, is the news.
+  {
+    key: "inbox_plan_hold",
+    label: "Order held",
+    title: "Pesanan {event} ditahan",
+    body:
+      "Pesanan {event} ditahan{by} dan tidak akan dikirim dulu. "
+      + "Barangnya tetap kami simpan sampai Anda melepasnya kembali.",
+  },
+  {
+    key: "inbox_plan_split",
+    label: "Sending what has arrived",
+    title: "Kirim duluan · {event}",
+    body:
+      "Yang sudah tiba dari pesanan {event} akan dikirim lebih dulu{by}, "
+      + "sisanya menyusul setelah tiba.",
+  },
+  {
+    key: "inbox_plan_wait",
+    label: "Waiting for everything",
+    title: "Menunggu lengkap · {event}",
+    body:
+      "Pesanan {event} akan dikirim sekaligus{by}, setelah semuanya tiba.",
+  },
+  {
+    key: "inbox_plan_merged",
+    label: "Orders paired",
+    title: "Digabung jadi satu paket · {event}",
+    body: "Pesanan {event} dan {partners} akan dikirim dalam satu paket{by}.",
+  },
+  {
+    key: "inbox_plan_unmerged",
+    label: "Orders separated",
+    title: "Tidak lagi digabung · {event}",
+    body: "Pesanan {event} akan dikirim sendiri{by}, tidak lagi digabung dengan {partners}.",
   },
   {
     key: "inbox_ongkir_reweighed",
@@ -398,6 +448,12 @@ export const NOTICE_TOKENS_FOR: Record<NoticeKey, string[]> = {
   // naming.
   inbox_ongkir_extra_cleared: ["{customer}", "{event}", "{amount}"],
   inbox_ongkir_credit_cleared: ["{customer}", "{event}", "{amount}"],
+  // {by} names the shop when the shop decided it, and is empty when she did.
+  inbox_plan_hold: ["{customer}", "{event}", "{by}"],
+  inbox_plan_split: ["{customer}", "{event}", "{by}"],
+  inbox_plan_wait: ["{customer}", "{event}", "{by}"],
+  inbox_plan_merged: ["{customer}", "{event}", "{partners}", "{by}"],
+  inbox_plan_unmerged: ["{customer}", "{event}", "{partners}", "{by}"],
   inbox_ongkir_reweighed: ["{customer}", "{event}", "{amount}", "{chargedKg}", "{estimatedKg}"],
   inbox_ongkir_reweighed_less: ["{customer}", "{event}", "{amount}", "{chargedKg}", "{estimatedKg}"],
   inbox_custom: [...NOTICE_TOKENS],
