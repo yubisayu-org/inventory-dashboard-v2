@@ -398,6 +398,13 @@ export const NOTICE_TOKENS = [
   "{chargedKg}",
   "{estimatedKg}",
   "{cause}",
+  // Who decided a plan change, and the orders a pairing names. Absent from
+  // this list, they survived fillNotice untouched — it leaves an unknown token
+  // exactly as written — and sendInvoiceNotice then refused the whole notice
+  // for containing one. Every plan change went unannounced, and the refusal
+  // was swallowed by the caller, so nothing said why.
+  "{by}",
+  "{partners}",
 ] as const
 
 export type NoticeTokens = Partial<Record<(typeof NOTICE_TOKENS)[number], string>>
