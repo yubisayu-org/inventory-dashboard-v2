@@ -15,7 +15,7 @@ test("shipping one trip with no rate is refused before anything is written", asy
     await assert.rejects(
       () => shipCustomerOrders({
         customer: "@nobody", event: "NORATE01", weightKg: 1,
-        orders: [{ rowNumber: 1, productName: "x", toShip: 1, gram: 500 }],
+        orders: [{ rowNumber: 1, productId: 1, productName: "x", toShip: 1, unitShip: 0 }],
         ongkirPerKg: ongkirPerKg as number,
       }),
       NoShippingRateError,
