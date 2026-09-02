@@ -4,6 +4,8 @@ import sql from "../db-pool"
 import type { DBExecutor } from "./actor"
 import { normalizeId } from "./helpers"
 import { holdPackingList, releasePackingList } from "./fulfillment"
+import { sendInvoiceNotice } from "./notices"
+import { fillNotice, NOTICE_TEMPLATES, type NoticeKey } from "../notice-templates"
 
 // The customer's own shipping choices for her events. See migration 105 for
 // the shape and why it is not on `shipments`.
@@ -139,6 +141,51 @@ export async function ineligibleReason(
   return owedForItems > 0 ? "unpaid" : null
 }
 
+/**
+ * Tell her what her parcel is now going to do.
+ *
+ * The ongkir notices announce money, so a plan change costing nothing said
+ * nothing at all: a customer held an order, released it and held it again, and
+ * heard back about none of the three. Holding is also the change the shop most
+ * often makes for her, and her only clue was a caption on a card she had to go
+ * and open.
+ *
+ * Written here rather than in either route, because both of them come through
+ * this file and a notice sent from one caller only is how half the changes go
+ * unannounced.
+ */
+async function announcePlan(
+  customerHandle: string,
+  event: string,
+  key: NoticeKey,
+  setBy: SetBy,
+  extra: Record<string, string> = {},
+  db: DBExecutor = sql,
+): Promise<void> {
+  const template = NOTICE_TEMPLATES.find((t) => t.key === key)
+  // A missing template must never take a plan change down with it: the write
+  // has already happened and is the thing that mattered.
+  if (!template) return
+  const tokens = {
+    "{event}": event,
+    "{customer}": customerHandle,
+    // Empty when she did it herself. Telling her what she just did is a
+    // receipt; saying who did it, when it was not her, is the news.
+    "{by}": setBy === "shop" ? " oleh Yubisayu" : "",
+    ...extra,
+  }
+  try {
+    await sendInvoiceNotice({
+      event,
+      customer: customerHandle,
+      title: fillNotice(template.title, tokens),
+      body: fillNotice(template.body, tokens),
+    }, db)
+  } catch (err) {
+    console.error("Failed to announce a plan change:", err)
+  }
+}
+
 /** How much of an event has shipped, for the guards that care. */
 async function shippedUnits(customerId: number, event: string, db: DBExecutor): Promise<number> {
   const [row] = await db<{ shipped: string }[]>`
@@ -231,6 +278,14 @@ export async function setShippingMode(
     // Leaving hold by any door releases it. Otherwise a customer who switches
     // to "wait" stays invisibly held, and the shop never sees the order again.
     await releasePackingList({ customer: customer.instagram_id, event })
+  }
+
+  // Only when it moved. Choosing the mode it already had is not news, and this
+  // runs on every save whether or not anything changed.
+  if ((previous?.mode ?? "wait") !== mode) {
+    const key: NoticeKey =
+      mode === "hold" ? "inbox_plan_hold" : mode === "split" ? "inbox_plan_split" : "inbox_plan_wait"
+    await announcePlan(customer.instagram_id, event, key, setBy, {}, db)
   }
 }
 
@@ -354,6 +409,36 @@ export async function setMergeGroup(
       if (modeOf(event) !== "hold") {
         await releasePackingList({ customer: customer.instagram_id, event })
       }
+    }
+  }
+
+  /*
+   * One notice for the whole change, not one per member.
+   *
+   * A pairing is a single decision about two parcels, and telling her twice
+   * about one box is how an inbox stops being read. It goes on the event she
+   * acted on and names the others, so the row she opens is the one she was
+   * looking at.
+   *
+   * Nothing is said when the pairing did not move: this runs on every save,
+   * and re-confirming a group she already had is not news.
+   */
+  const before = new Set(
+    prefs.filter((p) => p.mergeKey && touchedKeys.has(p.mergeKey)).map((p) => p.event),
+  )
+  const after = new Set(key ? wanted : [])
+  const same = before.size === after.size && [...after].every((e) => before.has(e))
+  if (!same) {
+    if (key) {
+      await announcePlan(customer.instagram_id, wanted[0], "inbox_plan_merged", setBy, {
+        "{partners}": wanted.slice(1).join(" dan "),
+      }, db)
+    } else if (before.size) {
+      // Separated. The partners it no longer travels with are the ones it had.
+      const was = [...before].filter((e) => e !== wanted[0])
+      await announcePlan(customer.instagram_id, wanted[0], "inbox_plan_unmerged", setBy, {
+        "{partners}": was.join(" dan "),
+      }, db)
     }
   }
 
