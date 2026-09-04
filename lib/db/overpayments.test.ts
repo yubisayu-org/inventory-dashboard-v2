@@ -1,7 +1,7 @@
 import { test, before, after } from "node:test"
 import assert from "node:assert/strict"
 import sql from "../db-pool"
-import { materializeOverpaymentRefunds, getRefunds } from "./finance"
+import { materializeOverpaymentRefunds, getRefunds, getPaymentStatus } from "./finance"
 import { listOverpaymentsToCheck, createRefundFromOverpayment } from "./overpayments"
 
 const TAG = `optest${process.hrtime.bigint()}`
@@ -173,4 +173,52 @@ test("a goods refund still covers only what it says", async () => {
   assert.equal(row?.uncovered, 30000)
 
   await sql`DELETE FROM refunds WHERE id = ${r.id}`
+})
+
+// A rate change after the parcel has gone must not invent an overpayment.
+// nots_yunita's Biteship rate fell 20.000 → 8.000 after her box left; her
+// invoice keeps the rate stamped on the parcel, so she owes nothing, but this
+// list read the new rate and offered her 12.000 back. 41 of 49 rows were that.
+test("a shipped parcel is measured at the rate it went out at", async () => {
+  const EV2 = `${TAG}_SHIPPED`
+  const WHO2 = `${TAG}_shipped_cust`
+  const [prod] = await sql<{ id: number }[]>`
+    INSERT INTO products (name, store, gram, price)
+    VALUES (${`${TAG} p`}, ${TAG}, 250, 0) RETURNING id`
+  const [cust] = await sql<{ id: number }[]>`
+    INSERT INTO customers (instagram_id) VALUES (${WHO2}) RETURNING id`
+  await sql`INSERT INTO events (name, warehouse_id) SELECT ${EV2}, id FROM warehouses ORDER BY id LIMIT 1`
+  // Quoted at 20.000 when she ordered, 8.000 by the time this runs.
+  await sql`
+    INSERT INTO customer_warehouse_ongkir (customer_id, warehouse_id, ongkos_kirim, biteship_ongkir)
+    SELECT ${cust.id}, id, 20000, 8000 FROM warehouses ORDER BY id LIMIT 1`
+  await sql`
+    INSERT INTO orders (event, customer, product_id, unit_price, unit)
+    VALUES (${EV2}, ${WHO2}, ${prod.id}, 505000, 1)`
+  await sql`
+    INSERT INTO shipments (event, customer, shipping_id, tracking_number, ongkir, ongkir_total, weight_estimation)
+    VALUES (${EV2}, ${WHO2}, ${`${TAG}-ship`}, '0205500083', 20000, 20000, 1)`
+  // 505.000 goods + 1 kg at the stamped 20.000. Settled, to the rupiah.
+  await sql`
+    INSERT INTO payments (event, customer, amount, is_checked, kind)
+    VALUES (${EV2}, ${WHO2}, 525000, true, 'deposit')`
+
+  try {
+    const rows = await listOverpaymentsToCheck()
+    assert.equal(
+      rows.filter((r) => r.event === EV2).length, 0,
+      "a settled invoice is not an overpayment to check",
+    )
+    const [status] = await getPaymentStatus(EV2)
+    assert.equal(status.invoiceTotal, 525000, "the parcel's rate, not today's")
+    assert.equal(status.status, "paid")
+  } finally {
+    await sql`DELETE FROM shipments WHERE event = ${EV2}`
+    await sql`DELETE FROM payments WHERE event = ${EV2}`
+    await sql`DELETE FROM orders WHERE event = ${EV2}`
+    await sql`DELETE FROM customer_warehouse_ongkir WHERE customer_id = ${cust.id}`
+    await sql`DELETE FROM events WHERE name = ${EV2}`
+    await sql`DELETE FROM customers WHERE id = ${cust.id}`
+    await sql`DELETE FROM products WHERE id = ${prod.id}`
+  }
 })

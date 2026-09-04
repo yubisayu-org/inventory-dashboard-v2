@@ -1159,6 +1159,33 @@ export async function undoRefundCredit(refundId: number, actor?: string | null):
 }
 
 /**
+ * The per-kg rate a parcel actually went out at, where one has gone.
+ *
+ * Two rates exist for the same trip: the one stamped on the shipment when it
+ * left, and the one on her profile now. The invoice she reads prefers the
+ * stamp — a rate change months later must not re-price a parcel already in her
+ * hands — and `live_balances` does the same. Anything here that measures what
+ * she owes has to read the rate the same way, or it disagrees with her invoice
+ * and reports money that is not moving: 43 settled pairs were sitting in the
+ * To-check list purely because her Biteship rate had dropped since shipping.
+ *
+ * NULLIF(0) because 0 means "nobody recorded a rate", not "free" — free is a
+ * credit line on the invoice. Mirrors the shipped_rate CTE in live_balances;
+ * the two must agree.
+ */
+function shippedRateCte(event?: string) {
+  return sql`
+    SELECT DISTINCT ON (s.event, lower(replace(s.customer, '@', '')))
+           s.event AS event,
+           lower(replace(s.customer, '@', '')) AS cust_key,
+           NULLIF(s.ongkir, 0) AS rate
+      FROM shipments s
+     WHERE s.tracking_number <> ''${event ? sql` AND s.event = ${event}` : sql``}
+     ORDER BY s.event, lower(replace(s.customer, '@', '')), s.id DESC
+  `
+}
+
+/**
  * Keep existing overpayment refunds honest. Creates nothing.
  *
  * It used to insert, and wrote 224 of 232 live refunds — rows that were right
@@ -1209,12 +1236,16 @@ export async function materializeOverpaymentRefunds(): Promise<RefundRow[]> {
     -- Live per-(event, customer) invoice total, amount paid, and the resulting
     -- overpayment. Every branch below reads this one source of truth, so an
     -- insert, a reconcile, and a cancel can never disagree on the number.
+    shipped_rate AS (
+      ${shippedRateCte()}
+    ),
     live AS (
       SELECT
         oa.event,
         oa.customer,
         (oa.subtotal
-          + COALESCE(cwo.effective_ongkir, 0) * CEIL(oa.total_gram::numeric / 1000)
+          -- The parcel's own rate first, her profile rate only until one goes.
+          + COALESCE(sr.rate, cwo.effective_ongkir, 0) * CEIL(oa.total_gram::numeric / 1000)
           + COALESCE(adj.total_adj, 0))::int AS invoice_total,
         COALESCE(pa.total_paid, 0)::int AS total_paid
       FROM order_aggregates oa
@@ -1223,6 +1254,8 @@ export async function materializeOverpaymentRefunds(): Promise<RefundRow[]> {
       LEFT JOIN events ev ON ev.name = oa.event
       LEFT JOIN customer_warehouse_ongkir cwo
         ON cwo.customer_id = c.id AND cwo.warehouse_id = ev.warehouse_id
+      LEFT JOIN shipped_rate sr
+        ON sr.event = oa.event AND sr.cust_key = lower(replace(oa.customer, '@', ''))
       LEFT JOIN payment_aggregates pa ON pa.event = oa.event AND pa.customer = oa.customer
       LEFT JOIN adjustment_aggregates adj ON adj.event = oa.event AND adj.customer = oa.customer
     ),
@@ -1362,6 +1395,9 @@ export async function getPaymentStatus(event?: string): Promise<PaymentStatusRow
           JOIN customer_warehouse_ongkir cwo ON cwo.warehouse_id = ev.warehouse_id
           JOIN customers c ON c.id = cwo.customer_id
         ),
+        shipped_rate AS (
+          ${shippedRateCte(event)}
+        ),
         all_keys AS (
           SELECT event, cust_key FROM order_aggregates
           UNION
@@ -1373,13 +1409,15 @@ export async function getPaymentStatus(event?: string): Promise<PaymentStatusRow
           k.event AS event,
           k.cust_key AS customer,
           (COALESCE(oa.subtotal, 0)
-            + COALESCE(c.ongkir, 0) * CEIL(COALESCE(oa.total_gram, 0)::numeric / 1000)
+            -- The parcel's own rate first, her profile rate only until one goes.
+            + COALESCE(sr.rate, c.ongkir, 0) * CEIL(COALESCE(oa.total_gram, 0)::numeric / 1000)
             + COALESCE(adj.total_adj, 0))::int AS invoice_total,
           COALESCE(pa.total_paid, 0)::int AS total_paid,
           COALESCE(oa.total_items, 0)::int AS total_items
         FROM all_keys k
         LEFT JOIN order_aggregates oa ON oa.event = k.event AND oa.cust_key = k.cust_key
         LEFT JOIN customer_ongkir c ON c.cust_key = k.cust_key AND c.event = k.event
+        LEFT JOIN shipped_rate sr ON sr.event = k.event AND sr.cust_key = k.cust_key
         LEFT JOIN payment_aggregates pa ON pa.event = k.event AND pa.cust_key = k.cust_key
         LEFT JOIN adjustment_aggregates adj ON adj.event = k.event AND adj.cust_key = k.cust_key
         ORDER BY k.event, k.cust_key
@@ -1417,6 +1455,9 @@ export async function getPaymentStatus(event?: string): Promise<PaymentStatusRow
           JOIN customer_warehouse_ongkir cwo ON cwo.warehouse_id = ev.warehouse_id
           JOIN customers c ON c.id = cwo.customer_id
         ),
+        shipped_rate AS (
+          ${shippedRateCte()}
+        ),
         all_keys AS (
           SELECT event, cust_key FROM order_aggregates
           UNION
@@ -1428,13 +1469,15 @@ export async function getPaymentStatus(event?: string): Promise<PaymentStatusRow
           k.event AS event,
           k.cust_key AS customer,
           (COALESCE(oa.subtotal, 0)
-            + COALESCE(c.ongkir, 0) * CEIL(COALESCE(oa.total_gram, 0)::numeric / 1000)
+            -- The parcel's own rate first, her profile rate only until one goes.
+            + COALESCE(sr.rate, c.ongkir, 0) * CEIL(COALESCE(oa.total_gram, 0)::numeric / 1000)
             + COALESCE(adj.total_adj, 0))::int AS invoice_total,
           COALESCE(pa.total_paid, 0)::int AS total_paid,
           COALESCE(oa.total_items, 0)::int AS total_items
         FROM all_keys k
         LEFT JOIN order_aggregates oa ON oa.event = k.event AND oa.cust_key = k.cust_key
         LEFT JOIN customer_ongkir c ON c.cust_key = k.cust_key AND c.event = k.event
+        LEFT JOIN shipped_rate sr ON sr.event = k.event AND sr.cust_key = k.cust_key
         LEFT JOIN payment_aggregates pa ON pa.event = k.event AND pa.cust_key = k.cust_key
         LEFT JOIN adjustment_aggregates adj ON adj.event = k.event AND adj.cust_key = k.cust_key
         ORDER BY k.event, k.cust_key
