@@ -1072,6 +1072,21 @@ function CustomerCard({
           customer={c.customer}
           event={c.event}
           current={c.requestedAddress}
+          initial={{
+            name: c.requestedName,
+            phone: c.requestedPhone,
+            street: c.requestedStreet,
+            areaId: c.requestedAreaId,
+            areaName: c.requestedAreaName,
+          }}
+          // Who, not where: staff are writing down an address she has just
+          // given them, so her own street is not the useful starting point —
+          // but her name and number are, since most redirects still go to her.
+          profile={{
+            name: c.customerDetail?.name ?? "",
+            phone: c.customerDetail?.whatsapp ?? "",
+            street: "",
+          }}
           onClose={() => setAddressOpen(false)}
           onSaved={() => { setAddressOpen(false); onRefresh() }}
         />
@@ -1336,6 +1351,17 @@ function ShipConfirmModal({
                       ? "Customer sendiri yang minta alamat ini untuk pesanan ini. Alamat utamanya tidak berubah."
                       : "Alamat ini hanya untuk pengiriman ini. Alamat utama customer tidak berubah."}
                   </p>
+                  {/* Typed here and nowhere else, this address has no area on
+                      it, so nothing could price it. Said plainly, because the
+                      redirect she asked for IS priced now and somebody reading
+                      two similar boxes should know which is which. */}
+                  {useTempAddress && tempAddress.trim() !== "" && tempAddress !== requestedAddress && (
+                    <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 mt-1">
+                      Alamat ini diketik langsung di sini, jadi <b>ongkirnya tidak dihitung
+                      ulang</b> — masih pakai tarif area profilnya. Kalau areanya beda jauh,
+                      catat lewat “Alamat lain” di kartunya supaya ongkirnya ikut disesuaikan.
+                    </p>
+                  )}
                   {c.requestedOtherArea && tempAddress === requestedAddress && (
                     c.requestedPerKg === null ? (
                       <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 mt-1">

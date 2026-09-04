@@ -186,6 +186,11 @@ function buildShipGroups(
       paymentStatus,
       requestedAddress: addressMap.get(`${customerKey}|${event}`)?.address ?? null,
       requestedOtherArea: addressMap.get(`${customerKey}|${event}`)?.otherArea ?? false,
+      requestedName: addressMap.get(`${customerKey}|${event}`)?.name ?? "",
+      requestedPhone: addressMap.get(`${customerKey}|${event}`)?.phone ?? "",
+      requestedStreet: addressMap.get(`${customerKey}|${event}`)?.street ?? "",
+      requestedAreaId: addressMap.get(`${customerKey}|${event}`)?.areaId ?? "",
+      requestedAreaName: addressMap.get(`${customerKey}|${event}`)?.areaName ?? "",
       requestedPerKg: addressMap.get(`${customerKey}|${event}`)?.perKg ?? null,
       requestedOngkirCharged: addressMap.get(`${customerKey}|${event}`)?.charged ?? 0,
       splitRequested: askedSplit,
@@ -242,6 +247,14 @@ async function fetchCustomerDetails(customerIds: Set<string>): Promise<Map<strin
  */
 type RequestedAddress = {
   address: string
+  /** The same redirect in its parts, so the form that edits it can open on
+   *  exactly what is stored rather than on a composed line it has to take
+   *  apart again. */
+  name: string
+  phone: string
+  street: string
+  areaId: string
+  areaName: string
   otherArea: boolean
   /** The courier's rate to the redirected area, once one was got. Null when
    *  it would not price that area — and then nothing was charged. */
@@ -336,7 +349,7 @@ async function fetchRequestedAddresses(
   const rows = await sql`
     SELECT p.event,
            lower(replace(c.instagram_id, '@', '')) AS norm_cust,
-           p.temp_address, p.temp_area_name, p.temp_name, p.temp_phone,
+           p.temp_address, p.temp_area_id, p.temp_area_name, p.temp_name, p.temp_phone,
            p.temp_ongkir_per_kg,
            -- Her standing ongkir was priced for her own area, so a redirect to
            -- a different one is priced again and charged. What is surfaced now
@@ -369,6 +382,11 @@ async function fetchRequestedAddresses(
     ].filter(Boolean).join("\n")
     map.set(`${r.norm_cust}|${r.event}`, {
       address,
+      name: String(r.temp_name ?? ""),
+      phone: String(r.temp_phone ?? ""),
+      street: String(r.temp_address ?? ""),
+      areaId: String(r.temp_area_id ?? ""),
+      areaName: String(r.temp_area_name ?? ""),
       otherArea: Boolean(r.other_area),
       perKg: r.temp_ongkir_per_kg == null ? null : Number(r.temp_ongkir_per_kg),
       charged: Number(r.charged ?? 0),

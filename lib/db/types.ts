@@ -384,6 +384,12 @@ export interface ShipCustomer {
    * match. Surfaced, never re-rated automatically.
    */
   requestedOtherArea: boolean
+  /** The redirect in its parts, as the form that edits it needs them. */
+  requestedName: string
+  requestedPhone: string
+  requestedStreet: string
+  requestedAreaId: string
+  requestedAreaName: string
   /** The courier's rate per kg to the redirected area. Null means it would not
    *  quote one, and then nothing was charged for the redirect. */
   requestedPerKg: number | null
