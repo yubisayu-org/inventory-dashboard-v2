@@ -11,6 +11,8 @@ import { fetchPaidStatusMap, compareOrderPriority, type PaidStatus } from "./sho
 import { appendExcessPurchase, reduceOrderRefundOnly } from "./orders"
 import { notifyCustomer } from "./announcements"
 import { finaliseRedirectCharge, settleRedirectCharge } from "./redirect-ongkir"
+import { sendInvoiceNotice } from "./notices"
+import { fillNotice, NOTICE_TEMPLATES } from "../notice-templates"
 
 /**
  * Refusal to ship a parcel that would be billed nothing.
@@ -580,7 +582,7 @@ async function clearHonouredRedirect(
 }
 
 export async function shipCustomerOrders(params: ShipOrdersParams, actor?: string | null): Promise<{ shippingId: string }> {
-  const { customer, event, orders, weightKg, ongkirPerKg, tempAddress, force } = params
+  const { customer, event, orders, weightKg, ongkirPerKg, tempAddress, force, freeShipping } = params
   // Before anything is written. A parcel billed nothing is not recoverable by
   // editing the rate afterwards: the shipment row keeps the figure it was
   // sent, and she has already been told what she owes.
@@ -661,6 +663,30 @@ export async function shipCustomerOrders(params: ShipOrdersParams, actor?: strin
                               JOIN customers c ON c.id = p.customer_id
                              WHERE p.event = ${event}
                                AND lower(replace(c.instagram_id, '@', '')) = ${normalizeId(customer)})`
+    }
+
+    // Delivery given away. Charged as usual on the invoice and credited in
+    // full here, so she reads what it would have cost and that it was a gift —
+    // where simply not charging her says nothing at all, and leaves the books
+    // unable to tell a gift from a rate somebody forgot to record.
+    if (freeShipping && ongkirTotal > 0) {
+      await tx`
+        INSERT INTO adjustments (event, customer, description, amount, auto)
+        VALUES (${event}, ${customer}, ${`Gratis ongkir (${billedKg} kg)`}, ${-ongkirTotal}, true)`
+      const template = NOTICE_TEMPLATES.find((t) => t.key === "inbox_ongkir_credit")
+      if (template) {
+        const tokens = {
+          "{event}": event,
+          "{customer}": customer,
+          "{amount}": `Rp ${ongkirTotal.toLocaleString("id-ID")}`,
+        }
+        await sendInvoiceNotice({
+          event,
+          customer,
+          title: fillNotice(template.title, tokens),
+          body: fillNotice(template.body, tokens),
+        }, tx)
+      }
     }
 
     // Priced on the box that is actually leaving, at the kilos it is billed

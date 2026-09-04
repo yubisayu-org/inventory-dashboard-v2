@@ -68,17 +68,19 @@ async function pair(events: string[]) {
   }
 }
 
-test("a two-trip merge is credited once, not once per trip", async () => {
+test("a merge gives the saving back on the cheapest trip, once", async () => {
   // 2 kg + 1 kg invoiced, one 1.490 g box billed as 2 kg. The saving is one
-  // kilo. Written on both trips it was two.
+  // kilo, and it is given back by cancelling a whole delivery charge rather
+  // than piling the figure onto one trip: B's own kilo goes, A keeps the two
+  // the box actually cost. Written on both trips it was two kilos.
   await pair([A, B])
   for (const e of [A, B]) await reconcileParcelPlan(WHO, e)
 
   const rows = await adjustments()
   assert.equal(rows.length, 1, "one credit for one saving")
-  assert.equal(rows[0].event, A, "held by the first trip of the group, by name")
+  assert.equal(rows[0].event, B, "on the cheaper trip, whose whole charge it cancels")
   assert.equal(rows[0].amount, -RATE)
-  assert.match(rows[0].description, new RegExp(B), "and it says which trip it merged with")
+  assert.match(rows[0].description, new RegExp(A), "and it says which trip it merged with")
 })
 
 test("reconciling the other trip does not add a second", async () => {
@@ -89,21 +91,23 @@ test("reconciling the other trip does not add a second", async () => {
 })
 
 test("a duplicate already on the books is cleared", async () => {
-  // The production repair path: hanapanjaitan carries one of these on each
-  // trip. Reconciling the trip that should not hold it deletes it.
+  // The production repair path: hanapanjaitan carried one of these on each
+  // trip. Reconciling the trip that should not hold one deletes it.
   await sql`
     INSERT INTO adjustments (event, customer, description, amount, auto)
-    VALUES (${B}, ${WHO}, ${`Gabung ongkir dengan ${A}`}, ${-RATE}, true)`
+    VALUES (${A}, ${WHO}, ${`Gabung ongkir dengan ${B}`}, ${-RATE}, true)`
   assert.equal((await adjustments()).length, 2, "planted")
 
-  await reconcileParcelPlan(WHO, B)
+  await reconcileParcelPlan(WHO, A)
   const rows = await adjustments()
   assert.equal(rows.length, 1)
-  assert.equal(rows[0].event, A)
+  assert.equal(rows[0].event, B, "the trip that keeps the box's charge holds no credit")
 })
 
-test("a three-trip merge is still one credit", async () => {
-  // Where the old shape paid three times.
+test("a three-trip merge gives back exactly what it saved, and no more", async () => {
+  // 2 + 1 + 1 invoiced = 4 kg; one box of 1.590 g = 2 kg. Two kilos saved,
+  // and the two cheap trips are the ones that stop paying — so what is still
+  // charged across the group is the two kilos the box really cost.
   await sql`
     INSERT INTO orders (event, customer, product_id, unit_price, unit, unit_buy)
     VALUES (${C}, ${WHO}, ${smallId}, 100000, 1, 1)`
@@ -111,10 +115,13 @@ test("a three-trip merge is still one credit", async () => {
   for (const e of [A, B, C]) await reconcileParcelPlan(WHO, e)
 
   const rows = await adjustments()
-  assert.equal(rows.length, 1, "one credit")
-  assert.equal(rows[0].event, A)
-  // 2 + 1 + 1 invoiced = 4 kg; one box of 1.590 g = 2 kg. Two kilos saved.
-  assert.equal(rows[0].amount, -2 * RATE)
+  const total = rows.reduce((n, r) => n + Number(r.amount), 0)
+  assert.equal(total, -2 * RATE, "the saving, once")
+  assert.equal(rows.length, 2, "one whole charge cancelled on each cheap trip")
+  assert.deepEqual(rows.map((r) => r.event).sort(), [B, C].sort(), "and never on the trip paying for the box")
+  // Which is the point of crediting where it was charged: no invoice is left
+  // showing a total below the goods on it.
+  for (const r of rows) assert.equal(Number(r.amount), -RATE)
 })
 
 test("unpairing takes the credit away with it", async () => {
@@ -122,4 +129,32 @@ test("unpairing takes the credit away with it", async () => {
     UPDATE customer_shipping_prefs SET merge_key = NULL WHERE customer_id = ${customerId}`
   for (const e of [A, B, C]) await reconcileParcelPlan(WHO, e)
   assert.equal((await adjustments()).length, 0)
+})
+
+// The wrinkle: the saving is smaller than any single trip's charge, so a whole
+// charge cannot be cancelled without giving back more than was saved.
+test("where no whole charge fits, the cheapest trip is credited in part", async () => {
+  await sql`UPDATE customer_shipping_prefs SET merge_key = NULL WHERE customer_id = ${customerId}`
+  await sql`DELETE FROM adjustments WHERE customer = ${WHO}`
+  await sql`DELETE FROM orders WHERE customer = ${WHO}`
+
+  // Two trips of 1.200 g: each invoiced as 2 kg, one box of 2.400 g as 3 kg.
+  // Charged 4 kg, box is 3 — one kilo saved, and neither trip's charge is
+  // one kilo.
+  const [mid] = await sql<{ id: number }[]>`
+    INSERT INTO products (name, store, gram, price) VALUES (${`${TAG} mid`}, ${TAG}, 1200, 0)
+    RETURNING id`
+  for (const e of [A, B]) {
+    await sql`
+      INSERT INTO orders (event, customer, product_id, unit_price, unit, unit_buy)
+      VALUES (${e}, ${WHO}, ${mid.id}, 100000, 1, 1)`
+  }
+  await pair([A, B])
+  for (const e of [A, B]) await reconcileParcelPlan(WHO, e)
+
+  const rows = await adjustments()
+  assert.equal(rows.length, 1, "one credit")
+  assert.equal(rows[0].amount, -RATE, "the kilo that was saved, not the two it was charged")
+  // Still only ever a discount: no invoice is handed a charge it did not have.
+  assert.ok(rows.every((r) => Number(r.amount) < 0))
 })

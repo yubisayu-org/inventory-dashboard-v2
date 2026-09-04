@@ -1185,6 +1185,9 @@ function ShipConfirmModal({
   const requestedAddress = c.requestedAddress
   const [useTempAddress, setUseTempAddress] = useState(Boolean(requestedAddress))
   const [redirect, setRedirect] = useState<RedirectDraft | null>(null)
+  // Delivery given away for this parcel. Charged as usual and credited in
+  // full, so her invoice says what it would have cost and that it was a gift.
+  const [freeShipping, setFreeShipping] = useState(false)
   const [pairedWarning, setPairedWarning] = useState<string[] | null>(null)
   // What actually goes on the label: the redirect she is being sent to, or her
   // own address when this box is not being redirected at all.
@@ -1260,6 +1263,7 @@ function ShipConfirmModal({
       weightKg: c.weightKg,
       ongkirPerKg: c.ongkirPerKg,
       tempAddress: useTempAddress ? tempAddress : null,
+      freeShipping,
     }
     try {
       const res = await fetch("/api/sheets/ship", {
@@ -1352,6 +1356,28 @@ function ShipConfirmModal({
                 ))}
               </div>
             </div>
+
+            {/* Written down as a credit rather than as no charge at all: she
+                should be able to see it was given, and so should the books a
+                year from now. */}
+            <label className="flex items-start gap-2 text-xs text-muted-strong cursor-pointer">
+              <input
+                type="checkbox"
+                checked={freeShipping}
+                onChange={(e) => setFreeShipping(e.target.checked)}
+                disabled={shipping}
+                className="mt-0.5 rounded border-cream-border text-brand focus:ring-brand/30 cursor-pointer"
+              />
+              <span>
+                Gratis ongkir untuk paket ini
+                <span className="block text-[11px] text-faint">
+                  Ongkirnya tetap dihitung {c.ongkirPerKg > 0 && c.weightKg > 0
+                    ? `(Rp ${(c.ongkirPerKg * Math.ceil(c.weightKg)).toLocaleString("id-ID")})`
+                    : ""} lalu dikreditkan penuh, jadi customer lihat kalau ini memang
+                  digratiskan.
+                </span>
+              </span>
+            </label>
 
             <div>
               <div className="flex items-center justify-between mb-1">
