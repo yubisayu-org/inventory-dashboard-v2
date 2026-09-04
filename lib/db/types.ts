@@ -513,6 +513,10 @@ export interface ShipMergedParams {
   // Optional one-time receiving address for the combined package. Written to
   // every row in the merge_group so any reprint path renders it consistently.
   tempAddress?: string | null
+  /** Delivery given away for this box. One box, one gift — recorded on every
+   *  row of the group, and given back across the invoices still carrying a
+   *  charge. */
+  freeShipping?: boolean
 }
 
 export interface ShipMergedResult {

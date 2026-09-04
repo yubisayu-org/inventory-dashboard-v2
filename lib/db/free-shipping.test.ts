@@ -102,3 +102,46 @@ test("without the tick nothing is credited", async () => {
     SELECT id FROM adjustments WHERE event = ${EVENT} AND description LIKE 'Gratis ongkir%'`
   assert.equal(rows.length, 0)
 })
+
+// One box carrying two trips, given away. Every trip's delivery goes — not
+// only the riders' — and no invoice is credited more than it was charged.
+test("a gifted merged box clears the delivery on every trip in it", async () => {
+  const { shipMergedCustomerOrders } = await import("./fulfillment")
+
+  const SECOND = `${TAG}_EV2`
+  const [w] = await sql<{ id: number }[]>`SELECT id FROM warehouses ORDER BY id LIMIT 1`
+  await sql`INSERT INTO events (name, warehouse_id) VALUES (${SECOND}, ${w.id})`
+  const [o2] = await sql<{ id: number }[]>`
+    INSERT INTO orders (event, customer, product_id, unit_price, unit, unit_buy, unit_arrive)
+    VALUES (${SECOND}, ${handle}, ${productId}, 150000, 1, 1, 1)
+    RETURNING id`
+
+  await sql`DELETE FROM adjustments WHERE event IN (${EVENT}, ${SECOND})`
+  await sql`DELETE FROM shipments WHERE event IN (${EVENT}, ${SECOND})`
+  await sql`UPDATE orders SET unit_ship = 0 WHERE customer = ${handle}`
+
+  await shipMergedCustomerOrders({
+    customer: handle,
+    ongkirPerKg: RATE,
+    freeShipping: true,
+    groups: [
+      { event: EVENT, orders: [{ rowNumber: orderId, productName: `${TAG} item`, toShip: 1, gram: 400 }] },
+      { event: SECOND, orders: [{ rowNumber: o2.id, productName: `${TAG} item`, toShip: 1, gram: 400 }] },
+    ],
+  })
+
+  const rows = await sql<{ event: string; amount: number; description: string }[]>`
+    SELECT event, amount, description FROM adjustments
+     WHERE event IN (${EVENT}, ${SECOND}) AND auto ORDER BY event`
+  // Each trip is invoiced one kilo, so each gives back one kilo — no more.
+  assert.equal(rows.length, 2, "both trips credited")
+  for (const r of rows) {
+    assert.equal(Number(r.amount), -RATE, "its own charge, not the box's")
+    assert.match(r.description, /Gratis ongkir/)
+  }
+
+  await sql`DELETE FROM orders WHERE event = ${SECOND}`
+  await sql`DELETE FROM shipments WHERE event = ${SECOND}`
+  await sql`DELETE FROM adjustments WHERE event = ${SECOND}`
+  await sql`DELETE FROM events WHERE name = ${SECOND}`
+})

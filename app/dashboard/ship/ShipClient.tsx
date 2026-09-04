@@ -1786,6 +1786,9 @@ function MergeShipConfirmModal({
   // customer's profile address once it loads so admin can tweak just the
   // parts that differ. One address per box — merged shipments share it.
   const [useTempAddress, setUseTempAddress] = useState(false)
+  // One box, one gift. Recorded on every trip in the group and given back
+  // across whichever invoices are still carrying a delivery charge.
+  const [freeShipping, setFreeShipping] = useState(false)
   const [redirect, setRedirect] = useState<RedirectDraft | null>(null)
   // The label the merged parcel travels under, built by the fields themselves.
   const tempAddress = redirect?.label ?? ""
@@ -1955,6 +1958,7 @@ function MergeShipConfirmModal({
               .map((o) => ({ rowNumber: o.rowNumber, productName: o.productName, toShip: o.toShip, gram: o.gram })),
           })),
           tempAddress: useTempAddress ? tempAddress : null,
+          freeShipping,
         }),
       })
       const data = await res.json()
@@ -2045,6 +2049,28 @@ function MergeShipConfirmModal({
                     )
                   })}
                 </div>
+
+                {/* One box, one gift. Charged as usual and credited back across
+                    the invoices still carrying a charge, so she reads what it
+                    would have cost rather than seeing no delivery at all. */}
+                <label className="flex items-start gap-2 text-xs text-muted-strong cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={freeShipping}
+                    onChange={(e) => setFreeShipping(e.target.checked)}
+                    disabled={shipping}
+                    className="mt-0.5 rounded border-cream-border text-brand focus:ring-brand/30 cursor-pointer"
+                  />
+                  <span>
+                    Gratis ongkir untuk paket gabungan ini
+                    <span className="block text-[11px] text-faint">
+                      Ongkirnya tetap dihitung
+                      {ongkirPerKg > 0 && combinedKg > 0
+                        ? ` (Rp ${(ongkirPerKg * combinedKg).toLocaleString("id-ID")})`
+                        : ""} lalu dikreditkan penuh ke tagihannya.
+                    </span>
+                  </span>
+                </label>
 
                 <div>
                   <div className="flex items-center justify-between mb-1">
