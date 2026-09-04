@@ -2,6 +2,7 @@ import sql from "../db-pool"
 import type { DBExecutor } from "./actor"
 import { normalizeId } from "./helpers"
 import { notifyCustomer } from "./announcements"
+import { findDuplicatePayment, type DuplicatePayment } from "./payment-duplicates"
 
 /**
  * Payments the customer reports herself, and what became of each one.
@@ -223,6 +224,25 @@ export async function getCustomerPayments(
   }))
 }
 
+/**
+ * Thrown when her claim looks like one already on file, and she has not yet
+ * said to send it anyway.
+ *
+ * A distinct type rather than a message, because the sheet has to do something
+ * different with it: keep what she typed, say what the shop already has, and
+ * turn Submit into "Send it anyway". Every other failure here is a dead end
+ * she has to correct.
+ */
+export class DuplicateClaimError extends Error {
+  readonly duplicate: DuplicatePayment
+
+  constructor(duplicate: DuplicatePayment) {
+    super("Pembayaran serupa sudah tercatat")
+    this.name = "DuplicateClaimError"
+    this.duplicate = duplicate
+  }
+}
+
 /** Rupiah as the shop writes them, for a message she has to act on. */
 function rupiah(n: number): string {
   return `Rp ${n.toLocaleString("id-ID")}`
@@ -282,7 +302,15 @@ async function refuseIfOverQrisCeiling(
  * one stops her telling the shop rather than stopping her transferring.
  */
 export async function submitCustomerPayment(
-  input: { handle: string; event: string; amount: unknown; bank: string; sender: string },
+  input: {
+    handle: string
+    event: string
+    amount: unknown
+    bank: string
+    sender: string
+    /** Set once she has seen what the shop already has and sent it anyway. */
+    confirmDuplicate?: boolean
+  },
   db: DBExecutor = sql,
 ): Promise<{ id: number; amount: number }> {
   const amount = cleanAmount(input.amount)
@@ -310,10 +338,24 @@ export async function submitCustomerPayment(
   // sheet decided is a courtesy, and this is the rule.
   if (bank === QRIS) await refuseIfOverQrisCeiling(input.event, order.customer, amount, db)
 
+  // Submitting twice because the first one seemed not to go through is the
+  // ordinary way a customer files the same transfer twice. She is told what
+  // the shop already has and may send it anyway — most of the time she is
+  // right, and it is the shop that has not looked yet.
+  if (!input.confirmDuplicate) {
+    const duplicate = await findDuplicatePayment({
+      customer: order.customer,
+      event: input.event,
+      amount,
+      payDate: new Date().toISOString().slice(0, 10),
+    }, db)
+    if (duplicate) throw new DuplicateClaimError(duplicate)
+  }
+
   const [row] = await db<{ id: number }[]>`
-    INSERT INTO payments (event, customer, amount, account, remarks, pay_date, kind)
+    INSERT INTO payments (event, customer, amount, account, remarks, pay_date, kind, reported_by)
     VALUES (${input.event}, ${order.customer}, ${amount}, ${bank}, ${sender},
-            CURRENT_DATE, 'deposit')
+            CURRENT_DATE, 'deposit', 'customer')
     RETURNING id
   `
   return { id: row.id, amount }
