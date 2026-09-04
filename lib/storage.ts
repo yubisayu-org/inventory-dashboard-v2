@@ -143,6 +143,34 @@ export async function uploadCatalogueMedia(file: File): Promise<{ url: string; m
   return { url: data.publicUrl, mediaType: isVideo ? "video" : "photo" }
 }
 
+/** The shop's static QRIS code.
+ *
+ *  Images only — a QR is a picture, and the customer's sheet renders it in an
+ *  <img>. It shares the catalogue-media bucket rather than earning its own:
+ *  same audience (public read, so her phone can load it while she pays) and
+ *  the same staff-only write path. The filename is not guessable, so the file
+ *  is reachable only by someone the shop handed the URL to — though the real
+ *  protection against a swapped QR is not secrecy, it is that her wallet app
+ *  shows the merchant name before she confirms. */
+export async function uploadQrisImage(file: File): Promise<{ url: string }> {
+  if (!file.type.startsWith("image/")) throw new Error("The QRIS code must be an image")
+  if (file.size > MAX_PHOTO_BYTES) {
+    throw new Error(`File too large — max ${Math.round(MAX_PHOTO_BYTES / 1024 / 1024)}MB`)
+  }
+
+  const ext = file.name.split(".").pop() ?? "png"
+  const path = `qris/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`
+
+  const { error } = await storage().storage.from(CATALOGUE_MEDIA_BUCKET).upload(path, file, {
+    contentType: file.type,
+    upsert: false,
+  })
+  if (error) throw new Error(`Upload failed: ${error.message}`)
+
+  const { data } = storage().storage.from(CATALOGUE_MEDIA_BUCKET).getPublicUrl(path)
+  return { url: data.publicUrl }
+}
+
 /** Best-effort cleanup for a file that was uploaded via uploadCatalogueMedia
  *  but whose DB row never got created (e.g. createCataloguePost failed after
  *  a successful upload). Never throws — logs and returns on failure, so a

@@ -5,6 +5,7 @@ import catalogueSql from "@/lib/db-catalogue-public"
 import {
   getCustomerPayments,
   getPayableBanks,
+  getQrisOffer,
   submitCustomerPayment,
 } from "@/lib/db/catalogue-payments"
 
@@ -27,11 +28,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401, headers: privateHeaders() })
   }
   try {
-    const [payments, banks] = await Promise.all([
+    const [payments, banks, qris] = await Promise.all([
       getCustomerPayments(customer.instagramId, catalogueSql),
       getPayableBanks(catalogueSql),
+      // Null whenever QRIS is not on offer — switched off, no QR uploaded, or
+      // the year's ceiling reached. The reason never travels.
+      getQrisOffer(catalogueSql),
     ])
-    return NextResponse.json({ payments, ...banks }, { headers: privateHeaders() })
+    return NextResponse.json({ payments, ...banks, qris }, { headers: privateHeaders() })
   } catch (err) {
     console.error("Failed to load customer payments:", err)
     return NextResponse.json({ error: "Failed to load" }, { status: 500, headers: corsHeaders() })

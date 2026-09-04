@@ -4,6 +4,7 @@ import sql from "../db-pool"
 import {
   getCustomerPayments,
   getPayableBanks,
+  getQrisOffer,
   submitCustomerPayment,
   rejectCustomerPayment,
   unrejectCustomerPayment,
@@ -21,6 +22,14 @@ let customerId = 0
 let handle = ""
 
 after(async () => {
+  // business_profile is one shared row, and these tests move its QRIS
+  // settings about. Put them back the way they were found.
+  await sql`
+    UPDATE business_profile
+       SET qris_enabled = ${QRIS_WAS.enabled}, qris_image_url = ${QRIS_WAS.image},
+           qris_max_per_payment = ${QRIS_WAS.perPayment}, qris_max_per_order = ${QRIS_WAS.perOrder},
+           qris_max_per_year = ${QRIS_WAS.perYear}
+     WHERE id = 1`
   await sql`DELETE FROM announcements WHERE customer_id = ${customerId}`
   await sql`DELETE FROM payments WHERE customer = ${handle}`
   await sql`DELETE FROM orders WHERE customer = ${handle}`
@@ -155,4 +164,176 @@ test("the payable banks are parsed out of the shop's own profile", async () => {
     assert.ok(b.label.length > 0, "a bank has a name")
     assert.match(b.number, /^[0-9]+$/, "and an account number with nothing else in it")
   }
+})
+
+
+// ─── QRIS ────────────────────────────────────────────────────────────────────
+//
+// A second way to pay, with three ceilings that each do a different job. The
+// browser greys the button; these are the checks that actually hold, because
+// the amount is the customer's own field on her own machine.
+
+const QRIS_WAS = { enabled: false, image: "", perPayment: 0, perOrder: 0, perYear: 0 }
+
+const QRIS_EVENT = `${TAG}_QR`
+
+/** Puts the shop's QRIS settings where a test needs them. */
+async function setQris(o: {
+  enabled?: boolean
+  image?: string
+  perPayment?: number
+  perOrder?: number
+  perYear?: number
+}) {
+  await sql`
+    UPDATE business_profile
+       SET qris_enabled = ${o.enabled ?? true},
+           qris_image_url = ${o.image ?? "https://example.test/storage/v1/object/public/catalogue-media/qris/x.png"},
+           qris_merchant_name = 'YUBISAYU STORE',
+           qris_max_per_payment = ${o.perPayment ?? 0},
+           qris_max_per_order = ${o.perOrder ?? 0},
+           qris_max_per_year = ${o.perYear ?? 0}
+     WHERE id = 1`
+}
+
+/** What the shop has already taken through QRIS in this database, so a yearly
+ *  test can set its ceiling relative to reality rather than assume an empty
+ *  table. */
+async function qrisYearSoFar(): Promise<number> {
+  const [row] = await sql<{ total: string | null }[]>`
+    SELECT SUM(amount) AS total FROM payments
+     WHERE account = 'QRIS' AND kind = 'deposit' AND is_checked AND rejected_at IS NULL
+       AND pay_date >= CURRENT_DATE - INTERVAL '12 months'`
+  return Number(row?.total ?? 0)
+}
+
+test("QRIS is only offered once there is a QR to scan", async () => {
+  // Remember what was there before the first test moves it.
+  const [was] = await sql<{
+    qris_enabled: boolean; qris_image_url: string
+    qris_max_per_payment: string; qris_max_per_order: string; qris_max_per_year: string
+  }[]>`SELECT qris_enabled, qris_image_url, qris_max_per_payment, qris_max_per_order,
+              qris_max_per_year FROM business_profile WHERE id = 1`
+  QRIS_WAS.enabled = was.qris_enabled
+  QRIS_WAS.image = was.qris_image_url
+  QRIS_WAS.perPayment = Number(was.qris_max_per_payment)
+  QRIS_WAS.perOrder = Number(was.qris_max_per_order)
+  QRIS_WAS.perYear = Number(was.qris_max_per_year)
+
+  await setQris({ enabled: true, image: "" })
+  assert.equal(await getQrisOffer(), null, "switched on with nothing to show is still nothing")
+
+  await setQris({ enabled: false })
+  assert.equal(await getQrisOffer(), null)
+
+  await setQris({ enabled: true, perPayment: 100000, perOrder: 300000 })
+  const offer = await getQrisOffer()
+  assert.ok(offer)
+  assert.equal(offer.maxPerPayment, 100000)
+  assert.equal(offer.maxPerOrder, 300000)
+  assert.equal(offer.merchantName, "YUBISAYU STORE")
+  // The year's figures are the shop's business, not hers.
+  assert.equal("maxPerYear" in offer, false)
+})
+
+test("the per-payment ceiling includes the ceiling itself", async () => {
+  await sql`
+    INSERT INTO events (name, warehouse_id)
+    SELECT ${QRIS_EVENT}, id FROM warehouses ORDER BY id LIMIT 1`
+  const [p] = await sql<{ id: number }[]>`SELECT id FROM products ORDER BY id LIMIT 1`
+  await sql`
+    INSERT INTO orders (event, customer, product_id, unit_price, unit, unit_arrive)
+    VALUES (${QRIS_EVENT}, ${handle}, ${p.id}, 400000, 1, 1)`
+
+  await setQris({ perPayment: 100000, perOrder: 300000 })
+
+  await assert.rejects(
+    () => submitCustomerPayment({
+      handle, event: QRIS_EVENT, amount: 100001, bank: "QRIS", sender: "Sari",
+    }),
+    /sampai Rp 100.000/,
+    "one rupiah over is over",
+  )
+
+  const { id } = await submitCustomerPayment({
+    handle, event: QRIS_EVENT, amount: 100000, bank: "qris", sender: "Sari",
+  })
+  const [row] = await sql<{ account: string }[]>`SELECT account FROM payments WHERE id = ${id}`
+  assert.equal(row.account, "QRIS", "however she spells it, it is stored the way the shop does")
+})
+
+// The hole a per-payment ceiling leaves on its own: the amount is hers to
+// edit, so an order goes through in small scans and no single claim ever
+// breaks a rule.
+test("scans on one order are added up, and a refusal gives the room back", async () => {
+  await setQris({ perPayment: 100000, perOrder: 150000 })
+
+  await assert.rejects(
+    () => submitCustomerPayment({
+      handle, event: QRIS_EVENT, amount: 100000, bank: "QRIS", sender: "Sari",
+    }),
+    /sudah lewat QRIS/,
+    "100.000 is already on this order, so another 100.000 is over its 150.000",
+  )
+
+  const { id } = await submitCustomerPayment({
+    handle, event: QRIS_EVENT, amount: 50000, bank: "QRIS", sender: "Sari",
+  })
+
+  // A claim nobody has ticked still holds its space — otherwise three scans in
+  // one minute all pass, none of them having been checked yet.
+  await assert.rejects(
+    () => submitCustomerPayment({
+      handle, event: QRIS_EVENT, amount: 1000, bank: "QRIS", sender: "Sari",
+    }),
+    /sudah lewat QRIS/,
+  )
+
+  await rejectCustomerPayment(id, "Not found in the QRIS report.")
+  const { id: retried } = await submitCustomerPayment({
+    handle, event: QRIS_EVENT, amount: 50000, bank: "QRIS", sender: "Sari",
+  })
+  assert.ok(retried, "a refusal took nothing, so it holds no room")
+
+  // A bank transfer is not QRIS money and never counted against it.
+  const { id: byBank } = await submitCustomerPayment({
+    handle, event: QRIS_EVENT, amount: 250000, bank: "BCA", sender: "Sari",
+  })
+  assert.ok(byBank)
+})
+
+test("the year's ceiling closes the offer, counting what staff typed in too", async () => {
+  const soFar = await qrisYearSoFar()
+
+  // A payment the shop recorded itself, verified — the shop's QRIS turnover
+  // just as much as a customer's claim.
+  await sql`
+    INSERT INTO payments (event, customer, amount, account, remarks, pay_date, kind, is_checked)
+    VALUES (${QRIS_EVENT}, ${handle}, 40000, 'QRIS', 'entered by staff', CURRENT_DATE, 'deposit', true)`
+
+  await setQris({ perPayment: 100000, perOrder: 300000, perYear: soFar + 40000 })
+  assert.equal(await getQrisOffer(), null, "the year is spent, so nothing is offered")
+
+  await assert.rejects(
+    () => submitCustomerPayment({
+      handle, event: QRIS_EVENT, amount: 1000, bank: "QRIS", sender: "Sari",
+    }),
+    /tidak tersedia/,
+    "and the reason she is given says nothing about the shop's turnover",
+  )
+
+  await setQris({ perPayment: 100000, perOrder: 300000, perYear: soFar + 40000 + 100000 })
+  assert.ok(await getQrisOffer(), "room again once the ceiling is raised")
+})
+
+test("with every ceiling empty, QRIS is simply open", async () => {
+  await setQris({ perPayment: 0, perOrder: 0, perYear: 0 })
+  const offer = await getQrisOffer()
+  assert.ok(offer)
+  assert.equal(offer.maxPerPayment, 0, "0 is how the sheet is told there is no ceiling")
+
+  const { id } = await submitCustomerPayment({
+    handle, event: QRIS_EVENT, amount: 5000000, bank: "QRIS", sender: "Sari",
+  })
+  assert.ok(id)
 })

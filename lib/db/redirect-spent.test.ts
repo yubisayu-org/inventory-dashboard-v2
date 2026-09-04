@@ -95,12 +95,13 @@ test("the shop can record a redirect she asked for by message", async () => {
   await sql`INSERT INTO events (name, warehouse_id) SELECT ${EV3}, id FROM warehouses ORDER BY id LIMIT 1`
   const id = await lineFor(EV3)
 
-  // Deliberately unpaid: this is early, which is the whole point. Her own page
-  // is barred here; the shop writing down what she said is not.
-  await assert.rejects(
-    () => setTempAddress(custId, EV3, { address: "Kos Melati 3B" }, sql, "customer"),
-    /unpaid/,
-  )
+  // Deliberately unpaid: this is early, which is the whole point. A
+  // destination is not a commitment, so since the redirect was opened to
+  // customers who still owe, her own page may set one here too — what she
+  // still may not do while owing is direct the packing.
+  await setTempAddress(custId, EV3, { address: "Kos Melati 3A" }, sql, "customer")
+  assert.equal(await addressOn(EV3), "Kos Melati 3A")
+
   await setTempAddress(custId, EV3, { address: "Kos Melati 3B" }, sql, "shop")
   assert.equal(await addressOn(EV3), "Kos Melati 3B")
 

@@ -3,6 +3,7 @@ import { requireSession, requireRole, requireOwner } from "@/lib/api"
 import { getBusinessProfile, updateBusinessProfile, withActor } from "@/lib/db"
 import { cached, invalidate } from "@/lib/route-cache"
 import { normalizeDelivery } from "@/lib/message-delivery"
+import { normalizeQris } from "@/lib/business-profile"
 
 export async function GET() {
   const { session, error: authError } = await requireSession()
@@ -39,6 +40,9 @@ export async function PATCH(req: NextRequest) {
       // Whatever arrives, only the three kinds we know survive, and only with
       // a mode we know. See normalizeDelivery.
       messageDelivery: normalizeDelivery(body.messageDelivery),
+      // Ceilings become whole rupiah, and the QR may only be a file from our
+      // own Storage. See normalizeQris.
+      qris: normalizeQris(body.qris),
     }
 
     await withActor(session.user.email, (tx) => updateBusinessProfile(profile, tx))

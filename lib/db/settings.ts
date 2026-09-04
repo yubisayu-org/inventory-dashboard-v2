@@ -87,7 +87,8 @@ export async function updateNoticeTemplate(
 export async function getBusinessProfile(): Promise<BusinessProfile> {
   const [row] = await sql`
     SELECT bank_account_holder, bank_account_lines, owner_name, store_name, phone_number,
-           public_site_url, message_delivery
+           public_site_url, message_delivery, qris_enabled, qris_image_url, qris_merchant_name,
+           qris_max_per_payment, qris_max_per_order, qris_max_per_year
     FROM business_profile WHERE id = 1
   `
   if (!row) return DEFAULT_BUSINESS_PROFILE
@@ -99,14 +100,28 @@ export async function getBusinessProfile(): Promise<BusinessProfile> {
     phoneNumber: row.phone_number as string,
     publicSiteUrl: row.public_site_url as string,
     messageDelivery: normalizeDelivery(row.message_delivery),
+    qris: {
+      enabled: Boolean(row.qris_enabled),
+      imageUrl: row.qris_image_url as string,
+      merchantName: row.qris_merchant_name as string,
+      // Not `||`: 0 is a legal value here — it is how a ceiling is switched
+      // off — so a fallback would turn "no ceiling" into someone's default.
+      maxPerPayment: Number(row.qris_max_per_payment),
+      maxPerOrder: Number(row.qris_max_per_order),
+      maxPerYear: Number(row.qris_max_per_year),
+    },
   }
 }
 
 export async function updateBusinessProfile(data: BusinessProfile, db: DBExecutor = sql): Promise<void> {
   await db`
-    INSERT INTO business_profile (id, bank_account_holder, bank_account_lines, owner_name, store_name, phone_number, public_site_url, message_delivery, updated_at)
+    INSERT INTO business_profile (id, bank_account_holder, bank_account_lines, owner_name, store_name, phone_number, public_site_url, message_delivery,
+                                  qris_enabled, qris_image_url, qris_merchant_name,
+                                  qris_max_per_payment, qris_max_per_order, qris_max_per_year, updated_at)
     VALUES (1, ${data.bankAccountHolder}, ${data.bankAccountLines}, ${data.ownerName}, ${data.storeName}, ${data.phoneNumber}, ${data.publicSiteUrl},
-            ${sql.json(normalizeDelivery(data.messageDelivery))}, NOW())
+            ${sql.json(normalizeDelivery(data.messageDelivery))},
+            ${data.qris.enabled}, ${data.qris.imageUrl}, ${data.qris.merchantName},
+            ${data.qris.maxPerPayment}, ${data.qris.maxPerOrder}, ${data.qris.maxPerYear}, NOW())
     ON CONFLICT (id) DO UPDATE SET
       bank_account_holder = EXCLUDED.bank_account_holder,
       bank_account_lines = EXCLUDED.bank_account_lines,
@@ -115,6 +130,12 @@ export async function updateBusinessProfile(data: BusinessProfile, db: DBExecuto
       phone_number = EXCLUDED.phone_number,
       public_site_url = EXCLUDED.public_site_url,
       message_delivery = EXCLUDED.message_delivery,
+      qris_enabled = EXCLUDED.qris_enabled,
+      qris_image_url = EXCLUDED.qris_image_url,
+      qris_merchant_name = EXCLUDED.qris_merchant_name,
+      qris_max_per_payment = EXCLUDED.qris_max_per_payment,
+      qris_max_per_order = EXCLUDED.qris_max_per_order,
+      qris_max_per_year = EXCLUDED.qris_max_per_year,
       updated_at = NOW()
   `
 }
