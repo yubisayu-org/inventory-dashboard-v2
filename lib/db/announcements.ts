@@ -113,7 +113,11 @@ export async function eventNoticeRecipients(
            SUM(o.unit)::int AS units,
            SUM(GREATEST(o.unit - COALESCE(o.unit_ship, 0), 0))::int AS unshipped,
            MAX(b.invoice_total) AS total,
-           MAX(b.balance) AS outstanding
+           -- live_balances states the balance as paid minus invoiced, so a
+           -- customer who owes money has a NEGATIVE one. What a reminder needs
+           -- is the other direction, and reading it straight put the filter
+           -- exactly backwards: it found the people who had overpaid.
+           MAX(b.invoice_total) - MAX(b.total_paid) AS outstanding
       FROM orders o
       JOIN customers c
         ON lower(replace(c.instagram_id, '@', '')) = lower(replace(o.customer, '@', ''))

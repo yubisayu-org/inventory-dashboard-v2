@@ -186,6 +186,8 @@ function buildShipGroups(
       paymentStatus,
       requestedAddress: addressMap.get(`${customerKey}|${event}`)?.address ?? null,
       requestedOtherArea: addressMap.get(`${customerKey}|${event}`)?.otherArea ?? false,
+      requestedPerKg: addressMap.get(`${customerKey}|${event}`)?.perKg ?? null,
+      requestedOngkirCharged: addressMap.get(`${customerKey}|${event}`)?.charged ?? 0,
       splitRequested: askedSplit,
       // Priced whether or not a split has been declared. Before, this was zero
       // until somebody committed — so the Split Ship button, whose whole job is
@@ -238,7 +240,16 @@ async function fetchCustomerDetails(customerIds: Set<string>): Promise<Map<strin
  * parcel was redirected. Neither side finds out until it is delivered to the
  * wrong house, so the request has to reach the screen that prints the label.
  */
-type RequestedAddress = { address: string; otherArea: boolean }
+type RequestedAddress = {
+  address: string
+  otherArea: boolean
+  /** The courier's rate to the redirected area, once one was got. Null when
+   *  it would not price that area — and then nothing was charged. */
+  perKg: number | null
+  /** What the redirect actually put on her invoice, and 0 when it put
+   *  nothing there. */
+  charged: number
+}
 
 /**
  * The description written on the adjustment that bills an early parcel.
@@ -325,12 +336,21 @@ async function fetchRequestedAddresses(
   const rows = await sql`
     SELECT p.event,
            lower(replace(c.instagram_id, '@', '')) AS norm_cust,
-           p.temp_address, p.temp_area_name,
-           -- Her standing ongkir was priced for her own area. A redirect to a
-           -- different one may cost differently, and that is a decision for a
-           -- person, so it is surfaced rather than re-rated.
+           p.temp_address, p.temp_area_name, p.temp_name, p.temp_phone,
+           p.temp_ongkir_per_kg,
+           -- Her standing ongkir was priced for her own area, so a redirect to
+           -- a different one is priced again and charged. What is surfaced now
+           -- is which of the two happened: a figure, or a courier that would
+           -- not give one.
            (p.temp_area_id IS NOT NULL
-             AND p.temp_area_id IS DISTINCT FROM c.biteship_area_id) AS other_area
+             AND p.temp_area_id IS DISTINCT FROM c.biteship_area_id) AS other_area,
+           COALESCE((
+             SELECT a.amount FROM adjustments a
+              WHERE a.event = p.event
+                AND lower(replace(a.customer, '@', '')) = lower(replace(c.instagram_id, '@', ''))
+                AND a.auto AND a.description LIKE 'Ongkir alamat berbeda%'
+              ORDER BY a.id LIMIT 1
+           ), 0) AS charged
       FROM customer_shipping_prefs p
       JOIN customers c ON c.id = p.customer_id
      WHERE p.temp_address IS NOT NULL
@@ -338,11 +358,21 @@ async function fetchRequestedAddresses(
        AND lower(replace(c.instagram_id, '@', '')) = ANY(${[...customerIds]})
   `
   for (const r of rows) {
-    // Street then area, the way a label reads.
-    const address = [String(r.temp_address), r.temp_area_name ? String(r.temp_area_name) : ""]
-      .filter(Boolean)
-      .join("\n")
-    map.set(`${r.norm_cust}|${r.event}`, { address, otherArea: Boolean(r.other_area) })
+    // Name and phone first when the parcel is going to somebody else, then
+    // street, then area — the way a label reads, and the way she was shown it
+    // when she asked for it.
+    const address = [
+      r.temp_name ? `Nama: ${String(r.temp_name)}` : "",
+      r.temp_phone ? `Telepon: ${String(r.temp_phone)}` : "",
+      String(r.temp_address),
+      r.temp_area_name ? String(r.temp_area_name) : "",
+    ].filter(Boolean).join("\n")
+    map.set(`${r.norm_cust}|${r.event}`, {
+      address,
+      otherArea: Boolean(r.other_area),
+      perKg: r.temp_ongkir_per_kg == null ? null : Number(r.temp_ongkir_per_kg),
+      charged: Number(r.charged ?? 0),
+    })
   }
   return map
 }

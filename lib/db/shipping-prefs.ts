@@ -6,6 +6,7 @@ import { normalizeId } from "./helpers"
 import { holdPackingList, releasePackingList } from "./fulfillment"
 import { sendInvoiceNotice } from "./notices"
 import { fillNotice, NOTICE_TEMPLATES, type NoticeKey } from "../notice-templates"
+import { priceRedirect } from "./redirect-ongkir"
 
 // The customer's own shipping choices for her events. See migration 105 for
 // the shape and why it is not on `shipments`.
@@ -24,6 +25,13 @@ export type ShippingPref = {
   /** The Biteship area chosen alongside it, when there is one. */
   tempAreaId: string | null
   tempAreaName: string | null
+  /** Who the courier should ask for. Empty means her own name and phone. */
+  tempName: string
+  tempPhone: string
+  /** The courier's rate per kg to the redirected area. Null when nothing is
+   *  redirected, or when the courier would not price it — and then nothing is
+   *  charged either. */
+  tempOngkirPerKg: number | null
 }
 
 /** Why an event cannot be chosen for, when it cannot. */
@@ -43,6 +51,9 @@ type PrefRow = {
   temp_address: string | null
   temp_area_id: string | null
   temp_area_name: string | null
+  temp_name: string | null
+  temp_phone: string | null
+  temp_ongkir_per_kg: number | null
 }
 
 const toPref = (r: PrefRow): ShippingPref => ({
@@ -53,6 +64,11 @@ const toPref = (r: PrefRow): ShippingPref => ({
   tempAddress: r.temp_address,
   tempAreaId: r.temp_area_id,
   tempAreaName: r.temp_area_name,
+  // Empty means "her own", which is what every redirect before these columns
+  // existed meant.
+  tempName: r.temp_name ?? "",
+  tempPhone: r.temp_phone ?? "",
+  tempOngkirPerKg: r.temp_ongkir_per_kg ?? null,
 })
 
 export async function getShippingPrefs(
@@ -60,7 +76,8 @@ export async function getShippingPrefs(
   db: postgres.Sql | DBExecutor = sql,
 ): Promise<ShippingPref[]> {
   const rows = await db<PrefRow[]>`
-    SELECT event, mode, set_by, merge_key, temp_address, temp_area_id, temp_area_name
+    SELECT event, mode, set_by, merge_key, temp_address, temp_area_id, temp_area_name,
+           temp_name, temp_phone, temp_ongkir_per_kg
       FROM customer_shipping_prefs
      WHERE customer_id = ${customerId}
   `
@@ -477,7 +494,15 @@ export async function setMergeGroup(
 export async function setTempAddress(
   customerId: number,
   event: string,
-  input: { address: string; areaId?: string | null; areaName?: string | null },
+  input: {
+    address: string
+    areaId?: string | null
+    areaName?: string | null
+    /** Who the courier should ask for. Empty keeps her own name and phone,
+     *  which is what a redirect to her mother's house should not do. */
+    name?: string | null
+    phone?: string | null
+  },
   db: DBExecutor = sql,
   /** Who recorded it. The shop writing down what she said on WhatsApp is not
    *  the customer choosing from her own page. */
@@ -492,13 +517,28 @@ export async function setTempAddress(
   const value = input.address.trim() ? input.address.trim() : null
   const areaId = value && input.areaId?.trim() ? input.areaId.trim() : null
   const areaName = value && areaId && input.areaName?.trim() ? input.areaName.trim() : null
+  // The recipient belongs to the redirect: clearing the address clears who it
+  // was going to, or a later redirect inherits a stranger's name.
+  const name = value ? String(input.name ?? "").trim().slice(0, 300) : ""
+  const phone = value ? String(input.phone ?? "").trim().slice(0, 60) : ""
   await db`
-    INSERT INTO customer_shipping_prefs (customer_id, event, temp_address, temp_area_id, temp_area_name, set_by)
-    VALUES (${customerId}, ${event}, ${value}, ${areaId}, ${areaName}, ${setBy})
+    INSERT INTO customer_shipping_prefs (customer_id, event, temp_address, temp_area_id,
+                                         temp_area_name, temp_name, temp_phone, set_by)
+    VALUES (${customerId}, ${event}, ${value}, ${areaId}, ${areaName}, ${name}, ${phone}, ${setBy})
     ON CONFLICT (customer_id, event)
     DO UPDATE SET temp_address = ${value}, temp_area_id = ${areaId},
-                  temp_area_name = ${areaName}, set_by = ${setBy}, updated_at = NOW()
+                  temp_area_name = ${areaName}, temp_name = ${name}, temp_phone = ${phone},
+                  set_by = ${setBy}, updated_at = NOW()
   `
+
+  // What it costs to send there, charged as an ordinary automatic adjustment.
+  // Never allowed to fail the redirect: she asked for her parcel to go
+  // somewhere, and a courier API having a bad minute is not an answer to that.
+  try {
+    await priceRedirect(customerId, event, db)
+  } catch (err) {
+    console.error("Failed to price a redirect:", err)
+  }
 }
 
 /** Staff view: what this customer has asked for, by event. */
@@ -508,7 +548,8 @@ export async function shippingPrefsForCustomer(
 ): Promise<ShippingPref[]> {
   const key = normalizeId(instagramId)
   const rows = await db<PrefRow[]>`
-    SELECT sp.event, sp.mode, sp.set_by, sp.merge_key, sp.temp_address, sp.temp_area_id, sp.temp_area_name
+    SELECT sp.event, sp.mode, sp.set_by, sp.merge_key, sp.temp_address, sp.temp_area_id,
+           sp.temp_area_name, sp.temp_name, sp.temp_phone, sp.temp_ongkir_per_kg
       FROM customer_shipping_prefs sp
       JOIN customers c ON c.id = sp.customer_id
      WHERE lower(replace(c.instagram_id, '@', '')) = ${key}

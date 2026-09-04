@@ -114,7 +114,11 @@ export async function POST(req: NextRequest) {
       // that arrives with a novel-length "area" is not a picker result.
       const areaId = String(body.areaId ?? "").slice(0, MAX_ADDRESS)
       const areaName = String(body.areaName ?? "").slice(0, MAX_ADDRESS)
-      await setTempAddress(customer.id, event, { address, areaId, areaName })
+      // Who the courier should ask for. A redirect to her mother's house wants
+      // her mother's name and the phone that will actually be answered.
+      const name = String(body.name ?? "").slice(0, MAX_ADDRESS)
+      const phone = String(body.phone ?? "").slice(0, 60)
+      await setTempAddress(customer.id, event, { address, areaId, areaName, name, phone })
     } else {
       return NextResponse.json({ error: "Unknown action" }, { status: 400, headers: corsHeaders() })
     }
