@@ -11,6 +11,7 @@ import {
   unrejectCustomerPayment,
 } from "./catalogue-payments"
 import { getPublicInvoiceForCustomer } from "./invoice"
+import { togglePaymentChecked } from "./finance"
 
 // She reports what left her account; the shop confirms it against the bank.
 // The whole safety of this rests on one thing: a reported payment is a claim,
@@ -398,4 +399,36 @@ test("her own claims are marked as hers, so a warning can say so", async () => {
   const [row] = await sql<{ reported_by: string }[]>`
     SELECT reported_by FROM payments WHERE event = ${DUP_EVENT} ORDER BY id LIMIT 1`
   assert.equal(row.reported_by, "customer")
+})
+
+// ─── The tick tells her ──────────────────────────────────────────────────────
+
+test("finding her money in the statement is news she hears", async () => {
+  const { id } = await submitCustomerPayment({
+    handle, event: EVENT, amount: 123000, bank: "BCA", sender: "Sari",
+  })
+
+  const before = await sql<{ n: string }[]>`
+    SELECT count(*) AS n FROM announcements WHERE customer_id = ${customerId}`
+  await togglePaymentChecked(id, true)
+
+  const [notice] = await sql<{ title: string; body: string }[]>`
+    SELECT title, body FROM announcements WHERE customer_id = ${customerId} ORDER BY id DESC LIMIT 1`
+  assert.match(notice.title, /confirmed/i)
+  assert.match(notice.body, /123\.000/, "the figure she transferred, as she wrote it")
+  assert.match(notice.body, new RegExp(EVENT), "and which trip it was for")
+
+  // Ticking what is already ticked is not news. A double click, or a screen
+  // that had not caught up, must not tell her twice.
+  await togglePaymentChecked(id, true)
+  const [{ n: after }] = await sql<{ n: string }[]>`
+    SELECT count(*) AS n FROM announcements WHERE customer_id = ${customerId}`
+  assert.equal(Number(after), Number(before[0].n) + 1, "one tick, one notice")
+
+  // And taking the tick back says nothing at all: it is the shop correcting
+  // itself, not something she did.
+  await togglePaymentChecked(id, false)
+  const [{ n: undone }] = await sql<{ n: string }[]>`
+    SELECT count(*) AS n FROM announcements WHERE customer_id = ${customerId}`
+  assert.equal(Number(undone), Number(after))
 })

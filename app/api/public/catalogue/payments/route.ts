@@ -60,6 +60,7 @@ export async function POST(req: NextRequest) {
     bank?: unknown
     sender?: unknown
     confirmDuplicate?: unknown
+    receiptUrl?: unknown
   }
   try {
     body = JSON.parse(raw || "{}")
@@ -80,6 +81,7 @@ export async function POST(req: NextRequest) {
       bank: String(body.bank ?? ""),
       sender: String(body.sender ?? ""),
       confirmDuplicate: Boolean(body.confirmDuplicate),
+      receiptUrl: String(body.receiptUrl ?? ""),
     }, catalogueSql)
     return NextResponse.json({ ok: true, ...saved }, { headers: privateHeaders() })
   } catch (err) {

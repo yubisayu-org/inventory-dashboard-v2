@@ -637,6 +637,12 @@ export interface PaymentRow {
   kind: PaymentKind
   createdAt: string
   updatedAt: string
+  /** A photo of the transfer she chose to attach. Empty for most rows: the
+   *  shop matches on amount and sender name from the bank's own mutasi, so a
+   *  receipt is offered, never asked for. */
+  receiptUrl: string
+  /** 'customer' when she filed it herself from the catalogue. */
+  reportedBy: "shop" | "customer"
   /** When the shop said it could not confirm this payment. */
   rejectedAt: string | null
   /** Why, in words the customer reads. Empty unless rejectedAt is set. */
