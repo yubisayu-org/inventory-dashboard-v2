@@ -219,6 +219,26 @@ function blocks(reason: Ineligible | null, setBy: SetBy): boolean {
   return !(setBy === "shop" && reason === "unpaid")
 }
 
+/**
+ * The same question for a destination, where "unpaid" does not apply to anyone.
+ *
+ * A mode is a commitment: hold, send early, travel with another trip. It
+ * directs the shop's packing, and asking an unpaid customer not to direct it
+ * is what the payment bar is for.
+ *
+ * An address is a fact — where the parcel goes, and therefore what it costs.
+ * Gating it behind payment put the one input that decides her bill behind the
+ * bill. She had to pay for the items to unlock the address, then pay again for
+ * the ongkir the new address priced. The shop could always do it for her; this
+ * only stops the detour through WhatsApp.
+ *
+ * "shipped" and "unknown" still stop everyone: a parcel that has gone has a
+ * destination already, and it is not a preference any more.
+ */
+function blocksDestination(reason: Ineligible | null): boolean {
+  return Boolean(reason) && reason !== "unpaid"
+}
+
 export class ShippingPrefError extends Error {
   constructor(message: string) {
     super(message)
@@ -463,11 +483,11 @@ export async function setTempAddress(
    *  the customer choosing from her own page. */
   setBy: SetBy = "customer",
 ): Promise<void> {
-  // The payment bar is a rule about customers, and a redirect is usually asked
-  // for early -- before the trip is settled, often before anything has arrived.
-  // Refusing the shop there would refuse it exactly when it is useful.
+  // A redirect is usually asked for early -- before the trip is settled, often
+  // before anything has arrived -- so the payment bar does not apply here, to
+  // the shop or to her. See blocksDestination.
   const reason = await ineligibleReason(customerId, event, db)
-  if (blocks(reason, setBy)) throw new ShippingPrefError(reason!)
+  if (blocksDestination(reason)) throw new ShippingPrefError(reason!)
 
   const value = input.address.trim() ? input.address.trim() : null
   const areaId = value && input.areaId?.trim() ? input.areaId.trim() : null
