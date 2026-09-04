@@ -752,6 +752,27 @@ function CustomerCard({
             >
               {c.requestedAddress ? "Alamat lain diminta" : "+ Alamat lain"}
             </button>
+            {/* What the redirect did to her ongkir, readable without opening
+                the card. The amber one is the only one anybody has to act on,
+                and finding it by expanding forty cards is not finding it. */}
+            {c.requestedAddress && c.requestedOtherArea && (
+              c.requestedPerKg === null ? (
+                <span
+                  title="Kurir tidak memberi harga untuk area ini. Ongkir belum disesuaikan — cek manual."
+                  className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200"
+                >
+                  Ongkir belum
+                </span>
+              ) : c.requestedOngkirCharged !== 0 ? (
+                <span
+                  title={`Ongkir sudah disesuaikan otomatis: ${c.requestedOngkirCharged > 0 ? "+" : "−"}Rp ${Math.abs(c.requestedOngkirCharged).toLocaleString("id-ID")}`}
+                  className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200 tabular-nums"
+                >
+                  Ongkir {c.requestedOngkirCharged > 0 ? "+" : "−"}
+                  {Math.abs(c.requestedOngkirCharged).toLocaleString("id-ID")}
+                </span>
+              ) : null
+            )}
             {totalHold > 0 && c.status !== "hold" && (
               <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE.hold.cls}`}>
                 {STATUS_BADGE.hold.label}
@@ -1004,9 +1025,28 @@ function CustomerCard({
                     {c.requestedAddress}
                   </pre>
                   {c.requestedOtherArea && (
-                    <div className="text-[11px] text-amber-700 mt-1">
-                      Area berbeda dari alamat profilnya — ongkirnya mungkin tidak sama.
-                    </div>
+                    c.requestedPerKg === null ? (
+                      <div className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 mt-1">
+                        Kurir tidak memberi harga untuk area ini, jadi <b>ongkir belum
+                        disesuaikan</b> — masih pakai tarif area lamanya. Cek manual sebelum
+                        dikirim.
+                      </div>
+                    ) : c.requestedOngkirCharged !== 0 ? (
+                      <div className="text-[11px] text-green-700 bg-green-50 border border-green-200 rounded-lg px-2 py-1.5 mt-1">
+                        Ongkir sudah disesuaikan otomatis:{" "}
+                        <b className="tabular-nums">
+                          {c.requestedOngkirCharged > 0 ? "+" : "−"}Rp{" "}
+                          {Math.abs(c.requestedOngkirCharged).toLocaleString("id-ID")}
+                        </b>{" "}
+                        — Rp {c.requestedPerKg.toLocaleString("id-ID")}/kg ke area ini, biasanya
+                        Rp {c.ongkirPerKg.toLocaleString("id-ID")}/kg, paket ±{c.weightKg} kg.
+                        Sudah masuk tagihannya dan sudah diberitahukan.
+                      </div>
+                    ) : (
+                      <div className="text-[11px] text-muted mt-1">
+                        Area berbeda, tapi ongkirnya sama. Tidak ada perubahan tagihan.
+                      </div>
+                    )
                   )}
                 </div>
               )}
@@ -1297,10 +1337,18 @@ function ShipConfirmModal({
                       : "Alamat ini hanya untuk pengiriman ini. Alamat utama customer tidak berubah."}
                   </p>
                   {c.requestedOtherArea && tempAddress === requestedAddress && (
-                    <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 mt-1">
-                      Area-nya beda dari alamat utama. Ongkir yang tertagih masih pakai tarif area lamanya —
-                      cek dulu kalau selisihnya besar.
-                    </p>
+                    c.requestedPerKg === null ? (
+                      <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 mt-1">
+                        Kurir tidak memberi harga untuk area ini — ongkir masih pakai tarif area
+                        lamanya. Cek manual kalau selisihnya besar.
+                      </p>
+                    ) : c.requestedOngkirCharged !== 0 ? (
+                      <p className="text-[11px] text-green-700 bg-green-50 border border-green-200 rounded-lg px-2 py-1.5 mt-1 tabular-nums">
+                        Ongkir sudah disesuaikan: {c.requestedOngkirCharged > 0 ? "+" : "−"}Rp{" "}
+                        {Math.abs(c.requestedOngkirCharged).toLocaleString("id-ID")}. Tidak perlu
+                        ditambah manual.
+                      </p>
+                    ) : null
                   )}
                 </>
               ) : (

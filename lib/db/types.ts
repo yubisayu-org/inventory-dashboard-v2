@@ -384,6 +384,12 @@ export interface ShipCustomer {
    * match. Surfaced, never re-rated automatically.
    */
   requestedOtherArea: boolean
+  /** The courier's rate per kg to the redirected area. Null means it would not
+   *  quote one, and then nothing was charged for the redirect. */
+  requestedPerKg: number | null
+  /** What the redirect put on her invoice — positive when it cost more,
+   *  negative when the new area is cheaper, 0 when it changed nothing. */
+  requestedOngkirCharged: number
   /** She asked for the arrived part to go early, and it has not gone yet. */
   splitRequested: boolean
   /**
