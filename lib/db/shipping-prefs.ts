@@ -115,9 +115,12 @@ export async function ineligibleReason(
         FROM customers WHERE id = ${customerId}
     ),
     lines AS (
-      SELECT COALESCE(SUM(o.unit), 0) AS units,
+      -- Billed units: what she still owes for. A returned item stops
+      -- counting toward the bar that decides whether she may direct the
+      -- packing, because she is not being asked to pay for it.
+      SELECT COALESCE(SUM(GREATEST(o.unit - COALESCE(o.unit_returned, 0), 0)), 0) AS units,
              COALESCE(SUM(o.unit_ship), 0) AS shipped,
-             COALESCE(SUM(o.unit_price * o.unit), 0) AS subtotal
+             COALESCE(SUM(o.unit_price * GREATEST(o.unit - COALESCE(o.unit_returned, 0), 0)), 0) AS subtotal
         FROM orders o
         JOIN me ON lower(replace(o.customer, '@', '')) = me.cust_key
        WHERE o.event = ${event}

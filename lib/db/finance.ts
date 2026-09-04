@@ -1187,8 +1187,10 @@ export async function materializeOverpaymentRefunds(): Promise<RefundRow[]> {
       SELECT
         o.event,
         o.customer,
-        SUM(o.unit_price * o.unit) AS subtotal,
-        SUM(COALESCE(p.gram, 0) * o.unit) AS total_gram
+        -- Billed units, as everywhere else: an overpayment is measured
+        -- against what she owes, and she does not owe for what she sent back.
+        SUM(o.unit_price * GREATEST(o.unit - COALESCE(o.unit_returned, 0), 0)) AS subtotal,
+        SUM(COALESCE(p.gram, 0) * GREATEST(o.unit - COALESCE(o.unit_returned, 0), 0)) AS total_gram
       FROM orders o
       JOIN products p ON p.id = o.product_id
       GROUP BY o.event, o.customer
@@ -1329,9 +1331,11 @@ export async function getPaymentStatus(event?: string): Promise<PaymentStatusRow
         WITH order_aggregates AS (
           SELECT o.event AS event,
                  lower(replace(o.customer, '@', '')) AS cust_key,
-                 SUM(o.unit_price * o.unit) AS subtotal,
-                 SUM(o.unit) AS total_items,
-                 SUM(COALESCE(p.gram, 0) * o.unit) AS total_gram
+                 -- Billed units: goods she returned are hers no longer, and
+                 -- carry neither price nor weight. See migration 130.
+                 SUM(o.unit_price * GREATEST(o.unit - COALESCE(o.unit_returned, 0), 0)) AS subtotal,
+                 SUM(GREATEST(o.unit - COALESCE(o.unit_returned, 0), 0)) AS total_items,
+                 SUM(COALESCE(p.gram, 0) * GREATEST(o.unit - COALESCE(o.unit_returned, 0), 0)) AS total_gram
           FROM orders o
           JOIN products p ON p.id = o.product_id
           WHERE o.event = ${event}
@@ -1384,9 +1388,11 @@ export async function getPaymentStatus(event?: string): Promise<PaymentStatusRow
         WITH order_aggregates AS (
           SELECT o.event AS event,
                  lower(replace(o.customer, '@', '')) AS cust_key,
-                 SUM(o.unit_price * o.unit) AS subtotal,
-                 SUM(o.unit) AS total_items,
-                 SUM(COALESCE(p.gram, 0) * o.unit) AS total_gram
+                 -- Billed units: goods she returned are hers no longer, and
+                 -- carry neither price nor weight. See migration 130.
+                 SUM(o.unit_price * GREATEST(o.unit - COALESCE(o.unit_returned, 0), 0)) AS subtotal,
+                 SUM(GREATEST(o.unit - COALESCE(o.unit_returned, 0), 0)) AS total_items,
+                 SUM(COALESCE(p.gram, 0) * GREATEST(o.unit - COALESCE(o.unit_returned, 0), 0)) AS total_gram
           FROM orders o
           JOIN products p ON p.id = o.product_id
           GROUP BY o.event, lower(replace(o.customer, '@', ''))
