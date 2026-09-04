@@ -4,6 +4,13 @@ import { useCallback, useEffect, useState } from "react"
 import EventSelect from "@/components/EventSelect"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import { displayIg } from "@/lib/format"
+import {
+  applyNoticeOverrides,
+  NOTICE_TOKENS_FOR,
+  type NoticeKey,
+  type NoticeOverride,
+  type NoticeTemplate,
+} from "@/lib/notice-templates"
 
 type Announcement = {
   id: number
@@ -14,6 +21,23 @@ type Announcement = {
 
 const MAX_TITLE = 120
 const MAX_BODY = 4000
+
+/**
+ * The tokens a trip notice can actually answer for.
+ *
+ * Every recipient's own figures are known here, and nothing else is: an
+ * {amount} or a {refundAmount} belongs to one payment or one refund, not to
+ * forty people at once. A template needing one of those would send a sentence
+ * with a hole in it, so it is not offered.
+ */
+const TRIP_TOKENS = new Set(["{event}", "{customer}", "{total}", "{outstanding}"])
+
+function usableTemplates(overrides: Partial<Record<NoticeKey, NoticeOverride>> | null): NoticeTemplate[] {
+  return applyNoticeOverrides(overrides).filter(
+    (t) => t.key.startsWith("inbox_")
+      && (NOTICE_TOKENS_FOR[t.key] ?? []).every((token) => TRIP_TOKENS.has(token)),
+  )
+}
 
 const inputCls =
   "w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
@@ -244,7 +268,13 @@ export default function AnnouncementsClient() {
 
 // ─── Notice for one trip ─────────────────────────────────────────────────────
 
-type Recipient = { customer: string; units: number; unshipped: number }
+type Recipient = {
+  customer: string
+  units: number
+  unshipped: number
+  total: number
+  outstanding: number
+}
 
 /**
  * One notice, to everybody on one trip.
@@ -261,6 +291,8 @@ function TripNotice() {
   const options = useSheetOptions()
   const [event, setEvent] = useState("")
   const [skipShipped, setSkipShipped] = useState(true)
+  const [onlyUnpaid, setOnlyUnpaid] = useState(false)
+  const [templates, setTemplates] = useState<NoticeTemplate[]>([])
   const [title, setTitle] = useState("")
   const [body, setBody] = useState("")
   const [recipients, setRecipients] = useState<Recipient[] | null>(null)
@@ -273,8 +305,11 @@ function TripNotice() {
     if (!event) { setRecipients(null); return }
     let live = true
     setError("")
-    fetch(`/api/announcements/event?event=${encodeURIComponent(event)}&skipShipped=${skipShipped ? "1" : "0"}`,
-      { cache: "no-store" })
+    fetch(
+      `/api/announcements/event?event=${encodeURIComponent(event)}`
+        + `&skipShipped=${skipShipped ? "1" : "0"}&onlyUnpaid=${onlyUnpaid ? "1" : "0"}`,
+      { cache: "no-store" },
+    )
       .then((r) => r.json())
       .then((d: { recipients?: Recipient[]; error?: string }) => {
         if (!live) return
@@ -283,7 +318,17 @@ function TripNotice() {
       })
       .catch(() => { if (live) setError("Couldn't load who this would reach.") })
     return () => { live = false }
-  }, [event, skipShipped])
+  }, [event, skipShipped, onlyUnpaid])
+
+  // The owner's own wording, so what she edited in Settings is what she sends.
+  useEffect(() => {
+    fetch("/api/sheets/notice-templates", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d: { overrides?: Partial<Record<NoticeKey, NoticeOverride>> }) => {
+        setTemplates(usableTemplates(d.overrides ?? null))
+      })
+      .catch(() => setTemplates(usableTemplates(null)))
+  }, [])
 
   const ready = Boolean(event) && title.trim() !== "" && body.trim() !== "" && (recipients?.length ?? 0) > 0
 
@@ -294,7 +339,7 @@ function TripNotice() {
       const res = await fetch("/api/announcements/event", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ event, title, body, skipShipped }),
+        body: JSON.stringify({ event, title, body, skipShipped, onlyUnpaid }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error ?? "Failed to send")
@@ -327,16 +372,32 @@ function TripNotice() {
           <EventSelect value={event} onChange={(v) => { setEvent(v); setSentTo(null) }}
             events={options?.events ?? []} placeholder="Pick a trip" />
         </div>
-        <label className="flex items-start gap-2 md:pt-6">
-          <input type="checkbox" checked={skipShipped} disabled={sending}
-            onChange={(e) => setSkipShipped(e.target.checked)} className="accent-brand mt-0.5" />
-          <span className="text-xs text-muted-strong">
-            Skip whoever already has their parcel
-            <span className="block text-[11px] text-faint">
-              Their box is not in that cargo, so a delay is not their news.
+        <div className="flex flex-col gap-2 md:pt-6">
+          <label className="flex items-start gap-2">
+            <input type="checkbox" checked={skipShipped} disabled={sending}
+              onChange={(e) => setSkipShipped(e.target.checked)} className="accent-brand mt-0.5" />
+            <span className="text-xs text-muted-strong">
+              Skip whoever already has their parcel
+              <span className="block text-[11px] text-faint">
+                Their box is not in that cargo, so a delay is not their news.
+              </span>
             </span>
-          </span>
-        </label>
+          </label>
+          {/* A reminder is only news to somebody who owes. Sending it to a
+              customer who has paid is the fastest way to teach her to ignore
+              the next one. */}
+          <label className="flex items-start gap-2">
+            <input type="checkbox" checked={onlyUnpaid} disabled={sending}
+              onChange={(e) => { setOnlyUnpaid(e.target.checked); setSentTo(null) }}
+              className="accent-brand mt-0.5" />
+            <span className="text-xs text-muted-strong">
+              Only those who still owe
+              <span className="block text-[11px] text-faint">
+                For a payment reminder. Their own figures fill {"{outstanding}"}.
+              </span>
+            </span>
+          </label>
+        </div>
       </div>
 
       {event && recipients && (
@@ -354,6 +415,9 @@ function TripNotice() {
                     title={`${r.unshipped} of ${r.units} still to come`}
                     className="text-[11px] px-2 py-0.5 rounded-full bg-white border border-cream-border text-muted-strong">
                     {displayIg(r.customer)}
+                    {onlyUnpaid && r.outstanding > 0 && (
+                      <span className="text-faint"> · {r.outstanding.toLocaleString("id-ID")}</span>
+                    )}
                   </span>
                 ))}
               </div>
@@ -365,6 +429,41 @@ function TripNotice() {
               )}
             </>
           )}
+        </div>
+      )}
+
+      {/* A starting point, not a rail: what it writes is ordinary text she can
+          edit before sending, and the notice is hers either way. */}
+      {templates.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <label htmlFor="trip-template" className="text-xs text-muted">Start from a template</label>
+          <select
+            id="trip-template"
+            className={inputCls}
+            value=""
+            disabled={sending}
+            onChange={(e) => {
+              const picked = templates.find((t) => t.key === e.target.value)
+              if (!picked) return
+              setTitle(picked.title)
+              setBody(picked.body)
+              setSentTo(null)
+              // A reminder is for people who owe, so the filter follows the
+              // wording rather than waiting to be remembered.
+              if (picked.key === "inbox_waiting_payment" || picked.key === "inbox_invoice_due") {
+                setOnlyUnpaid(true)
+              }
+            }}
+          >
+            <option value="">Write it myself</option>
+            {templates.map((t) => (
+              <option key={t.key} value={t.key}>{t.label}</option>
+            ))}
+          </select>
+          <span className="text-[11px] text-faint">
+            Edited in Settings. {"{outstanding}"} and {"{total}"} fill with each person&apos;s own
+            figures, so one notice can name forty different amounts.
+          </span>
         </div>
       )}
 

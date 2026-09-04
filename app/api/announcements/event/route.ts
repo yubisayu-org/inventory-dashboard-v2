@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireOwner } from "@/lib/api"
 import { eventNoticeRecipients, notifyEventCustomers } from "@/lib/db/announcements"
 import { withActor } from "@/lib/db"
-import { fillNotice, unknownTokens } from "@/lib/notice-templates"
+import { unknownTokens } from "@/lib/notice-templates"
 
 // One notice to everybody on one trip. Owner-only, like the rest of
 // /api/announcements — guarded here rather than by middleware, whose matcher
@@ -26,9 +26,10 @@ export async function GET(req: NextRequest) {
   const event = req.nextUrl.searchParams.get("event")?.trim()
   if (!event) return NextResponse.json({ error: "event is required" }, { status: 400 })
   const skipShipped = req.nextUrl.searchParams.get("skipShipped") !== "0"
+  const onlyUnpaid = req.nextUrl.searchParams.get("onlyUnpaid") === "1"
 
   try {
-    const recipients = await eventNoticeRecipients(event, skipShipped)
+    const recipients = await eventNoticeRecipients(event, { skipShipped, onlyUnpaid })
     return NextResponse.json({ recipients })
   } catch (err) {
     console.error("Failed to list notice recipients:", err)
@@ -57,9 +58,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Message must be ${MAX_BODY} characters or fewer` }, { status: 400 })
     }
 
-    // {event} is the only token worth having here, and a placeholder she would
-    // read literally is worse than a shorter sentence — so a typo'd one stops
-    // the send rather than reaching forty inboxes.
+    // A placeholder she would read literally is worse than a shorter sentence,
+    // so a typo'd one stops the send rather than reaching forty inboxes.
     const bad = unknownTokens(`${title} ${text}`)
     if (bad.length) {
       return NextResponse.json(
@@ -67,12 +67,14 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       )
     }
-    const tokens = { "{event}": event }
 
+    // The tokens are filled per recipient, inside the send: {outstanding} has
+    // a different answer for each of them, and one figure sent to everybody
+    // would be right for one person and wrong for thirty-nine.
     const result = await withActor(session.user.email, (tx) => notifyEventCustomers(
       event,
-      { title: fillNotice(title, tokens), body: fillNotice(text, tokens) },
-      { skipShipped: body.skipShipped !== false },
+      { title, body: text },
+      { skipShipped: body.skipShipped !== false, onlyUnpaid: body.onlyUnpaid === true },
       tx,
     ))
     return NextResponse.json({ success: true, ...result })

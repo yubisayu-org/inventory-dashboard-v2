@@ -1,6 +1,7 @@
 import postgres from "postgres"
 import sql from "../db-pool"
 import type { DBExecutor } from "./actor"
+import { fillNotice } from "../notice-templates"
 import { normalizeId } from "./helpers"
 
 // Announcements the shop writes, and the per-customer read state that turns
@@ -75,27 +76,65 @@ export async function notifyCustomer(
  * `skipShipped` leaves out anyone whose every unit has already gone. Their
  * parcel is not in that cargo, and a delay notice they cannot act on is a false
  * alarm that costs the next real one its credibility.
+ *
+ * `onlyUnpaid` leaves out anyone who owes nothing, which is what a payment
+ * reminder is for. The figures come from live_balances rather than being
+ * summed here, so a reminder can never quote a different number from the
+ * invoice she opens after reading it.
  */
+export interface EventNoticeRecipient {
+  customer: string
+  units: number
+  unshipped: number
+  /** What this trip comes to for her, as her invoice states it. */
+  total: number
+  /** What is left on it. Zero or less means she owes nothing. */
+  outstanding: number
+}
+
+export interface EventNoticeFilters {
+  skipShipped?: boolean
+  onlyUnpaid?: boolean
+}
+
 export async function eventNoticeRecipients(
   event: string,
-  skipShipped = true,
+  filters: boolean | EventNoticeFilters = true,
   db: DBExecutor = sql,
-): Promise<{ customer: string; units: number; unshipped: number }[]> {
-  const rows = await db<{ customer: string; units: string; unshipped: string }[]>`
+): Promise<EventNoticeRecipient[]> {
+  // The boolean form is the older signature — skipShipped, and nothing else.
+  const { skipShipped = true, onlyUnpaid = false } =
+    typeof filters === "boolean" ? { skipShipped: filters } : filters
+
+  const rows = await db<
+    { customer: string; units: string; unshipped: string; total: string | null; outstanding: string | null }[]
+  >`
     SELECT c.instagram_id AS customer,
            SUM(o.unit)::int AS units,
-           SUM(GREATEST(o.unit - COALESCE(o.unit_ship, 0), 0))::int AS unshipped
+           SUM(GREATEST(o.unit - COALESCE(o.unit_ship, 0), 0))::int AS unshipped,
+           MAX(b.invoice_total) AS total,
+           MAX(b.balance) AS outstanding
       FROM orders o
       JOIN customers c
         ON lower(replace(c.instagram_id, '@', '')) = lower(replace(o.customer, '@', ''))
+      LEFT JOIN live_balances b
+        ON b.event = o.event
+       AND lower(replace(b.customer, '@', '')) = lower(replace(o.customer, '@', ''))
      WHERE o.event = ${event}
        AND o.unit > 0
      GROUP BY c.instagram_id
      ORDER BY c.instagram_id
   `
   return rows
-    .map((r) => ({ customer: r.customer, units: Number(r.units), unshipped: Number(r.unshipped) }))
+    .map((r) => ({
+      customer: r.customer,
+      units: Number(r.units),
+      unshipped: Number(r.unshipped),
+      total: Number(r.total ?? 0),
+      outstanding: Number(r.outstanding ?? 0),
+    }))
     .filter((r) => (skipShipped ? r.unshipped > 0 : true))
+    .filter((r) => (onlyUnpaid ? r.outstanding > 0 : true))
 }
 
 /**
@@ -107,22 +146,44 @@ export async function eventNoticeRecipients(
  * rest, or worse, the other way round.
  *
  * Written in one statement so a delay notice cannot reach half a trip.
+ *
+ * The wording is filled per person, not once for everybody: a reminder that
+ * says "{outstanding} is still outstanding" has to name her figure, and one
+ * that names the first recipient's is worse than one that names nobody's.
+ * {event} and {customer} fill the same way, so a single notice can greet
+ * forty people by name.
  */
 export async function notifyEventCustomers(
   event: string,
   notice: { title: string; body: string },
-  opts: { skipShipped?: boolean } = {},
+  opts: EventNoticeFilters = {},
   db: DBExecutor = sql,
 ): Promise<{ sent: number; customers: string[] }> {
-  const recipients = await eventNoticeRecipients(event, opts.skipShipped ?? true, db)
+  const recipients = await eventNoticeRecipients(event, opts, db)
   if (recipients.length === 0) return { sent: 0, customers: [] }
 
   const keys = recipients.map((r) => r.customer)
+  const titles: string[] = []
+  const bodies: string[] = []
+  for (const r of recipients) {
+    const tokens = {
+      "{event}": event,
+      "{customer}": r.customer,
+      "{total}": `Rp ${r.total.toLocaleString("id-ID")}`,
+      "{outstanding}": `Rp ${Math.max(0, r.outstanding).toLocaleString("id-ID")}`,
+    }
+    titles.push(fillNotice(notice.title, tokens).trim())
+    bodies.push(fillNotice(notice.body, tokens).trim())
+  }
+
+  // Still one statement, so a notice cannot reach half a trip — the three
+  // arrays travel together and are matched back to a customer by position.
   await db`
     INSERT INTO announcements (title, body, kind, customer_id)
-    SELECT ${notice.title.trim()}, ${notice.body.trim()}, 'shipping', c.id
-      FROM customers c
-     WHERE c.instagram_id = ANY(${keys})
+    SELECT t.title, t.body, 'shipping', c.id
+      FROM unnest(${titles}::text[], ${bodies}::text[], ${keys}::text[])
+        AS t(title, body, handle)
+      JOIN customers c ON c.instagram_id = t.handle
   `
   return { sent: keys.length, customers: keys }
 }
