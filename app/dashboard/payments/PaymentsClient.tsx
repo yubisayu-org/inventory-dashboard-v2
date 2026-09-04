@@ -334,14 +334,20 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
         row.original.rejectedAt ? (
           // A refused row has been decided. Offering a tick beside it invites
           // the one action that would contradict the reason already sent.
+          // Drawn as the checkbox's own size and shape, because it sits in the
+          // checkbox's column and means the other answer to the same question.
+          // A pill of text beside a box read as a different kind of control.
           <button
             type="button"
             title={`Rejected: ${row.original.rejectReason}. Click to undo.`}
             onClick={() => handleUnreject(row.original)}
             disabled={isAdmin}
-            className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-red-50 text-red-700 disabled:cursor-default"
+            aria-label="Rejected — click to undo"
+            className="inline-grid place-items-center align-middle h-3.5 w-3.5 rounded-[3px] border border-red-300 bg-red-50 text-red-600 hover:border-red-400 disabled:cursor-default"
           >
-            ✕
+            <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" aria-hidden="true">
+              <path d="M6 6l12 12M18 6 6 18" />
+            </svg>
           </button>
         ) : (
           <input
@@ -349,7 +355,9 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
             checked={row.original.isChecked}
             onChange={() => handleToggleCheck(row.original)}
             disabled={isAdmin}
-            className={`accent-brand ${isAdmin ? "cursor-default" : "cursor-pointer"}`}
+            // Sized explicitly rather than left to the browser, so the refused
+            // mark beside it can be drawn to match.
+            className={`h-3.5 w-3.5 align-middle accent-brand ${isAdmin ? "cursor-default" : "cursor-pointer"}`}
           />
         )
       ),
@@ -649,6 +657,8 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
               row={row}
               isAdmin={isAdmin}
               onToggleCheck={() => handleToggleCheck(row)}
+              onReject={() => setRejectingRow(row)}
+              onUnreject={() => handleUnreject(row)}
               onEdit={() => setEditingRow(row)}
             />
           ))
@@ -1165,11 +1175,18 @@ function PaymentCard({
   row,
   isAdmin,
   onToggleCheck,
+  onReject,
+  onUnreject,
   onEdit,
 }: {
   row: PaymentRow
   isAdmin: boolean
   onToggleCheck: () => void
+  /** Could not find the money. The same decision the table offers, which this
+   *  card had no way to make — a phone was a screen for reading payments and
+   *  not for answering them. */
+  onReject: () => void
+  onUnreject: () => void
   onEdit: () => void
 }) {
   return (
@@ -1182,22 +1199,65 @@ function PaymentCard({
           <div className="text-sm font-semibold text-foreground uppercase truncate">{displayIg(row.customer)}</div>
           <div className="text-xs text-muted mt-2 truncate uppercase">{row.remarks}</div>
         </div>
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); onToggleCheck() }}
-          disabled={isAdmin}
-          aria-label={row.isChecked ? "Tandai belum dicek" : "Tandai sudah dicek"}
-          className={`shrink-0 p-1 rounded-lg transition-colors ${
-            row.isChecked
-              ? "bg-green-100 text-green-700 active:bg-green-200"
-              : "text-faint active:bg-cream"
-          } ${isAdmin ? "cursor-default" : "cursor-pointer"}`}
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="20 6 9 17 4 12" />
-          </svg>
-        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          {row.rejectedAt ? (
+            // A refused row has been decided, so the tick is not on offer:
+            // ticking it would contradict the reason already sent to her.
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onUnreject() }}
+              disabled={isAdmin}
+              aria-label="Ditolak — ketuk untuk batalkan"
+              className={`p-1 rounded-lg bg-red-50 text-red-600 transition-colors ${
+                isAdmin ? "cursor-default" : "cursor-pointer active:bg-red-100"
+              }`}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <path d="M6 6l12 12M18 6 6 18" />
+              </svg>
+            </button>
+          ) : (
+            <>
+              {/* Only while it is still a question. A payment already ticked is
+                  money found, and refusing it is an edit, not a decision. */}
+              {!row.isChecked && !isAdmin && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onReject() }}
+                  aria-label="Tidak ketemu uangnya"
+                  className="p-1 rounded-lg text-faint active:bg-cream transition-colors"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                    <circle cx="12" cy="12" r="9" />
+                    <path d="M15 9l-6 6M9 9l6 6" />
+                  </svg>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onToggleCheck() }}
+                disabled={isAdmin}
+                aria-label={row.isChecked ? "Tandai belum dicek" : "Tandai sudah dicek"}
+                className={`p-1 rounded-lg transition-colors ${
+                  row.isChecked
+                    ? "bg-green-100 text-green-700 active:bg-green-200"
+                    : "text-faint active:bg-cream"
+                } ${isAdmin ? "cursor-default" : "cursor-pointer"}`}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              </button>
+            </>
+          )}
+        </div>
       </div>
+
+      {row.rejectedAt && row.rejectReason && (
+        <div className="text-[11px] text-red-700 bg-red-50 border border-red-100 rounded-lg px-2 py-1">
+          {row.rejectReason}
+        </div>
+      )}
 
       <div className="flex items-center justify-between gap-3 border-t border-cream-border pt-2">
         <div className="text-xs text-faint uppercase truncate min-w-0">{row.event} · {formatDate(row.payDate)}{row.account ? ` · ${row.account}` : ""}</div>
@@ -1431,7 +1491,9 @@ function RejectPaymentModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-      <div className="w-full max-w-md rounded-2xl bg-white border border-cream-border p-5 space-y-3">
+      {/* Reachable from a phone now, where the whole dialog has to fit above
+          the keyboard — six reasons and a note is taller than a small screen. */}
+      <div className="w-full max-w-md max-h-[88vh] overflow-y-auto rounded-2xl bg-white border border-cream-border p-5 space-y-3">
         <div>
           <h3 className="text-base font-bold">Could not confirm</h3>
           <p className="text-xs text-muted mt-0.5">
