@@ -21,7 +21,7 @@ import {
   type NoticeTemplate,
   type NoticeTokens,
 } from "@/lib/notice-templates"
-import { DEFAULT_BUSINESS_PROFILE, type BusinessProfile } from "@/lib/business-profile"
+import { DEFAULT_BUSINESS_PROFILE, type BusinessProfile, type QrisSettings } from "@/lib/business-profile"
 import { DEFAULT_PRODUCT_DEFAULTS, type ProductDefaults } from "@/lib/product-defaults"
 import {
   PRICING_METHODS, PRICING_METHOD_LABEL, toPricingMethod,
@@ -191,6 +191,7 @@ function BusinessProfileSection() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
+  const [uploading, setUploading] = useState(false)
 
   useEffect(() => {
     fetch("/api/sheets/business-profile", { cache: "no-store" })
@@ -234,6 +235,27 @@ function BusinessProfileSection() {
 
   function field(key: keyof BusinessProfile, value: string) {
     setProfile((p) => (p ? { ...p, [key]: value } : p))
+  }
+
+  function qrisField<K extends keyof QrisSettings>(key: K, value: QrisSettings[K]) {
+    setProfile((p) => (p ? { ...p, qris: { ...p.qris, [key]: value } } : p))
+  }
+
+  async function handleQrisUpload(file: File) {
+    setUploading(true)
+    setError(null)
+    try {
+      const form = new FormData()
+      form.append("file", file)
+      const res = await fetch("/api/sheets/qris-image", { method: "POST", body: form })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "Upload failed")
+      qrisField("imageUrl", data.url as string)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed")
+    } finally {
+      setUploading(false)
+    }
   }
 
   return (
@@ -368,8 +390,141 @@ function BusinessProfileSection() {
           </div>
         </div>
       )}
+
+      {/* QRIS — the second way a customer may pay, on the catalogue's Add
+          payment sheet. Same card and same Save as the bank details above,
+          because it is the same row of the same table and a second Save is a
+          second thing to forget. The image is the exception: it uploads the
+          moment it is chosen, since a file cannot sit in a JSON PATCH. */}
+      {profile && (
+        <div className="flex flex-col gap-2 pt-3 border-t border-cream-border">
+          <div>
+            <h3 className="text-xs font-semibold text-foreground">QRIS</h3>
+            <p className="text-[10px] text-faint">
+              Offered beside the bank transfer when every ceiling below allows it. An empty
+              ceiling means no limit.{" "}
+              <span className="text-muted">Press Save at the top of this card to keep the change.</span>
+            </p>
+          </div>
+
+          <label className="flex items-center gap-2 text-xs text-foreground">
+            <input
+              type="checkbox"
+              checked={profile.qris.enabled}
+              disabled={!profile.qris.imageUrl}
+              onChange={(e) => qrisField("enabled", e.target.checked)}
+              className="accent-brand"
+            />
+            Offer QRIS to customers
+            {!profile.qris.imageUrl && (
+              <span className="text-[10px] text-faint">— upload the QR first</span>
+            )}
+          </label>
+
+          <div className="flex items-start gap-3 border border-dashed border-cream-border rounded-lg p-3">
+            {profile.qris.imageUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={profile.qris.imageUrl}
+                alt="The shop's QRIS code"
+                className="w-24 h-24 object-contain bg-white rounded border border-cream-border"
+              />
+            ) : (
+              <div className="w-24 h-24 grid place-items-center rounded border border-cream-border text-[10px] text-faint text-center px-2">
+                No QR yet
+              </div>
+            )}
+            <div className="flex flex-col gap-1 text-[10px] text-faint">
+              <span className="text-xs text-muted">The static QR from your merchant account.</span>
+              <span>
+                Customers scan this to pay. Replace it whenever your acquirer reissues one — and
+                check the picture above is yours before saving.
+              </span>
+              <label className="inline-flex w-fit items-center text-xs font-medium px-3 py-1.5 mt-1 rounded-lg border border-cream-border text-brand hover:border-brand transition-colors cursor-pointer">
+                {uploading ? "Uploading…" : profile.qris.imageUrl ? "Replace image" : "Upload image"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  disabled={uploading}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    // Cleared so choosing the same file twice still fires a change.
+                    e.target.value = ""
+                    if (file) void handleQrisUpload(file)
+                  }}
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-muted">Merchant name on the QR</span>
+              <span className="text-[10px] text-faint">
+                Shown to her so she can check it before confirming — the one thing that catches a
+                swapped QR.
+              </span>
+              <input
+                value={profile.qris.merchantName}
+                onChange={(e) => qrisField("merchantName", e.target.value)}
+                className={fieldInputCls}
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-muted">Most per payment</span>
+              <span className="text-[10px] text-faint">One scan may be exactly this much, not more.</span>
+              <input
+                value={formatCeiling(profile.qris.maxPerPayment)}
+                inputMode="numeric"
+                onChange={(e) => qrisField("maxPerPayment", readCeiling(e.target.value))}
+                className={fieldInputCls}
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-muted">Most per order</span>
+              <span className="text-[10px] text-faint">
+                Every QRIS scan on one order, added up. Without this she can split an order into
+                small scans and put all of it through QRIS.
+              </span>
+              <input
+                value={formatCeiling(profile.qris.maxPerOrder)}
+                inputMode="numeric"
+                onChange={(e) => qrisField("maxPerOrder", readCeiling(e.target.value))}
+                className={fieldInputCls}
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-muted">Most per year</span>
+              <span className="text-[10px] text-faint">
+                A rolling twelve months, counting payments staff record by hand too. QRIS stops
+                being offered once it is reached.
+              </span>
+              <input
+                value={formatCeiling(profile.qris.maxPerYear)}
+                inputMode="numeric"
+                onChange={(e) => qrisField("maxPerYear", readCeiling(e.target.value))}
+                className={fieldInputCls}
+              />
+            </label>
+          </div>
+        </div>
+      )}
     </div>
   )
+}
+
+/** A ceiling as she reads it, with the shop's thousands dots. 0 is the off
+ *  position, and an off ceiling shows as an empty field rather than a zero
+ *  she would have to interpret. */
+function formatCeiling(n: number): string {
+  return n > 0 ? n.toLocaleString("id-ID") : ""
+}
+
+/** …and back again. Anything that is not a digit is not part of a number. */
+function readCeiling(value: string): number {
+  const digits = value.replace(/\D/g, "")
+  return digits ? Number(digits) : 0
 }
 
 /**

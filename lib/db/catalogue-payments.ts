@@ -34,6 +34,111 @@ export interface PayableBank {
   number: string
 }
 
+/**
+ * QRIS as the customer is offered it — or nothing at all.
+ *
+ * Two ceilings travel to her browser and one does not. Per payment and per
+ * order are hers to respect while she fills the form, so the sheet needs them
+ * to grey the button before she wastes a scan. The yearly ceiling is the
+ * shop's turnover, and how close the year has come to it is nobody's business
+ * but the shop's — so when that ceiling is reached, QRIS is simply not
+ * offered, with no figure attached.
+ */
+export interface QrisOffer {
+  imageUrl: string
+  merchantName: string
+  /** 0 means no ceiling. Inclusive: 100000 allows exactly 100.000. */
+  maxPerPayment: number
+  maxPerOrder: number
+}
+
+/** What one payment row has to be to count as QRIS money coming in. */
+const QRIS = "QRIS"
+
+interface QrisConfigRow {
+  qris_enabled: boolean
+  qris_image_url: string
+  qris_merchant_name: string
+  qris_max_per_payment: string
+  qris_max_per_order: string
+  qris_max_per_year: string
+}
+
+async function qrisConfig(db: DBExecutor): Promise<QrisConfigRow | null> {
+  const [row] = await db<QrisConfigRow[]>`
+    SELECT qris_enabled, qris_image_url, qris_merchant_name,
+           qris_max_per_payment, qris_max_per_order, qris_max_per_year
+      FROM business_profile ORDER BY id LIMIT 1
+  `
+  if (!row || !row.qris_enabled || !row.qris_image_url) return null
+  return row
+}
+
+/**
+ * What the shop has taken through QRIS in the last twelve months.
+ *
+ * Rolling, not calendar: a payment thirteen months old drops out on its own
+ * and gives the allowance back, so nothing has to reset in January.
+ *
+ * Verified only, and staff-entered rows count as much as customer claims —
+ * a scan the shop typed in itself is the shop's QRIS turnover just the same,
+ * and it is turnover that decides how the acquirer classifies the merchant.
+ * Refunds are not subtracted: money going back out is a separate transfer,
+ * not an undoing of the transaction that was counted.
+ */
+async function qrisTakenThisYear(db: DBExecutor): Promise<number> {
+  const [row] = await db<{ total: string | null }[]>`
+    SELECT SUM(amount) AS total
+      FROM payments
+     WHERE account = ${QRIS}
+       AND kind = 'deposit'
+       AND is_checked
+       AND rejected_at IS NULL
+       AND pay_date >= CURRENT_DATE - INTERVAL '12 months'
+  `
+  return Number(row?.total ?? 0)
+}
+
+/** What this order has already put through QRIS, whether or not anyone has
+ *  checked it yet. A claim nobody has ticked still holds its space — without
+ *  that, three scans in one minute all pass, because none of them had been
+ *  ticked when the next was filed. A refusal frees the room again: nothing
+ *  was taken. */
+async function qrisOnOrder(event: string, customer: string, db: DBExecutor): Promise<number> {
+  const [row] = await db<{ total: string | null }[]>`
+    SELECT SUM(amount) AS total
+      FROM payments
+     WHERE event = ${event}
+       AND lower(replace(customer, '@', '')) = ${normalizeId(customer)}
+       AND account = ${QRIS}
+       AND kind = 'deposit'
+       AND rejected_at IS NULL
+  `
+  return Number(row?.total ?? 0)
+}
+
+/**
+ * The QR to show her, or null when QRIS is not on offer.
+ *
+ * Null covers every reason at once — switched off, no image uploaded, the
+ * year's ceiling spent — because the sheet does the same thing in all three
+ * cases and she is owed no explanation of the shop's turnover.
+ */
+export async function getQrisOffer(db: DBExecutor = sql): Promise<QrisOffer | null> {
+  const row = await qrisConfig(db)
+  if (!row) return null
+
+  const maxPerYear = Number(row.qris_max_per_year)
+  if (maxPerYear > 0 && (await qrisTakenThisYear(db)) >= maxPerYear) return null
+
+  return {
+    imageUrl: row.qris_image_url,
+    merchantName: row.qris_merchant_name,
+    maxPerPayment: Number(row.qris_max_per_payment),
+    maxPerOrder: Number(row.qris_max_per_order),
+  }
+}
+
 function statusOf(row: { is_checked: boolean; rejected_at: Date | null }): CustomerPaymentStatus {
   if (row.rejected_at) return "rejected"
   return row.is_checked ? "verified" : "pending"
@@ -118,6 +223,53 @@ export async function getCustomerPayments(
   }))
 }
 
+/** Rupiah as the shop writes them, for a message she has to act on. */
+function rupiah(n: number): string {
+  return `Rp ${n.toLocaleString("id-ID")}`
+}
+
+/**
+ * Refuses a QRIS claim that would break any of the three ceilings.
+ *
+ * The per-payment ceiling keeps one scan small. The per-order ceiling closes
+ * what the per-payment one leaves open — the amount field is hers to edit, so
+ * without it a whole order goes through QRIS in several small scans and no
+ * single claim ever breaks a rule. The yearly ceiling is the one that bounds
+ * the shop's turnover, and its message says only that QRIS is unavailable:
+ * the figures behind it are the shop's business.
+ */
+async function refuseIfOverQrisCeiling(
+  event: string,
+  customer: string,
+  amount: number,
+  db: DBExecutor,
+): Promise<void> {
+  const row = await qrisConfig(db)
+  if (!row) throw new Error("QRIS sedang tidak tersedia. Silakan transfer bank.")
+
+  const perPayment = Number(row.qris_max_per_payment)
+  if (perPayment > 0 && amount > perPayment) {
+    throw new Error(`QRIS hanya untuk pembayaran sampai ${rupiah(perPayment)}`)
+  }
+
+  const perOrder = Number(row.qris_max_per_order)
+  if (perOrder > 0) {
+    const used = await qrisOnOrder(event, customer, db)
+    if (used + amount > perOrder) {
+      throw new Error(
+        used > 0
+          ? `${rupiah(used)} dari pesanan ini sudah lewat QRIS. Sisanya silakan transfer bank.`
+          : `QRIS untuk satu pesanan maksimal ${rupiah(perOrder)}`,
+      )
+    }
+  }
+
+  const perYear = Number(row.qris_max_per_year)
+  if (perYear > 0 && (await qrisTakenThisYear(db)) + amount > perYear) {
+    throw new Error("QRIS sedang tidak tersedia. Silakan transfer bank.")
+  }
+}
+
 /**
  * Record what she says she transferred.
  *
@@ -134,7 +286,10 @@ export async function submitCustomerPayment(
   db: DBExecutor = sql,
 ): Promise<{ id: number; amount: number }> {
   const amount = cleanAmount(input.amount)
-  const bank = String(input.bank ?? "").trim()
+  // "qris" typed in any case is the same destination, and it is stored the one
+  // way the dashboard's account list already spells it.
+  const raw = String(input.bank ?? "").trim()
+  const bank = raw.toUpperCase() === QRIS ? QRIS : raw
   const sender = String(input.sender ?? "").trim()
   if (!bank) throw new Error("Pilih bank tujuan transfer")
   if (!sender) throw new Error("Isi nama rekening pengirim")
@@ -149,6 +304,11 @@ export async function submitCustomerPayment(
      LIMIT 1
   `
   if (!order) throw new Error("Order tidak ditemukan")
+
+  // Every QRIS ceiling is checked again here. The browser greys the button,
+  // but the amount is the customer's own field on her own machine — what the
+  // sheet decided is a courtesy, and this is the rule.
+  if (bank === QRIS) await refuseIfOverQrisCeiling(input.event, order.customer, amount, db)
 
   const [row] = await db<{ id: number }[]>`
     INSERT INTO payments (event, customer, amount, account, remarks, pay_date, kind)
