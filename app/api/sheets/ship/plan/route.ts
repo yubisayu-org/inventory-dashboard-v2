@@ -47,16 +47,24 @@ export async function POST(req: NextRequest) {
     `) as unknown as { id: number }[]
     if (!row) return NextResponse.json({ error: "Unknown customer" }, { status: 404 })
 
-    // Where a parcel is going changes no plan and no price, so it neither
-    // reconciles nor returns an adjustment. She asks for it early -- often
-    // before anything has arrived -- and it waits on the trip until a box goes,
-    // which is what makes writing it down better than remembering it.
+    // Where a parcel is going changes no plan, but since the redirect prices
+    // itself it does change the bill: setTempAddress quotes the new area and
+    // writes the difference as an automatic adjustment, exactly as it does
+    // when she asks from her own page. Recording what she said on WhatsApp and
+    // her recording it herself must not cost different amounts.
+    //
+    // It still returns no adjustment to the caller, and reconciles nothing:
+    // the charge is written where every other automatic one is, and the Ship
+    // card reads it back from there.
     if (action === "address") {
       const address = typeof body.address === "string" ? body.address : ""
       const areaId = typeof body.areaId === "string" ? body.areaId : null
       const areaName = typeof body.areaName === "string" ? body.areaName : null
+      // Who the courier should ask for, when it is not her.
+      const name = typeof body.name === "string" ? body.name : ""
+      const phone = typeof body.phone === "string" ? body.phone : ""
       await withActor(session.user.email, (tx) =>
-        setTempAddress(row.id, events[0], { address, areaId, areaName }, tx, "shop"))
+        setTempAddress(row.id, events[0], { address, areaId, areaName, name, phone }, tx, "shop"))
       return NextResponse.json({ success: true })
     }
 

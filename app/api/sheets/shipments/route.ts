@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
 import { getShippingRecords, updateTrackingNumber, updateShipmentTempAddress, withActor } from "@/lib/db"
 import { recordChargedWeight } from "@/lib/db/parcel-plan"
+import { repriceShippedRedirect } from "@/lib/db/redirect-ongkir"
 
 // Default recent window (days) for the shipments list, so the payload stays
 // bounded as shipment history grows. `?days=all` loads the full history.
@@ -45,10 +46,23 @@ export async function PATCH(req: NextRequest) {
       trackingNumber?: string
       // null clears, string sets, undefined means "don't touch this field"
       tempAddress?: string | null
+      // The parts behind that label. An area is what makes a correction
+      // priceable, and what tells a street being retyped apart from a parcel
+      // going to another city.
+      areaId?: string
+      areaName?: string
+      name?: string
+      phone?: string
+      /** Charge the difference the new area makes. Never assumed: a person
+       *  decides whether the box really went somewhere else. */
+      repriceOngkir?: boolean
       // null clears a correction: the estimate was right after all.
       weightCharged?: number | null
     }
-    const { rowNumber, trackingNumber, tempAddress, weightCharged } = body
+    const {
+      rowNumber, trackingNumber, tempAddress, weightCharged,
+      areaId, areaName, name, phone, repriceOngkir,
+    } = body
     if (!rowNumber) {
       return NextResponse.json({ error: "rowNumber is required" }, { status: 400 })
     }
@@ -65,7 +79,18 @@ export async function PATCH(req: NextRequest) {
       if (tempAddress !== null && typeof tempAddress !== "string") {
         return NextResponse.json({ error: "tempAddress must be a string or null" }, { status: 400 })
       }
-      await withActor(session.user.email, (tx) => updateShipmentTempAddress(rowNumber, tempAddress, tx))
+      await withActor(session.user.email, (tx) => updateShipmentTempAddress(rowNumber, tempAddress, tx, {
+        areaId, areaName, name, phone,
+      }))
+
+      // Pressing Ship does not put the box on a van — the parcels are packed
+      // one at a time, and a customer asking for somewhere else in that gap is
+      // ordinary. So a corrected area re-prices, and only when somebody says
+      // so: the figure was shown to them before they pressed save.
+      if (repriceOngkir && tempAddress && areaId) {
+        await withActor(session.user.email, (tx) =>
+          repriceShippedRedirect(rowNumber, areaId, areaName ?? "", true, tx))
+      }
     }
     if (weightCharged !== undefined) {
       if (weightCharged !== null && (!Number.isInteger(weightCharged) || weightCharged < 1)) {

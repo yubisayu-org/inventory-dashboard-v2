@@ -10,6 +10,7 @@ import { getPaymentStatus, type PaymentStatus } from "./finance"
 import { fetchPaidStatusMap, compareOrderPriority, type PaidStatus } from "./shopping-list"
 import { appendExcessPurchase, reduceOrderRefundOnly } from "./orders"
 import { notifyCustomer } from "./announcements"
+import { finaliseRedirectCharge, settleRedirectCharge } from "./redirect-ongkir"
 
 /**
  * Refusal to ship a parcel that would be billed nothing.
@@ -186,6 +187,11 @@ function buildShipGroups(
       paymentStatus,
       requestedAddress: addressMap.get(`${customerKey}|${event}`)?.address ?? null,
       requestedOtherArea: addressMap.get(`${customerKey}|${event}`)?.otherArea ?? false,
+      requestedName: addressMap.get(`${customerKey}|${event}`)?.name ?? "",
+      requestedPhone: addressMap.get(`${customerKey}|${event}`)?.phone ?? "",
+      requestedStreet: addressMap.get(`${customerKey}|${event}`)?.street ?? "",
+      requestedAreaId: addressMap.get(`${customerKey}|${event}`)?.areaId ?? "",
+      requestedAreaName: addressMap.get(`${customerKey}|${event}`)?.areaName ?? "",
       requestedPerKg: addressMap.get(`${customerKey}|${event}`)?.perKg ?? null,
       requestedOngkirCharged: addressMap.get(`${customerKey}|${event}`)?.charged ?? 0,
       splitRequested: askedSplit,
@@ -242,6 +248,14 @@ async function fetchCustomerDetails(customerIds: Set<string>): Promise<Map<strin
  */
 type RequestedAddress = {
   address: string
+  /** The same redirect in its parts, so the form that edits it can open on
+   *  exactly what is stored rather than on a composed line it has to take
+   *  apart again. */
+  name: string
+  phone: string
+  street: string
+  areaId: string
+  areaName: string
   otherArea: boolean
   /** The courier's rate to the redirected area, once one was got. Null when
    *  it would not price that area — and then nothing was charged. */
@@ -336,7 +350,7 @@ async function fetchRequestedAddresses(
   const rows = await sql`
     SELECT p.event,
            lower(replace(c.instagram_id, '@', '')) AS norm_cust,
-           p.temp_address, p.temp_area_name, p.temp_name, p.temp_phone,
+           p.temp_address, p.temp_area_id, p.temp_area_name, p.temp_name, p.temp_phone,
            p.temp_ongkir_per_kg,
            -- Her standing ongkir was priced for her own area, so a redirect to
            -- a different one is priced again and charged. What is surfaced now
@@ -369,6 +383,11 @@ async function fetchRequestedAddresses(
     ].filter(Boolean).join("\n")
     map.set(`${r.norm_cust}|${r.event}`, {
       address,
+      name: String(r.temp_name ?? ""),
+      phone: String(r.temp_phone ?? ""),
+      street: String(r.temp_address ?? ""),
+      areaId: String(r.temp_area_id ?? ""),
+      areaName: String(r.temp_area_name ?? ""),
       otherArea: Boolean(r.other_area),
       perKg: r.temp_ongkir_per_kg == null ? null : Number(r.temp_ongkir_per_kg),
       charged: Number(r.charged ?? 0),
@@ -537,7 +556,12 @@ async function clearHonouredRedirect(
   if (!used?.trim() || events.length === 0) return
   await db`
     UPDATE customer_shipping_prefs p
+       -- All of it, not half. The recipient and the quoted rate belong to the
+       -- redirect that has just been spent; left behind, the next one on this
+       -- trip would inherit somebody else's name and a rate for an area the
+       -- parcel is no longer going to.
        SET temp_address = NULL, temp_area_id = NULL, temp_area_name = NULL,
+           temp_name = '', temp_phone = '', temp_ongkir_per_kg = NULL,
            updated_at = NOW()
       FROM customers c
      WHERE c.id = p.customer_id
@@ -545,6 +569,14 @@ async function clearHonouredRedirect(
        AND lower(replace(c.instagram_id, '@', '')) = ${normalizeId(customer)}
        AND p.temp_address IS NOT NULL
   `
+
+  // And the money that redirect cost is now history: a box has gone to that
+  // address. Settling it stops a second redirect on the same trip — which is
+  // ordinary once an order is split — from rewriting the first parcel's charge
+  // and quietly refunding a delivery that really happened.
+  for (const event of events) {
+    await settleRedirectCharge(customer, event, db)
+  }
 }
 
 export async function shipCustomerOrders(params: ShipOrdersParams, actor?: string | null): Promise<{ shippingId: string }> {
@@ -588,9 +620,28 @@ export async function shipCustomerOrders(params: ShipOrdersParams, actor?: strin
     const billedKg = Math.ceil(weightKg)
     const ongkirTotal = ongkirPerKg * billedKg
 
+    // The redirect in its parts, copied onto the parcel it left with. The
+    // label text alone could be printed and not corrected: without an area,
+    // a change made while the boxes are still being packed could neither be
+    // priced nor even compared against what was priced.
+    const [redirectParts] = tempAddressValue?.trim()
+      ? await tx<{ area_id: string; area_name: string; name: string; phone: string }[]>`
+          SELECT COALESCE(sp.temp_area_id, '') AS area_id,
+                 COALESCE(sp.temp_area_name, '') AS area_name,
+                 COALESCE(sp.temp_name, '') AS name,
+                 COALESCE(sp.temp_phone, '') AS phone
+            FROM customer_shipping_prefs sp
+            JOIN customers c ON c.id = sp.customer_id
+           WHERE sp.event = ${event}
+             AND lower(replace(c.instagram_id, '@', '')) = ${normalizeId(customer)}`
+      : []
+
     await tx`
-      INSERT INTO shipments (event, customer, shipping_id, invoicing, weight_estimation, ongkir, ongkir_total, is_last_shipment, temp_address)
-      VALUES (${event}, ${customer}, ${shippingId}, ${invoicingText}, ${billedKg}, ${ongkirPerKg}, ${ongkirTotal}, true, ${tempAddressValue})
+      INSERT INTO shipments (event, customer, shipping_id, invoicing, weight_estimation, ongkir, ongkir_total, is_last_shipment,
+                             temp_address, temp_area_id, temp_area_name, temp_name, temp_phone)
+      VALUES (${event}, ${customer}, ${shippingId}, ${invoicingText}, ${billedKg}, ${ongkirPerKg}, ${ongkirTotal}, true,
+              ${tempAddressValue}, ${redirectParts?.area_id ?? ""}, ${redirectParts?.area_name ?? ""},
+              ${redirectParts?.name ?? ""}, ${redirectParts?.phone ?? ""})
     `
 
     for (const order of toShipRows) {
@@ -612,6 +663,11 @@ export async function shipCustomerOrders(params: ShipOrdersParams, actor?: strin
                                AND lower(replace(c.instagram_id, '@', '')) = ${normalizeId(customer)})`
     }
 
+    // Priced on the box that is actually leaving, at the kilos it is billed
+    // for, before the redirect is spent and the charge closed.
+    if (tempAddressValue?.trim()) {
+      await finaliseRedirectCharge(customer, event, billedKg, tx)
+    }
     await clearHonouredRedirect(customer, [event], tempAddressValue, tx)
 
     // Her inbox, in the same transaction: a parcel that shipped without a
@@ -887,7 +943,8 @@ export async function getShippingRecords(sinceDays?: number | null): Promise<Shi
     SELECT s.id, s.event, s.customer, c.name AS customer_name,
            s.shipping_id, s.invoicing,
            s.weight_estimation, s.weight_charged, s.ongkir, s.ongkir_total, s.is_last_shipment,
-           s.created_at, s.updated_at, s.tracking_number, s.merge_group, s.temp_address
+           s.created_at, s.updated_at, s.tracking_number, s.merge_group, s.temp_address,
+           s.temp_area_id, s.temp_area_name, s.temp_name, s.temp_phone
     FROM shipments s
     LEFT JOIN customers c ON c.instagram_id = s.customer
     WHERE s.shipping_id != ''
@@ -913,6 +970,10 @@ export async function getShippingRecords(sinceDays?: number | null): Promise<Shi
     trackingNumber: r.tracking_number ?? "",
     mergeGroup: r.merge_group ?? null,
     tempAddress: r.temp_address ?? null,
+    tempAreaId: (r.temp_area_id as string) ?? "",
+    tempAreaName: (r.temp_area_name as string) ?? "",
+    tempName: (r.temp_name as string) ?? "",
+    tempPhone: (r.temp_phone as string) ?? "",
   }))
 }
 
@@ -979,11 +1040,21 @@ export async function updateShipmentTempAddress(
   rowNumber: number,
   tempAddress: string | null,
   db: DBExecutor = sql,
+  /** The parts behind the label, when the caller has them. Without an area a
+   *  correction cannot be priced, which is the whole reason they are here. */
+  parts?: { areaId?: string; areaName?: string; name?: string; phone?: string },
 ): Promise<void> {
   const value = tempAddress && tempAddress.trim() ? tempAddress : null
+  // Clearing the address clears who it was for, exactly as it does on a
+  // redirect that has not shipped yet.
+  const areaId = value ? String(parts?.areaId ?? "") : ""
+  const areaName = value ? String(parts?.areaName ?? "") : ""
+  const name = value ? String(parts?.name ?? "") : ""
+  const phone = value ? String(parts?.phone ?? "") : ""
   await db`
     UPDATE shipments
-    SET temp_address = ${value}, updated_at = NOW()
+    SET temp_address = ${value}, temp_area_id = ${areaId}, temp_area_name = ${areaName},
+        temp_name = ${name}, temp_phone = ${phone}, updated_at = NOW()
     WHERE id = ${rowNumber}
        OR merge_group = (SELECT merge_group FROM shipments WHERE id = ${rowNumber} AND merge_group IS NOT NULL)
   `

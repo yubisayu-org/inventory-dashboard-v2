@@ -13,6 +13,7 @@ import type { ShipCustomer, ShipOrdersParams, ShipSegment, ShipStatus, ShipOrder
 import { normalizeId, parcelPlanExtra } from "@/lib/db/helpers"
 import { generateShippingLabel } from "@/lib/shipping-label"
 import { useModalDismiss } from "@/hooks/useModalDismiss"
+import { RedirectFields, type RedirectDraft } from "./RedirectFields"
 import { useResizableColumns } from "@/hooks/useResizableColumns"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import { useMessageTemplates } from "@/hooks/useMessageTemplates"
@@ -1072,6 +1073,21 @@ function CustomerCard({
           customer={c.customer}
           event={c.event}
           current={c.requestedAddress}
+          initial={{
+            name: c.requestedName,
+            phone: c.requestedPhone,
+            street: c.requestedStreet,
+            areaId: c.requestedAreaId,
+            areaName: c.requestedAreaName,
+          }}
+          // Who, not where: staff are writing down an address she has just
+          // given them, so her own street is not the useful starting point —
+          // but her name and number are, since most redirects still go to her.
+          profile={{
+            name: c.customerDetail?.name ?? "",
+            phone: c.customerDetail?.whatsapp ?? "",
+            street: "",
+          }}
           onClose={() => setAddressOpen(false)}
           onSaved={() => { setAddressOpen(false); onRefresh() }}
         />
@@ -1168,8 +1184,11 @@ function ShipConfirmModal({
   const profileAddress = c.customerDetail?.dataDiri ?? ""
   const requestedAddress = c.requestedAddress
   const [useTempAddress, setUseTempAddress] = useState(Boolean(requestedAddress))
-  const [tempAddress, setTempAddress] = useState(requestedAddress ?? profileAddress)
+  const [redirect, setRedirect] = useState<RedirectDraft | null>(null)
   const [pairedWarning, setPairedWarning] = useState<string[] | null>(null)
+  // What actually goes on the label: the redirect she is being sent to, or her
+  // own address when this box is not being redirected at all.
+  const tempAddress = redirect?.label ?? ""
   const toShipRows = c.orders.filter((o) => o.toShip > 0)
   const templates = useMessageTemplates()
   const businessProfile = useBusinessProfile()
@@ -1194,6 +1213,38 @@ function ShipConfirmModal({
     setShipping(true)
     setError(null)
     setPairedWarning(null)
+
+    // Written down before the box goes, not instead of it. Saving it here is
+    // what prices the redirect and what puts it on her own page — an address
+    // that existed only inside this dialog was one she never saw and one the
+    // invoice never charged for.
+    if (useTempAddress && redirect?.complete) {
+      try {
+        const res = await fetch("/api/sheets/ship/plan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "address",
+            customer: c.customer,
+            events: [c.event],
+            address: redirect.street,
+            areaId: redirect.area?.id ?? null,
+            areaName: redirect.area?.name ?? null,
+            name: redirect.name,
+            phone: redirect.phone,
+          }),
+        })
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}))
+          throw new Error(d.error ?? "Gagal menyimpan alamat")
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Gagal menyimpan alamat")
+        setShipping(false)
+        return
+      }
+    }
+
     const effectiveAddress = useTempAddress ? tempAddress : profileAddress
     const params: ShipOrdersParams = {
       force,
@@ -1324,31 +1375,37 @@ function ShipConfirmModal({
               </div>
               {useTempAddress ? (
                 <>
-                  <textarea
-                    value={tempAddress}
-                    onChange={(e) => setTempAddress(e.target.value)}
-                    rows={5}
-                    placeholder={"Nama Penerima\nAlamat lengkap\nNo. telepon"}
-                    className="w-full border border-purple-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-300 focus:border-purple-500 transition-colors resize-none"
+                  {/* The same question the card's "Alamat lain" asks and the
+                      same one her page asks. It used to be a textarea here,
+                      which is why an address typed at the counter could not be
+                      priced: there was no area on it to price. */}
+                  <RedirectFields
+                    customer={c.customer}
+                    event={c.event}
+                    disabled={shipping}
+                    initial={{
+                      name: c.requestedName || c.customerDetail?.name || "",
+                      phone: c.requestedPhone || c.customerDetail?.whatsapp || "",
+                      street: c.requestedStreet,
+                      area: c.requestedAreaId
+                        ? { id: c.requestedAreaId, name: c.requestedAreaName }
+                        : null,
+                    }}
+                    onChange={setRedirect}
                   />
                   <p className="text-[11px] text-faint mt-1">
-                    {requestedAddress && tempAddress === requestedAddress
+                    {requestedAddress && redirect?.street === c.requestedStreet
                       ? "Customer sendiri yang minta alamat ini untuk pesanan ini. Alamat utamanya tidak berubah."
                       : "Alamat ini hanya untuk pengiriman ini. Alamat utama customer tidak berubah."}
                   </p>
-                  {c.requestedOtherArea && tempAddress === requestedAddress && (
-                    c.requestedPerKg === null ? (
-                      <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 mt-1">
-                        Kurir tidak memberi harga untuk area ini — ongkir masih pakai tarif area
-                        lamanya. Cek manual kalau selisihnya besar.
-                      </p>
-                    ) : c.requestedOngkirCharged !== 0 ? (
-                      <p className="text-[11px] text-green-700 bg-green-50 border border-green-200 rounded-lg px-2 py-1.5 mt-1 tabular-nums">
-                        Ongkir sudah disesuaikan: {c.requestedOngkirCharged > 0 ? "+" : "−"}Rp{" "}
-                        {Math.abs(c.requestedOngkirCharged).toLocaleString("id-ID")}. Tidak perlu
-                        ditambah manual.
-                      </p>
-                    ) : null
+                  {/* Ships nowhere without an area: the courier is handed four
+                      boxes, and an address with none of them is a parcel
+                      nobody can route or price. */}
+                  {!redirect?.complete && (
+                    <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 mt-1">
+                      Lengkapi alamat dan pilih areanya dulu. Tanpa area, ongkirnya tidak bisa
+                      dihitung dan kurir tidak punya tujuan yang jelas.
+                    </p>
                   )}
                 </>
               ) : (
@@ -1438,7 +1495,12 @@ function ShipConfirmModal({
               <button
                 type="button"
                 onClick={() => handleConfirm()}
-                disabled={shipping}
+                // A redirect without its area cannot be routed or priced, so
+                // the parcel waits for the area rather than leaving without it.
+                disabled={shipping || (useTempAddress && !redirect?.complete)}
+                title={useTempAddress && !redirect?.complete
+                  ? "Lengkapi alamatnya dan pilih areanya dulu"
+                  : undefined}
                 className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand/90 transition-colors disabled:opacity-50"
               >
                 {shipping ? "Mengirim…" : "Konfirmasi Kirim"}
@@ -1698,7 +1760,9 @@ function MergeShipConfirmModal({
   // customer's profile address once it loads so admin can tweak just the
   // parts that differ. One address per box — merged shipments share it.
   const [useTempAddress, setUseTempAddress] = useState(false)
-  const [tempAddress, setTempAddress] = useState("")
+  const [redirect, setRedirect] = useState<RedirectDraft | null>(null)
+  // The label the merged parcel travels under, built by the fields themselves.
+  const tempAddress = redirect?.label ?? ""
   const [addressFromCustomer, setAddressFromCustomer] = useState(false)
 
   // Pull every shippable event for this customer, regardless of which tab the
@@ -1760,24 +1824,22 @@ function MergeShipConfirmModal({
   )
   const requestedAddress = requestedAddresses[0] ?? null
 
-  // Seed the temp-address textarea once the fetch completes: what the customer
-  // asked for if she asked, her profile address otherwise. Only seeds when
-  // empty so admin's typing isn't blown away by a re-render.
+  // The fields fill themselves from what she asked for; all that is left here
+  // is deciding whether this box is being redirected at all.
   useEffect(() => {
-    const seed = requestedAddress || profileAddress
-    if (seed && !tempAddress) {
-      setTempAddress(seed)
-      if (requestedAddress) {
-        setUseTempAddress(true)
-        setAddressFromCustomer(true)
-      }
+    if (requestedAddress) {
+      setUseTempAddress(true)
+      setAddressFromCustomer(true)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profileAddress, requestedAddress])
+  }, [requestedAddress])
   const totalGram = checkedGroups.reduce((s, g) => s + unparkedOrders(g).reduce((a, o) => a + o.gram * o.toShip, 0), 0)
   const combinedKg = Math.ceil(totalGram / 1000)
   const combinedOngkir = ongkirPerKg * combinedKg
-  const canConfirm = checkedGroups.length >= 2
+  // Two trips to merge, and — when the box is being redirected — an address
+  // the courier can actually be given. An area is not a formality here: it is
+  // the only thing that can be routed to and the only thing that can be
+  // priced.
+  const canConfirm = checkedGroups.length >= 2 && (!useTempAddress || Boolean(redirect?.complete))
 
   function toggle(ev: string) {
     setChecked((prev) => {
@@ -1803,6 +1865,35 @@ function MergeShipConfirmModal({
     const shipsNow = canShipNow && sendNowChoice
     setShipping(true)
     setError(null)
+    // Written down before the box goes: the same save her own page makes, so
+    // the redirect is priced and she can see where her parcel went.
+    if (useTempAddress && redirect?.complete) {
+      try {
+        const res = await fetch("/api/sheets/ship/plan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "address",
+            customer,
+            events: [checkedGroups[0]?.event].filter(Boolean),
+            address: redirect.street,
+            areaId: redirect.area?.id ?? null,
+            areaName: redirect.area?.name ?? null,
+            name: redirect.name,
+            phone: redirect.phone,
+          }),
+        })
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}))
+          throw new Error(d.error ?? "Gagal menyimpan alamat")
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Gagal menyimpan alamat")
+        setShipping(false)
+        return
+      }
+    }
+
     const effectiveAddress = useTempAddress ? tempAddress : profileAddress
     try {
       // Recorded either way, and before anything ships: the pairing is what
@@ -1951,12 +2042,25 @@ function MergeShipConfirmModal({
                   </div>
                   {useTempAddress ? (
                     <>
-                      <textarea
-                        value={tempAddress}
-                        onChange={(e) => setTempAddress(e.target.value)}
-                        rows={5}
-                        placeholder={"Nama Penerima\nAlamat lengkap\nNo. telepon"}
-                        className="w-full border border-purple-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-300 focus:border-purple-500 transition-colors resize-none"
+                      {/* The same fields as everywhere else this question is
+                          asked. A merged parcel is still one parcel going to
+                          one place, and it is priced the same way. */}
+                      <RedirectFields
+                        customer={customer}
+                        event={checkedGroups[0]?.event ?? ""}
+                        disabled={shipping}
+                        initial={{
+                          name: checkedGroups[0]?.requestedName || customerDetail?.name || "",
+                          phone: checkedGroups[0]?.requestedPhone || customerDetail?.whatsapp || "",
+                          street: checkedGroups[0]?.requestedStreet ?? "",
+                          area: checkedGroups[0]?.requestedAreaId
+                            ? {
+                                id: checkedGroups[0].requestedAreaId,
+                                name: checkedGroups[0].requestedAreaName,
+                              }
+                            : null,
+                        }}
+                        onChange={setRedirect}
                       />
                       <p className="text-[11px] text-faint mt-1">
                         Seluruh paket gabungan akan dikirim ke alamat ini. Alamat utama customer tidak berubah.
@@ -1964,6 +2068,12 @@ function MergeShipConfirmModal({
                       {addressFromCustomer && (
                         <p className="text-[11px] text-purple-700 mt-1">
                           Diisi dari permintaan customer.
+                        </p>
+                      )}
+                      {!redirect?.complete && (
+                        <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 mt-1">
+                          Lengkapi alamat dan pilih areanya dulu. Tanpa area, ongkirnya tidak bisa
+                          dihitung dan kurir tidak punya tujuan yang jelas.
                         </p>
                       )}
                       {requestedAddresses.length > 1 && (
