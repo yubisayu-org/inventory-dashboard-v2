@@ -365,3 +365,48 @@ test("re-confirming a pairing it already had says nothing", async () => {
   assert.equal((await planNotices()).length, before)
   await setMergeGroup(customerId, [PAID])
 })
+
+// ── A destination is not a commitment ────────────────────────────
+// The payment bar stops an unpaid customer directing the shop's packing. Where
+// a parcel goes is not that: it is the one input that decides the bill she is
+// about to pay, so gating it behind the bill put the question after the answer.
+// She paid for the items purely to unlock the address, then paid again for the
+// ongkir the new address cost.
+
+test("an unpaid customer may redirect her own parcel", async () => {
+  assert.equal(await ineligibleReason(customerId, OWING), "unpaid", "she owes for the items")
+
+  await setTempAddress(customerId, OWING, {
+    address: "Kos Melati 4",
+    areaId: "IDNP6IDNC148IDND838IDZ12110",
+    areaName: "Kebayoran Baru, Jakarta Selatan, DKI Jakarta. 12110",
+  })
+
+  const [row] = await sql<{ temp_address: string; temp_area_name: string; set_by: string }[]>`
+    SELECT temp_address, temp_area_name, set_by
+      FROM customer_shipping_prefs WHERE customer_id = ${customerId} AND event = ${OWING}`
+  assert.equal(row.temp_address, "Kos Melati 4")
+  assert.match(row.temp_area_name, /Kebayoran Baru/)
+  assert.equal(row.set_by, "customer")
+
+  await sql`DELETE FROM customer_shipping_prefs
+             WHERE customer_id = ${customerId} AND event = ${OWING}`
+})
+
+test("but she still may not direct the packing while she owes", async () => {
+  await assert.rejects(() => setShippingMode(customerId, OWING, "hold"), ShippingPrefError)
+})
+
+test("a shipped order refuses a redirect from anyone", async () => {
+  assert.equal(await ineligibleReason(customerId, GONE), "shipped")
+  await assert.rejects(
+    () => setTempAddress(customerId, GONE, { address: "Too late" }),
+    ShippingPrefError,
+  )
+  // Not even the shop: a parcel that has gone has a destination already, and
+  // it is not a preference any more.
+  await assert.rejects(
+    () => setTempAddress(customerId, GONE, { address: "Too late" }, sql, "shop"),
+    ShippingPrefError,
+  )
+})
