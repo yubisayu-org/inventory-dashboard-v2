@@ -487,6 +487,14 @@ export interface ShipOrdersParams {
   // resulting shipment row so reprints/messages render this address instead of
   // the customer's profile data_diri.
   tempAddress?: string | null
+  /**
+   * Delivery given away for this parcel.
+   *
+   * The ongkir is charged as usual and then credited in full, so her invoice
+   * says what the delivery was and says it was a gift — rather than showing no
+   * delivery line at all, which reads the same as never having been charged.
+   */
+  freeShipping?: boolean
 }
 
 /**

@@ -99,16 +99,37 @@ export async function reconcileParcelPlan(
       SELECT merge_key FROM customer_shipping_prefs
        WHERE customer_id = (SELECT id FROM me) AND event = ${event}
          AND merge_key IS NOT NULL
+    ),
+    -- The plan is cleared when a merged box ships, and this used to be where
+    -- the group vanished: reconciling afterwards saw unrelated trips, could
+    -- not write a credit that was still missing, and could not maintain the
+    -- ones already written. Somebody then found it on the invoices and typed
+    -- it in — twelve times.
+    --
+    -- The parcel record does not forget. merge_group says which trips left in
+    -- one box, and goes on saying it.
+    shipped_grp AS (
+      SELECT DISTINCT s.merge_group
+        FROM shipments s
+       WHERE s.merge_group IS NOT NULL
+         AND lower(replace(s.customer, '@', '')) = ${key}
+         AND s.event = ${event}
     )
     SELECT p.event, p.mode, p.merge_key
       FROM customer_shipping_prefs p
      WHERE p.customer_id = (SELECT id FROM me)
        AND (p.event = ${event}
-            OR (p.merge_key IS NOT NULL AND p.merge_key = (SELECT merge_key FROM grp)))
+            OR (p.merge_key IS NOT NULL AND p.merge_key = (SELECT merge_key FROM grp))
+            OR p.event IN (
+                 SELECT s2.event FROM shipments s2
+                  WHERE s2.merge_group IN (SELECT merge_group FROM shipped_grp)
+                    AND lower(replace(s2.customer, '@', '')) = ${key}))
   `) as unknown as { event: string; mode: string | null; merge_key: string | null }[]
 
   const events = trips.length ? [...new Set(trips.map((t) => t.event))] : [event]
-  const merged = trips.some((t) => t.merge_key) && events.length > 1
+  // Either signal makes a group: the plan while it is still a plan, and the
+  // parcel once the box has gone.
+  const merged = events.length > 1
   const splitting = trips.some((t) => t.mode === "split")
 
   const [rate] = (await db`
@@ -226,8 +247,57 @@ export async function reconcileParcelPlan(
    * unless a parcel has already gone, where the floor below refuses to take
    * money back for a journey that happened.
    */
+  /**
+   * The saving is credited where it was charged.
+   *
+   * Each trip's invoice charges delivery on its own rounded weight, so three
+   * trips in one box are charged three times for a journey that happened once.
+   * The difference is given back by cancelling whole delivery charges —
+   * cheapest first — until what is still charged equals what the box actually
+   * cost.
+   *
+   * Cheapest first, and partially where a whole charge would overshoot: a trip
+   * billed 26.000 inside a group that saved 13.000 keeps half its charge. The
+   * alternative, piling the whole saving onto one trip, produced invoices
+   * whose total was less than the goods on them — 398.000 of items and a
+   * 385.000 total, which is not a thing anybody should have to explain.
+   *
+   * Nothing ever gains a charge here. Splitting one box into several can only
+   * cost more, never less, so there is always enough charge to give back.
+   */
+  const charged = new Map<string, number>()
+  for (const [e, gram] of invoicedByEvent) charged.set(e, ongkirPerKg * kg(gram))
+  const boxCost = ongkirPerKg * (sentKg + plannedKg)
+  const saving = [...charged.values()].reduce((n, c) => n + c, 0) - boxCost
+
+  let mine = 0
+  if (merged && saving > 0) {
+    let left = saving
+    // Cheapest first, by name where two cost the same, so every call agrees
+    // on the order without knowing who called first.
+    const order = [...charged.entries()].sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]))
+    for (const [e, charge] of order) {
+      if (left <= 0) break
+      const take = Math.min(charge, left)
+      if (e === event) mine = take
+      left -= take
+    }
+  }
+
+  // A group that costs MORE than its invoices — an early box inside a
+  // pairing — is one fee, not one per trip, and it lands on a single trip
+  // chosen by name.
   const holder = merged ? [...events].sort()[0] : event
-  const wanted = merged && event !== holder ? null : planAdjustment(extra, partner)
+  const wanted = !merged
+    ? planAdjustment(extra, partner)
+    : saving > 0
+      ? (mine > 0
+          ? {
+              description: partner ? `Gabung ongkir dengan ${partner}` : "Diskon gabung ongkir",
+              amount: -mine,
+            }
+          : null)
+      : (event === holder ? planAdjustment(extra, partner) : null)
 
   // A parcel that has gone was paid for at the price agreed then, and this
   // prices what is true now. The kilos are counted above, so the figure holds
