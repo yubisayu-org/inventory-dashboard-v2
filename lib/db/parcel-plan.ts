@@ -282,12 +282,59 @@ export async function reconcileParcelPlan(
   const boxCost = givenAway ? 0 : ongkirPerKg * (sentKg + plannedKg)
   const saving = [...charged.values()].reduce((n, c) => n + c, 0) - boxCost
 
+  /**
+   * How much of each trip's delivery she has already handed over.
+   *
+   * Payments minus goods: a trip she paid in full before the merge existed has
+   * the delivery money sitting inside that payment, and a trip she paid goods
+   * alone on has not. It decides which invoice keeps the charge when two are
+   * charged the same — see below.
+   */
+  const covered = new Map<string, number>()
+  if (merged) {
+    const rows = (await db`
+      WITH goods AS (
+        SELECT o.event, SUM(o.unit_price * GREATEST(o.unit - COALESCE(o.unit_returned, 0), 0)) AS amount
+          FROM orders o
+         WHERE o.event = ANY(${events})
+           AND lower(replace(o.customer, '@', '')) = ${key}
+         GROUP BY 1
+      ),
+      paid AS (
+        SELECT p.event, SUM(p.amount) AS amount
+          FROM payments p
+         WHERE p.event = ANY(${events})
+           AND lower(replace(p.customer, '@', '')) = ${key}
+           AND p.is_checked
+         GROUP BY 1
+      )
+      SELECT g.event, (COALESCE(pd.amount, 0) - g.amount)::int AS covered
+        FROM goods g LEFT JOIN paid pd ON pd.event = g.event
+    `) as unknown as { event: string; covered: number }[]
+    for (const r of rows) covered.set(r.event, Number(r.covered))
+  }
+
   let mine = 0
   if ((merged || givenAway) && saving > 0) {
     let left = saving
-    // Cheapest first, by name where two cost the same, so every call agrees
-    // on the order without knowing who called first.
-    const order = [...charged.entries()].sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]))
+    /**
+     * Cheapest charge first — and where two are charged the same, the one she
+     * has paid least toward.
+     *
+     * One box owes one delivery, and that money is usually already inside a
+     * payment she made before the merge existed. Crediting that trip and
+     * charging the other left her with a credit on one invoice and a debt on
+     * the other of the same size, for somebody to move across by hand:
+     * taleofblackcats, Rp 50.000 each way, and mutiasr, Rp 13.000. Crediting
+     * the trip she has not paid the delivery on closes both.
+     *
+     * Name still settles a genuine tie, so every call agrees on the order
+     * without knowing who called first.
+     */
+    const order = [...charged.entries()].sort((a, b) =>
+      a[1] - b[1]
+      || (covered.get(a[0]) ?? 0) - (covered.get(b[0]) ?? 0)
+      || a[0].localeCompare(b[0]))
     for (const [e, charge] of order) {
       if (left <= 0) break
       const take = Math.min(charge, left)

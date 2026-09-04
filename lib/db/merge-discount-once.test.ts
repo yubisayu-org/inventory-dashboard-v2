@@ -48,6 +48,7 @@ before(async () => {
 
 after(async () => {
   await sql`DELETE FROM announcements WHERE customer_id = ${customerId}`
+  await sql`DELETE FROM payments WHERE customer = ${WHO}`
   await sql`DELETE FROM adjustments WHERE customer = ${WHO}`
   await sql`DELETE FROM customer_shipping_prefs WHERE customer_id = ${customerId}`
   await sql`DELETE FROM customer_warehouse_ongkir WHERE customer_id = ${customerId}`
@@ -157,4 +158,45 @@ test("where no whole charge fits, the cheapest trip is credited in part", async 
   assert.equal(rows[0].amount, -RATE, "the kilo that was saved, not the two it was charged")
   // Still only ever a discount: no invoice is handed a charge it did not have.
   assert.ok(rows.every((r) => Number(r.amount) < 0))
+})
+
+// taleofblackcats, in miniature. She settled one trip in full — delivery
+// included — months before the second existed. One box owes one delivery, and
+// that money is already inside the payment she made, so the trip she has not
+// paid it on is the one that stops charging for it.
+test("the discount lands where she has not already paid the delivery", async () => {
+  await sql`UPDATE customer_shipping_prefs SET merge_key = NULL WHERE customer_id = ${customerId}`
+  await sql`DELETE FROM adjustments WHERE customer = ${WHO}`
+  await sql`DELETE FROM payments WHERE customer = ${WHO}`
+  await sql`DELETE FROM orders WHERE customer = ${WHO}`
+
+  // Two trips of the same weight, so the charges tie and nothing but her
+  // payments can decide which keeps it.
+  for (const e of [A, B]) {
+    await sql`
+      INSERT INTO orders (event, customer, product_id, unit_price, unit, unit_buy)
+      VALUES (${e}, ${WHO}, ${smallId}, 100000, 1, 1)`
+  }
+
+  // A is paid in full: goods and delivery. B is paid for its goods alone.
+  await sql`
+    INSERT INTO payments (event, customer, amount, account, is_checked, kind)
+    VALUES (${A}, ${WHO}, ${100000 + RATE}, 'BCA', true, 'deposit')`
+  await sql`
+    INSERT INTO payments (event, customer, amount, account, is_checked, kind)
+    VALUES (${B}, ${WHO}, 100000, 'BCA', true, 'deposit')`
+
+  await pair([A, B])
+  for (const e of [A, B]) await reconcileParcelPlan(WHO, e)
+
+  const rows = await adjustments()
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].event, B, "B stops charging for a delivery she paid on A")
+  assert.equal(rows[0].amount, -RATE)
+
+  // Which is the whole point: both trips close, and nobody has to move
+  // Rp 50.000 from one invoice to the other by hand.
+  const balances = await sql<{ event: string; balance: number }[]>`
+    SELECT event, balance FROM live_balances WHERE customer = ${WHO} ORDER BY event`
+  for (const b of balances) assert.equal(Number(b.balance), 0, `${b.event} settles`)
 })
