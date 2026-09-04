@@ -26,6 +26,18 @@ import { sendInvoiceNotice } from "./notices"
 /** How the row identifies itself, so it can be found again and updated. */
 const TAG = "Ongkir alamat berbeda"
 
+/**
+ * What marks a charge as belonging to a parcel that has already gone.
+ *
+ * While a redirect is only asked for, its charge is a running estimate: she
+ * changes the area, the row is rewritten. Once a box has actually left for it,
+ * that money is spent and the row must never be rewritten again — otherwise a
+ * second redirect on the same trip, which the split flow makes ordinary, would
+ * overwrite the first parcel's charge and quietly refund a delivery that
+ * really happened.
+ */
+const SETTLED = " · terkirim"
+
 /** A quote is asked for one kilo — the shop's own rates are per kilo, so that
  *  is the only comparison that is like for like. */
 const QUOTE_WEIGHT_GRAMS = 1000
@@ -46,6 +58,7 @@ interface Facts {
   customer: string
   originAreaId: string | null
   destinationAreaId: string | null
+  destinationName: string
   usualPerKg: number
   weightKg: number
 }
@@ -57,6 +70,7 @@ async function factsFor(customerId: number, event: string, db: DBExecutor): Prom
       customer: string
       origin_area_id: string | null
       destination_area_id: string | null
+      destination_name: string | null
       usual_per_kg: string | null
       weight_kg: string | null
     }[]
@@ -64,10 +78,25 @@ async function factsFor(customerId: number, event: string, db: DBExecutor): Prom
     SELECT c.instagram_id AS customer,
            w.biteship_area_id AS origin_area_id,
            sp.temp_area_id AS destination_area_id,
+           sp.temp_area_name AS destination_name,
            cwo.effective_ongkir AS usual_per_kg,
-           -- The same rounding the invoice quotes with: a 1.2 kg parcel is
-           -- charged as two, so a redirect must be priced as two as well.
-           CEIL(COALESCE(SUM(p.gram * o.unit), 0)::numeric / 1000) AS weight_kg
+           sp.mode AS mode,
+           -- The box this redirect is actually for, not everything she
+           -- ordered. Sending early means the box carries what has arrived, so
+           -- that is what it is priced on — the same basis the split fee she
+           -- was already quoted uses. Waiting means the box carries whatever
+           -- has not gone yet.
+           --
+           -- Each rounded on its own, because each is its own parcel: a 4.5 kg
+           -- box is charged as five whether or not the rest of the order would
+           -- have rounded differently.
+           CEIL(COALESCE(SUM(
+             p.gram * GREATEST(
+               CASE WHEN sp.mode = 'split'
+                    THEN LEAST(COALESCE(o.unit_arrive, 0), o.unit) - COALESCE(o.unit_ship, 0)
+                    ELSE o.unit - COALESCE(o.unit_ship, 0)
+               END, 0)
+           ), 0)::numeric / 1000) AS weight_kg
       FROM customers c
       JOIN customer_shipping_prefs sp
         ON sp.customer_id = c.id AND sp.event = ${event}
@@ -80,13 +109,15 @@ async function factsFor(customerId: number, event: string, db: DBExecutor): Prom
        AND lower(replace(o.customer, '@', '')) = lower(replace(c.instagram_id, '@', ''))
       LEFT JOIN products p ON p.id = o.product_id
      WHERE c.id = ${customerId}
-     GROUP BY c.instagram_id, w.biteship_area_id, sp.temp_area_id, cwo.effective_ongkir
+     GROUP BY c.instagram_id, w.biteship_area_id, sp.temp_area_id, sp.temp_area_name,
+              cwo.effective_ongkir, sp.mode
   `
   if (!row) return null
   return {
     customer: row.customer,
     originAreaId: row.origin_area_id,
     destinationAreaId: row.destination_area_id,
+    destinationName: String(row.destination_name ?? ""),
     usualPerKg: Number(row.usual_per_kg ?? 0),
     weightKg: Number(row.weight_kg ?? 0),
   }
@@ -193,8 +224,83 @@ async function findCharge(customer: string, event: string, db: DBExecutor) {
        AND lower(replace(customer, '@', '')) = lower(replace(${customer}, '@', ''))
        AND auto
        AND description LIKE ${`${TAG}%`}
+       -- A parcel has taken this one. It is history, not a running total.
+       AND description NOT LIKE ${`%${SETTLED}%`}
      ORDER BY id LIMIT 1`
   return row ?? null
+}
+
+/**
+ * The parcel has gone to the address it was redirected to, so its charge stops
+ * being editable and a later redirect on the same trip starts a new one.
+ *
+ * Called from the dispatch path, beside the clearing of the redirect itself:
+ * the two are one event, and a charge left open after the box has left is a
+ * charge the next redirect would silently take back.
+ */
+/**
+ * The box has been packed and weighed, so the estimate becomes the bill.
+ *
+ * Everything before this point priced a box nobody had built yet: what had
+ * arrived when she chose, at the grams the product list claims. This prices
+ * the parcel that is actually leaving, at the kilos it is actually billed for
+ * — and then settles it, because the money is spent.
+ */
+export async function finaliseRedirectCharge(
+  customer: string,
+  event: string,
+  billedKg: number,
+  db: DBExecutor = sql,
+): Promise<void> {
+  const [row] = await db<{ per_kg: number | null; usual: string | null; area: string | null }[]>`
+    SELECT sp.temp_ongkir_per_kg AS per_kg,
+           cwo.effective_ongkir AS usual,
+           sp.temp_area_name AS area
+      FROM customer_shipping_prefs sp
+      JOIN customers c ON c.id = sp.customer_id
+      JOIN events ev ON ev.name = sp.event
+      LEFT JOIN customer_warehouse_ongkir cwo
+        ON cwo.customer_id = c.id AND cwo.warehouse_id = ev.warehouse_id
+     WHERE sp.event = ${event}
+       AND lower(replace(c.instagram_id, '@', '')) = lower(replace(${customer}, '@', ''))`
+
+  // No rate means the courier never priced this area, and nothing was charged
+  // for it. A box leaving does not change that.
+  if (!row || row.per_kg == null) return
+
+  const delta = (Number(row.per_kg) - Number(row.usual ?? 0)) * Math.max(0, Math.ceil(billedKg))
+  const existing = await findCharge(customer, event, db)
+
+  if (delta === 0) {
+    if (existing) await db`DELETE FROM adjustments WHERE id = ${existing.id}`
+    return
+  }
+
+  const where = row.area ? ` — ${String(row.area).split(",")[0].trim()}` : ""
+  const description = `${TAG}${where} (${Math.ceil(billedKg)} kg)`
+  if (existing) {
+    await db`
+      UPDATE adjustments SET description = ${description}, amount = ${delta}, updated_at = NOW()
+       WHERE id = ${existing.id}`
+  } else {
+    await db`
+      INSERT INTO adjustments (event, customer, description, amount, auto)
+      VALUES (${event}, ${customer}, ${description}, ${delta}, true)`
+  }
+}
+
+export async function settleRedirectCharge(
+  customer: string,
+  event: string,
+  db: DBExecutor = sql,
+): Promise<void> {
+  const existing = await findCharge(customer, event, db)
+  if (!existing) return
+  const stamp = new Date().toISOString().slice(0, 10)
+  await db`
+    UPDATE adjustments
+       SET description = description || ${`${SETTLED} ${stamp}`}, updated_at = NOW()
+     WHERE id = ${existing.id}`
 }
 
 async function clearCharge(customer: string, event: string, db: DBExecutor): Promise<void> {
@@ -223,7 +329,10 @@ async function applyCharge(
   }
   if (existing && existing.amount === delta) return
 
-  const description = `${TAG} (${facts.weightKg} kg)`
+  // Named, because a split can put two of these on one invoice and "Ongkir
+  // alamat berbeda" twice tells her nothing about which box was which.
+  const where = facts.destinationName ? ` — ${facts.destinationName.split(",")[0].trim()}` : ""
+  const description = `${TAG}${where} (${facts.weightKg} kg)`
   if (existing) {
     await db`
       UPDATE adjustments SET description = ${description}, amount = ${delta}, updated_at = NOW()

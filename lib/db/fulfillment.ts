@@ -10,6 +10,7 @@ import { getPaymentStatus, type PaymentStatus } from "./finance"
 import { fetchPaidStatusMap, compareOrderPriority, type PaidStatus } from "./shopping-list"
 import { appendExcessPurchase, reduceOrderRefundOnly } from "./orders"
 import { notifyCustomer } from "./announcements"
+import { finaliseRedirectCharge, settleRedirectCharge } from "./redirect-ongkir"
 
 /**
  * Refusal to ship a parcel that would be billed nothing.
@@ -555,7 +556,12 @@ async function clearHonouredRedirect(
   if (!used?.trim() || events.length === 0) return
   await db`
     UPDATE customer_shipping_prefs p
+       -- All of it, not half. The recipient and the quoted rate belong to the
+       -- redirect that has just been spent; left behind, the next one on this
+       -- trip would inherit somebody else's name and a rate for an area the
+       -- parcel is no longer going to.
        SET temp_address = NULL, temp_area_id = NULL, temp_area_name = NULL,
+           temp_name = '', temp_phone = '', temp_ongkir_per_kg = NULL,
            updated_at = NOW()
       FROM customers c
      WHERE c.id = p.customer_id
@@ -563,6 +569,14 @@ async function clearHonouredRedirect(
        AND lower(replace(c.instagram_id, '@', '')) = ${normalizeId(customer)}
        AND p.temp_address IS NOT NULL
   `
+
+  // And the money that redirect cost is now history: a box has gone to that
+  // address. Settling it stops a second redirect on the same trip — which is
+  // ordinary once an order is split — from rewriting the first parcel's charge
+  // and quietly refunding a delivery that really happened.
+  for (const event of events) {
+    await settleRedirectCharge(customer, event, db)
+  }
 }
 
 export async function shipCustomerOrders(params: ShipOrdersParams, actor?: string | null): Promise<{ shippingId: string }> {
@@ -630,6 +644,11 @@ export async function shipCustomerOrders(params: ShipOrdersParams, actor?: strin
                                AND lower(replace(c.instagram_id, '@', '')) = ${normalizeId(customer)})`
     }
 
+    // Priced on the box that is actually leaving, at the kilos it is billed
+    // for, before the redirect is spent and the charge closed.
+    if (tempAddressValue?.trim()) {
+      await finaliseRedirectCharge(customer, event, billedKg, tx)
+    }
     await clearHonouredRedirect(customer, [event], tempAddressValue, tx)
 
     // Her inbox, in the same transaction: a parcel that shipped without a
