@@ -265,13 +265,25 @@ export async function reconcileParcelPlan(
    * Nothing ever gains a charge here. Splitting one box into several can only
    * cost more, never less, so there is always enough charge to give back.
    */
+  // A parcel the shop gave away costs the customer nothing, so every charge on
+  // the group is given back — through the same distribution a merge uses, which
+  // is what keeps a gift from cancelling more than was charged.
+  const [gift] = (await db`
+    SELECT 1 AS free FROM shipments s
+     WHERE s.free_shipping
+       AND lower(replace(s.customer, '@', '')) = ${key}
+       AND s.event = ANY(${events})
+     LIMIT 1
+  `) as unknown as { free: number }[]
+  const givenAway = Boolean(gift)
+
   const charged = new Map<string, number>()
   for (const [e, gram] of invoicedByEvent) charged.set(e, ongkirPerKg * kg(gram))
-  const boxCost = ongkirPerKg * (sentKg + plannedKg)
+  const boxCost = givenAway ? 0 : ongkirPerKg * (sentKg + plannedKg)
   const saving = [...charged.values()].reduce((n, c) => n + c, 0) - boxCost
 
   let mine = 0
-  if (merged && saving > 0) {
+  if ((merged || givenAway) && saving > 0) {
     let left = saving
     // Cheapest first, by name where two cost the same, so every call agrees
     // on the order without knowing who called first.
@@ -288,15 +300,14 @@ export async function reconcileParcelPlan(
   // pairing — is one fee, not one per trip, and it lands on a single trip
   // chosen by name.
   const holder = merged ? [...events].sort()[0] : event
-  const wanted = !merged
+  const creditName = givenAway
+    ? "Gratis ongkir"
+    : partner ? `Gabung ongkir dengan ${partner}` : "Diskon gabung ongkir"
+
+  const wanted = !merged && !givenAway
     ? planAdjustment(extra, partner)
     : saving > 0
-      ? (mine > 0
-          ? {
-              description: partner ? `Gabung ongkir dengan ${partner}` : "Diskon gabung ongkir",
-              amount: -mine,
-            }
-          : null)
+      ? (mine > 0 ? { description: creditName, amount: -mine } : null)
       : (event === holder ? planAdjustment(extra, partner) : null)
 
   // A parcel that has gone was paid for at the price agreed then, and this

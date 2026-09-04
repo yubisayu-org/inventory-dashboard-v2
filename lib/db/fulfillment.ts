@@ -640,10 +640,10 @@ export async function shipCustomerOrders(params: ShipOrdersParams, actor?: strin
 
     await tx`
       INSERT INTO shipments (event, customer, shipping_id, invoicing, weight_estimation, ongkir, ongkir_total, is_last_shipment,
-                             temp_address, temp_area_id, temp_area_name, temp_name, temp_phone)
+                             temp_address, temp_area_id, temp_area_name, temp_name, temp_phone, free_shipping)
       VALUES (${event}, ${customer}, ${shippingId}, ${invoicingText}, ${billedKg}, ${ongkirPerKg}, ${ongkirTotal}, true,
               ${tempAddressValue}, ${redirectParts?.area_id ?? ""}, ${redirectParts?.area_name ?? ""},
-              ${redirectParts?.name ?? ""}, ${redirectParts?.phone ?? ""})
+              ${redirectParts?.name ?? ""}, ${redirectParts?.phone ?? ""}, ${Boolean(freeShipping)})
     `
 
     for (const order of toShipRows) {
@@ -665,36 +665,17 @@ export async function shipCustomerOrders(params: ShipOrdersParams, actor?: strin
                                AND lower(replace(c.instagram_id, '@', '')) = ${normalizeId(customer)})`
     }
 
-    // Delivery given away. Charged as usual on the invoice and credited in
-    // full here, so she reads what it would have cost and that it was a gift —
-    // where simply not charging her says nothing at all, and leaves the books
-    // unable to tell a gift from a rate somebody forgot to record.
-    if (freeShipping && ongkirTotal > 0) {
-      await tx`
-        INSERT INTO adjustments (event, customer, description, amount, auto)
-        VALUES (${event}, ${customer}, ${`Gratis ongkir (${billedKg} kg)`}, ${-ongkirTotal}, true)`
-      const template = NOTICE_TEMPLATES.find((t) => t.key === "inbox_ongkir_credit")
-      if (template) {
-        const tokens = {
-          "{event}": event,
-          "{customer}": customer,
-          "{amount}": `Rp ${ongkirTotal.toLocaleString("id-ID")}`,
-        }
-        await sendInvoiceNotice({
-          event,
-          customer,
-          title: fillNotice(template.title, tokens),
-          body: fillNotice(template.body, tokens),
-        }, tx)
-      }
-    }
-
     // Priced on the box that is actually leaving, at the kilos it is billed
     // for, before the redirect is spent and the charge closed.
     if (tempAddressValue?.trim()) {
       await finaliseRedirectCharge(customer, event, billedKg, tx)
     }
     await clearHonouredRedirect(customer, [event], tempAddressValue, tx)
+
+    // The parcel now exists, and it may say the delivery was a gift. Re-pricing
+    // here is what gives it back — through the one routine that knows what
+    // every trip was charged, rather than a second writer racing it.
+    if (freeShipping) await reconcileParcelPlan(customer, event, tx)
 
     // Her inbox, in the same transaction: a parcel that shipped without a
     // notice, or a notice about a parcel that did not, are both worse than
@@ -727,7 +708,7 @@ export async function shipCustomerOrders(params: ShipOrdersParams, actor?: strin
  *    invoice math). Skipped when combining saves nothing.
  */
 export async function shipMergedCustomerOrders(params: ShipMergedParams, actor?: string | null): Promise<ShipMergedResult> {
-  const { customer, ongkirPerKg, groups, tempAddress } = params
+  const { customer, ongkirPerKg, groups, tempAddress, freeShipping } = params
   // One rate covers the whole box, so one missing rate voids the whole merge.
   if (!(ongkirPerKg > 0)) throw new NoShippingRateError(groups.map((g) => g.event))
   // Same value written to every row in the merge_group — one physical box,
@@ -793,8 +774,8 @@ export async function shipMergedCustomerOrders(params: ShipMergedParams, actor?:
       const ongkirTotal = isPrimary ? combinedOngkir : 0
 
       await tx`
-        INSERT INTO shipments (event, customer, shipping_id, invoicing, weight_estimation, ongkir, ongkir_total, is_last_shipment, merge_group, temp_address)
-        VALUES (${g.event}, ${customer}, ${shippingId}, ${invoicingText}, ${weight}, ${ongkirPerKg}, ${ongkirTotal}, true, ${mergeGroup}, ${tempAddressValue})
+        INSERT INTO shipments (event, customer, shipping_id, invoicing, weight_estimation, ongkir, ongkir_total, is_last_shipment, merge_group, temp_address, free_shipping)
+        VALUES (${g.event}, ${customer}, ${shippingId}, ${invoicingText}, ${weight}, ${ongkirPerKg}, ${ongkirTotal}, true, ${mergeGroup}, ${tempAddressValue}, ${Boolean(freeShipping)})
       `
       for (const o of toShipRows) {
         await tx`
@@ -804,6 +785,13 @@ export async function shipMergedCustomerOrders(params: ShipMergedParams, actor?:
         `
       }
       isPrimary = false
+    }
+
+    // A gift on a merged box is the same thing said louder: every trip's charge
+    // goes, not just the riders'. One re-price does both, so the two credits
+    // can never cancel the same charge twice.
+    if (freeShipping) {
+      for (const g of groups) await reconcileParcelPlan(customer, g.event, tx)
     }
 
     // The merge saving is not credited here any more. reconcileParcelPlan owns
