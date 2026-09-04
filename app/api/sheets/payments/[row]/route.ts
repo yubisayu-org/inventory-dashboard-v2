@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole, isAdmin } from "@/lib/api"
+import { findDuplicateForRow } from "@/lib/db"
 import { updatePayment, togglePaymentChecked, updatePaymentRemarks, deletePayment, getPaymentChecked, withActor } from "@/lib/db"
 
 type Params = { params: Promise<{ row: string }> }
@@ -68,6 +69,17 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       if (isAdmin(session)) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 })
       }
+
+      // Ticking is where a claim turns into money, so it is the last moment
+      // worth asking whether the same transfer is already counted. Unticking
+      // takes money away and can never double anything, so it is never asked.
+      if (body.isChecked && !body.force) {
+        const duplicate = await findDuplicateForRow(rowNumber)
+        if (duplicate?.isChecked) {
+          return NextResponse.json({ duplicate }, { status: 409 })
+        }
+      }
+
       await withActor(session.user.email, (tx) => togglePaymentChecked(rowNumber, body.isChecked, tx))
       return NextResponse.json({ success: true })
     }

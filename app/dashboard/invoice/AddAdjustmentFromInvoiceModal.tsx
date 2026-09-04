@@ -6,6 +6,7 @@ import SearchableSelect from "@/components/SearchableSelect"
 import { useModalDismiss } from "@/hooks/useModalDismiss"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import { descriptionOptions, AmountSignHint } from "../adjustments/shared"
+import { DuplicatePaymentPrompt, type DuplicatePayment } from "@/components/DuplicatePaymentPrompt"
 
 const INPUT_CLASS =
   "w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
@@ -19,9 +20,13 @@ type Tab = "payment" | "adjustment"
 export function AddAdjustmentFromInvoiceModal({
   event,
   customer,
+  canTick = false,
   onClose,
   onSaved,
 }: {
+  /** Whether this reader may tick a claim — the owner alone. Without it the
+   *  duplicate prompt still appears, only without the shortcut. */
+  canTick?: boolean
   event: string
   customer: string
   onClose: () => void
@@ -71,8 +76,34 @@ export function AddAdjustmentFromInvoiceModal({
   const canSubmitAdjustment = Boolean(adjAmount) && Number(adjAmount) !== 0 && Number.isFinite(Number(adjAmount))
   const canSubmit = tab === "payment" ? canSubmitPayment : canSubmitAdjustment
 
-  async function handleSubmit(e: React.FormEvent) {
+  const [duplicate, setDuplicate] = useState<DuplicatePayment | null>(null)
+
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    void save(false)
+  }
+
+  /** Her own claim counted, and no second row written. */
+  async function tickHers(id: number) {
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/sheets/payments/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isChecked: true, force: true }),
+      })
+      if (!res.ok) throw new Error("Failed to tick her claim")
+      setDuplicate(null)
+      setDone("payment")
+      onSaved()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function save(force: boolean) {
     if (!canSubmit) return
     setSaving(true)
     setError(null)
@@ -81,10 +112,17 @@ export function AddAdjustmentFromInvoiceModal({
         const res = await fetch("/api/sheets/payments", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ event, customer, amount: Number(payAmount), account, isChecked: false, payDate, remarks }),
+          body: JSON.stringify({ event, customer, amount: Number(payAmount), account, isChecked: false, payDate, remarks, force }),
         })
         const data = await res.json()
+        // The same money may already be written down. Not an error: what was
+        // typed stays where it is while somebody decides which it is.
+        if (res.status === 409) {
+          setDuplicate(data.duplicate as DuplicatePayment)
+          return
+        }
         if (!res.ok) throw new Error(data.error ?? "Failed to save")
+        setDuplicate(null)
         setDone("payment")
       } else {
         const res = await fetch("/api/sheets/adjustments", {
@@ -215,6 +253,20 @@ export function AddAdjustmentFromInvoiceModal({
                   <AmountSignHint value={adjAmount} />
                 </label>
               </div>
+            )}
+
+            {duplicate && (
+              <DuplicatePaymentPrompt
+                duplicate={duplicate}
+                busy={saving}
+                onTickHers={
+                  canTick && duplicate.reportedBy === "customer" && !duplicate.isChecked
+                    ? () => void tickHers(duplicate.id)
+                    : undefined
+                }
+                onSaveAnyway={() => void save(true)}
+                onCancel={() => setDuplicate(null)}
+              />
             )}
 
             {error && <p className="text-xs text-red-500">{error}</p>}

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole, isAdmin } from "@/lib/api"
-import { getPaymentRows, getPaymentsPaginated, addPayment, withActor } from "@/lib/db"
+import { getPaymentRows, getPaymentsPaginated, addPayment, findDuplicatePayment, withActor } from "@/lib/db"
 import { withServerTiming } from "@/lib/server-timing"
 
 async function handleGET(req: NextRequest) {
@@ -69,6 +69,22 @@ export async function POST(req: NextRequest) {
 
     if (!event || !customer) {
       return NextResponse.json({ error: "event and customer are required" }, { status: 400 })
+    }
+
+    // The same money written down twice is the mistake this catches, and the
+    // caller comes back with force once a person has looked at what it found.
+    // Never a refusal: two identical transfers days apart are real, and only
+    // the bank statement settles which this is.
+    if (!body.force) {
+      const duplicate = await findDuplicatePayment({
+        customer: String(customer),
+        event: String(event),
+        amount: Number(amount ?? 0),
+        payDate: String(payDate ?? "") || null,
+      })
+      if (duplicate) {
+        return NextResponse.json({ duplicate }, { status: 409 })
+      }
     }
 
     const result = await withActor(session.user.email, (tx) => addPayment({

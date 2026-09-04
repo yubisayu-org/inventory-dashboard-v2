@@ -381,6 +381,7 @@ export function PaymentStatusPanel({
         <AddAdjustmentFromInvoiceModal
           event={adjustingRow.event}
           customer={adjustingRow.customer}
+          canTick={isOwner}
           onClose={() => setAdjustingRow(null)}
           onSaved={() => { setAdjustingRow(null); fetchRows() }}
         />

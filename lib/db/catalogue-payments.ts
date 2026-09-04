@@ -2,6 +2,7 @@ import sql from "../db-pool"
 import type { DBExecutor } from "./actor"
 import { normalizeId } from "./helpers"
 import { notifyCustomer } from "./announcements"
+import { findDuplicatePayment, type DuplicatePayment } from "./payment-duplicates"
 
 /**
  * Payments the customer reports herself, and what became of each one.
@@ -22,6 +23,8 @@ export interface CustomerPayment {
   bank: string
   /** The name on her sending account — what the shop looks for in the statement. */
   sender: string
+  /** The photo she attached, if she attached one. */
+  receiptUrl: string
   status: CustomerPaymentStatus
   /** Why it was refused. Empty unless status is "rejected". */
   reason: string
@@ -144,6 +147,24 @@ function statusOf(row: { is_checked: boolean; rejected_at: Date | null }): Custo
   return row.is_checked ? "verified" : "pending"
 }
 
+/**
+ * The receipt she attached, or nothing at all.
+ *
+ * Only a file in our own reference bucket counts. The column is rendered as an
+ * image on a staff screen, so a URL from anywhere else is somebody else's page
+ * being loaded by the shop — and an upload she never made cannot be evidence
+ * of anything. A URL that does not pass is dropped rather than refused: the
+ * receipt is optional, and losing the picture must not lose the payment.
+ */
+function cleanReceiptUrl(value: unknown): string {
+  const url = String(value ?? "").trim()
+  if (!url) return ""
+  const base = process.env.SUPABASE_URL ?? ""
+  if (!base) return ""
+  const allowed = `${base.replace(/\/$/, "")}/storage/v1/object/public/catalogue-reference/`
+  return url.startsWith(allowed) && url.length <= 500 ? url : ""
+}
+
 /** Rounds to a whole rupiah and refuses anything that is not money. */
 function cleanAmount(value: unknown): number {
   const n = Math.round(Number(value))
@@ -202,10 +223,11 @@ export async function getCustomerPayments(
       reject_reason: string
       pay_date: Date | null
       created_at: Date
+      receipt_url: string
     }[]
   >`
     SELECT id, event, amount, account, remarks, is_checked, rejected_at, reject_reason,
-           pay_date, created_at
+           pay_date, created_at, receipt_url
       FROM payments
      WHERE lower(replace(customer, '@', '')) = ${key}
        AND kind = 'deposit'
@@ -217,10 +239,30 @@ export async function getCustomerPayments(
     amount: Number(r.amount),
     bank: r.account ?? "",
     sender: r.remarks ?? "",
+    receiptUrl: r.receipt_url ?? "",
     status: statusOf(r),
     reason: r.reject_reason ?? "",
     paidOn: (r.pay_date ?? r.created_at).toISOString().slice(0, 10),
   }))
+}
+
+/**
+ * Thrown when her claim looks like one already on file, and she has not yet
+ * said to send it anyway.
+ *
+ * A distinct type rather than a message, because the sheet has to do something
+ * different with it: keep what she typed, say what the shop already has, and
+ * turn Submit into "Send it anyway". Every other failure here is a dead end
+ * she has to correct.
+ */
+export class DuplicateClaimError extends Error {
+  readonly duplicate: DuplicatePayment
+
+  constructor(duplicate: DuplicatePayment) {
+    super("Pembayaran serupa sudah tercatat")
+    this.name = "DuplicateClaimError"
+    this.duplicate = duplicate
+  }
 }
 
 /** Rupiah as the shop writes them, for a message she has to act on. */
@@ -282,7 +324,17 @@ async function refuseIfOverQrisCeiling(
  * one stops her telling the shop rather than stopping her transferring.
  */
 export async function submitCustomerPayment(
-  input: { handle: string; event: string; amount: unknown; bank: string; sender: string },
+  input: {
+    handle: string
+    event: string
+    amount: unknown
+    bank: string
+    sender: string
+    /** Set once she has seen what the shop already has and sent it anyway. */
+    confirmDuplicate?: boolean
+    /** A photo of the transfer, if she wanted to attach one. */
+    receiptUrl?: string
+  },
   db: DBExecutor = sql,
 ): Promise<{ id: number; amount: number }> {
   const amount = cleanAmount(input.amount)
@@ -291,6 +343,7 @@ export async function submitCustomerPayment(
   const raw = String(input.bank ?? "").trim()
   const bank = raw.toUpperCase() === QRIS ? QRIS : raw
   const sender = String(input.sender ?? "").trim()
+  const receipt = cleanReceiptUrl(input.receiptUrl)
   if (!bank) throw new Error("Pilih bank tujuan transfer")
   if (!sender) throw new Error("Isi nama rekening pengirim")
   if (sender.length > 120) throw new Error("Nama rekening terlalu panjang")
@@ -310,10 +363,25 @@ export async function submitCustomerPayment(
   // sheet decided is a courtesy, and this is the rule.
   if (bank === QRIS) await refuseIfOverQrisCeiling(input.event, order.customer, amount, db)
 
+  // Submitting twice because the first one seemed not to go through is the
+  // ordinary way a customer files the same transfer twice. She is told what
+  // the shop already has and may send it anyway — most of the time she is
+  // right, and it is the shop that has not looked yet.
+  if (!input.confirmDuplicate) {
+    const duplicate = await findDuplicatePayment({
+      customer: order.customer,
+      event: input.event,
+      amount,
+      payDate: new Date().toISOString().slice(0, 10),
+    }, db)
+    if (duplicate) throw new DuplicateClaimError(duplicate)
+  }
+
   const [row] = await db<{ id: number }[]>`
-    INSERT INTO payments (event, customer, amount, account, remarks, pay_date, kind)
+    INSERT INTO payments (event, customer, amount, account, remarks, pay_date, kind, reported_by,
+                          receipt_url)
     VALUES (${input.event}, ${order.customer}, ${amount}, ${bank}, ${sender},
-            CURRENT_DATE, 'deposit')
+            CURRENT_DATE, 'deposit', 'customer', ${receipt})
     RETURNING id
   `
   return { id: row.id, amount }

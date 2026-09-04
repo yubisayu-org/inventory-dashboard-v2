@@ -2,6 +2,7 @@ import { test, after } from "node:test"
 import assert from "node:assert/strict"
 import sql from "../db-pool"
 import {
+  DuplicateClaimError,
   getCustomerPayments,
   getPayableBanks,
   getQrisOffer,
@@ -10,6 +11,7 @@ import {
   unrejectCustomerPayment,
 } from "./catalogue-payments"
 import { getPublicInvoiceForCustomer } from "./invoice"
+import { togglePaymentChecked } from "./finance"
 
 // She reports what left her account; the shop confirms it against the bank.
 // The whole safety of this rests on one thing: a reported payment is a claim,
@@ -336,4 +338,97 @@ test("with every ceiling empty, QRIS is simply open", async () => {
     handle, event: QRIS_EVENT, amount: 5000000, bank: "QRIS", sender: "Sari",
   })
   assert.ok(id)
+})
+
+
+// ─── Claiming the same transfer twice ────────────────────────────────────────
+
+const DUP_EVENT = `${TAG}_DUP`
+
+test("a claim that looks like one already on file is held back until she says", async () => {
+  await sql`
+    INSERT INTO events (name, warehouse_id) SELECT ${DUP_EVENT}, id FROM warehouses ORDER BY id LIMIT 1`
+  const [p] = await sql<{ id: number }[]>`SELECT id FROM products ORDER BY id LIMIT 1`
+  await sql`
+    INSERT INTO orders (event, customer, product_id, unit_price, unit, unit_arrive)
+    VALUES (${DUP_EVENT}, ${handle}, ${p.id}, 400000, 1, 1)`
+
+  const first = await submitCustomerPayment({
+    handle, event: DUP_EVENT, amount: 185000, bank: "BCA", sender: "Sari",
+  })
+  assert.ok(first.id)
+
+  // Submitting again because the first seemed not to go through is the
+  // ordinary way this happens, so she is told rather than refused.
+  const held = await assert.rejects(
+    () => submitCustomerPayment({
+      handle, event: DUP_EVENT, amount: 185000, bank: "BCA", sender: "Sari",
+    }),
+    DuplicateClaimError,
+  ).then(() => true)
+  assert.ok(held)
+
+  // What she is shown is the row itself, and it is hers, which is what lets
+  // the sheet say "you told us about this" rather than "we have this".
+  try {
+    await submitCustomerPayment({
+      handle, event: DUP_EVENT, amount: 185000, bank: "BCA", sender: "Sari",
+    })
+    assert.fail("should have been held")
+  } catch (err) {
+    assert.ok(err instanceof DuplicateClaimError)
+    assert.equal(err.duplicate.amount, 185000)
+    assert.equal(err.duplicate.reportedBy, "customer")
+  }
+
+  // And once she says it really was a second transfer, it goes through.
+  const second = await submitCustomerPayment({
+    handle, event: DUP_EVENT, amount: 185000, bank: "BCA", sender: "Sari",
+    confirmDuplicate: true,
+  })
+  assert.ok(second.id !== first.id, "two transfers, two rows")
+
+  // A different figure was never in question.
+  const other = await submitCustomerPayment({
+    handle, event: DUP_EVENT, amount: 60000, bank: "BCA", sender: "Sari",
+  })
+  assert.ok(other.id)
+})
+
+test("her own claims are marked as hers, so a warning can say so", async () => {
+  const [row] = await sql<{ reported_by: string }[]>`
+    SELECT reported_by FROM payments WHERE event = ${DUP_EVENT} ORDER BY id LIMIT 1`
+  assert.equal(row.reported_by, "customer")
+})
+
+// ─── The tick tells her ──────────────────────────────────────────────────────
+
+test("finding her money in the statement is news she hears", async () => {
+  const { id } = await submitCustomerPayment({
+    handle, event: EVENT, amount: 123000, bank: "BCA", sender: "Sari",
+  })
+
+  const before = await sql<{ n: string }[]>`
+    SELECT count(*) AS n FROM announcements WHERE customer_id = ${customerId}`
+  await togglePaymentChecked(id, true)
+
+  const [notice] = await sql<{ title: string; body: string }[]>`
+    SELECT title, body FROM announcements WHERE customer_id = ${customerId} ORDER BY id DESC LIMIT 1`
+  assert.match(notice.title, /confirmed/i)
+  assert.match(notice.body, /123\.000/, "the figure she transferred, as she wrote it")
+  assert.match(notice.body, new RegExp(EVENT), "and which trip it was for")
+
+  // Ticking what is already ticked is not news. A double click, or a screen
+  // that had not caught up, must not tell her twice.
+  await togglePaymentChecked(id, true)
+  const [{ n: after }] = await sql<{ n: string }[]>`
+    SELECT count(*) AS n FROM announcements WHERE customer_id = ${customerId}`
+  assert.equal(Number(after), Number(before[0].n) + 1, "one tick, one notice")
+
+  // And taking the tick back says nothing at all: it is the shop correcting
+  // itself, not something she did.
+  await togglePaymentChecked(id, false)
+  const [{ n: undone }] = await sql<{ n: string }[]>`
+    SELECT count(*) AS n FROM announcements WHERE customer_id = ${customerId}`
+  assert.equal(Number(undone), Number(after))
 })

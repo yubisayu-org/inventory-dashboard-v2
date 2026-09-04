@@ -4,6 +4,9 @@ import { getInvoiceForCustomer } from "./invoice"
 import type { DBExecutor } from "./actor"
 import type { PaymentRow, AdjustmentRow, RefundRow, RefundReason, RefundStatus } from "./types"
 import { isLiveAmount } from "./live-refund"
+import { notifyCustomer } from "./announcements"
+import { getNoticeTemplates } from "./settings"
+import { applyNoticeOverrides, fillNotice } from "../notice-templates"
 
 // ─── Payments ──────────────────────────────────────────────────────────────
 
@@ -22,13 +25,15 @@ function mapPaymentRow(r: Record<string, unknown>): PaymentRow {
     rejectReason: (r.reject_reason as string) ?? "",
     createdAt: tsToString(r.created_at as Date | null),
     updatedAt: tsToString(r.updated_at as Date | null),
+    receiptUrl: (r.receipt_url as string) ?? "",
+    reportedBy: r.reported_by === "customer" ? "customer" : "shop",
   }
 }
 
 export async function getPaymentRows(): Promise<PaymentRow[]> {
   const rows = await sql`
     SELECT id, event, customer, amount, account, is_checked,
-           pay_date, remarks, kind, created_at, updated_at,
+           pay_date, remarks, kind, created_at, updated_at, receipt_url, reported_by,
            rejected_at, reject_reason
     FROM payments ORDER BY id DESC
   `
@@ -159,7 +164,7 @@ export async function getPaymentsPaginated(opts: {
 
   const dataRows = await sql.unsafe(
     `SELECT id, event, customer, amount, account, is_checked,
-            pay_date, remarks, kind, created_at, updated_at,
+            pay_date, remarks, kind, created_at, updated_at, receipt_url, reported_by,
             rejected_at, reject_reason
      FROM payments
      ${where}
@@ -253,10 +258,68 @@ export async function togglePaymentChecked(
   isChecked: boolean,
   db: DBExecutor = sql,
 ): Promise<void> {
-  await db`
+  // Only the rows that actually change are worth announcing, so the previous
+  // state is part of the write. Ticking a row that was already ticked — a
+  // double click, a stale screen — must not tell her twice.
+  const [changed] = await db<{ event: string; customer: string; amount: string; kind: string }[]>`
     UPDATE payments SET is_checked = ${isChecked}, updated_at = NOW()
-    WHERE id = ${rowNumber}
+    WHERE id = ${rowNumber} AND is_checked IS DISTINCT FROM ${isChecked}
+    RETURNING event, customer, amount, kind
   `
+
+  if (!changed || !isChecked || changed.kind !== "deposit") return
+  await announcePaymentConfirmed(changed.event, changed.customer, Number(changed.amount), db)
+}
+
+/**
+ * Her money has been found in the statement, and she is told so.
+ *
+ * Sent on every tick rather than only the one that clears the invoice: a
+ * deposit landing is news in its own right, and waiting until the balance is
+ * settled leaves her wondering for a week whether the first transfer arrived.
+ *
+ * A failure here never reaches the caller. The tick is the thing that
+ * mattered; a notice that could not be written must not undo it.
+ */
+async function announcePaymentConfirmed(
+  event: string,
+  customer: string,
+  amount: number,
+  db: DBExecutor,
+): Promise<void> {
+  try {
+    // The owner's own wording where she has written some. Automatic notices
+    // used to ignore Settings entirely, which made an edited template look
+    // broken to the person who edited it.
+    const overrides = await getNoticeTemplates().catch(() => null)
+    const template = applyNoticeOverrides(overrides).find((t) => t.key === "inbox_payment_confirmed")
+    if (!template) return
+
+    // The figures as she reads them on her own invoice, taken from the same
+    // place that page takes them so the two can never disagree.
+    const invoice = await getInvoiceForCustomer(customer, { lean: true })
+    const line = invoice.events?.find((e) => e.eventId === event)
+
+    const tokens = {
+      "{customer}": customer,
+      "{event}": event,
+      "{amount}": `Rp ${fmtIdr(amount)}`,
+      "{total}": line ? `Rp ${fmtIdr(line.invoice.total)}` : "",
+      "{outstanding}": line ? `Rp ${fmtIdr(Math.max(0, line.invoice.sisaPelunasan))}` : "",
+    }
+
+    await notifyCustomer(customer, {
+      title: fillNotice(template.title, tokens),
+      body: fillNotice(template.body, tokens),
+    }, db)
+  } catch (err) {
+    console.error("Failed to announce a confirmed payment:", err)
+  }
+}
+
+/** Rupiah with the shop's thousands dots, and nothing else. */
+function fmtIdr(n: number): string {
+  return Math.round(n).toLocaleString("id-ID")
 }
 
 export async function updatePaymentRemarks(rowNumber: number, remarks: string, db: DBExecutor = sql): Promise<void> {
@@ -313,7 +376,7 @@ export async function getCustomerLedger(instagramId: string): Promise<CustomerLe
   const [payments, adjustments, refunds] = await Promise.all([
     sql`
       SELECT id, event, customer, amount, account, is_checked,
-             pay_date, remarks, kind, created_at, updated_at
+             pay_date, remarks, kind, created_at, updated_at, receipt_url, reported_by
       FROM payments
       WHERE lower(customer) = lower(${instagramId})
       ORDER BY id DESC

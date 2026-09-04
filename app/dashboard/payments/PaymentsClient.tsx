@@ -2,6 +2,7 @@
 
 import { displayIg } from "@/lib/format"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { DuplicatePaymentPrompt, type DuplicatePayment } from "@/components/DuplicatePaymentPrompt"
 import type { PaymentRow } from "@/lib/db"
 import type { Role } from "@/lib/roles"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
@@ -91,6 +92,11 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
   const [mobileAddOpen, setMobileAddOpen] = useState(false)
   const [editingRow, setEditingRow] = useState<PaymentRow | null>(null)
   const [rejectingRow, setRejectingRow] = useState<PaymentRow | null>(null)
+  // A tick the shop may already have counted: the row it matched, held until
+  // somebody says which it is.
+  const [tickingDuplicate, setTickingDuplicate] = useState<
+    { row: PaymentRow; duplicate: DuplicatePayment } | null
+  >(null)
 
   // Server-side table state.
   const [sorting, setSorting] = useState<SortingState>([])
@@ -182,7 +188,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
     setKindFilter(v); setPagination((p) => ({ ...p, pageIndex: 0 }))
   }, [])
 
-  async function handleToggleCheck(row: PaymentRow) {
+  async function handleToggleCheck(row: PaymentRow, force = false) {
     if (isAdmin) return
     const newChecked = !row.isChecked
     setRows((prev) =>
@@ -192,8 +198,20 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
       const res = await fetch(`/api/sheets/payments/${row.rowNumber}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isChecked: newChecked }),
+        body: JSON.stringify({ isChecked: newChecked, force }),
       })
+      // The same money may already be counted. The row goes back to where it
+      // was and the question is put, rather than the tick being refused: two
+      // transfers of a size days apart are ordinary, and only the statement
+      // settles which this is.
+      if (res.status === 409) {
+        const d = await res.json()
+        setRows((prev) =>
+          prev.map((r) => (r.rowNumber === row.rowNumber ? { ...r, isChecked: !newChecked } : r)),
+        )
+        setTickingDuplicate({ row, duplicate: d.duplicate as DuplicatePayment })
+        return
+      }
       if (!res.ok) throw new Error("Failed")
     } catch {
       setRows((prev) =>
@@ -352,7 +370,28 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
       header: "Remarks",
       size: 140,
       filterFn: "textContains",
-      cell: ({ row }) => <InlineRemarks row={row.original} onSave={handleSaveRemarks} />,
+      cell: ({ row }) => (
+        <div className="flex items-center gap-1.5 min-w-0">
+          <InlineRemarks row={row.original} onSave={handleSaveRemarks} />
+          {/* A receipt is offered to her, never asked for — most rows have
+              none. Shown as a paperclip rather than a thumbnail so the row
+              keeps its height whether or not she attached one. */}
+          {row.original.receiptUrl && (
+            <a
+              href={row.original.receiptUrl}
+              target="_blank"
+              rel="noreferrer"
+              title="She attached a receipt"
+              aria-label="Open the receipt she attached"
+              className="shrink-0 text-faint hover:text-brand transition-colors"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+              </svg>
+            </a>
+          )}
+        </div>
+      ),
     },
     {
       accessorKey: "createdAt",
@@ -505,6 +544,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
             addOpen ? (
               <AddPaymentForm
                 options={options}
+                isAdmin={isAdmin}
                 onAdded={() => refreshRef.current()}
                 onClose={() => setAddOpen(false)}
               />
@@ -636,9 +676,34 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
       {mobileAddOpen && (
         <MobileAddPaymentSheet
           options={options}
+          isAdmin={isAdmin}
           onClose={() => setMobileAddOpen(false)}
           onAdded={() => { refreshRef.current(); setMobileAddOpen(false); window.scrollTo({ top: 0, behavior: "smooth" }) }}
         />
+      )}
+
+      {tickingDuplicate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white border border-cream-border p-5 space-y-3">
+            <div>
+              <h3 className="text-base font-bold">This may already be counted</h3>
+              <p className="text-xs text-muted mt-0.5">
+                {tickingDuplicate.row.customer} · {tickingDuplicate.row.event} · Rp{" "}
+                {Number(tickingDuplicate.row.amount).toLocaleString("id-ID")}
+              </p>
+            </div>
+            <DuplicatePaymentPrompt
+              duplicate={tickingDuplicate.duplicate}
+              saveLabel="Tick anyway"
+              onSaveAnyway={() => {
+                const held = tickingDuplicate
+                setTickingDuplicate(null)
+                void handleToggleCheck(held.row, true)
+              }}
+              onCancel={() => setTickingDuplicate(null)}
+            />
+          </div>
+        </div>
       )}
 
       {rejectingRow && (
@@ -910,10 +975,13 @@ function EditPaymentModal({
 
 function AddPaymentForm({
   options,
+  isAdmin,
   onAdded,
   onClose,
 }: {
   options: ReturnType<typeof useSheetOptions>
+  /** Ticking is the owner's alone, so only an owner is offered her claim. */
+  isAdmin: boolean
   onAdded: () => void
   onClose: () => void
 }) {
@@ -937,8 +1005,16 @@ function AddPaymentForm({
 
   const canSubmit = Boolean(event) && Boolean(customer) && Boolean(amount) && Number(amount) > 0
 
-  async function handleSubmit(e: React.FormEvent) {
+  // What the shop may already have for this money. Held rather than saved, so
+  // whoever is looking decides which it is.
+  const [duplicate, setDuplicate] = useState<DuplicatePayment | null>(null)
+
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    void save(false)
+  }
+
+  async function save(force: boolean) {
     if (!canSubmit) return
     setSubmitting(true)
     setFeedback(null)
@@ -946,13 +1022,44 @@ function AddPaymentForm({
       const res = await fetch("/api/sheets/payments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ event, customer, amount: Number(amount), account, isChecked: false, payDate, remarks }),
+        body: JSON.stringify({ event, customer, amount: Number(amount), account, isChecked: false, payDate, remarks, force }),
       })
+      // Not an error: the same money may already be written down. What she
+      // typed stays exactly where it is while she decides.
+      if (res.status === 409) {
+        const d = await res.json()
+        setDuplicate(d.duplicate as DuplicatePayment)
+        return
+      }
       if (!res.ok) {
         const d = await res.json()
         throw new Error(d.error ?? "Failed to save")
       }
+      setDuplicate(null)
       setFeedback({ type: "success", message: "Payment added" })
+      setCustomer("")
+      setAmount("")
+      setRemarks("")
+      onAdded()
+    } catch (err) {
+      setFeedback({ type: "error", message: err instanceof Error ? err.message : "Failed to save" })
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  /** Her own claim counted, and no second row written. */
+  async function tickHers(id: number) {
+    setSubmitting(true)
+    try {
+      const res = await fetch(`/api/sheets/payments/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isChecked: true, force: true }),
+      })
+      if (!res.ok) throw new Error("Failed to tick her claim")
+      setDuplicate(null)
+      setFeedback({ type: "success", message: "Her claim ticked" })
       setCustomer("")
       setAmount("")
       setRemarks("")
@@ -1029,6 +1136,22 @@ function AddPaymentForm({
           </button>
         </div>
       </form>
+      {duplicate && (
+        <div className="mt-2">
+          <DuplicatePaymentPrompt
+            duplicate={duplicate}
+            busy={submitting}
+            saveLabel="Save anyway"
+            onTickHers={
+              !isAdmin && duplicate.reportedBy === "customer" && !duplicate.isChecked
+                ? () => void tickHers(duplicate.id)
+                : undefined
+            }
+            onSaveAnyway={() => void save(true)}
+            onCancel={() => setDuplicate(null)}
+          />
+        </div>
+      )}
       {feedback && <p className={`text-xs mt-2 ${feedback.type === "success" ? "text-green-600" : "text-red-600"}`}>{feedback.message}</p>}
     </div>
   )
@@ -1090,10 +1213,13 @@ function PaymentCard({
 
 function MobileAddPaymentSheet({
   options,
+  isAdmin,
   onClose,
   onAdded,
 }: {
   options: ReturnType<typeof useSheetOptions>
+  /** Ticking is the owner's alone, so only an owner is offered her claim. */
+  isAdmin: boolean
   onClose: () => void
   onAdded: () => void
 }) {
@@ -1120,8 +1246,16 @@ function MobileAddPaymentSheet({
 
   const canSubmit = Boolean(event) && Boolean(customer) && Boolean(amount) && Number(amount) > 0
 
-  async function handleSubmit(e: React.FormEvent) {
+  // What the shop may already have for this money. Held rather than saved, so
+  // whoever is looking decides which it is.
+  const [duplicate, setDuplicate] = useState<DuplicatePayment | null>(null)
+
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    void save(false)
+  }
+
+  async function save(force: boolean) {
     if (!canSubmit) return
     setSubmitting(true)
     setError(null)
@@ -1129,12 +1263,39 @@ function MobileAddPaymentSheet({
       const res = await fetch("/api/sheets/payments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ event, customer, amount: Number(amount), account, isChecked, payDate, remarks }),
+        body: JSON.stringify({ event, customer, amount: Number(amount), account, isChecked, payDate, remarks, force }),
       })
+      // Not an error: the same money may already be written down. What was
+      // typed stays where it is while somebody decides.
+      if (res.status === 409) {
+        const d = await res.json()
+        setDuplicate(d.duplicate as DuplicatePayment)
+        return
+      }
       if (!res.ok) {
         const d = await res.json()
         throw new Error(d.error ?? "Failed to save")
       }
+      setDuplicate(null)
+      onAdded()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  /** Her own claim counted, and no second row written. */
+  async function tickHers(id: number) {
+    setSubmitting(true)
+    try {
+      const res = await fetch(`/api/sheets/payments/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isChecked: true, force: true }),
+      })
+      if (!res.ok) throw new Error("Failed to tick her claim")
+      setDuplicate(null)
       onAdded()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save")
@@ -1195,6 +1356,20 @@ function MobileAddPaymentSheet({
             <input type="text" value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Optional" className={INPUT_CLASS_TALL} />
           </div>
         </div>
+
+        {duplicate && (
+          <DuplicatePaymentPrompt
+            duplicate={duplicate}
+            busy={submitting}
+            onTickHers={
+              !isAdmin && duplicate.reportedBy === "customer" && !duplicate.isChecked
+                ? () => void tickHers(duplicate.id)
+                : undefined
+            }
+            onSaveAnyway={() => void save(true)}
+            onCancel={() => setDuplicate(null)}
+          />
+        )}
 
         {error && <p className="text-xs text-red-500">{error}</p>}
 

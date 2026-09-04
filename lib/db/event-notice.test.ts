@@ -85,3 +85,46 @@ test("a trip nobody ordered on sends nothing", async () => {
   const result = await notifyEventCustomers(`${TAG}_ghost`, { title: "x", body: "y" })
   assert.deepEqual(result, { sent: 0, customers: [] })
 })
+
+// A reminder is only news to somebody who owes, and it has to name her own
+// figure — one notice, forty different amounts.
+test("a reminder reaches only those who owe, each with their own figures", async () => {
+  const all = await eventNoticeRecipients(EVENT, { skipShipped: false })
+  assert.ok(all.length >= 2, "the fixture has more than one customer on this trip")
+  for (const r of all) {
+    assert.equal(typeof r.total, "number", "the invoice total travels with each recipient")
+    assert.equal(typeof r.outstanding, "number")
+  }
+
+  const owing = await eventNoticeRecipients(EVENT, { skipShipped: false, onlyUnpaid: true })
+  for (const r of owing) {
+    assert.ok(r.outstanding > 0, "nobody who has paid is on the list")
+  }
+
+  // The figures come from live_balances, which is what her invoice reads, so a
+  // reminder can never quote a number the invoice disagrees with.
+  const [fromView] = await sql<{ balance: number }[]>`
+    SELECT balance FROM live_balances
+     WHERE event = ${EVENT}
+       AND lower(replace(customer, '@', '')) = ${all[0].customer.toLowerCase().replace("@", "")}`
+  if (fromView) assert.equal(all[0].outstanding, Number(fromView.balance))
+})
+
+test("each recipient reads her own amount, not the first one's", async () => {
+  const owing = await eventNoticeRecipients(EVENT, { skipShipped: false, onlyUnpaid: true })
+  if (owing.length === 0) return
+
+  await notifyEventCustomers(
+    EVENT,
+    { title: "{event} still waiting", body: "{customer}: {outstanding} of {total} to go." },
+    { skipShipped: false, onlyUnpaid: true },
+  )
+
+  for (const r of owing) {
+    const inbox = await listAnnouncementsForCustomer(r.customer)
+    const mine = inbox.find((a) => a.title.includes(EVENT) && a.body.includes("to go"))
+    assert.ok(mine, `${r.customer} got the notice`)
+    assert.match(mine.body, new RegExp(r.outstanding.toLocaleString("id-ID").replace(/\./g, "\\.")))
+    assert.match(mine.body, new RegExp(r.customer))
+  }
+})

@@ -3,6 +3,7 @@ import { customerFromRequest } from "@/lib/catalogue-bearer"
 import { corsHeaders, privateHeaders } from "@/lib/catalogue-cors"
 import catalogueSql from "@/lib/db-catalogue-public"
 import {
+  DuplicateClaimError,
   getCustomerPayments,
   getPayableBanks,
   getQrisOffer,
@@ -53,7 +54,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Payload too large" }, { status: 413, headers: corsHeaders() })
   }
 
-  let body: { event?: unknown; amount?: unknown; bank?: unknown; sender?: unknown }
+  let body: {
+    event?: unknown
+    amount?: unknown
+    bank?: unknown
+    sender?: unknown
+    confirmDuplicate?: unknown
+    receiptUrl?: unknown
+  }
   try {
     body = JSON.parse(raw || "{}")
   } catch {
@@ -72,11 +80,24 @@ export async function POST(req: NextRequest) {
       amount: body.amount,
       bank: String(body.bank ?? ""),
       sender: String(body.sender ?? ""),
+      confirmDuplicate: Boolean(body.confirmDuplicate),
+      receiptUrl: String(body.receiptUrl ?? ""),
     }, catalogueSql)
     return NextResponse.json({ ok: true, ...saved }, { headers: privateHeaders() })
   } catch (err) {
-    // Everything submitCustomerPayment throws is something she can act on —
-    // a missing field, a nonsense amount, an event that is not hers — so the
+    // A lookalike is not a refusal: she is told what the shop already has and
+    // may send it again. The sheet needs the figures to say so, and needs to
+    // know this is the one failure that a second press gets past.
+    if (err instanceof DuplicateClaimError) {
+      const { amount, payDate, reportedBy } = err.duplicate
+      return NextResponse.json(
+        { error: err.message, duplicate: { amount, payDate, mine: reportedBy === "customer" } },
+        { status: 409, headers: corsHeaders() },
+      )
+    }
+
+    // Everything else submitCustomerPayment throws is something she can act on
+    // — a missing field, a nonsense amount, an event that is not hers — so the
     // message goes back rather than being swallowed into a 500.
     const message = err instanceof Error ? err.message : "Gagal menyimpan pembayaran"
     console.error("Failed to record customer payment:", err)

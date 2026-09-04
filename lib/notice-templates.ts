@@ -168,10 +168,14 @@ export const NOTICE_TEMPLATES: NoticeTemplate[] = [
       + "{estimatedKg} kg. Selisihnya {amount} sudah kami kurangkan dari tagihan {event}.",
   },
   {
+    // Sent by the shop's own tick, every time one lands — see
+    // announcePaymentConfirmed. {outstanding} is offered but left out of the
+    // house wording: on the transfer that settles the invoice it would read
+    // "Rp 0 still to go", which is a strange way to say thank you.
     key: "inbox_payment_confirmed",
     label: "Payment confirmed",
     title: "Payment confirmed",
-    body: "We found your transfer for {event} in the bank statement. Thank you.",
+    body: "We found your {amount} transfer for {event} in the bank statement. Thank you.",
   },
   {
     key: "inbox_waiting_payment",
@@ -444,7 +448,7 @@ export const NOTICE_KEYS: NoticeKey[] = NOTICE_TEMPLATES.map((t) => t.key)
 export const NOTICE_TOKENS_FOR: Record<NoticeKey, string[]> = {
   inbox_invoice_due: ["{customer}", "{event}", "{total}", "{outstanding}"],
   inbox_refund_offered: ["{customer}", "{event}", "{refundAmount}", "{cause}", "{itemsList}", "{receivedItem}"],
-  inbox_payment_confirmed: ["{customer}", "{event}", "{total}"],
+  inbox_payment_confirmed: ["{customer}", "{event}", "{amount}", "{total}", "{outstanding}"],
   inbox_waiting_payment: ["{customer}", "{event}", "{total}", "{outstanding}"],
   inbox_delayed: ["{customer}", "{event}"],
   inbox_order_cancelled: ["{customer}", "{event}", "{itemsList}", "{amount}"],
