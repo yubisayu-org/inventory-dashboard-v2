@@ -101,10 +101,16 @@ function computeEventCore(
   pembayaran: number,
   biayaLainnya: number,
 ) {
-  const unit = group.reduce((s, r) => s + Number(r.unit), 0)
-  const subtotal = group.reduce((s, r) => s + Number(r.unit_price) * Number(r.unit), 0)
+  // Billed units, not ordered ones. Goods she sent back are still on the line —
+  // she did buy them — but she is not charged for them, and they carry no
+  // ongkir either, which is how the delivery on a returned item comes back
+  // with it.
+  const billed = (r: OrderRowLike) => Math.max(0, Number(r.unit) - Number(r.unit_returned ?? 0))
+
+  const unit = group.reduce((s, r) => s + billed(r), 0)
+  const subtotal = group.reduce((s, r) => s + Number(r.unit_price) * billed(r), 0)
   const arrive = group.reduce((s, r) => s + Number(r.unit_arrive ?? 0), 0)
-  const totalGram = group.reduce((s, r) => s + Number(r.gram ?? 0) * Number(r.unit), 0)
+  const totalGram = group.reduce((s, r) => s + Number(r.gram ?? 0) * billed(r), 0)
   const weightKg = Math.ceil(totalGram / 1000)
   const estimasiOngkir = ongkirPerKg * weightKg
   const total = subtotal + estimasiOngkir + biayaLainnya
@@ -157,7 +163,7 @@ export async function getInvoiceForCustomer(
     sql`
       SELECT o.id, o.event, o.customer, o.unit, o.note,
              o.unit_price, o.product_id,
-             o.unit_buy, o.receipt, o.unit_arrive, o.unit_ship, o.unit_hold,
+             o.unit_buy, o.receipt, o.unit_arrive, o.unit_ship, o.unit_hold, o.unit_returned,
              p.name AS product_name, COALESCE(p.store, '') AS store,
              COALESCE(p.gram, 0) AS gram,
              COALESCE(e.eta, '') AS event_eta,
@@ -234,10 +240,14 @@ export async function getInvoiceForCustomer(
     const group = groups[eid]
 
     const orders: InvoiceOrderLine[] = group.map((r) => ({
-      order: `${r.product_name} x ${r.unit}`,
+      // What she is billed for, and what came back, said separately: "x 4
+      // (1 retur)" is truer than either number on its own.
+      order: `${r.product_name} x ${Number(r.unit) - Number(r.unit_returned ?? 0)}`
+        + (Number(r.unit_returned ?? 0) > 0 ? ` (${r.unit_returned} retur)` : ""),
       unit: r.unit,
+      unitReturned: Number(r.unit_returned ?? 0),
       price: formatIdrNumber(r.unit_price),
-      subtotal: formatIdrNumber(r.unit_price * r.unit),
+      subtotal: formatIdrNumber(r.unit_price * Math.max(0, Number(r.unit) - Number(r.unit_returned ?? 0))),
       unitArrive: r.unit_arrive ?? 0,
       orderId: r.id as number,
       productName: r.product_name as string,
@@ -303,7 +313,8 @@ function formatShipDate(d: Date | string | null | undefined): string {
  *   Completed         — resi sudah dapat diakses (all shipped + resi present)
  */
 function derivePublicStatus(group: readonly OrderRowLike[], hasResi: boolean): string {
-  const totalUnit = group.reduce((s, r) => s + Number(r.unit), 0)
+  const totalUnit = group.reduce(
+    (s, r) => s + Math.max(0, Number(r.unit) - Number(r.unit_returned ?? 0)), 0)
   if (totalUnit <= 0) return ""
   const totalArrive = group.reduce((s, r) => s + Number(r.unit_arrive ?? 0), 0)
   const totalShip = group.reduce((s, r) => s + Number(r.unit_ship ?? 0), 0)
@@ -333,7 +344,7 @@ export async function getPublicInvoiceForCustomer(
   const [orderRows, paymentRows, adjustmentRows, shipmentRows] = await Promise.all([
     db`
       SELECT o.event, o.customer, o.unit, o.unit_price, o.unit_arrive, o.unit_ship,
-             COALESCE(o.unit_hold, 0) AS unit_hold,
+             COALESCE(o.unit_hold, 0) AS unit_hold, o.unit_returned,
              p.name AS product_name, COALESCE(p.gram, 0) AS gram,
              COALESCE(e.eta, '') AS event_eta,
              -- Per-event ongkir: the rate from the event's warehouse. The
@@ -415,10 +426,12 @@ export async function getPublicInvoiceForCustomer(
       const ship = Number(r.unit_ship ?? 0)
       const hold = Number(r.unit_hold ?? 0)
       return {
-        order: `${r.product_name} x ${r.unit}`,
+        order: `${r.product_name} x ${Number(r.unit) - Number(r.unit_returned ?? 0)}`
+          + (Number(r.unit_returned ?? 0) > 0 ? ` (${r.unit_returned} retur)` : ""),
         unit: r.unit,
+        unitReturned: Number(r.unit_returned ?? 0),
         price: formatIdrNumber(r.unit_price),
-        subtotal: formatIdrNumber(r.unit_price * r.unit),
+        subtotal: formatIdrNumber(r.unit_price * Math.max(0, Number(r.unit) - Number(r.unit_returned ?? 0))),
         unitArrive: arrive,
         unitShip: ship,
         unitHold: hold,

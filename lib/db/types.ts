@@ -142,7 +142,10 @@ export interface ExcessTransitItem {
 
 export interface InvoiceOrderLine {
   order: string
+  /** What she ordered. Kept whole even after a return: she did buy them. */
   unit: number
+  /** How many came back. Billed units are unit - unitReturned. */
+  unitReturned: number
   price: string
   subtotal: string
   unitArrive: number
@@ -423,7 +426,10 @@ export interface InvoiceResult {
 // the customer-facing page renders — orders + payment status — and nothing else.
 export interface PublicInvoiceOrderLine {
   order: string
+  /** What she ordered, including anything she has since sent back. */
   unit: number
+  /** How many came back. She is billed for unit - unitReturned. */
+  unitReturned: number
   price: string
   subtotal: string
   unitArrive: number

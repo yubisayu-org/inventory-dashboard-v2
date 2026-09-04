@@ -67,8 +67,8 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
         SELECT
           o.event,
           o.customer,
-          SUM(o.unit_price * o.unit) AS subtotal,
-          SUM(COALESCE(p.gram, 0) * o.unit) AS total_gram
+          SUM(o.unit_price * GREATEST(o.unit - COALESCE(o.unit_returned, 0), 0)) AS subtotal,
+          SUM(COALESCE(p.gram, 0) * GREATEST(o.unit - COALESCE(o.unit_returned, 0), 0)) AS total_gram
         FROM orders o
         JOIN products p ON p.id = o.product_id
         GROUP BY o.event, o.customer
@@ -282,8 +282,8 @@ export async function getEventPerformance(): Promise<EventPerformance[]> {
       SELECT
         o.event,
         o.customer,
-        SUM(o.unit_price * o.unit) AS subtotal,
-        SUM(COALESCE(p.gram, 0) * o.unit) AS total_gram
+        SUM(o.unit_price * GREATEST(o.unit - COALESCE(o.unit_returned, 0), 0)) AS subtotal,
+        SUM(COALESCE(p.gram, 0) * GREATEST(o.unit - COALESCE(o.unit_returned, 0), 0)) AS total_gram
       FROM orders o
       JOIN products p ON p.id = o.product_id
       GROUP BY o.event, o.customer

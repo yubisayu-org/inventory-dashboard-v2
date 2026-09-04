@@ -2113,6 +2113,36 @@ function CreateRefundCard({
     setSaving(true)
     setError(null)
     try {
+      // Goods coming back are not the same act as money going out. The line
+      // has to record the return — otherwise her invoice goes on billing an
+      // item that is back on the shelf, and paying the refund leaves her
+      // owing for it — and the refund is then priced from what her bill
+      // actually fell by, ongkir included. One call, so the two cannot come
+      // apart.
+      if (needsLines && goods !== "kept") {
+        const res = await fetch("/api/sheets/refunds/return", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            event: form.event,
+            customer: form.customer.trim(),
+            reason: form.reason,
+            goods,
+            lines: lines
+              .map((o) => ({ orderId: o.orderId, qty: picked[o.orderId] ?? 0 }))
+              .filter((l) => l.qty > 0),
+          }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error ?? "Failed to record the return")
+
+        setForm({ event: "", customer: "", reason: "" as RefundReason, refundAmount: "", note: "" })
+        setPicked({})
+        setGoods("kept")
+        onCreated()
+        return
+      }
+
       // Through the notice, so a refund written by hand tells her the same way
       // a marked one does. She never reads an adjustment or a refund's own
       // description — the notice is the only surface that explains itself, and
@@ -2134,22 +2164,6 @@ function CreateRefundCard({
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "Failed to create")
-
-      // Goods coming back are stock, and stock the books have to know about.
-      // After the refund, so a failure here cannot leave money unexplained.
-      if (needsLines && goods !== "kept") {
-        for (const o of lines) {
-          const units = picked[o.orderId] ?? 0
-          if (units <= 0) continue
-          await fetch("/api/sheets/excess-purchase", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              event: form.event, items: o.productName, unitBuy: units, reason: goods,
-            }),
-          })
-        }
-      }
 
       setForm({ event: "", customer: "", reason: "" as RefundReason, refundAmount: "", note: "" })
       setPicked({})
@@ -2255,6 +2269,16 @@ function CreateRefundCard({
       {/* Where the goods ended up. Three real outcomes, and the shop knows
           which — the refund cannot work it out, and guessing either invents
           stock or loses it. */}
+      {/* When the goods come back, the figure is not the one in the box above:
+          it is what her invoice actually falls by, ongkir included, worked out
+          the same way a cancellation works it out. */}
+      {needsLines && pickedTotal > 0 && goods !== "kept" && (
+        <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
+          Barangnya kembali, jadi tagihannya ikut turun — barang <b>dan</b> ongkir yang
+          dibawanya. Nominal refund dihitung dari selisih tagihannya, bukan dari angka di atas.
+        </p>
+      )}
+
       {needsLines && pickedTotal > 0 && (
         <div className="flex flex-col gap-1.5">
           <span className="text-xs font-medium text-muted">Barangnya</span>
