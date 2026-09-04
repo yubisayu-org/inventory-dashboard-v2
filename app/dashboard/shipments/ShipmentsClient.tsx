@@ -7,6 +7,7 @@ import type { ShippingRecord } from "@/lib/db"
 import { generateShippingLabel, generateMultipleShippingLabels } from "@/lib/shipping-label"
 import type { ShippingLabelParams } from "@/lib/shipping-label"
 import { useModalDismiss } from "@/hooks/useModalDismiss"
+import { RedirectFields, type RedirectDraft } from "../ship/RedirectFields"
 import { copyToClipboard } from "@/lib/clipboard"
 import { useMessageDelivery } from "@/hooks/useMessageDelivery"
 import { waLink } from "@/lib/message-delivery"
@@ -540,6 +541,21 @@ function EditWeightModal({
 
 // ─── EditTempAddressModal ─────────────────────────────────────────────────
 
+/**
+ * The street out of a label that was only ever text.
+ *
+ * Parcels dispatched before the redirect's parts were stored have one blob:
+ * captions, name, phone, street, area. The line after "Alamat Lengkap:" is the
+ * street; anything else in there was never a street to begin with.
+ */
+function streetFromLabel(record: ShippingRecord): string {
+  if (record.tempAreaId) return ""
+  const lines = (record.tempAddress ?? "").split("\n").map((l) => l.trim()).filter(Boolean)
+  const at = lines.findIndex((l) => l.toLowerCase().startsWith("alamat lengkap"))
+  if (at === -1) return lines.filter((l) => !/^(nama|telepon):/i.test(l))[0] ?? ""
+  return lines[at + 1] ?? ""
+}
+
 function EditTempAddressModal({
   record,
   onClose,
@@ -549,13 +565,41 @@ function EditTempAddressModal({
   onClose: () => void
   onSaved: (tempAddress: string | null) => void
 }) {
-  const [value, setValue] = useState(record.tempAddress ?? "")
+  const [draft, setDraft] = useState<RedirectDraft | null>(null)
+
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  useEffect(() => { textareaRef.current?.focus() }, [])
+  // What correcting the area would do to her bill, and whether to do it. Off
+  // until a person turns it on: only they know whether the box really went
+  // somewhere else or the record was simply wrong.
+  const [quote, setQuote] = useState<
+    { perKg: number | null; previousPerKg: number; weightKg: number; delta: number } | null
+  >(null)
+  const [reprice, setReprice] = useState(false)
+  const areaChanged = Boolean(draft?.area && draft.area.id !== record.tempAreaId)
+
   useModalDismiss(onClose)
+
+  // A street being retyped is not a delivery going somewhere else, so only a
+  // changed area asks the courier anything.
+  useEffect(() => {
+    if (!areaChanged || !draft?.area) { setQuote(null); setReprice(false); return }
+    let live = true
+    fetch("/api/sheets/shipments/quote", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        rowNumber: record.rowNumber,
+        areaId: draft.area.id,
+        areaName: draft.area.name,
+      }),
+    })
+      .then((r) => r.json())
+      .then((d) => { if (live) setQuote(d.quote ?? null) })
+      .catch(() => { if (live) setQuote(null) })
+    return () => { live = false }
+  }, [areaChanged, draft?.area, record.rowNumber])
 
   async function persist(next: string | null) {
     setSaving(true)
@@ -564,7 +608,15 @@ function EditTempAddressModal({
       const res = await fetch("/api/sheets/shipments", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rowNumber: record.rowNumber, tempAddress: next }),
+        body: JSON.stringify({
+          rowNumber: record.rowNumber,
+          tempAddress: next,
+          areaId: draft?.area?.id ?? "",
+          areaName: draft?.area?.name ?? "",
+          name: draft?.name ?? "",
+          phone: draft?.phone ?? "",
+          repriceOngkir: reprice && areaChanged,
+        }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? "Failed")
@@ -578,9 +630,9 @@ function EditTempAddressModal({
   }
 
   async function handleSave() {
-    const trimmed = value.trim()
+    const trimmed = (draft?.label ?? "").trim()
     const next = trimmed === "" ? null : trimmed
-    if (next === (record.tempAddress ?? null)) { onClose(); return }
+    if (next === (record.tempAddress ?? null) && !areaChanged) { onClose(); return }
     await persist(next)
   }
 
@@ -611,15 +663,61 @@ function EditTempAddressModal({
         </div>
 
         <div className="px-5 py-4 flex flex-col gap-2">
-          <textarea
-            ref={textareaRef}
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
+          {/* The same fields every other door asks. Pressing Ship does not put
+              the box on a van — the parcels are packed one at a time — so a
+              customer asking for somewhere else in that gap is ordinary, and
+              this is where it lands. */}
+          <RedirectFields
+            customer={record.customer}
+            event={record.event}
             disabled={saving}
-            rows={6}
-            placeholder={"Nama Penerima\nAlamat lengkap\nNo. telepon"}
-            className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-300 focus:border-purple-500 transition-colors disabled:opacity-50 resize-none"
+            initial={{
+              name: record.tempName,
+              phone: record.tempPhone,
+              // A parcel dispatched before the parts existed has only its
+              // label text. Its street is in there among the captions, and
+              // pulling the "Alamat Lengkap:" line out beats losing it.
+              street: streetFromLabel(record),
+              area: record.tempAreaId
+                ? { id: record.tempAreaId, name: record.tempAreaName }
+                : null,
+            }}
+            onChange={setDraft}
           />
+
+          {areaChanged && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              {!quote
+                ? "Mengecek ongkir ke area baru…"
+                : quote.perKg === null
+                  ? "Kurir tidak memberi harga untuk area ini, jadi ongkirnya tidak bisa dihitung otomatis. Cek manual."
+                  : quote.delta === 0
+                    ? "Areanya berubah, tapi ongkirnya sama. Tidak ada yang perlu ditagih."
+                    : (
+                      <>
+                        <p className="font-semibold text-amber-900">
+                          Area berubah{record.tempAreaName ? `: ${record.tempAreaName.split(",")[0]} → ${draft?.area?.name.split(",")[0]}` : ""}.
+                          Selisih ongkir {quote.delta > 0 ? "+" : "−"}Rp{" "}
+                          {Math.abs(quote.delta).toLocaleString("id-ID")} untuk paket {quote.weightKg} kg.
+                        </p>
+                        <label className="mt-1.5 flex items-start gap-2">
+                          <input
+                            type="checkbox"
+                            checked={reprice}
+                            onChange={(e) => setReprice(e.target.checked)}
+                            className="mt-0.5 accent-brand"
+                          />
+                          <span>
+                            Tagihkan selisihnya ke customer. Kalau ini cuma perbaikan catatan —
+                            alamatnya salah tulis, paketnya tetap ke area yang sama — jangan
+                            dicentang.
+                          </span>
+                        </label>
+                      </>
+                    )}
+            </div>
+          )}
+
           <p className="text-[11px] text-faint">
             Alamat utama customer tidak berubah. Kosongkan untuk pakai alamat utama lagi.
           </p>

@@ -374,3 +374,84 @@ async function announce(
     console.error("Failed to announce a redirect's ongkir:", err)
   }
 }
+
+/**
+ * The address changed after the parcel was already on the Shipments list.
+ *
+ * Pressing Ship does not put a box on a van: the parcels are packed one at a
+ * time, and a customer asking for somewhere else in that gap is ordinary. The
+ * correction is priced like any other — what her invoice should carry for this
+ * parcel, minus what it already carries — so a second correction cannot double
+ * the first, and a street being retyped changes nothing at all because only
+ * the area is priced.
+ *
+ * Returns what it would do. `apply` is what makes it happen, so the dialog can
+ * show a person the figure and let them decide.
+ */
+export async function repriceShippedRedirect(
+  shipmentRow: number,
+  destinationAreaId: string,
+  destinationAreaName: string,
+  apply: boolean,
+  db: DBExecutor = sql,
+): Promise<{ perKg: number | null; previousPerKg: number; weightKg: number; delta: number } | null> {
+  const [ship] = await db<
+    {
+      event: string
+      customer: string
+      billed_kg: string | null
+      usual_per_kg: string | null
+      origin_area_id: string | null
+      current_area_id: string
+    }[]
+  >`
+    SELECT s.event, s.customer,
+           s.weight_estimation AS billed_kg,
+           -- What this parcel's ongkir was billed at: her standing rate for
+           -- the trip, which is the baseline every redirect surcharge on it
+           -- has been measured against.
+           s.ongkir AS usual_per_kg,
+           w.biteship_area_id AS origin_area_id,
+           s.temp_area_id AS current_area_id
+      FROM shipments s
+      JOIN events ev ON ev.name = s.event
+      LEFT JOIN warehouses w ON w.id = ev.warehouse_id
+     WHERE s.id = ${shipmentRow}
+  `
+  if (!ship || !ship.origin_area_id) return null
+
+  const weightKg = Math.max(0, Math.ceil(Number(ship.billed_kg ?? 0)))
+  const usualPerKg = Number(ship.usual_per_kg ?? 0)
+  const perKg = await quotePerKg(ship.origin_area_id, destinationAreaId)
+  if (perKg === null) {
+    return { perKg: null, previousPerKg: usualPerKg, weightKg, delta: 0 }
+  }
+
+  // What this parcel's redirect surcharge should come to in total, against
+  // everything already charged for redirecting it — settled rows included,
+  // because those are exactly what "already charged" means.
+  const [{ charged }] = await db<{ charged: string | null }[]>`
+    SELECT SUM(amount) AS charged FROM adjustments
+     WHERE event = ${ship.event}
+       AND lower(replace(customer, '@', '')) = lower(replace(${ship.customer}, '@', ''))
+       AND auto AND description LIKE ${`${TAG}%`}`
+  const already = Number(charged ?? 0)
+  const target = (perKg - usualPerKg) * weightKg
+  const delta = target - already
+
+  if (!apply || delta === 0) {
+    return { perKg, previousPerKg: usualPerKg, weightKg, delta }
+  }
+
+  const stamp = new Date().toISOString().slice(0, 10)
+  const where = destinationAreaName ? ` — ${destinationAreaName.split(",")[0].trim()}` : ""
+  await db`
+    INSERT INTO adjustments (event, customer, description, amount, auto)
+    VALUES (${ship.event}, ${ship.customer},
+            ${`${TAG}${where} (${weightKg} kg) · koreksi ${stamp}`}, ${delta}, true)`
+
+  await announce(ship.customer, ship.event,
+    delta > 0 ? "inbox_ongkir_extra" : "inbox_ongkir_credit", Math.abs(delta), db)
+
+  return { perKg, previousPerKg: usualPerKg, weightKg, delta }
+}

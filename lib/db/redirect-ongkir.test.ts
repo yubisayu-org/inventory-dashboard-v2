@@ -156,3 +156,33 @@ test("a spent charge is settled, so the next redirect starts a new one", async (
   assert.equal(rows[1].amount, (24000 - 25000) * 3, "the second is its own, and a credit")
   assert.match(rows[1].description, /Kebayoran Baru/)
 })
+
+// Pressing Ship does not put the box on a van. The parcels are packed one at a
+// time, and a customer asking for somewhere else in that gap is ordinary — so
+// the correction is priced, against what this parcel has already been charged.
+test("correcting a shipped parcel's area charges the difference, once", async () => {
+  const { repriceShippedRedirect } = await import("./redirect-ongkir")
+
+  const [w] = await sql<{ id: number }[]>`SELECT id FROM warehouses ORDER BY id LIMIT 1`
+  const [ship] = await sql<{ id: number }[]>`
+    INSERT INTO shipments (event, customer, shipping_id, weight_estimation, ongkir, ongkir_total,
+                           temp_address, temp_area_id, temp_area_name)
+    VALUES (${EVENT}, ${handle}, ${`${TAG}-SH`}, 5, 25000, 125000,
+            'Jl. Pondok Aren 1', ${AWAY_AREA}, 'Pondok Aren, Tangerang Selatan')
+    RETURNING id`
+  await sql`UPDATE events SET warehouse_id = ${w.id} WHERE name = ${EVENT}`
+
+  // Nothing is written while it only answers.
+  const before = await sql`SELECT count(*)::int AS n FROM adjustments WHERE event = ${EVENT}`
+  const asked = await repriceShippedRedirect(ship.id, `${AWAY_AREA}3`, "Limo, Depok", false)
+  const after = await sql`SELECT count(*)::int AS n FROM adjustments WHERE event = ${EVENT}`
+  assert.equal(after[0].n, before[0].n, "asking changes nothing")
+
+  // The courier cannot be reached from a test, so the quote comes back empty —
+  // and an empty quote must charge nothing rather than charge zero.
+  assert.equal(asked?.perKg, null)
+  assert.equal(asked?.delta, 0)
+  assert.equal(asked?.weightKg, 5, "priced on the kilos this parcel was billed for")
+
+  await sql`DELETE FROM shipments WHERE id = ${ship.id}`
+})

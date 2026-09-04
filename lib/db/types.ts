@@ -541,6 +541,13 @@ export interface ShippingRecord {
   // reprints, and the shipment confirmation message all use this instead of
   // the customer's profile data_diri. Persisted on every row of a merge_group.
   tempAddress: string | null
+  /** The redirect in its parts. The area is what makes a correction after
+   *  dispatch priceable — and what tells a retyped street apart from a parcel
+   *  that is actually going to another city. */
+  tempAreaId: string
+  tempAreaName: string
+  tempName: string
+  tempPhone: string
 }
 
 export interface CountryRow {
