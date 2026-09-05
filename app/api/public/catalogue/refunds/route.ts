@@ -6,6 +6,7 @@ import {
   getCustomerRefunds,
   chooseRefundCredit,
   chooseRefundBank,
+  applyRefundToOrder,
 } from "@/lib/db/catalogue-refunds"
 import { withActor } from "@/lib/db"
 
@@ -48,7 +49,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Payload too large" }, { status: 413, headers: corsHeaders() })
   }
 
-  let body: { id?: unknown; choice?: unknown; bank?: unknown; accountNumber?: unknown; accountHolder?: unknown }
+  let body: {
+    id?: unknown; choice?: unknown; event?: unknown
+    bank?: unknown; accountNumber?: unknown; accountHolder?: unknown
+  }
   try {
     body = JSON.parse(raw || "{}")
   } catch {
@@ -63,6 +67,13 @@ export async function POST(req: NextRequest) {
   try {
     // The actor is her own handle: a refund's history should say who chose,
     // and "the customer" is the honest answer for these two transitions.
+    // Spending it on a trip she owes for. No withActor wrapper: the write is a
+    // transaction of its own inside applyRefundAsCredit, which stamps the actor
+    // itself — nesting one in another deadlocks on the pool.
+    if (body.choice === "apply") {
+      const done = await applyRefundToOrder(id, customer.instagramId, String(body.event ?? ""))
+      return NextResponse.json({ ok: true, ...done }, { headers: privateHeaders() })
+    }
     if (body.choice === "credit") {
       await withActor(`customer:${customer.instagramId}`, (tx) =>
         chooseRefundCredit(id, customer.instagramId, tx))
@@ -74,7 +85,7 @@ export async function POST(req: NextRequest) {
           accountHolder: String(body.accountHolder ?? ""),
         }, tx))
     } else {
-      return NextResponse.json({ error: "choice must be credit or bank" }, { status: 400, headers: corsHeaders() })
+      return NextResponse.json({ error: "choice must be credit, bank or apply" }, { status: 400, headers: corsHeaders() })
     }
     return NextResponse.json({ ok: true }, { headers: privateHeaders() })
   } catch (err) {

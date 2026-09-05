@@ -1,6 +1,8 @@
 import sql from "../db-pool"
 import type { DBExecutor } from "./actor"
 import { normalizeId } from "./helpers"
+import { isLiveAmount } from "./live-refund"
+import { applyRefundAsCredit } from "./finance"
 
 /**
  * Money owed back, from the customer's side.
@@ -149,6 +151,74 @@ export async function chooseRefundCredit(
            updated_at = NOW()
      WHERE id = ${id}
   `
+}
+
+/**
+ * Spend it on a trip she still owes for.
+ *
+ * The money is already hers and already counted — this only moves which
+ * invoice carries it, off a settled trip where it does nothing and onto an
+ * open one. Nothing leaves the shop's account, so nothing here waits for a
+ * tick: the alternative is a customer watching an unchanged invoice while a
+ * queue clears.
+ *
+ * applyRefundAsCredit does the writing, and re-checks everything decided here
+ * inside its own transaction. What this adds is the customer's half of the
+ * rules: the refund must be hers, in a state she may still direct, and the
+ * target must be a trip of hers that is actually short.
+ *
+ * The amount is not hers to choose. It is whichever is smaller — what is left
+ * of the credit, or what the trip is short — because any other figure either
+ * spends money she does not have or overpays a trip into a second refund.
+ */
+export async function applyRefundToOrder(
+  id: number,
+  handle: string,
+  targetEvent: string,
+): Promise<{ applied: number; event: string }> {
+  const key = normalizeId(handle)
+  const target = String(targetEvent ?? "").trim()
+  if (!target) throw new Error("Pilih pesanan dulu")
+
+  const [refund] = await sql<{ id: number; event: string; amount: number; reason: string; status: string }[]>`
+    SELECT id, event, refund_amount::int AS amount, reason, status
+      FROM refunds
+     WHERE id = ${id} AND lower(replace(customer, '@', '')) = ${key}
+  `
+  if (!refund) throw new Error("Pengembalian tidak ditemukan")
+  // Sent already, or on its way to a bank: not money on her account any more.
+  if (refund.status === "refunded" || refund.status === "ready_to_refund") {
+    throw new Error("Dana ini sudah diproses ke rekening")
+  }
+  if (!OPEN_STATUSES.includes(refund.status) && refund.status !== "applied_to_next_order") {
+    throw new Error("Pengembalian ini sudah ditutup")
+  }
+  if (target === refund.event) throw new Error("Pilih pesanan yang lain")
+
+  // What is left of it. A refund whose figure is read from the balance rather
+  // than stored — see isLiveAmount — is worth whatever she is overpaid by
+  // today, which is the same rule applyRefundAsCredit applies.
+  let remaining = refund.amount
+  if (isLiveAmount(refund)) {
+    const [live] = await sql<{ balance: number }[]>`
+      SELECT balance FROM live_balances
+       WHERE event = ${refund.event} AND customer = ${key}
+    `
+    remaining = Math.max(0, Number(live?.balance ?? 0))
+  }
+  if (!(remaining > 0)) throw new Error("Tidak ada sisa dana di akun Anda")
+
+  // Her own trip, and short. balance is paid minus invoiced, so owing is
+  // negative — the same view her Orders page reads.
+  const [owing] = await sql<{ short: number }[]>`
+    SELECT (-balance)::int AS short FROM live_balances
+     WHERE event = ${target} AND customer = ${key} AND balance < 0
+  `
+  if (!owing) throw new Error("Pesanan itu tidak punya sisa tagihan")
+
+  const applied = Math.min(remaining, owing.short)
+  await applyRefundAsCredit(id, target, applied, `customer:${handle}`)
+  return { applied, event: target }
 }
 
 /**
