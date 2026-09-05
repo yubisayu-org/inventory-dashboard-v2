@@ -188,9 +188,14 @@ export async function getInvoiceForCustomer(
       WHERE lower(replace(o.customer, '@', '')) = ${searchId}
       -- Newest event first, matching the public customer recap
       -- (getPublicInvoiceForCustomer). groupRowsByEvent keeps this row order,
-      -- so events surface by creation date (desc); o.id keeps each event's
-      -- lines stable. NULLS LAST guards an orphaned event name.
-      ORDER BY e.created_at DESC NULLS LAST, o.event, o.id
+      -- so events surface in this order; o.id keeps each event's lines stable.
+      --
+      -- Ordered by when the event was last touched, not when it was created:
+      -- seven of the trips were imported and share a creation timestamp to the
+      -- microsecond, which left their order to the alphabet. Touching an event
+      -- is now what moves it. COALESCE because updated_at is null until the
+      -- first edit — without it the newest trip of all sorts to the bottom.
+      ORDER BY COALESCE(e.updated_at, e.created_at) DESC NULLS LAST, o.event, o.id
     `,
     lookupCustomerDetail(instagramId),
     // Only checked payments count toward the invoice's paid total; the JS
@@ -367,10 +372,11 @@ export async function getPublicInvoiceForCustomer(
       LEFT JOIN customer_warehouse_ongkir cwo
         ON cwo.customer_id = c.id AND cwo.warehouse_id = e.warehouse_id
       WHERE lower(replace(o.customer, '@', '')) = ${searchId}
-      -- Newest event first on the customer recap. groupRowsByEvent keeps this
-      -- row order, so events surface by creation date (desc); o.id keeps each
-      -- event's lines stable. NULLS LAST guards an orphaned event name.
-      ORDER BY e.created_at DESC NULLS LAST, o.event, o.id
+      -- Newest event first on the customer recap, by when it was last touched
+      -- rather than when it was created — see getInvoiceForCustomer, which
+      -- must order identically. groupRowsByEvent keeps this row order; o.id
+      -- keeps each event's lines stable.
+      ORDER BY COALESCE(e.updated_at, e.created_at) DESC NULLS LAST, o.event, o.id
     `,
     db`
       SELECT event, COALESCE(SUM(amount), 0) AS total_paid
