@@ -8,6 +8,7 @@ import type { InvoiceEvent, InvoiceOrderLine, InvoiceResult, RefundRow, RefundRe
 import { normalizeId } from "@/lib/db/helpers"
 import { isCreditPromised } from "@/lib/db/refund-credit"
 import { isLiveAmount } from "@/lib/db/live-refund"
+import { substitutesFor } from "@/lib/refund-received"
 import { REFUND_REASONS } from "@/lib/db/types"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
 import { useHitAndRun, handleKey } from "@/hooks/useHitAndRun"
@@ -2611,7 +2612,9 @@ function RefundDetailModal({
       .catch(() => {})
     return () => { live = false }
   }, [wantsReceived, row.event])
-  const receivedItem = [...new Set(Object.values(receivedMap))].join(", ")
+  // Only the substitutes for the items THIS refund is about — see
+  // substitutesFor, which is where the rule and its reasoning live.
+  const receivedItem = substitutesFor(row.note ?? "", receivedMap)
 
   // The reason, said out loud — the same one the inbox card gives, in the
   // language this channel speaks. Before this, every refund reached WhatsApp as
