@@ -750,23 +750,21 @@ function CustomerCard({
                 (e.g. "Tiba Sebagian") — the "hold" status only wins once every
                 line has arrived, so without this a held unit on a partial event
                 would show no sign it's being held back. */}
-            {/* Visible on the card, not only inside the modal: a redirected
-                parcel that is only discoverable by opening the ship dialog is
-                one bulk print away from going to the wrong house. */}
-            <button
-              type="button"
-              onClick={() => setAddressOpen(true)}
-              title={c.requestedAddress
-                ? `Paket ini ke:\n${c.requestedAddress}`
-                : "Catat alamat lain yang dia minta untuk paket ini"}
-              className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium transition-colors ${
-                c.requestedAddress
-                  ? "bg-purple-100 text-purple-700 hover:bg-purple-200"
-                  : "border border-dashed border-cream-border text-faint hover:border-brand hover:text-brand"
-              }`}
-            >
-              {c.requestedAddress ? "Alamat lain diminta" : "+ Alamat lain"}
-            </button>
+            {/* Only when there IS one. A redirect has to be visible without
+                opening the ship dialog — a parcel discoverable only in there is
+                one bulk print away from the wrong house — but the invitation to
+                record one does not: that lives on the address row below, beside
+                the address it would replace. */}
+            {c.requestedAddress && (
+              <button
+                type="button"
+                onClick={() => setAddressOpen(true)}
+                title={`Paket ini ke:\n${c.requestedAddress}`}
+                className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700 hover:bg-purple-200 transition-colors"
+              >
+                Alamat lain diminta
+              </button>
+            )}
             {/* What the redirect did to her ongkir, readable without opening
                 the card. The amber one is the only one anybody has to act on,
                 and finding it by expanding forty cards is not finding it. */}
@@ -1016,32 +1014,54 @@ function CustomerCard({
           and the profile address stays underneath as the thing it replaces. */}
       {(customerDetail?.dataDiri || c.requestedAddress) && (
         <div className="border-t border-cream-border">
-          <button
-            type="button"
-            onClick={() => setExpanded((v) => !v)}
-            className="w-full flex items-center justify-between px-5 py-3 text-xs text-muted hover:text-brand transition-colors"
-          >
-            <span className="font-medium">Alamat pengiriman</span>
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className={`transition-transform ${expanded ? "rotate-180" : ""}`}
+          <div className="flex items-center gap-2 px-5 py-3">
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              className="flex flex-1 items-center justify-between gap-2 text-xs text-muted hover:text-brand transition-colors"
             >
-              <path d="m6 9 6 6 6-6" />
-            </svg>
-          </button>
+              <span className="font-medium">Alamat pengiriman</span>
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className={`shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`}
+              >
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </button>
+            {/* Beside the address it would replace, rather than up in the header
+                among the status pills — where it was one more thing to read in
+                the row that already carries the trip, the payment state and the
+                shipping state. */}
+            <button
+              type="button"
+              onClick={() => setAddressOpen(true)}
+              title={c.requestedAddress
+                ? "Ubah alamat lain untuk paket ini"
+                : "Catat alamat lain yang dia minta untuk paket ini"}
+              className="shrink-0 rounded-lg border border-dashed border-cream-border px-2 py-1 text-[11px] font-medium text-faint hover:border-brand hover:text-brand transition-colors"
+            >
+              {c.requestedAddress ? "Ubah" : "+ Alamat lain"}
+            </button>
+          </div>
           {expanded && (
             <div className="px-5 pb-4 flex flex-col gap-3">
               {c.requestedAddress && (
                 <div className="rounded-lg border border-purple-200 bg-purple-50 px-3 py-2">
+                  {/* Who wrote it down. Her own page has always said "set by
+                      Yubisayu" when the shop recorded it; this side could not
+                      tell the two apart, so an address somebody here typed from
+                      a WhatsApp message looked exactly like one she chose. */}
                   <div className="text-[11px] font-semibold uppercase tracking-wide text-purple-700 mb-0.5">
-                    Diminta untuk paket ini
+                    {c.requestedSetBy === "shop"
+                      ? "Dicatat oleh admin"
+                      : "Diminta customer sendiri"}
                   </div>
                   <pre className="whitespace-pre-wrap font-sans text-sm text-foreground leading-relaxed">
                     {c.requestedAddress}

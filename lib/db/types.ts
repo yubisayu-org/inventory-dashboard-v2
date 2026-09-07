@@ -399,6 +399,9 @@ export interface ShipCustomer {
   /** What the redirect put on her invoice — positive when it cost more,
    *  negative when the new area is cheaper, 0 when it changed nothing. */
   requestedOngkirCharged: number
+  /** Who recorded the redirect: "customer" from her own page, "shop" from
+   *  here. Her page says which; this one had no way to tell. */
+  requestedSetBy: string
   /** She asked for the arrived part to go early, and it has not gone yet. */
   splitRequested: boolean
   /** She asked to hold this one, as opposed to a pairing parking it for her. */

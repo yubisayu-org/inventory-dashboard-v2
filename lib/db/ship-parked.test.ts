@@ -2,7 +2,7 @@ import { test, before, after } from "node:test"
 import assert from "node:assert/strict"
 import sql from "../db-pool"
 import { getShipOrdersFiltered } from "./fulfillment"
-import { setShippingMode, setMergeGroup } from "./shipping-prefs"
+import { setShippingMode, setMergeGroup, setTempAddress } from "./shipping-prefs"
 
 // Saving a pair parks every member, which is how a pair is kept from being
 // swept up by a bulk ship. It also meant a pair whose stock had all landed sat
@@ -74,4 +74,29 @@ test("a hold she asked for survives being paired", async () => {
 
   const a = await card(A)
   assert.equal(a?.holdRequested, false, "and it belongs to the event she asked it on")
+})
+
+// Her page has always said whether a redirect was her own doing or something
+// the shop wrote down for her; this side could not tell the two apart, so an
+// address typed here from a WhatsApp message looked exactly like one she chose.
+test("the ship card knows who asked for a redirect", async () => {
+  await setTempAddress(customerId, A, {
+    address: "Jl. Melati 4", areaId: "AREA-X", areaName: "Somewhere, Else",
+    name: "Ibu Laily", phone: "0813 2222 1111",
+  }, sql, "shop")
+
+  const shopSet = await card(A)
+  assert.equal(shopSet?.requestedSetBy, "shop")
+
+  await setTempAddress(customerId, A, {
+    address: "Jl. Melati 4", areaId: "AREA-X", areaName: "Somewhere, Else",
+    name: "Ibu Laily", phone: "0813 2222 1111",
+  }, sql, "customer")
+
+  const hers = await card(A)
+  assert.equal(hers?.requestedSetBy, "customer")
+
+  // Nothing redirected, nothing to attribute.
+  const other = await card(B)
+  assert.equal(other?.requestedSetBy, "")
 })
