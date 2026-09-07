@@ -830,6 +830,7 @@ function CustomerCard({
                     type="button"
                     onClick={() => postHoldAction("hold", `Hold this packing list for ${displayIg(c.customer).toUpperCase()} · ${c.event}?`)}
                     disabled={holdBusy}
+                    title={parkedByPair ? "Sudah diparkir untuk gabung" : undefined}
                     className="px-3 py-1.5 rounded-lg border border-cream-border text-muted-strong text-xs font-medium hover:bg-surface-muted disabled:opacity-50 transition-colors"
                   >
                     {holdBusy ? "…" : "Hold"}
@@ -906,7 +907,13 @@ function CustomerCard({
                 </div>
               </div>
             )}
-            {totalHold > 0 && (
+            {/* Not on a card the pairing parked. Release zeroes unit_hold on
+                this event alone, which unparks half a pair while the pairing
+                still stands — and the next bulk ship sends that half on its
+                own, which is the exact failure the parking exists to prevent.
+                A pair is undone from Gabung, by Cancel Merge, which releases
+                every member together. */}
+            {totalHold > 0 && !parkedByPair && (
               <div className="flex flex-col items-end gap-1">
                 <button
                   type="button"
