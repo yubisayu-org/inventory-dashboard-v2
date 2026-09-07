@@ -1014,31 +1014,20 @@ function CustomerCard({
           and the profile address stays underneath as the thing it replaces. */}
       {(customerDetail?.dataDiri || c.requestedAddress) && (
         <div className="border-t border-cream-border">
+          {/* The chevron keeps the right edge, as every fold on this page does,
+              so the eye can run down the column of them. The address control
+              sits inside the row before it, beside the address it would
+              replace — not up in the header among the status pills, where it
+              was one more thing to read in a row that already carries the trip,
+              the payment state and the shipping state. */}
           <div className="flex items-center gap-2 px-5 py-3">
             <button
               type="button"
               onClick={() => setExpanded((v) => !v)}
-              className="flex flex-1 items-center justify-between gap-2 text-xs text-muted hover:text-brand transition-colors"
+              className="flex-1 text-left text-xs font-medium text-muted hover:text-brand transition-colors"
             >
-              <span className="font-medium">Alamat pengiriman</span>
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className={`shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`}
-              >
-                <path d="m6 9 6 6 6-6" />
-              </svg>
+              Alamat pengiriman
             </button>
-            {/* Beside the address it would replace, rather than up in the header
-                among the status pills — where it was one more thing to read in
-                the row that already carries the trip, the payment state and the
-                shipping state. */}
             <button
               type="button"
               onClick={() => setAddressOpen(true)}
@@ -1048,6 +1037,27 @@ function CustomerCard({
               className="shrink-0 rounded-lg border border-dashed border-cream-border px-2 py-1 text-[11px] font-medium text-faint hover:border-brand hover:text-brand transition-colors"
             >
               {c.requestedAddress ? "Ubah" : "+ Alamat lain"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              aria-label={expanded ? "Tutup alamat" : "Lihat alamat"}
+              aria-expanded={expanded}
+              className="shrink-0 text-muted hover:text-brand transition-colors"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className={`transition-transform ${expanded ? "rotate-180" : ""}`}
+              >
+                <path d="m6 9 6 6 6-6" />
+              </svg>
             </button>
           </div>
           {expanded && (
