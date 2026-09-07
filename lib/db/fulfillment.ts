@@ -90,6 +90,7 @@ function buildShipGroups(
   ongkirMap: Map<string, number>,
   addressMap: Map<string, RequestedAddress>,
   splitAsked: Set<string>,
+  holdAsked: Set<string>,
   splitBilled: Set<string>,
   pairing: Map<string, string>,
 ): ShipCustomer[] {
@@ -155,6 +156,7 @@ function buildShipGroups(
     // Sebagian, a tab that means "stock is here, decide", where they had
     // nothing to decide.
     const askedSplit = splitAsked.has(`${customerKey}|${event}`)
+    const askedHold = holdAsked.has(`${customerKey}|${event}`)
     // A pairing outranks every other status: the pair is the unit of work, and
     // the Gabung tab is the only place it can be acted on. Being held is not a
     // competing state here — parking is how pairing keeps the parcel still.
@@ -197,6 +199,8 @@ function buildShipGroups(
       requestedPerKg: addressMap.get(`${customerKey}|${event}`)?.perKg ?? null,
       requestedOngkirCharged: addressMap.get(`${customerKey}|${event}`)?.charged ?? 0,
       splitRequested: askedSplit,
+      // Her own wish, not the parking a pairing does on her behalf.
+      holdRequested: askedHold,
       // Priced whether or not a split has been declared. Before, this was zero
       // until somebody committed — so the Split Ship button, whose whole job is
       // to say what pressing it will cost, promised "tidak menambah ongkir" on
@@ -317,6 +321,32 @@ async function fetchSplitRequests(
       FROM customer_shipping_prefs p
       JOIN customers c ON c.id = p.customer_id
      WHERE p.mode = 'split'
+       AND p.event = ANY(${[...eventNames]})
+       AND lower(replace(c.instagram_id, '@', '')) = ANY(${[...customerIds]})
+  `
+  for (const r of rows) keys.add(`${r.norm_cust}|${r.event}`)
+  return keys
+}
+
+/**
+ * Who asked to hold, as opposed to whose parcel is merely parked.
+ *
+ * Pairing parks every member — that is how a pair is kept from being swept up
+ * by a bulk ship — so held units alone cannot tell the two apart, and a
+ * complete pair sat in Semua wearing the same Tunda Kirim mark as a parcel
+ * somebody had actually asked to stop.
+ */
+async function fetchHoldRequests(
+  customerIds: Set<string>,
+  eventNames: Set<string>,
+): Promise<Set<string>> {
+  const keys = new Set<string>()
+  if (customerIds.size === 0 || eventNames.size === 0) return keys
+  const rows = await sql`
+    SELECT p.event, lower(replace(c.instagram_id, '@', '')) AS norm_cust
+      FROM customer_shipping_prefs p
+      JOIN customers c ON c.id = p.customer_id
+     WHERE p.mode = 'hold'
        AND p.event = ANY(${[...eventNames]})
        AND lower(replace(c.instagram_id, '@', '')) = ANY(${[...customerIds]})
   `
@@ -496,11 +526,12 @@ export async function getShipOrdersFiltered(opts: {
 
   // Fetch customer details, per-event ongkir, and payment status concurrently —
   // all keyed by normalized customer handle (ongkir/payment additionally by event).
-  const [detailMap, ongkirMap, addressMap, splitAsked, splitBilled, pairing, paymentRows] = await Promise.all([
+  const [detailMap, ongkirMap, addressMap, splitAsked, holdAsked, splitBilled, pairing, paymentRows] = await Promise.all([
     fetchCustomerDetails(customerIds),
     fetchEventOngkir(customerIds, eventNames),
     fetchRequestedAddresses(customerIds, eventNames),
     fetchSplitRequests(customerIds, eventNames),
+    fetchHoldRequests(customerIds, eventNames),
     fetchSplitCharges(customerIds, eventNames),
     fetchPairings(customerIds, eventNames),
     getPaymentStatus(event),
@@ -508,7 +539,7 @@ export async function getShipOrdersFiltered(opts: {
   const paymentMap = new Map<string, PaymentStatus>()
   for (const row of paymentRows) paymentMap.set(`${row.customer}|${row.event}`, row.status)
 
-  const allGroups = buildShipGroups(orderRows, detailMap, paymentMap, ongkirMap, addressMap, splitAsked, splitBilled, pairing)
+  const allGroups = buildShipGroups(orderRows, detailMap, paymentMap, ongkirMap, addressMap, splitAsked, holdAsked, splitBilled, pairing)
 
   // Counts and the filtered list both derive from the same in-memory status,
   // so the tab badges can never drift from the rows actually shown.

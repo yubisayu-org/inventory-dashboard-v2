@@ -45,16 +45,25 @@ const SEGMENTS: { id: Segment; label: string }[] = [
 // Per-line hold marker. Icon rather than a "Hold" pill so it doesn't compete
 // with the product name for width; title/aria carry the label for hover and
 // screen readers.
-function HoldIcon() {
+//
+// Pairing parks units too — that is how a pair is kept still until it goes as
+// one box — so `parked` tells the two apart in the only place they differ: the
+// words. A complete pair wore "Tunda Kirim" and read as stopped.
+function HoldIcon({ parked = false }: { parked?: boolean } = {}) {
+  const label = parked ? "Diparkir untuk gabung" : "Tunda Kirim"
+  return <HoldGlyph label={label} parked={parked} />
+}
+
+function HoldGlyph({ label, parked }: { label: string; parked: boolean }) {
   return (
     <svg
       role="img"
-      aria-label="Tunda Kirim"
-      className="ml-1.5 inline-block align-[-0.15em] text-purple-600 shrink-0"
+      aria-label={label}
+      className={`ml-1.5 inline-block align-[-0.15em] shrink-0 ${parked ? "text-blue-600" : "text-purple-600"}`}
       width="14" height="14" viewBox="0 0 24 24"
       fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
     >
-      <title>Tunda Kirim</title>
+      <title>{label}</title>
       <circle cx="12" cy="12" r="10" />
       <line x1="10" y1="15" x2="10" y2="9" />
       <line x1="14" y1="15" x2="14" y2="9" />
@@ -617,6 +626,11 @@ function CustomerCard({
   const { customerDetail } = c
   const { widths, startResize } = useResizableColumns({ items: 200, unit: 80, unitArrive: 80, unitShip: 80, toShip: 80 })
   const totalHold = c.orders.reduce((s, o) => s + o.unitHold, 0)
+  // Parked by its pairing rather than stopped by her. Saving a pair holds every
+  // member so a bulk ship cannot break it up, which meant a pair whose stock
+  // had all landed wore "Tunda Kirim" and read as though somebody had halted
+  // it. The units really are parked; only the word was wrong.
+  const parkedByPair = c.status === "paired" && !c.holdRequested
   // Something to send and something still to come. Everything arrived is one
   // parcel whatever anyone declares; nothing arrived is not a split either.
   const totalUnits = c.orders.reduce((s, o) => s + o.unit, 0)
@@ -774,7 +788,7 @@ function CustomerCard({
                 </span>
               ) : null
             )}
-            {totalHold > 0 && c.status !== "hold" && (
+            {totalHold > 0 && c.status !== "hold" && !parkedByPair && (
               <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE.hold.cls}`}>
                 {STATUS_BADGE.hold.label}
               </span>
@@ -954,7 +968,7 @@ function CustomerCard({
               <tr key={o.rowNumber} className="border-b border-cream-border">
                 <td className="px-4 py-2">
                   {o.productName}
-                  {o.unitHold > 0 && <HoldIcon />}
+                  {o.unitHold > 0 && <HoldIcon parked={parkedByPair} />}
                 </td>
                 <td className="px-4 py-2 text-right">{o.unit}</td>
                 <td className="px-4 py-2 text-right">{o.unitArrive}</td>
@@ -975,7 +989,7 @@ function CustomerCard({
             <div className="min-w-0">
               <div className="text-xs text-foreground truncate">
                 {o.productName}
-                {o.unitHold > 0 && <HoldIcon />}
+                {o.unitHold > 0 && <HoldIcon parked={parkedByPair} />}
               </div>
               <div className="text-xs text-faint tabular-nums mt-0.5">
                 Order {o.unit} · Tiba {o.unitArrive} · Kirim {o.unitShip}
