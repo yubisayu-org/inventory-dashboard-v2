@@ -762,7 +762,7 @@ function CustomerCard({
                 title={`Paket ini ke:\n${c.requestedAddress}`}
                 className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700 hover:bg-purple-200 transition-colors"
               >
-                Alamat lain diminta
+                Alamat sementara
               </button>
             )}
             {/* What the redirect did to her ongkir, readable without opening
@@ -1009,7 +1009,7 @@ function CustomerCard({
 
       {/* Collapsible address. It showed the profile address and nothing else,
           under a badge announcing she had asked for a different one -- so the
-          card said "Alamat lain diminta" and then printed the address the
+          card said an address had been asked for and then printed the one the
           parcel was not going to. Where it is actually going comes first now,
           and the profile address stays underneath as the thing it replaces. */}
       {(customerDetail?.dataDiri || c.requestedAddress) && (
@@ -1458,7 +1458,7 @@ function ShipConfirmModal({
               </div>
               {useTempAddress ? (
                 <>
-                  {/* The same question the card's "Alamat lain" asks and the
+                  {/* The same question the card's "Alamat sementara" asks and the
                       same one her page asks. It used to be a textarea here,
                       which is why an address typed at the counter could not be
                       priced: there was no area on it to price. */}
