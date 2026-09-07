@@ -307,9 +307,9 @@ async function clearCharge(customer: string, event: string, db: DBExecutor): Pro
   const existing = await findCharge(customer, event, db)
   if (!existing) return
   await db`DELETE FROM adjustments WHERE id = ${existing.id}`
-  await announce(customer, event, existing.amount > 0
-    ? "inbox_ongkir_extra_cleared"
-    : "inbox_ongkir_credit_cleared", Math.abs(existing.amount), db)
+  // The redirect's own wording. The general pair talks about a shipping plan
+  // changing, which is the split's language, and nothing here was ever a plan.
+  await announce(customer, event, "inbox_ongkir_redirect_cleared", Math.abs(existing.amount), db)
 }
 
 async function applyCharge(
@@ -343,7 +343,11 @@ async function applyCharge(
       VALUES (${event}, ${customer}, ${description}, ${delta}, true)`
   }
 
-  await announce(customer, event, delta > 0 ? "inbox_ongkir_extra" : "inbox_ongkir_credit",
+  // Not inbox_ongkir_extra: that one opens "Sebagian pesanan Anda sudah tiba
+  // dan akan kami kirim lebih dulu", which is a box leaving early. She changed
+  // an address; nothing about the timing moved.
+  await announce(customer, event,
+    delta > 0 ? "inbox_ongkir_redirect_extra" : "inbox_ongkir_redirect_credit",
     Math.abs(delta), db)
 }
 
