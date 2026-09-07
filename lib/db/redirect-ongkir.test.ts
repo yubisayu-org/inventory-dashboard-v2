@@ -186,3 +186,19 @@ test("correcting a shipped parcel's area charges the difference, once", async ()
 
   await sql`DELETE FROM shipments WHERE id = ${ship.id}`
 })
+
+// The notice she gets. It used to be inbox_ongkir_extra, whose body opens
+// "Sebagian pesanan Anda sudah tiba dan akan kami kirim lebih dulu" — a box
+// leaving early, which is a different thing entirely. She changed an address;
+// nothing about the timing moved.
+test("a redirect's notice talks about the address, not about shipping early", async () => {
+  const notices = await sql<{ title: string; body: string }[]>`
+    SELECT title, body FROM announcements WHERE customer_id = ${customerId} ORDER BY id`
+
+  assert.ok(notices.length, "she was told her invoice changed")
+  for (const n of notices) {
+    assert.doesNotMatch(n.body, /sudah tiba dan akan kami kirim lebih dulu/)
+    assert.doesNotMatch(n.body, /menjadi dua paket/)
+    assert.match(n.body, /Alamat pengiriman/)
+  }
+})

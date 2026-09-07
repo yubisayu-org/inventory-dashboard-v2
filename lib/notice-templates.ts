@@ -21,6 +21,9 @@ export type NoticeKey =
   | "inbox_ongkir_credit"
   | "inbox_ongkir_extra_cleared"
   | "inbox_ongkir_credit_cleared"
+  | "inbox_ongkir_redirect_extra"
+  | "inbox_ongkir_redirect_credit"
+  | "inbox_ongkir_redirect_cleared"
   | "inbox_plan_hold"
   | "inbox_plan_split"
   | "inbox_plan_wait"
@@ -68,6 +71,34 @@ export const NOTICE_TEMPLATES: NoticeTemplate[] = [
     body:
       "Sebagian pesanan Anda sudah tiba dan akan kami kirim lebih dulu. Karena menjadi dua paket, "
       + "ada tambahan ongkir {amount} yang perlu diselesaikan sebelum paket berangkat.",
+  },
+  // A redirect, not a split. The pair above are written for a box leaving
+  // early, and were sent for a changed address too — telling her part of her
+  // order had arrived and was going ahead, which she had not asked for and was
+  // not happening.
+  {
+    key: "inbox_ongkir_redirect_extra",
+    label: "Extra shipping fee — new address",
+    title: "Ongkir tambahan {amount} · {event}",
+    body:
+      "Alamat pengiriman {event} kami ubah sesuai permintaan Anda. Ongkir ke alamat baru "
+      + "lebih tinggi, jadi ada tambahan {amount} pada tagihan Anda.",
+  },
+  {
+    key: "inbox_ongkir_redirect_credit",
+    label: "Shipping discount — new address",
+    title: "Diskon ongkir {amount} · {event}",
+    body:
+      "Alamat pengiriman {event} kami ubah sesuai permintaan Anda. Ongkir ke alamat baru "
+      + "lebih murah, jadi tagihan Anda berkurang {amount}.",
+  },
+  {
+    key: "inbox_ongkir_redirect_cleared",
+    label: "New-address fee no longer applies",
+    title: "Penyesuaian ongkir dibatalkan · {event}",
+    body:
+      "Alamat pengiriman {event} kembali seperti semula, jadi penyesuaian ongkir {amount} "
+      + "tidak lagi berlaku. Tagihan Anda sudah kami sesuaikan.",
   },
   {
     key: "inbox_ongkir_credit",
@@ -459,6 +490,9 @@ export const NOTICE_TOKENS_FOR: Record<NoticeKey, string[]> = {
   // naming.
   inbox_ongkir_extra_cleared: ["{customer}", "{event}", "{amount}"],
   inbox_ongkir_credit_cleared: ["{customer}", "{event}", "{amount}"],
+  inbox_ongkir_redirect_extra: ["{customer}", "{event}", "{amount}"],
+  inbox_ongkir_redirect_credit: ["{customer}", "{event}", "{amount}"],
+  inbox_ongkir_redirect_cleared: ["{customer}", "{event}", "{amount}"],
   // {by} names the shop when the shop decided it, and is empty when she did.
   inbox_plan_hold: ["{customer}", "{event}", "{by}"],
   inbox_plan_split: ["{customer}", "{event}", "{by}"],
