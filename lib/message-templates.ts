@@ -23,8 +23,8 @@ export const REQUIRED_TOKENS: Record<TemplateKey, string[]> = {
   shipment: ["{event}", "{handle}", "{dataDiri}", "{items}", "{publicSiteUrl}"],
   // {cause} carries the reason and, where there is one, the item list inside
   // it — so the body no longer requires {itemsList} of its own.
-  refund_specific: ["{customer}", "{event}", "{cause}", "{refundAmount}"],
-  refund_generic: ["{customer}", "{event}", "{cause}", "{refundAmount}"],
+  refund_specific: ["{customer}", "{event}", "{cause}", "{refundAmount}", "{replyLead}"],
+  refund_generic: ["{customer}", "{event}", "{cause}", "{refundAmount}", "{replyLead}"],
 }
 
 // Tokens allowed but not mandatory — currently the invoice/invoice_dp fee
@@ -117,7 +117,9 @@ export const DEFAULT_TEMPLATES: Record<TemplateKey, string> = {
     "",
     "Sehingga perlu dilakukan pengembalian dana sebesar *{refundAmount}*.",
     "",
-    "Mohon balas pesan ini dengan informasi berikut:",
+    // Where a wrong delivery is what happened, this carries the offer to keep
+    // it: the choice and the boxes it decides belong in one place.
+    "{replyLead}",
     "- Nama Bank:",
     "- Nomor Rekening:",
     "- Nama Pemilik Rekening:",
@@ -134,7 +136,7 @@ export const DEFAULT_TEMPLATES: Record<TemplateKey, string> = {
     "",
     "Sehingga perlu dilakukan pengembalian dana sebesar *{refundAmount}*.",
     "",
-    "Mohon balas pesan ini dengan informasi berikut:",
+    "{replyLead}",
     "- Nama Bank:",
     "- Nomor Rekening:",
     "- Nama Pemilik Rekening:",

@@ -1,6 +1,6 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { causeLineFor, fillNotice, REFUND_CAUSES } from "./notice-templates"
+import { causeLineFor, fillNotice, replyLeadFor, REFUND_CAUSES } from "./notice-templates"
 import { DEFAULT_TEMPLATES, TEMPLATE_KEYS, findMissingTokens, fillTemplate } from "./message-templates"
 
 const EVENT = "LSJP202605"
@@ -15,6 +15,7 @@ function whatsapp(reasonKey: string, have: { items?: string; receivedItem?: stri
   return fillTemplate(DEFAULT_TEMPLATES.refund_specific, {
     customer: "someone", event: EVENT, itemsList: have.items ?? "",
     receivedItem: have.receivedItem ?? "", cause: line, refundAmount: "Rp 560.000",
+    replyLead: replyLeadFor([reasonKey]),
   })
 }
 
@@ -53,6 +54,14 @@ test("a wrong delivery names what came and offers to let them keep it", () => {
   const msg = whatsapp("wrong_item", { items: ITEMS, receivedItem: RECEIVED })
   assert.match(msg, new RegExp(RECEIVED))
   assert.match(msg, /tetap mengambil barang yang datang/)
+
+  // And the offer sits with the boxes it decides, under the amount — not in
+  // the cause paragraph above it, where she was asked to choose, told a
+  // figure, then asked for an account as though she had chosen.
+  const offer = msg.indexOf("tetap mengambil")
+  const amount = msg.indexOf("Rp 560.000")
+  const bank = msg.indexOf("Nama Bank:")
+  assert.ok(amount < offer && offer < bank, "the offer is between the amount and the boxes")
 })
 
 test("nothing recorded means no hole in the sentence", () => {

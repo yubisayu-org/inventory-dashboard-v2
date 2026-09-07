@@ -261,6 +261,9 @@ export interface RefundCause {
   fixed?: boolean
   /** Names what turned up instead, so it needs {receivedItem} to say it. */
   needsReceived?: boolean
+  /** Somebody has the thing in their hands, so she may keep it instead. Said
+   *  where the refund asks for her account, not eight lines above it. */
+  waKeepOffer?: boolean
   /**
    * A mark on the Shopping or Arrival List already produces this reason, with
    * the item, the units and the notice, in one action. Offering it again in a
@@ -344,9 +347,12 @@ export const REFUND_CAUSES: RefundCause[] = [
     // knows the reason but not the item, and a sentence with a hole in it is
     // worse than a shorter sentence.
     lineWithout: "{itemsList} was not what arrived, so we are not sending it.",
-    waLine: "Barang yang datang tidak sesuai dengan pesanan Anda — yang kami terima adalah *{receivedItem}*, "
-      + "sehingga pesanan berikut tidak kami kirimkan:\n{itemsList}\n\n"
-      + "Jika Anda ingin tetap mengambil barang yang datang, silakan beri tahu kami.",
+    waLine: "Barang yang datang tidak sesuai dengan pesanan Anda, yang kami terima adalah *{receivedItem}*, "
+      + "sehingga pesanan berikut tidak kami kirimkan:\n{itemsList}",
+    // The offer to keep what came is not part of the cause: it belongs beside
+    // the bank details, because the two are the same question — send it, or
+    // refund it — and asked eight lines apart she answered neither.
+    waKeepOffer: true,
     waLineWithout: "Barang yang datang tidak sesuai dengan pesanan berikut sehingga tidak kami kirimkan:\n{itemsList}",
   },
   {
@@ -476,6 +482,27 @@ export const NOTICE_KEYS: NoticeKey[] = NOTICE_TEMPLATES.map((t) => t.key)
  * with nothing, and the owner should be told that before they save it and
  * not after a customer reads the gap.
  */
+/**
+ * The sentence that asks for her bank details, and the choice in front of it.
+ *
+ * A wrong delivery is the one refund she can decline: the parcel exists and is
+ * hers if she wants it. That choice used to sit in the cause paragraph, above
+ * the amount and eight lines above the boxes to fill in — so the message asked
+ * her to choose, talked about money, and then asked for an account number as
+ * though she had already chosen. The two halves are one question, so they are
+ * one sentence.
+ */
+export function replyLeadFor(causeKeys: string[]): string {
+  const offered = causeKeys.length > 0 && causeKeys.every(
+    (key) => REFUND_CAUSES.find((c) => c.key === key)?.waKeepOffer === true,
+  )
+  return offered
+    ? "Jika Anda ingin tetap mengambil barang yang datang, silakan beri tahu kami dan kami akan "
+      + "proses kirim. Namun, jika tidak ingin dan tetap refund, mohon balas pesan ini dengan "
+      + "informasi berikut:"
+    : "Mohon balas pesan ini dengan informasi berikut:"
+}
+
 export const NOTICE_TOKENS_FOR: Record<NoticeKey, string[]> = {
   inbox_invoice_due: ["{customer}", "{event}", "{total}", "{outstanding}"],
   inbox_refund_offered: ["{customer}", "{event}", "{refundAmount}", "{cause}", "{itemsList}", "{receivedItem}"],
