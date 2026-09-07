@@ -401,6 +401,8 @@ export interface ShipCustomer {
   requestedOngkirCharged: number
   /** She asked for the arrived part to go early, and it has not gone yet. */
   splitRequested: boolean
+  /** She asked to hold this one, as opposed to a pairing parking it for her. */
+  holdRequested: boolean
   /**
    * What sending early costs on top of what the invoice already charges:
    * (ongkir on this parcel + ongkir on the rest) − ongkir on the whole event.
