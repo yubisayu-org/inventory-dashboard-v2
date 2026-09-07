@@ -217,7 +217,16 @@ export async function reconcileParcelPlan(
   const plannedKg = merged
     // One box for the whole group, so its weight is summed before rounding —
     // which is exactly where a merge saves anything.
-    ? kg(all.flat().reduce((g, x) => g + x.gram * x.unit, 0))
+    //
+    // Two boxes when the group is also sending early, for the same reason a
+    // lone trip gets two: what is here goes now and what is not follows, and
+    // the courier bills each. Priced as one box regardless, a merged group
+    // that left something behind kept its whole merge credit and paid nothing
+    // for the second parcel — tyanandya_, and nine trips before hers.
+    ? splitting
+      ? kg(all.flat().reduce((g, x) => g + x.gram * x.toShip, 0))
+        + kg(all.flat().reduce((g, x) => g + x.gram * Math.max(0, x.unit - x.toShip), 0))
+      : kg(all.flat().reduce((g, x) => g + x.gram * x.unit, 0))
     : all.reduce((total, lines) => {
         const now = lines.reduce((g, x) => g + x.gram * x.toShip, 0)
         const rest = lines.reduce((g, x) => g + x.gram * Math.max(0, x.unit - x.toShip), 0)

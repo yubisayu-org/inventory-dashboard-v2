@@ -1987,6 +1987,33 @@ function MergeShipConfirmModal({
 
     const effectiveAddress = useTempAddress ? tempAddress : profileAddress
     try {
+      // A box that leaves something behind is a split, and the plan has to be
+      // told so before the merge prices it.
+      //
+      // The single card says this for itself — Split Ship posts it — but this
+      // modal never did, so a merged box sent with stock still coming was
+      // priced as one parcel: the group got its merge credit and nothing paid
+      // for the second box. tyanandya_ is the case that showed it, and nine
+      // trips before hers went out a kilo light.
+      //
+      // Only the trips that are actually leaving something behind, and only
+      // when this box is going now: a merge that waits for everything is one
+      // parcel and no split at all.
+      if (shipsNow) {
+        const splitting = checkedGroups.filter((g) => g.orders.some((o) => o.unit > o.unitArrive))
+        for (const g of splitting) {
+          const res = await fetch("/api/sheets/ship/plan", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "split", customer, events: [g.event] }),
+          })
+          if (!res.ok) {
+            const d = await res.json().catch(() => ({}))
+            throw new Error(d.error ?? `Gagal mencatat kirim duluan ${g.event}`)
+          }
+        }
+      }
+
       // Recorded either way, and before anything ships: the pairing is what
       // prices the ongkir as one parcel, and a box that leaves without it
       // would be billed as two.
