@@ -145,7 +145,7 @@ export function RequestedAddressModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div>
-          <h3 className="text-sm font-semibold text-foreground">Alamat lain untuk paket ini</h3>
+          <h3 className="text-sm font-semibold text-foreground">Alamat sementara untuk paket ini</h3>
           <p className="text-xs text-muted mt-1">
             {displayIg(customer)} · {event}
           </p>

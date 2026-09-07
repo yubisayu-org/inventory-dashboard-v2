@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react"
 /**
  * Where a parcel is going, asked the one way.
  *
- * Her own page, the "Alamat lain" chip and the dispatch dialog all send
+ * Her own page, the "Alamat sementara" button and the dispatch dialog all send
  * parcels to addresses that are not hers, and they used to ask for it three
  * different ways — a structured form on her side, a form with an area picker
  * on the card, and a bare textarea at the counter. Only the ones with an area
