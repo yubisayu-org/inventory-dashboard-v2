@@ -1666,7 +1666,12 @@ function BundleCard({
               Kirim duluan — satu kotak
             </span>
           )}
-          {b.mixed && (
+          {/* Only while something is still coming. The chip's news is the
+              consequence, not the disagreement: one member asked to go early,
+              the other waits, so the shared box waits for the slower one. Once
+              every member is complete nothing is waiting — the box can go, and
+              Siap Gabung beside it already says so. */}
+          {b.mixed && !b.ready && (
             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
               Timing beda — kotak menunggu
             </span>
