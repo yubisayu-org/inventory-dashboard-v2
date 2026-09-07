@@ -198,6 +198,7 @@ function buildShipGroups(
       requestedAreaName: addressMap.get(`${customerKey}|${event}`)?.areaName ?? "",
       requestedPerKg: addressMap.get(`${customerKey}|${event}`)?.perKg ?? null,
       requestedOngkirCharged: addressMap.get(`${customerKey}|${event}`)?.charged ?? 0,
+      requestedSetBy: addressMap.get(`${customerKey}|${event}`)?.setBy ?? "",
       splitRequested: askedSplit,
       // Her own wish, not the parking a pairing does on her behalf.
       holdRequested: askedHold,
@@ -266,6 +267,10 @@ type RequestedAddress = {
   /** The courier's rate to the redirected area, once one was got. Null when
    *  it would not price that area — and then nothing was charged. */
   perKg: number | null
+  /** Who wrote it down: "customer" when she asked from her own page, "shop"
+   *  when somebody here recorded what she said on WhatsApp. Her page has
+   *  always said which; this screen had no way to tell. */
+  setBy: string
   /** What the redirect actually put on her invoice, and 0 when it put
    *  nothing there. */
   charged: number
@@ -383,7 +388,7 @@ async function fetchRequestedAddresses(
     SELECT p.event,
            lower(replace(c.instagram_id, '@', '')) AS norm_cust,
            p.temp_address, p.temp_area_id, p.temp_area_name, p.temp_name, p.temp_phone,
-           p.temp_ongkir_per_kg,
+           p.temp_ongkir_per_kg, p.set_by,
            -- Her standing ongkir was priced for her own area, so a redirect to
            -- a different one is priced again and charged. What is surfaced now
            -- is which of the two happened: a figure, or a courier that would
@@ -421,6 +426,7 @@ async function fetchRequestedAddresses(
       areaId: String(r.temp_area_id ?? ""),
       areaName: String(r.temp_area_name ?? ""),
       otherArea: Boolean(r.other_area),
+      setBy: String(r.set_by ?? ""),
       perKg: r.temp_ongkir_per_kg == null ? null : Number(r.temp_ongkir_per_kg),
       charged: Number(r.charged ?? 0),
     })
