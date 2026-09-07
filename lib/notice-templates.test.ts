@@ -7,6 +7,8 @@ import {
   NOTICE_TOKENS_FOR,
   applyNoticeOverrides,
   unknownTokens,
+  replyLeadFor,
+  REFUND_CAUSES,
 } from "./notice-templates"
 
 // The owner's edits laid over the house wording. The rule that matters is
@@ -86,4 +88,33 @@ test("the house wording only uses tokens its own list promises", () => {
       )
     }
   }
+})
+
+// A wrong delivery is the one refund she can decline: the parcel exists and is
+// hers if she wants it. That choice used to sit in the cause paragraph, above
+// the amount and eight lines above the boxes to fill in — so the message asked
+// her to choose, talked about money, then asked for an account number as though
+// she had already chosen.
+test("the offer to keep what came sits with the question it answers", () => {
+  const lead = replyLeadFor(["wrong_item"])
+  assert.match(lead, /^Jika Anda ingin tetap mengambil barang yang datang/)
+  assert.match(lead, /mohon balas pesan ini dengan informasi berikut:$/)
+
+  // The cause itself no longer makes the offer, so it is made once.
+  const cause = REFUND_CAUSES.find((c) => c.key === "wrong_item")!
+  assert.doesNotMatch(cause.waLine ?? "", /tetap mengambil/)
+  // And it lost the dash it used for a comma.
+  assert.doesNotMatch(cause.waLine ?? "", /—/)
+})
+
+test("a refund with nothing to keep asks plainly", () => {
+  assert.equal(replyLeadFor(["unavailable"]), "Mohon balas pesan ini dengan informasi berikut:")
+  assert.equal(replyLeadFor([]), "Mohon balas pesan ini dengan informasi berikut:")
+  // A group of several refunds only offers it when every one of them can be
+  // declined — otherwise it offers to keep something that does not exist.
+  assert.equal(
+    replyLeadFor(["wrong_item", "unavailable"]),
+    "Mohon balas pesan ini dengan informasi berikut:",
+  )
+  assert.match(replyLeadFor(["wrong_item", "wrong_item"]), /tetap mengambil/)
 })

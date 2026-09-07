@@ -23,7 +23,7 @@ import { MessageButton } from "@/components/MessageButton"
 import { AccountCreditIcon } from "@/components/AccountCreditIcon"
 import { fillTemplate, DEFAULT_TEMPLATES } from "@/lib/message-templates"
 import {
-  causeLineFor, fillNotice, REFUND_CAUSES, MANUAL_REFUND_CAUSES, NOTICE_TEMPLATES,
+  causeLineFor, fillNotice, replyLeadFor, REFUND_CAUSES, MANUAL_REFUND_CAUSES, NOTICE_TEMPLATES,
 } from "@/lib/notice-templates"
 
 const INPUT_CLASS =
@@ -1677,6 +1677,10 @@ function RefundGroupSheet({
       receivedItem: "",
       cause: causeText,
       refundAmount: formatRp(total),
+      // Only where every refund in the group is one she may decline. A mixed
+      // group cannot offer to keep what came without meaning it of the ones
+      // where there is nothing to keep.
+      replyLead: replyLeadFor(chosen.map((r) => r.reason)),
     }
     return allItems
       ? fillTemplate(templates?.refund_specific ?? DEFAULT_TEMPLATES.refund_specific, vars)
@@ -2635,6 +2639,9 @@ function RefundDetailModal({
     receivedItem,
     cause: causeText,
     refundAmount: formatRp(row.refundAmount),
+    // The offer to keep what came, where the cause allows one, said in the
+    // sentence that asks for her account rather than eight lines above it.
+    replyLead: replyLeadFor([row.reason]),
   }
   const waMessageText = itemsList
     ? fillTemplate(templates?.refund_specific ?? DEFAULT_TEMPLATES.refund_specific, waVars)
