@@ -1024,20 +1024,26 @@ function CustomerCard({
             <button
               type="button"
               onClick={() => setExpanded((v) => !v)}
-              className="flex-1 text-left text-xs font-medium text-muted hover:text-brand transition-colors"
+              className="shrink-0 text-left text-xs font-medium text-muted hover:text-brand transition-colors"
             >
               Alamat pengiriman
             </button>
+            {/* Beside the heading it belongs to, rather than pushed to the far
+                side of the row: it is what you do to this address, not a second
+                control competing with the fold. "Sementara" because that is
+                what it is — one parcel's address, not a change to her
+                profile. */}
             <button
               type="button"
               onClick={() => setAddressOpen(true)}
               title={c.requestedAddress
-                ? "Ubah alamat lain untuk paket ini"
-                : "Catat alamat lain yang dia minta untuk paket ini"}
+                ? "Ubah alamat sementara untuk paket ini"
+                : "Catat alamat sementara yang dia minta untuk paket ini"}
               className="shrink-0 rounded-lg border border-dashed border-cream-border px-2 py-1 text-[11px] font-medium text-faint hover:border-brand hover:text-brand transition-colors"
             >
-              {c.requestedAddress ? "Ubah" : "+ Alamat lain"}
+              {c.requestedAddress ? "Ubah" : "+ Alamat sementara"}
             </button>
+            <span className="flex-1" />
             <button
               type="button"
               onClick={() => setExpanded((v) => !v)}
