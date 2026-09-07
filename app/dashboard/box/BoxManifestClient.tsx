@@ -100,26 +100,41 @@ export default function BoxManifestClient() {
         </button>
       </div>
 
+      {/* One row, scrolling sideways.
+          LSJP202608 has 47 parcels, and wrapped they were seven rows of cards
+          standing between the page's own controls and the manifest anybody came
+          to read. Newest first, so the box a courier is asking about is usually
+          the first thing under the cursor; the receipt field above opens any of
+          the others by name. */}
       {boxes.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {boxes.map((b) => (
-            <button
-              key={b.receipt}
-              type="button"
-              onClick={() => open(b.receipt)}
-              className={`rounded-lg border px-3 py-2 text-left transition-colors ${
-                manifest?.receipt.toUpperCase() === b.receipt.toUpperCase()
-                  ? "border-brand bg-brand-light"
-                  : "border-cream-border bg-white hover:border-brand"
-              }`}
-            >
-              <div className="text-sm font-medium text-foreground tabular-nums">{b.receipt}</div>
-              <div className="text-[11px] text-muted tabular-nums">
-                {b.units} units · {b.lines} {b.lines === 1 ? "line" : "lines"}
-                {b.dispatchedAt && ` · ${shortDate(b.dispatchedAt)}`}
-              </div>
-            </button>
-          ))}
+        <div className="-mx-1 px-1">
+          <div className="flex gap-2 overflow-x-auto pb-2 snap-x">
+            {boxes.map((b) => (
+              <button
+                key={b.receipt}
+                type="button"
+                onClick={() => open(b.receipt)}
+                className={`shrink-0 snap-start rounded-lg border px-3 py-2 text-left transition-colors ${
+                  manifest?.receipt.toUpperCase() === b.receipt.toUpperCase()
+                    ? "border-brand bg-brand-light"
+                    : "border-cream-border bg-white hover:border-brand"
+                }`}
+              >
+                <div className="text-sm font-medium text-foreground tabular-nums whitespace-nowrap">{b.receipt}</div>
+                <div className="text-[11px] text-muted tabular-nums whitespace-nowrap">
+                  {b.units} units · {b.lines} {b.lines === 1 ? "line" : "lines"}
+                  {b.dispatchedAt && ` · ${shortDate(b.dispatchedAt)}`}
+                </div>
+              </button>
+            ))}
+          </div>
+          {/* How many are off to the right, since a scrolling row hides its own
+              length — and the count is the cue to use the receipt field instead
+              of dragging through forty cards. */}
+          <p className="text-[11px] text-faint">
+            {boxes.length} {boxes.length === 1 ? "parcel" : "parcels"} on this trip · scroll for
+            older, or type a receipt above
+          </p>
         </div>
       )}
 
