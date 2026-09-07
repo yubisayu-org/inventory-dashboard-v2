@@ -494,6 +494,23 @@ export async function setMergeGroup(
  * the free-text destination the picker exists to prevent. Passing an area
  * without a street therefore clears both, same as passing nothing.
  */
+/** Whether a posted redirect is simply the address her profile already holds. */
+async function matchesUsualAddress(
+  customerId: number,
+  input: { address: string; areaId?: string | null; name?: string | null; phone?: string | null },
+  db: DBExecutor,
+): Promise<boolean> {
+  const [me] = await db<{ jalan: string; whatsapp: string; name: string; area: string | null }[]>`
+    SELECT jalan, whatsapp, name, biteship_area_id AS area
+      FROM customers WHERE id = ${customerId}`
+  if (!me) return false
+  const t = (v: unknown) => String(v ?? "").trim()
+  return t(input.address) === t(me.jalan)
+    && t(input.areaId) === t(me.area)
+    && t(input.name) === t(me.name)
+    && t(input.phone) === t(me.whatsapp)
+}
+
 export async function setTempAddress(
   customerId: number,
   event: string,
@@ -517,7 +534,19 @@ export async function setTempAddress(
   const reason = await ineligibleReason(customerId, event, db)
   if (blocksDestination(reason)) throw new ShippingPrefError(reason!)
 
-  const value = input.address.trim() ? input.address.trim() : null
+  // Her own address is not a redirect.
+  //
+  // The shipping sheet posts this block on every save, whether or not she
+  // touched it — so saving a pairing, or a timing, stamped a "redirect" to
+  // where she already lives, and the card wore "Alamat lain diminta" for a
+  // parcel going nowhere new. agathacyn had one on both her trips, written
+  // seconds apart when she paired them.
+  //
+  // Compared on the four things a label is built from, trimmed, because that
+  // is what "somewhere else" means. Same address, no row: it is stored as a
+  // clear, which also takes any redirect charge with it.
+  const same = await matchesUsualAddress(customerId, input, db)
+  const value = !same && input.address.trim() ? input.address.trim() : null
   const areaId = value && input.areaId?.trim() ? input.areaId.trim() : null
   const areaName = value && areaId && input.areaName?.trim() ? input.areaName.trim() : null
   // The recipient belongs to the redirect: clearing the address clears who it

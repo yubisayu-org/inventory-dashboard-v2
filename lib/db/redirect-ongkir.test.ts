@@ -30,7 +30,8 @@ after(async () => {
 async function seed() {
   handle = `${TAG}_cust`
   const [c] = await sql<{ id: number }[]>`
-    INSERT INTO customers (instagram_id, biteship_area_id) VALUES (${handle}, ${HOME_AREA})
+    INSERT INTO customers (instagram_id, biteship_area_id, jalan, whatsapp, name)
+    VALUES (${handle}, ${HOME_AREA}, 'Jl. Rumah 1', '628111', 'Her Own Name')
     RETURNING id`
   customerId = c.id
 
@@ -201,4 +202,35 @@ test("a redirect's notice talks about the address, not about shipping early", as
     assert.doesNotMatch(n.body, /menjadi dua paket/)
     assert.match(n.body, /Alamat pengiriman/)
   }
+})
+
+// The shipping sheet posts the address block on every save, touched or not, so
+// saving a pairing stamped a "redirect" to where she already lives and the
+// card wore "Alamat lain diminta" for a parcel going nowhere new. agathacyn had
+// one on both her trips, written seconds apart when she paired them.
+test("her own address is not a redirect", async () => {
+  const [me] = await sql<{ jalan: string; whatsapp: string; name: string; area: string }[]>`
+    SELECT jalan, whatsapp, name, biteship_area_id AS area FROM customers WHERE id = ${customerId}`
+
+  await setTempAddress(customerId, EVENT, {
+    address: me.jalan, areaId: me.area, areaName: "Home, Somewhere",
+    name: me.name, phone: me.whatsapp,
+  })
+
+  const [pref] = await sql<{ temp_address: string | null; temp_area_id: string | null; temp_name: string }[]>`
+    SELECT temp_address, temp_area_id, temp_name FROM customer_shipping_prefs
+     WHERE customer_id = ${customerId} AND event = ${EVENT}`
+  assert.equal(pref.temp_address, null, "nothing to redirect to")
+  assert.equal(pref.temp_area_id, null)
+  assert.equal(pref.temp_name, "", "and nobody else to hand it to")
+
+  // Whitespace is not a different house either.
+  await setTempAddress(customerId, EVENT, {
+    address: `  ${me.jalan} `, areaId: me.area, areaName: "Home, Somewhere",
+    name: ` ${me.name}`, phone: `${me.whatsapp} `,
+  })
+  const [again] = await sql<{ temp_address: string | null }[]>`
+    SELECT temp_address FROM customer_shipping_prefs
+     WHERE customer_id = ${customerId} AND event = ${EVENT}`
+  assert.equal(again.temp_address, null)
 })
