@@ -21,6 +21,7 @@ export type NoticeKey =
   | "inbox_ongkir_credit"
   | "inbox_ongkir_extra_cleared"
   | "inbox_ongkir_credit_cleared"
+  | "inbox_ongkir_credit_moved"
   | "inbox_ongkir_redirect_extra"
   | "inbox_ongkir_redirect_credit"
   | "inbox_ongkir_redirect_cleared"
@@ -130,6 +131,21 @@ export const NOTICE_TEMPLATES: NoticeTemplate[] = [
     body:
       "Pesanan {event} tidak lagi digabung menjadi satu paket, jadi diskon ongkir {amount} "
       + "tidak lagi berlaku. Tagihan Anda sudah kami sesuaikan.",
+  },
+  // The discount did not end, it changed hands. Without this, a credit moving
+  // from one invoice of a pairing to the other sent her the cancel notice and
+  // the arrival notice seconds apart: "tidak lagi digabung" first, about a
+  // merge that never stopped. taleofblackcats read both at 01:30.
+  {
+    key: "inbox_ongkir_credit_moved",
+    label: "Shipping discount moved to the other invoice",
+    title: "Diskon ongkir pindah tagihan · {event}",
+    // Says the thing she actually wants to know -- that nothing changed for
+    // her -- rather than making her add the two invoices up herself.
+    body:
+      "Diskon ongkir {amount} kini tercatat di tagihan {event}, sebelumnya di {from}. "
+      + "Pesanan Anda tetap digabung menjadi satu paket dan total yang perlu Anda bayar "
+      + "tidak berubah.",
   },
   // What her parcel is now going to do, said whoever decided it.
   //
@@ -446,6 +462,8 @@ export const NOTICE_TOKENS = [
   // was swallowed by the caller, so nothing said why.
   "{by}",
   "{partners}",
+  // The invoice a discount used to sit on, when it moves to its partner.
+  "{from}",
 ] as const
 
 export type NoticeTokens = Partial<Record<(typeof NOTICE_TOKENS)[number], string>>
@@ -517,6 +535,8 @@ export const NOTICE_TOKENS_FOR: Record<NoticeKey, string[]> = {
   // naming.
   inbox_ongkir_extra_cleared: ["{customer}", "{event}", "{amount}"],
   inbox_ongkir_credit_cleared: ["{customer}", "{event}", "{amount}"],
+  // {from} is the invoice that used to carry it; {event} is the one that does.
+  inbox_ongkir_credit_moved: ["{customer}", "{event}", "{amount}", "{from}"],
   inbox_ongkir_redirect_extra: ["{customer}", "{event}", "{amount}"],
   inbox_ongkir_redirect_credit: ["{customer}", "{event}", "{amount}"],
   inbox_ongkir_redirect_cleared: ["{customer}", "{event}", "{amount}"],
