@@ -343,9 +343,14 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
             onClick={() => handleUnreject(row.original)}
             disabled={isAdmin}
             aria-label="Rejected — click to undo"
-            className="inline-grid place-items-center align-middle h-3.5 w-3.5 rounded-[3px] border border-red-300 bg-red-50 text-red-600 hover:border-red-400 disabled:cursor-default"
+            // Filled, white glyph, the same square as a ticked box: both are
+            // answers to the same question and were drawn at different weights,
+            // the tick solid and the cross a faint outline, so a decided row
+            // read as a lighter thing than a checked one. Red rather than
+            // brand keeps them apart at a glance.
+            className="inline-grid place-items-center align-middle h-3.5 w-3.5 rounded-[3px] bg-red-600 text-white hover:bg-red-700 disabled:cursor-default"
           >
-            <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" aria-hidden="true">
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" aria-hidden="true">
               <path d="M6 6l12 12M18 6 6 18" />
             </svg>
           </button>
