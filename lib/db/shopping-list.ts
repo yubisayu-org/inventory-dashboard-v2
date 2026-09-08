@@ -342,11 +342,20 @@ export async function markOrdersAsBought(orderIds: number[], db: DBExecutor = sq
  * already paid, the existing overpayment materializer (Refunds page) turns the
  * resulting overpayment into a refund — same mechanism as wrong-product/broken.
  * Nothing is logged to inventory, since nothing was ever received.
+ *
+ * `allocations` overrides the automatic choice: a shortage is usually answered
+ * one customer at a time -- she asks five people whether they want a swap or
+ * their money back, three say refund on Tuesday and the rest go quiet -- and
+ * the automatic pick has no way to cut exactly those three. Given explicit
+ * lines, this cuts those and nothing else; given none, it picks as it always
+ * has.
  */
 export async function markProductOutOfStock(data: {
   event: string
   productId: number
   quantityOutOfStock: number
+  /** Which lines lose units, and how many each. Ignores quantityOutOfStock. */
+  allocations?: { orderId: number; units: number }[]
 }, actor?: string | null): Promise<{
   reducedOrderIds: number[]
   reducedUnits: number
@@ -380,7 +389,27 @@ export async function markProductOutOfStock(data: {
   // below unit_buy (already-bought units are never cancelled). Any leftover
   // beyond total pending is ignored — you can't be out of stock for units no
   // one is still waiting on.
-  const { allocations } = allocateFifo(orders, (o) => o.pending, data.quantityOutOfStock)
+  //
+  // A named line is bounded by exactly the same pending figure, and by the same
+  // rule: this cancels what nobody has bought yet, whoever chose it. A line the
+  // caller does not know about -- another trip's, another product's, or one
+  // whose units have all been bought since the screen was drawn -- is refused
+  // rather than quietly skipped, because the number she is answering for is the
+  // one she read.
+  const chosen = data.allocations
+  const allocations = chosen
+    ? chosen.map(({ orderId, units }) => {
+        const item = orders.find((o) => o.id === orderId)
+        if (!item) throw new Error(`Order ${orderId} is not waiting on this item any more`)
+        if (!Number.isInteger(units) || units < 1) throw new Error("Each line needs at least one unit")
+        if (units > item.pending) {
+          throw new Error(
+            `${item.customer} has ${item.pending} unit${item.pending === 1 ? "" : "s"} still pending, `
+            + `so ${units} cannot come off`)
+        }
+        return { item, allocated: units }
+      })
+    : allocateFifo(orders, (o) => o.pending, data.quantityOutOfStock).allocations
   const reducedOrderIds: number[] = []
   const reductions: MarkReduction[] = []
   let reducedUnits = 0
