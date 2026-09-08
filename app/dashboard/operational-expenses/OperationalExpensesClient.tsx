@@ -280,6 +280,24 @@ export default function OperationalExpensesClient() {
     return () => document.removeEventListener("mousedown", h)
   }, [filterOpen])
 
+  /**
+   * Typing narrows the account list, because listing every account ever used
+   * made the popover taller than the screen.
+   *
+   * Twenty-two of them, four digits each, and eight untouched since June: the
+   * list was complete rather than useful, and the only way to reach the bottom
+   * of it was to scroll the page behind the popover. Two digits reach any of
+   * them now.
+   */
+  const [methodQuery, setMethodQuery] = useState("")
+  // Cleared on the way out, so reopening never shows a list narrowed by
+  // something typed ten minutes ago.
+  useEffect(() => { if (!filterOpen) setMethodQuery("") }, [filterOpen])
+  const methodMatches = useMemo(() => {
+    const q = methodQuery.trim().toLowerCase()
+    return q ? methods.filter((m) => m.toLowerCase().includes(q)) : methods
+  }, [methods, methodQuery])
+
   // Suggested categories + whatever's actually in the DB, deduped.
   const categoryOptions = useMemo(
     () => Array.from(new Set([...EXPENSE_CATEGORIES, ...categories])),
@@ -506,11 +524,40 @@ export default function OperationalExpensesClient() {
               </div>
               <div className="flex flex-col gap-1">
                 <span className="text-xs font-medium text-muted">Method</span>
-                <div className="flex flex-col gap-0.5">
-                  {[{ value: "", label: "All methods" }, ...methods.map((m) => ({ value: m, label: m }))].map((o) => (
+                {/* Only once there are enough of them to hunt through. Four
+                    accounts do not need a search box above them. */}
+                {methods.length > 8 && (
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={methodQuery}
+                    onChange={(e) => setMethodQuery(e.target.value)}
+                    placeholder="Search account…"
+                    aria-label="Search payment methods"
+                    // Not autofocused: on a phone that throws a keyboard over
+                    // the popover before she has read the status choices.
+                    className="w-full px-2.5 py-1.5 mb-0.5 rounded-lg border border-cream-border bg-white text-xs focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+                  />
+                )}
+                {/* Capped and scrolling, so the popover is one height whatever
+                    the list is doing. */}
+                <div className="flex flex-col gap-0.5 max-h-44 overflow-y-auto">
+                  {/* "All methods" is the way back, so it is offered only when
+                      nothing is typed -- a search for 43 that answers with
+                      "All methods" first is answering a question nobody asked. */}
+                  {[
+                    ...(methodQuery.trim() ? [] : [{ value: "", label: "All methods" }]),
+                    ...methodMatches.map((m) => ({ value: m, label: m })),
+                  ].map((o) => (
                     <button
                       key={o.value}
                       type="button"
+                      // The account in force may be the nineteenth row. Opening
+                      // the filter should show her which one is on, not an
+                      // arbitrary window of the list with the answer below it.
+                      ref={o.value && methodFilterValue === o.value
+                        ? (el) => el?.scrollIntoView({ block: "nearest" })
+                        : undefined}
                       onClick={() => upsertColumnFilter("method", o.value)}
                       className={`text-left px-3 py-1.5 rounded-lg text-xs transition-colors ${
                         methodFilterValue === o.value ? "bg-brand/10 text-brand font-medium" : "text-muted-strong hover:bg-surface-muted"
@@ -519,6 +566,11 @@ export default function OperationalExpensesClient() {
                       {o.label}
                     </button>
                   ))}
+                  {methodQuery.trim() && methodMatches.length === 0 && (
+                    <p className="px-3 py-1.5 text-xs text-faint">
+                      No account matches &ldquo;{methodQuery.trim()}&rdquo;
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
