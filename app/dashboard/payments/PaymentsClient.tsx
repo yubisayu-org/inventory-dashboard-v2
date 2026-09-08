@@ -330,40 +330,47 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
       enableColumnFilter: false,
       enableSorting: false,
       size: 60,
+      // The same two marks the phone draws, in the same tinted squares. The
+      // desktop had a browser checkbox and a small filled cross of its own, so
+      // one screen answered this question in maroon and green and the other in
+      // brand red — the same row, decided, looked like two different states
+      // depending on which device she opened it on.
       cell: ({ row }) => (
         row.original.rejectedAt ? (
           // A refused row has been decided. Offering a tick beside it invites
           // the one action that would contradict the reason already sent.
-          // Drawn as the checkbox's own size and shape, because it sits in the
-          // checkbox's column and means the other answer to the same question.
-          // A pill of text beside a box read as a different kind of control.
           <button
             type="button"
             title={`Rejected: ${row.original.rejectReason}. Click to undo.`}
             onClick={() => handleUnreject(row.original)}
             disabled={isAdmin}
             aria-label="Rejected — click to undo"
-            // Filled, white glyph, the same square as a ticked box: both are
-            // answers to the same question and were drawn at different weights,
-            // the tick solid and the cross a faint outline, so a decided row
-            // read as a lighter thing than a checked one. Red rather than
-            // brand keeps them apart at a glance.
-            className="inline-grid place-items-center align-middle h-3.5 w-3.5 rounded-[3px] bg-red-600 text-white hover:bg-red-700 disabled:cursor-default"
+            className={`inline-grid place-items-center align-middle p-1 rounded-lg bg-red-50 text-red-600 transition-colors ${
+              isAdmin ? "cursor-default" : "cursor-pointer hover:bg-red-100"
+            }`}
           >
-            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" aria-hidden="true">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
               <path d="M6 6l12 12M18 6 6 18" />
             </svg>
           </button>
         ) : (
-          <input
-            type="checkbox"
-            checked={row.original.isChecked}
-            onChange={() => handleToggleCheck(row.original)}
+          <button
+            type="button"
+            onClick={() => handleToggleCheck(row.original)}
             disabled={isAdmin}
-            // Sized explicitly rather than left to the browser, so the refused
-            // mark beside it can be drawn to match.
-            className={`h-3.5 w-3.5 align-middle accent-brand ${isAdmin ? "cursor-default" : "cursor-pointer"}`}
-          />
+            title={row.original.isChecked ? "Checked — click to undo" : "Mark as checked"}
+            aria-label={row.original.isChecked ? "Mark as unchecked" : "Mark as checked"}
+            aria-pressed={row.original.isChecked}
+            className={`inline-grid place-items-center align-middle p-1 rounded-lg transition-colors ${
+              row.original.isChecked
+                ? "bg-green-100 text-green-700 hover:bg-green-200"
+                : "text-faint hover:bg-cream"
+            } ${isAdmin ? "cursor-default" : "cursor-pointer"}`}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          </button>
         )
       ),
     },
