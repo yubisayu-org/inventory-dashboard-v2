@@ -48,12 +48,24 @@ async function announce(
    * longer being charged, or no longer saving.
    */
   cleared = false,
+  /**
+   * The invoice this credit used to sit on. A discount that changes hands
+   * inside a pairing is neither an arrival nor a departure, and telling her
+   * both -- "no longer merged", then "merged" -- about a merge that never
+   * stopped is how taleofblackcats got two notices in the same second.
+   */
+  movedFrom: string | null = null,
 ): Promise<void> {
-  const key = cleared
-    ? (row.amount > 0 ? "inbox_ongkir_extra_cleared" : "inbox_ongkir_credit_cleared")
-    : (row.amount > 0 ? "inbox_ongkir_extra" : "inbox_ongkir_credit")
+  const key = movedFrom
+    ? "inbox_ongkir_credit_moved"
+    : cleared
+      ? (row.amount > 0 ? "inbox_ongkir_extra_cleared" : "inbox_ongkir_credit_cleared")
+      : (row.amount > 0 ? "inbox_ongkir_extra" : "inbox_ongkir_credit")
   const template = NOTICE_TEMPLATES.find((t) => t.key === key)!
-  const tokens = { "{event}": event, "{customer}": customer, "{amount}": rupiah(row.amount) }
+  const tokens = {
+    "{event}": event, "{customer}": customer, "{amount}": rupiah(row.amount),
+    "{from}": movedFrom ?? "",
+  }
   await sendInvoiceNotice({
     event,
     customer,
@@ -217,7 +229,16 @@ export async function reconcileParcelPlan(
   const plannedKg = merged
     // One box for the whole group, so its weight is summed before rounding —
     // which is exactly where a merge saves anything.
-    ? kg(all.flat().reduce((g, x) => g + x.gram * x.unit, 0))
+    //
+    // Two boxes when the group is also sending early, for the same reason a
+    // lone trip gets two: what is here goes now and what is not follows, and
+    // the courier bills each. Priced as one box regardless, a merged group
+    // that left something behind kept its whole merge credit and paid nothing
+    // for the second parcel — tyanandya_, and nine trips before hers.
+    ? splitting
+      ? kg(all.flat().reduce((g, x) => g + x.gram * x.toShip, 0))
+        + kg(all.flat().reduce((g, x) => g + x.gram * Math.max(0, x.unit - x.toShip), 0))
+      : kg(all.flat().reduce((g, x) => g + x.gram * x.unit, 0))
     : all.reduce((total, lines) => {
         const now = lines.reduce((g, x) => g + x.gram * x.toShip, 0)
         const rest = lines.reduce((g, x) => g + x.gram * Math.max(0, x.unit - x.toShip), 0)
@@ -228,7 +249,10 @@ export async function reconcileParcelPlan(
   // ongkir the invoice charged for it.
   const extra = ongkirPerKg * (sentKg + plannedKg - invoicedKg)
 
-  const partner = merged ? events.filter((e) => e !== event).sort()[0] ?? null : null
+  // Named from the other trip's side too, because a credit that moves takes
+  // the receiving invoice's wording with it, not this one's.
+  const partnerFor = (e: string) => events.filter((x) => x !== e).sort()[0] ?? null
+  const partner = merged ? partnerFor(event) : null
 
   /**
    * The group saves once, so the group is credited once.
@@ -315,6 +339,7 @@ export async function reconcileParcelPlan(
   }
 
   let mine = 0
+  const takers: string[] = []
   if ((merged || givenAway) && saving > 0) {
     let left = saving
     /**
@@ -339,6 +364,7 @@ export async function reconcileParcelPlan(
       if (left <= 0) break
       const take = Math.min(charge, left)
       if (e === event) mine = take
+      if (take > 0) takers.push(e)
       left -= take
     }
   }
@@ -381,6 +407,42 @@ export async function reconcileParcelPlan(
     // Nothing owed by today's arithmetic — but if a box has gone, today's
     // arithmetic is not the whole story.
     if (existing && !inFlight) {
+      /**
+       * The discount did not end, it changed hands.
+       *
+       * The group still saves, and the whole saving now belongs to one other
+       * trip in it — the tie-break moving a credit onto the invoice she has
+       * not paid delivery on. Deleting here and letting that trip's own
+       * reconcile insert its row reaches the same figures, but says two
+       * things to her on the way: that the merge ended, and that it began.
+       * Moving the row itself is one row, one notice, whichever end of the
+       * pairing reconciles first.
+       */
+      const goingTo = existing.amount < 0 && merged && saving > 0
+        && takers.length === 1 && takers[0] !== event
+        ? takers[0]
+        : null
+      // Unless that trip already holds one, in which case this row is not a
+      // credit on its way anywhere — it is the second copy of a credit that is
+      // already where it belongs, and moving it would make two of them there.
+      const [alreadyThere] = (goingTo
+        ? await db`
+            SELECT id FROM adjustments
+             WHERE event = ${goingTo} AND lower(replace(customer, '@', '')) = ${key}
+               AND auto AND description NOT LIKE 'Selisih ongkir JNE%'
+             LIMIT 1`
+        : []) as unknown as { id: number }[]
+      if (goingTo && !alreadyThere) {
+        const name = givenAway
+          ? "Gratis ongkir"
+          : partnerFor(goingTo) ? `Gabung ongkir dengan ${partnerFor(goingTo)}` : "Diskon gabung ongkir"
+        await db`
+          UPDATE adjustments
+             SET event = ${goingTo}, description = ${name}, amount = ${-saving}, updated_at = NOW()
+           WHERE id = ${existing.id}`
+        await announce(goingTo, customer, { description: name, amount: -saving }, db, false, event)
+        return null
+      }
       await db`DELETE FROM adjustments WHERE id = ${existing.id}`
       // Told, the same as its arrival was. This branch used to be the silent
       // one: a merge announced its discount and an un-merge removed it without
@@ -394,6 +456,30 @@ export async function reconcileParcelPlan(
       : null
   }
   if (!existing) {
+    // The same move seen from the receiving end, for when this trip reconciles
+    // before the one that is losing it. Its row is taken over rather than a
+    // second one written, so the trip left behind finds nothing to delete and
+    // stays quiet.
+    // Sole recipient only. A saving shared across two trips of a three-way
+    // merge writes a row on each, and taking the other's over would leave the
+    // group one credit short.
+    const [sibling] = (merged && wanted.amount < 0 && takers.length === 1
+      ? await db`
+          SELECT id, event FROM adjustments
+           WHERE event = ANY(${events.filter((e) => e !== event)})
+             AND lower(replace(customer, '@', '')) = ${key}
+             AND auto AND amount < 0 AND description NOT LIKE 'Selisih ongkir JNE%'
+           ORDER BY id LIMIT 1`
+      : []) as unknown as { id: number; event: string }[]
+    if (sibling) {
+      await db`
+        UPDATE adjustments
+           SET event = ${event}, description = ${wanted.description},
+               amount = ${wanted.amount}, updated_at = NOW()
+         WHERE id = ${sibling.id}`
+      await announce(event, customer, wanted, db, false, sibling.event)
+      return wanted
+    }
     await db`
       INSERT INTO adjustments (event, customer, description, amount, auto)
       VALUES (${event}, ${customer}, ${wanted.description}, ${wanted.amount}, true)`
