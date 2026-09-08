@@ -434,45 +434,22 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
       header: "",
       enableSorting: false,
       enableHiding: false,
-      size: 80,
+      size: 56,
+      // One ⋯ rather than three grey icons of the same size. Refusing a payment
+      // sends the customer a message and delete throws the row away, and both
+      // were drawn as neighbours of the pencil — same weight, same colour, no
+      // words. Behind the menu each says what it does before it happens, and
+      // the row is left with two controls: the tick, and this.
       cell: ({ row }) => (
-        <div className="flex items-center justify-end gap-2">
-          {!row.original.isChecked && !row.original.rejectedAt && !isAdmin && (
-            <button
-              type="button"
-              onClick={() => setRejectingRow(row.original)}
-              title="Could not confirm this payment"
-              className="text-faint hover:text-red-500 transition-colors"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                <circle cx="12" cy="12" r="9" />
-                <path d="M15 9l-6 6M9 9l6 6" />
-              </svg>
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => setEditingRow(row.original)}
-            title="Edit"
-            className="text-faint hover:text-brand transition-colors"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            onClick={() => handleDeleteRow(row.original)}
-            title="Delete"
-            className="text-faint hover:text-red-500 transition-colors"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 6h18" />
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-              <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-            </svg>
-          </button>
+        <div className="flex items-center justify-end">
+          <RowMenu
+            row={row.original}
+            isAdmin={isAdmin}
+            onEdit={() => setEditingRow(row.original)}
+            onReject={() => setRejectingRow(row.original)}
+            onUnreject={() => handleUnreject(row.original)}
+            onDelete={() => handleDeleteRow(row.original)}
+          />
         </div>
       ),
     },
@@ -672,6 +649,7 @@ export default function PaymentsClient({ role }: { role: Role | null }) {
               onReject={() => setRejectingRow(row)}
               onUnreject={() => handleUnreject(row)}
               onEdit={() => setEditingRow(row)}
+              onDelete={() => handleDeleteRow(row)}
             />
           ))
         )}
@@ -1180,6 +1158,98 @@ function AddPaymentForm({
 }
 
 // ---------------------------------------------------------------------------
+// The row menu, on both screens
+// ---------------------------------------------------------------------------
+
+/**
+ * Everything that is not "the money arrived", named in words.
+ *
+ * The tick column answers the only question asked of most rows. The rarer
+ * things -- correcting a figure, telling her it did not arrive, throwing the
+ * row away -- live here, where each one is read before it is chosen.
+ */
+function RowMenu({
+  row, isAdmin, onEdit, onReject, onUnreject, onDelete,
+}: {
+  row: PaymentRow
+  isAdmin: boolean
+  onEdit: () => void
+  onReject: () => void
+  onUnreject: () => void
+  onDelete: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const h = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener("pointerdown", h)
+    return () => document.removeEventListener("pointerdown", h)
+  }, [open])
+
+  // Refusing is only on offer while the payment is still a question: a row
+  // already ticked is money found, and a row already refused carries a reason
+  // she has been sent.
+  const canReject = !row.isChecked && !row.rejectedAt && !isAdmin
+  const item = "flex w-full items-center gap-2 px-3 py-2 text-xs text-left transition-colors hover:bg-surface-muted"
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o) }}
+        aria-label={`More for ${displayIg(row.customer)}`}
+        aria-expanded={open}
+        className="px-1.5 py-0.5 rounded-lg text-faint hover:text-foreground hover:bg-cream transition-colors leading-none text-base font-bold tracking-wider"
+      >
+        ⋯
+      </button>
+      {open && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="absolute right-0 top-full mt-1 z-30 w-52 rounded-lg border border-cream-border bg-white shadow-lg overflow-hidden flex flex-col"
+        >
+          <button type="button" className={`${item} text-muted-strong`} onClick={() => { setOpen(false); onEdit() }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
+            </svg>
+            Edit
+          </button>
+          {canReject && (
+            <button type="button" className={`${item} text-red-600 border-t border-cream-border`} onClick={() => { setOpen(false); onReject() }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M15 9l-6 6M9 9l6 6" />
+              </svg>
+              Could not confirm…
+            </button>
+          )}
+          {row.rejectedAt && !isAdmin && (
+            <button type="button" className={`${item} text-muted-strong border-t border-cream-border`} onClick={() => { setOpen(false); onUnreject() }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+                <path d="M3 3v5h5" />
+              </svg>
+              Undo the refusal
+            </button>
+          )}
+          <button type="button" className={`${item} text-red-600 border-t border-cream-border`} onClick={() => { setOpen(false); onDelete() }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M3 6h18" />
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+              <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            </svg>
+            Delete
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Mobile: single-payment card
 // ---------------------------------------------------------------------------
 
@@ -1190,6 +1260,7 @@ function PaymentCard({
   onReject,
   onUnreject,
   onEdit,
+  onDelete,
 }: {
   row: PaymentRow
   isAdmin: boolean
@@ -1200,12 +1271,71 @@ function PaymentCard({
   onReject: () => void
   onUnreject: () => void
   onEdit: () => void
+  onDelete: () => void
 }) {
+  /**
+   * The answer given as a movement, because a thumb is already holding the
+   * phone: right for money arrived, left for could not confirm.
+   *
+   * The menu stays exactly where it was. A gesture nobody has been told about
+   * cannot be the only way to reach a decision -- this is the shortcut for the
+   * hand that knows it, not the door.
+   */
+  const [dx, setDx] = useState(0)
+  const [sliding, setSliding] = useState(false)
+  const start = useRef<number | null>(null)
+  const dragged = useRef(false)
+  // Far enough that a thumb travelling down a list does not answer a payment
+  // on the way past.
+  const THROW = 76
+  const decided = Boolean(row.isChecked || row.rejectedAt)
+  const canSwipe = !isAdmin && !decided
+
+  function down(e: React.PointerEvent) {
+    if (!canSwipe || (e.target as HTMLElement).closest("button")) return
+    start.current = e.clientX
+    dragged.current = false
+    setSliding(true)
+  }
+  function move(e: React.PointerEvent) {
+    if (start.current === null) return
+    const d = e.clientX - start.current
+    if (Math.abs(d) > 6) dragged.current = true
+    setDx(d)
+  }
+  function up() {
+    if (start.current === null) return
+    const thrown = dx
+    start.current = null
+    setSliding(false)
+    setDx(0)
+    if (thrown > THROW) onToggleCheck()
+    else if (thrown < -THROW) onReject()
+  }
+
+  const intent = dx > 12 ? "yes" : dx < -12 ? "no" : null
+
   return (
-    <div
-      onClick={onEdit}
-      className="rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] flex flex-col gap-2 cursor-pointer active:bg-cream transition-colors"
-    >
+    <div className="relative rounded-xl overflow-hidden" style={{ touchAction: "pan-y" }}>
+      {/* What the movement is about to do, read from under the card. */}
+      {intent && (
+        <div
+          className={`absolute inset-0 flex items-center px-4 text-xs font-bold ${
+            intent === "yes" ? "justify-start bg-green-100 text-green-700" : "justify-end bg-red-50 text-red-600"
+          }`}
+        >
+          {intent === "yes" ? "Sudah dicek" : "Tidak ketemu uangnya"}
+        </div>
+      )}
+      <div
+        onPointerDown={down}
+        onPointerMove={move}
+        onPointerUp={up}
+        onPointerCancel={up}
+        onClick={() => { if (!dragged.current) onEdit() }}
+        style={{ transform: `translateX(${dx}px)`, transition: sliding ? undefined : "transform .18s ease-out" }}
+        className="relative rounded-xl border border-cream-border bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] flex flex-col gap-2 cursor-pointer active:bg-cream"
+      >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-sm font-semibold text-foreground uppercase truncate">{displayIg(row.customer)}</div>
@@ -1230,21 +1360,8 @@ function PaymentCard({
             </button>
           ) : (
             <>
-              {/* Only while it is still a question. A payment already ticked is
-                  money found, and refusing it is an edit, not a decision. */}
-              {!row.isChecked && !isAdmin && (
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); onReject() }}
-                  aria-label="Tidak ketemu uangnya"
-                  className="p-1 rounded-lg text-faint active:bg-cream transition-colors"
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                    <circle cx="12" cy="12" r="9" />
-                    <path d="M15 9l-6 6M9 9l6 6" />
-                  </svg>
-                </button>
-              )}
+              {/* The cross has moved into the menu, and into a leftward swipe.
+                  Two marks side by side made the card ask its question twice. */}
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); onToggleCheck() }}
@@ -1262,6 +1379,14 @@ function PaymentCard({
               </button>
             </>
           )}
+          <RowMenu
+            row={row}
+            isAdmin={isAdmin}
+            onEdit={onEdit}
+            onReject={onReject}
+            onUnreject={onUnreject}
+            onDelete={onDelete}
+          />
         </div>
       </div>
 
@@ -1274,6 +1399,7 @@ function PaymentCard({
       <div className="flex items-center justify-between gap-3 border-t border-cream-border pt-2">
         <div className="text-xs text-faint uppercase truncate min-w-0">{row.event} · {formatDate(row.payDate)}{row.account ? ` · ${row.account}` : ""}</div>
         <span className="text-sm font-semibold tabular-nums text-foreground whitespace-nowrap shrink-0">Rp {formatAmount(row.amount)}</span>
+      </div>
       </div>
     </div>
   )
