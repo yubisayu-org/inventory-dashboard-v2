@@ -39,8 +39,37 @@ export async function POST(req: NextRequest) {
       if (!event || !productId || typeof quantityOutOfStock !== "number" || quantityOutOfStock < 1) {
         return NextResponse.json({ error: "event, productId and quantityOutOfStock are required" }, { status: 400 })
       }
-      const result = await markProductOutOfStock({ event, productId: Number(productId), quantityOutOfStock }, session.user.email)
-      return NextResponse.json({ success: true, ...result })
+      // Which lines lose the units, when the shop has chosen them itself. The
+      // quantity still travels, because it is what the screen said out loud.
+      let allocations: { orderId: number; units: number }[] | undefined
+      if (body.allocations !== undefined) {
+        if (!Array.isArray(body.allocations) || body.allocations.length === 0) {
+          return NextResponse.json({ error: "allocations must be a non-empty list" }, { status: 400 })
+        }
+        allocations = body.allocations.map((a: unknown) => {
+          const row = a as { orderId?: unknown; units?: unknown }
+          if (!Number.isInteger(row.orderId) || !Number.isInteger(row.units) || Number(row.units) < 1) {
+            throw new Error("each allocation needs an orderId and at least one unit")
+          }
+          return { orderId: Number(row.orderId), units: Number(row.units) }
+        })
+        const named = new Set(allocations!.map((a) => a.orderId))
+        if (named.size !== allocations!.length) {
+          return NextResponse.json({ error: "the same order is listed twice" }, { status: 400 })
+        }
+      }
+      try {
+        const result = await markProductOutOfStock(
+          { event, productId: Number(productId), quantityOutOfStock, allocations }, session.user.email)
+        return NextResponse.json({ success: true, ...result })
+      } catch (err) {
+        // The refusals inside are about her choice -- an order that has been
+        // bought since the screen was drawn, a figure that no longer fits --
+        // and she can act on every one of them. A generic 500 could not.
+        const msg = err instanceof Error ? err.message : "Failed to mark out of stock"
+        console.error("Failed to mark out of stock:", err)
+        return NextResponse.json({ error: msg }, { status: 400 })
+      }
     }
 
     // Apply excess: pull from existing sellable excess_purchase stock instead

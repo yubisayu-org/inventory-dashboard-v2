@@ -1097,15 +1097,47 @@ function BuyModal({
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
+  /**
+   * Which lines she has chosen herself, once she has touched any of them.
+   *
+   * Null means the automatic pick, which is what nearly every shortage wants.
+   * The one it cannot answer is the one that takes a week: she asks five people
+   * whether they want a swap or their money back, three say refund on Tuesday
+   * and the others go quiet, and only those three lines should come off.
+   */
+  const [chosen, setChosen] = useState<Record<number, number> | null>(null)
+
   const quantity = Math.max(0, Number(qty) || 0)
   const isOos = mode === "oos"
   // Buying fills highest-priority customers first (item.orders is already paid →
   // partial → unpaid). Out of stock is the mirror: cancel lowest-priority first,
   // so walk the same list reversed. Matches markProductBought / markProductOutOfStock.
-  const preview = computeFill(isOos ? [...item.orders].reverse() : item.orders, quantity)
+  const oosOrder = useMemo(() => [...item.orders].reverse(), [item.orders])
+  const preview = computeFill(isOos ? oosOrder : item.orders, quantity)
+
+  // The automatic pick, as a map, so choosing starts from what she was shown
+  // rather than from an empty list.
+  const autoPicks = useMemo(() => {
+    const m: Record<number, number> = {}
+    for (const f of computeFill(oosOrder, quantity).filled) m[f.order.id] = f.allocated
+    return m
+  }, [oosOrder, quantity])
+
+  const picks = chosen ?? autoPicks
+  const pickedUnits = Object.values(picks).reduce((n, u) => n + u, 0)
+  // What the button will actually do. Automatic follows the number she typed;
+  // chosen follows the lines, and the number follows them.
+  const oosUnits = chosen ? pickedUnits : Math.min(quantity, item.totalUnits)
+
+  function setPick(orderId: number, units: number) {
+    const next = { ...picks }
+    if (units <= 0) delete next[orderId]
+    else next[orderId] = units
+    setChosen(next)
+  }
 
   async function handleSubmit() {
-    if (quantity < 1) return
+    if (isOos ? oosUnits < 1 : quantity < 1) return
     setSaving(true)
     setSaveError(null)
     try {
@@ -1114,7 +1146,10 @@ function BuyModal({
             action: "out_of_stock",
             event: item.event,
             productId: item.productId,
-            quantityOutOfStock: quantity,
+            quantityOutOfStock: oosUnits,
+            // Absent unless she picked: the server keeps its own arithmetic for
+            // the ordinary case, and does exactly as told for the other.
+            ...(chosen ? { allocations: Object.entries(chosen).map(([id, units]) => ({ orderId: Number(id), units })) } : {}),
           }
         : {
             event: item.event,
@@ -1192,15 +1227,21 @@ function BuyModal({
             <label className="text-xs font-medium text-muted">
               {isOos ? "Units out of stock" : "Units bought"} <span className="text-faint">(remaining: {item.totalUnits})</span>
             </label>
+            {/* Once she has chosen the lines herself, the lines are the figure:
+                a second number that could disagree with them is a question
+                nobody can answer. */}
             <input
               type="number"
               min="1"
               max={isOos ? item.totalUnits : undefined}
-              value={qty}
+              value={isOos && chosen ? String(pickedUnits) : qty}
+              readOnly={Boolean(isOos && chosen)}
               onChange={(e) => setQty(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") handleSubmit(); if (e.key === "Escape") onClose() }}
               autoFocus
-              className="border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+              className={`border border-cream-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors ${
+                isOos && chosen ? "bg-surface-muted text-muted" : "bg-white"
+              }`}
             />
           </div>
           {!isOos && (
@@ -1267,53 +1308,79 @@ function BuyModal({
           </div>
         )}
 
-        {/* Live preview — out of stock */}
-        {isOos && quantity > 0 && (
+        {/* Live preview — out of stock. Every line she is waiting on, in the
+            order the automatic pick would take them, with what each one loses
+            hers to change. Two lists became one: "will cancel" and "stays"
+            were the same customers sorted by an answer she cannot edit, and
+            moving somebody across meant re-typing the quantity until the
+            arithmetic happened to land on them. */}
+        {isOos && (quantity > 0 || chosen) && (
           <div className="flex flex-col gap-2 text-xs">
-            {preview.filled.length > 0 && (
-              <div>
-                <div className="font-medium text-muted mb-1">Will cancel ({preview.filled.reduce((s, f) => s + f.allocated, 0)} units):</div>
-                <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto pr-0.5">
-                  {preview.filled.map((f) => (
-                    <div key={f.order.id} className="flex items-center justify-between gap-2 px-2 py-1 rounded-lg bg-red-50">
-                      <span className="flex items-center gap-1.5 min-w-0">
-                        <span
-                          className={`inline-block w-2 h-2 rounded-full shrink-0 ${PAID_DOT[f.order.paidStatus]}`}
-                          title={PAID_LABEL[f.order.paidStatus]}
-                        />
-                        <span className="text-red-800 truncate">{displayIg(f.order.customer)}</span>
-                      </span>
-                      <span className="flex items-center gap-2 shrink-0">
-                        <span className="text-[10px] text-muted">{OOS_OUTCOME[f.order.paidStatus]}</span>
-                        <span className="text-red-700 font-medium tabular-nums">
-                          {f.allocated}×
-                          {f.allocated < f.order.pending && (
-                            <span className="text-red-600/70 font-normal"> of {f.order.pending}</span>
-                          )}
-                        </span>
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="font-medium text-muted">
+                Will cancel ({oosUnits} unit{oosUnits === 1 ? "" : "s"}):
+              </span>
+              {chosen && (
+                <button
+                  type="button"
+                  onClick={() => setChosen(null)}
+                  className="text-[11px] text-brand hover:underline"
+                >
+                  Back to automatic
+                </button>
+              )}
+            </div>
 
-            {preview.unfilled.length > 0 && (
-              <div>
-                <div className="font-medium text-muted mb-1">Stays in list ({preview.unfilled.reduce((s, o) => s + o.pending, 0)} units):</div>
-                <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto pr-0.5">
-                  {preview.unfilled.map((o) => (
-                    <div key={o.id} className="flex items-center justify-between px-2 py-1 rounded-lg bg-surface-muted">
-                      <span className="text-muted truncate">{displayIg(o.customer)}</span>
-                      <span className="text-faint font-medium ml-2 shrink-0 tabular-nums">{o.pending}×</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            <div className="flex flex-col gap-0.5 max-h-56 overflow-y-auto pr-0.5">
+              {oosOrder.map((o) => {
+                const taken = picks[o.id] ?? 0
+                const on = taken > 0
+                return (
+                  <div
+                    key={o.id}
+                    className={`flex items-center justify-between gap-2 px-2 py-1 rounded-lg ${on ? "bg-red-50" : "bg-surface-muted"}`}
+                  >
+                    <span className="flex items-center gap-1.5 min-w-0">
+                      <span
+                        className={`inline-block w-2 h-2 rounded-full shrink-0 ${PAID_DOT[o.paidStatus]}`}
+                        title={PAID_LABEL[o.paidStatus]}
+                      />
+                      <span className={`truncate ${on ? "text-red-800" : "text-muted"}`}>{displayIg(o.customer)}</span>
+                      {on && <span className="text-[10px] text-muted shrink-0">{OOS_OUTCOME[o.paidStatus]}</span>}
+                    </span>
+                    <span className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        aria-label={`One unit fewer for ${displayIg(o.customer)}`}
+                        disabled={taken <= 0}
+                        onClick={() => setPick(o.id, taken - 1)}
+                        className="w-5 h-5 grid place-items-center rounded border border-cream-border text-muted-strong hover:border-brand hover:text-brand disabled:opacity-30 disabled:hover:border-cream-border transition-colors"
+                      >
+                        −
+                      </button>
+                      <span className={`w-11 text-center tabular-nums font-medium ${on ? "text-red-700" : "text-faint"}`}>
+                        {taken}<span className="text-faint font-normal"> / {o.pending}</span>
+                      </span>
+                      <button
+                        type="button"
+                        aria-label={`One unit more for ${displayIg(o.customer)}`}
+                        disabled={taken >= o.pending}
+                        onClick={() => setPick(o.id, taken + 1)}
+                        className="w-5 h-5 grid place-items-center rounded border border-cream-border text-muted-strong hover:border-brand hover:text-brand disabled:opacity-30 disabled:hover:border-cream-border transition-colors"
+                      >
+                        +
+                      </button>
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
 
             <p className="text-[11px] text-faint">
-              These units are removed from each customer&rsquo;s order and invoice. Customers who already paid are refunded only the amount they&rsquo;ve overpaid (on the Refunds page); unpaid customers simply owe less.
+              {chosen
+                ? "These lines, and no others. "
+                : "Unpaid customers first, newest order first — change any line to choose them yourself. "}
+              The units come off each customer&rsquo;s order and invoice. Customers who already paid are refunded only the amount they&rsquo;ve overpaid (on the Refunds page); unpaid customers simply owe less.
             </p>
           </div>
         )}
@@ -1332,7 +1399,7 @@ function BuyModal({
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={saving || quantity < 1}
+            disabled={saving || (isOos ? oosUnits < 1 : quantity < 1)}
             className={`px-4 py-1.5 rounded-lg text-white text-sm font-medium disabled:opacity-50 transition-colors ${isOos ? "bg-red-600 hover:bg-red-700" : "bg-green-600 hover:bg-green-700"}`}
           >
             {saving ? "Saving…" : isOos ? "Mark sold out" : "Mark purchased"}
