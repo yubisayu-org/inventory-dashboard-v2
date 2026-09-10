@@ -1,0 +1,157 @@
+import { test, before, after } from "node:test"
+import assert from "node:assert/strict"
+import sql from "../db-pool"
+import { withActor } from "./actor"
+import { recordDispatchManifest } from "./dispatch-manifest"
+import {
+  getCargo, getEventCargos, getUncodedByCargo, getBoxCargo,
+  setCargoWeight, setExpenseCargo, getUnlinkedCargoBills,
+} from "./cargo"
+
+/**
+ * A cargo is the delivery, not the box.
+ *
+ * The shapes here are the ones that decided the design: one cargo carrying
+ * boxes from two trips, units counted in with a cargo but no box, and a cost
+ * that is two bills rather than one number.
+ */
+const TAG = `cargo${process.hrtime.bigint()}`
+const TRIP_A = `${TAG}_A`
+const TRIP_B = `${TAG}_B`
+const CARGO = `${TAG}-9981`
+const BOX_ONE = `${TAG}-14`
+const BOX_TWO = `${TAG}-10`
+let productId = 0
+const orders: Record<string, number> = {}
+
+async function seed(key: string, trip: string, box: string, cargo: string, units: number) {
+  const customer = `${TAG}_${key}`
+  await sql`INSERT INTO customers (instagram_id) VALUES (${customer})`
+  const [o] = (await sql`
+    INSERT INTO orders (event, customer, product_id, unit_price, unit, unit_buy, unit_dispatch,
+                        dispatch_receipt, cargo_receipt)
+    VALUES (${trip}, ${customer}, ${productId}, 100000, ${units}, ${units}, ${units}, ${box}, ${cargo})
+    RETURNING id`) as unknown as { id: number }[]
+  orders[key] = o.id
+  return o.id
+}
+
+/** Count units in the way arrival does, so the audit log gets its rows. */
+async function countIn(key: string, units: number) {
+  await withActor("tester", (tx) => tx`
+    UPDATE orders SET unit_arrive = COALESCE(unit_arrive, 0) + ${units}, updated_at = NOW()
+     WHERE id = ${orders[key]}`)
+}
+
+async function expense(trip: string, desc: string, amount: number, cargo: string | null) {
+  const [e] = (await sql`
+    INSERT INTO operational_expenses (event, expense_date, description, category, amount_idr, method, cargo_receipt)
+    VALUES (${trip}, CURRENT_DATE, ${desc}, 'Cargo', ${amount}, '1497', ${cargo})
+    RETURNING id`) as unknown as { id: number }[]
+  return e.id
+}
+
+before(async () => {
+  const [p] = await sql<{ id: number }[]>`
+    SELECT id FROM products WHERE COALESCE(gram, 0) = 0 ORDER BY id LIMIT 1`
+  productId = p.id
+  for (const t of [TRIP_A, TRIP_B]) {
+    await sql`INSERT INTO events (name, warehouse_id) SELECT ${t}, id FROM warehouses ORDER BY id LIMIT 1`
+  }
+  await recordDispatchManifest([
+    { event: TRIP_A, productId, receipt: BOX_ONE, qty: 10 },
+    { event: TRIP_B, productId, receipt: BOX_TWO, qty: 6 },
+  ])
+  // One cargo, two trips, two boxes — plus a pile with no box code.
+  await seed("one", TRIP_A, BOX_ONE, CARGO, 10)
+  await seed("two", TRIP_B, BOX_TWO, CARGO, 6)
+  await seed("loose", TRIP_A, "", CARGO, 4)
+  await seed("nothing", TRIP_A, "", "", 3)
+  await countIn("one", 9)
+  await countIn("two", 6)
+  await countIn("loose", 4)
+  await countIn("nothing", 3)
+})
+
+after(async () => {
+  await sql`DELETE FROM operational_expenses WHERE event IN (${TRIP_A}, ${TRIP_B})`
+  await sql`DELETE FROM dispatch_manifest WHERE event IN (${TRIP_A}, ${TRIP_B})`
+  await sql`DELETE FROM orders WHERE event IN (${TRIP_A}, ${TRIP_B})`
+  await sql`DELETE FROM events WHERE name IN (${TRIP_A}, ${TRIP_B})`
+  await sql`DELETE FROM customers WHERE instagram_id LIKE ${`${TAG}%`}`
+  await sql`DELETE FROM cargos WHERE receipt = ${CARGO}`
+  await sql.end()
+})
+
+test("a cargo carries boxes from more than one trip", async () => {
+  const c = (await getCargo(CARGO))!
+  assert.equal(c.boxes.length, 2, "both boxes, whichever trip they belong to")
+  assert.deepEqual(c.events.sort(), [TRIP_A, TRIP_B].sort())
+  assert.equal(c.received, 19, "9 + 6 in boxes, 4 loose")
+  assert.equal(c.looseUnits, 4, "counted in against the cargo with no box named")
+})
+
+test("a box takes its cargo from the arrivals that filled it", async () => {
+  assert.equal(await getBoxCargo(BOX_ONE), CARGO.toUpperCase())
+  assert.equal(await getBoxCargo(`${TAG}-nope`), null)
+})
+
+test("the cost is the bills, and there is no other copy", async () => {
+  const before = (await getCargo(CARGO))!
+  assert.equal(before.cost, 0, "no bill, no cost — not a zero somebody typed")
+
+  const freight = await expense(TRIP_A, "CJI", 4_100_000, CARGO)
+  await expense(TRIP_A, "CJI customs", 750_000, CARGO)
+
+  const after = (await getCargo(CARGO))!
+  assert.equal(after.bills.length, 2, "a cargo can be more than one bill — yours are")
+  assert.equal(after.cost, 4_850_000)
+
+  // Correcting the ledger corrects the cargo, because it is the same number.
+  await sql`UPDATE operational_expenses SET amount_idr = 3_750_000 WHERE id = ${freight}`
+  assert.equal((await getCargo(CARGO))!.cost, 4_500_000, "one number, corrected once")
+})
+
+test("a bill can be attached and let go without touching the money", async () => {
+  const loose = await expense(TRIP_A, "Karina", 6_384_000, null)
+  const offered = await getUnlinkedCargoBills(TRIP_A)
+  assert.ok(offered.some((b) => b.id === loose), "offered for linking while it names no cargo")
+
+  await setExpenseCargo(loose, CARGO)
+  assert.equal((await getCargo(CARGO))!.cost, 10_884_000)
+
+  await setExpenseCargo(loose, null)
+  assert.equal((await getCargo(CARGO))!.cost, 4_500_000, "and the amount never moved")
+  const [row] = await sql<{ amount: number }[]>`
+    SELECT amount_idr::int AS amount FROM operational_expenses WHERE id = ${loose}`
+  assert.equal(row.amount, 6_384_000)
+})
+
+test("weight is the only figure the cargo keeps", async () => {
+  await setCargoWeight(CARGO, 312)
+  const c = (await getCargo(CARGO))!
+  assert.equal(c.weightKg, 312)
+  assert.equal(Math.round(c.cost / c.weightKg!), 14_423, "per kg is arithmetic, not a stored figure")
+})
+
+test("a trip lists the cargo its arrivals name", async () => {
+  const list = await getEventCargos(TRIP_A)
+  const mine = list.find((c) => c.receipt === CARGO.toUpperCase())!
+  assert.ok(mine, "the cargo appears on the trip it delivered to")
+  assert.equal(mine.boxes, 1, "one box of this cargo belongs to this trip")
+  assert.equal(mine.looseUnits, 4)
+})
+
+test("units with no box code are split by the cargo they name", async () => {
+  const piles = await getUncodedByCargo(TRIP_A)
+  assert.equal(piles.length, 2)
+  assert.equal(piles[0].cargo, CARGO.toUpperCase(), "the pile that at least names a cargo comes first")
+  assert.equal(piles[0].units, 4)
+  assert.equal(piles[1].cargo, null, "and the pile with neither is last")
+  assert.equal(piles[1].units, 3)
+})
+
+test("a cargo nobody has counted anything against does not exist", async () => {
+  assert.equal(await getCargo(`${TAG}-never`), null)
+  assert.equal(await getCargo("  "), null)
+})
