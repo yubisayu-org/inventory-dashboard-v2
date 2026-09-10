@@ -725,13 +725,27 @@ export async function bulkUpdatePurchase(updates: PurchaseUpdate[], db: DBExecut
   `
 }
 
-export async function bulkUpdateArrive(updates: ArriveUpdate[], db: DBExecutor = sql): Promise<void> {
+export async function bulkUpdateArrive(
+  updates: ArriveUpdate[],
+  db: DBExecutor = sql,
+  /**
+   * The delivery this batch came in, when one was named.
+   *
+   * Written in the same statement as the units, so the audit row that credits
+   * the arrival also carries the cargo. Blank leaves each row's own cargo
+   * alone: a second batch counted into a box that already knows its delivery
+   * must not blank it.
+   */
+  cargo = "",
+): Promise<void> {
   if (updates.length === 0) return
   const ids = updates.map((u) => u.rowNumber)
   const arrives = updates.map((u) => u.unitArrive)
+  const code = cargo.trim()
   await db`
     UPDATE orders SET
       unit_arrive = data.unit_arrive,
+      ${code ? db`cargo_receipt = ${code},` : db``}
       updated_at = NOW()
     FROM unnest(${ids}::int[], ${arrives}::int[])
       AS data(id, unit_arrive)

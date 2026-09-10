@@ -77,6 +77,9 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     const { event, items } = body as { event: string; items: ItemLine[] }
+    // One cargo for the whole batch: the answer to "how do I not type it forty
+    // times" is that the bulk form asks once.
+    const cargo = typeof body.cargo === "string" ? body.cargo.trim() : ""
 
     if (!event || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ error: "event and at least one item are required" }, { status: 400 })
@@ -158,6 +161,7 @@ export async function POST(req: NextRequest) {
       withActor(session.user.email, (tx) => bulkUpdateArrive(
         allUpdates.map(({ rowNumber, unitArrive }) => ({ rowNumber, unitArrive })),
         tx,
+        cargo,
       )),
       withActor(session.user.email, (tx) => appendExcessPurchase(excessRows, tx)),
     ])

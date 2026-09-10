@@ -1410,6 +1410,18 @@ export async function markProductArrived(data: {
    * no single box was opened.
    */
   receipt?: string
+  /**
+   * The delivery this box came in, when one is named.
+   *
+   * Written beside the box on every row this arrival fills, so a cargo is the
+   * sum of the arrivals that name it. Optional on purpose: a handcarry has no
+   * cargo, and refusing to record an arrival for want of one would stop the
+   * counting rather than improve the records.
+   *
+   * Undefined leaves whatever is already there — so counting more into a box
+   * that already knows its cargo does not blank it.
+   */
+  cargo?: string
 }, actor?: string | null): Promise<{
   filledOrderIds: number[]
   unassignedUnits: number
@@ -1530,16 +1542,24 @@ export async function markProductArrived(data: {
       for (const { item: o, allocated } of allocations) {
         const newUnitArrive = o.unitArrive + allocated
         if (newUnitArrive >= o.unitDispatch) filledOrderIds.push(o.id)
+        // The cargo rides with the fill, on the same row and in the same write,
+        // so the history that credits a box also credits the delivery it came
+        // in. Absent, it leaves the row's own cargo alone.
+        const cargo = data.cargo?.trim()
         if (openedBox && o.receipt !== openedBox) {
           await tx`
             UPDATE orders
-            SET unit_arrive = ${newUnitArrive}, dispatch_receipt = ${openedBox}, updated_at = NOW()
+            SET unit_arrive = ${newUnitArrive}, dispatch_receipt = ${openedBox},
+                ${cargo ? tx`cargo_receipt = ${cargo},` : tx``}
+                updated_at = NOW()
             WHERE id = ${o.id}
           `
         } else {
           await tx`
             UPDATE orders
-            SET unit_arrive = ${newUnitArrive}, updated_at = NOW()
+            SET unit_arrive = ${newUnitArrive},
+                ${cargo ? tx`cargo_receipt = ${cargo},` : tx``}
+                updated_at = NOW()
             WHERE id = ${o.id}
           `
         }

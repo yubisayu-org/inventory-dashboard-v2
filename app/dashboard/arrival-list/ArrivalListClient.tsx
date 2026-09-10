@@ -1142,6 +1142,33 @@ function ArriveModal({
   const [cancelIds, setCancelIds] = useState<Set<number>>(() => new Set(item.orders.map((o) => o.id)))
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  /**
+   * The delivery these units came in.
+   *
+   * A box that already knows its cargo says so and asks nothing; otherwise the
+   * last cargo used is offered, because a delivery is unpacked over an
+   * afternoon and typing it per item is what made recording it feel like work.
+   */
+  const [cargo, setCargo] = useState("")
+  const [inherited, setInherited] = useState<string | null>(null)
+  useEffect(() => {
+    let live = true
+    async function load() {
+      if (receipt) {
+        try {
+          const d = await fetchJson<{ cargo: string | null }>(
+            `/api/sheets/arrival-list?boxCargo=${encodeURIComponent(receipt)}`)
+          if (live && d.cargo) { setInherited(d.cargo); setCargo(d.cargo); return }
+        } catch { /* fall through to the remembered one */ }
+      }
+      try {
+        const last = localStorage.getItem("yubisayu.lastCargo")
+        if (live && last) setCargo(last)
+      } catch { /* a remembered code is a convenience, never a requirement */ }
+    }
+    void load()
+    return () => { live = false }
+  }, [receipt])
 
   const quantityArrived = Math.max(0, Number(qty) || 0)
   const preview = computeFill(item.orders, quantityArrived)
@@ -1234,6 +1261,7 @@ function ArriveModal({
               productId: item.productId,
               quantityArrived,
               receipt,
+              cargo: cargo.trim(),
             }),
           }).catch((e) => {
             throw new Error(e instanceof Error ? e.message : "Failed to mark as arrived")
@@ -1241,6 +1269,9 @@ function ArriveModal({
         // Saved either way — a box really can hold more than the list said. But
         // the other explanation is a miscount, and that only shows up weeks
         // later as a unit nobody is waiting for, so say it now.
+        try {
+          if (cargo.trim()) localStorage.setItem("yubisayu.lastCargo", cargo.trim())
+        } catch { /* ignore */ }
         if (receipt && res?.markedBeyondBox) {
           notice =
             `${item.productName}: ${receipt} was carrying ${res.boxExpected} on paper, ` +
@@ -1312,6 +1343,38 @@ function ArriveModal({
             })}
           </div>
         </div>
+
+        {/* The delivery it came in. Only for a plain arrival: a wrong item, a
+            broken one or one that never turned up are not deliveries being
+            recorded, they are problems with one. */}
+        {mode === "arrive" && (
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium text-muted">
+              Cargo <span className="text-faint">(optional)</span>
+            </label>
+            {inherited ? (
+              <div className="border border-cream-border rounded-lg px-3 py-2 text-sm bg-cream/50 text-muted-strong">
+                {inherited}{" "}
+                <span className="text-faint">— from {receipt}, already recorded</span>
+              </div>
+            ) : (
+              <>
+                <input
+                  type="text"
+                  value={cargo}
+                  onChange={(e) => setCargo(e.target.value)}
+                  placeholder="e.g. CJI-9981"
+                  className="border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+                />
+                <span className="text-[11px] text-faint">
+                  {receipt
+                    ? `The first units counted into ${receipt} decide its cargo; the rest inherit it.`
+                    : "Left blank, these units show as having no cargo."}
+                </span>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Missing derives its qty from the checked orders below (pending)
             instead of a typed count — shown here read-only

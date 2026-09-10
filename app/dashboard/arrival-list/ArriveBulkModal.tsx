@@ -41,6 +41,20 @@ export default function ArriveBulkModal({
 }) {
   const options = useSheetOptions()
   const [event, setEvent] = useState("")
+  /**
+   * The delivery this batch came in — asked once for the whole form.
+   *
+   * The last one used is offered back, because a delivery takes more than one
+   * sitting to unpack: forty items over an afternoon are one cargo, and typing
+   * it per line was the objection that nearly sank recording it at all.
+   */
+  const [cargo, setCargo] = useState("")
+  useEffect(() => {
+    try {
+      const last = localStorage.getItem("yubisayu.lastCargo")
+      if (last) setCargo(last)
+    } catch { /* a remembered code is a convenience, never a requirement */ }
+  }, [])
   const [lines, setLines] = useState<ItemLine[]>([newLine()])
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState<Result | null>(null)
@@ -100,6 +114,7 @@ export default function ArriveBulkModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           event,
+          cargo: cargo.trim(),
           items: lines.map((l) => ({
             item: l.item,
             qty: Number(l.qty),
@@ -109,6 +124,10 @@ export default function ArriveBulkModal({
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "Failed")
+      // Remembered for the next batch of the same delivery, and only then.
+      try {
+        if (cargo.trim()) localStorage.setItem("yubisayu.lastCargo", cargo.trim())
+      } catch { /* ignore */ }
       setResult({ type: "success", results: data.results })
       setLines([newLine()])
       onProcessed()
@@ -180,6 +199,26 @@ export default function ArriveBulkModal({
                 events={options?.events ?? []}
                 placeholder="Select event…"
               />
+            </div>
+
+            {/* One cargo for the whole batch. Optional: a handcarry has none,
+                and refusing the arrival for want of a code would stop the
+                counting rather than improve the records. */}
+            <div>
+              <label className={LABEL}>
+                Cargo <span className="text-faint font-normal">(optional)</span>
+              </label>
+              <input
+                type="text"
+                value={cargo}
+                onChange={(e) => setCargo(e.target.value)}
+                placeholder="e.g. CJI-9981 — the delivery these came in"
+                className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+              />
+              <p className="mt-1 text-[11px] text-faint">
+                Applied to every item below. Left blank, nothing is recorded and the units show as
+                having no cargo.
+              </p>
             </div>
 
             {/* Item lines */}

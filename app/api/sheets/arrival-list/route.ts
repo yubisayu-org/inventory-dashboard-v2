@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireOwner } from "@/lib/api"
-import { getArrivalList, getExcessArrivalPending, markProductArrived, recordNotReceived, renameDispatchReceipt, withActor } from "@/lib/db"
+import { getBoxCargo, getArrivalList, getExcessArrivalPending, markProductArrived, recordNotReceived, renameDispatchReceipt, withActor } from "@/lib/db"
 import { withServerTiming } from "@/lib/server-timing"
 
 async function handleGET(req: NextRequest) {
@@ -8,6 +8,15 @@ async function handleGET(req: NextRequest) {
   if (authError) return authError
   const roleError = requireOwner(session)
   if (roleError) return roleError
+
+  // What cargo a box already belongs to. Asked by the arrival dialog so a box
+  // that knows its delivery never asks again: the first item counted into it
+  // decides, and the rest inherit.
+  const boxCargo = (req.nextUrl.searchParams.get("boxCargo") ?? "").trim()
+  if (boxCargo) {
+    return NextResponse.json({ cargo: await getBoxCargo(boxCargo) },
+      { headers: { "Cache-Control": "no-store" } })
+  }
 
   const event = req.nextUrl.searchParams.get("event") ?? undefined
   // Absent or "all" means every route. The receiving list names one so the
@@ -174,6 +183,9 @@ export async function POST(req: NextRequest) {
       // just went down, so the ones still waiting can be moved to the boxes
       // that still owe them.
       receipt: typeof body.receipt === "string" ? body.receipt : undefined,
+      // The delivery it came in. Absent leaves the row's own alone, so counting
+      // a second batch into a box does not blank what the first one recorded.
+      cargo: typeof body.cargo === "string" ? body.cargo : undefined,
     }, session.user.email)
     return NextResponse.json({ success: true, ...result })
   } catch (err) {
