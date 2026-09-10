@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
-import { getBoxManifest, getEventBoxes, getUncodedReceived } from "@/lib/db"
+import { getBoxManifest, getEventBoxes, getUncodedReceived, getUncodedPacked } from "@/lib/db"
 
 /**
  * What was in a box, or which boxes a trip sent.
@@ -29,8 +29,9 @@ export async function GET(req: NextRequest) {
     if (event) {
       // The uncoded units travel with the list, because they are a group on
       // the same screen -- a card you can pick, and a heading in the document.
-      const [boxes, uncoded] = await Promise.all([getEventBoxes(event), getUncodedReceived(event)])
-      return NextResponse.json({ boxes, uncoded }, { headers: { "Cache-Control": "no-store" } })
+      const [boxes, uncoded, uncodedPacked] = await Promise.all([
+        getEventBoxes(event), getUncodedReceived(event), getUncodedPacked(event)])
+      return NextResponse.json({ boxes, uncoded, uncodedPacked }, { headers: { "Cache-Control": "no-store" } })
     }
     return NextResponse.json({ error: "receipt or event is required" }, { status: 400 })
   } catch (err) {

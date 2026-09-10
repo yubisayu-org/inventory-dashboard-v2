@@ -278,11 +278,12 @@ export interface EventBox {
    * What the card says at a glance.
    *
    * "transit" is nothing counted in yet, "short" is fewer counted than packed,
-   * "opened" is everything home. Computed here rather than on the screen so the
-   * cards, the table and the documents cannot disagree about which box is
-   * still out.
+   * "over" is more -- units counted into this box that were packed in another
+   * one -- and "opened" is everything home. Computed here rather than on the
+   * screen so the cards, the table and the documents cannot disagree about
+   * which box is still out.
    */
-  status: "transit" | "short" | "opened"
+  status: "transit" | "short" | "over" | "opened"
 }
 
 /**
@@ -333,7 +334,9 @@ export async function getEventBoxes(event: string): Promise<EventBox[]> {
     units: r.units,
     dispatchedAt: r.dispatched_at,
     received: r.received,
-    status: r.received === 0 ? "transit" : r.received < r.units ? "short" : "opened",
+    status: r.received === 0
+      ? "transit"
+      : r.received < r.units ? "short" : r.received > r.units ? "over" : "opened",
   }))
 }
 
@@ -345,6 +348,15 @@ export async function getEventBoxes(event: string): Promise<EventBox[]> {
  * and they stay reachable in the list and in the documents until the habit of
  * naming a box takes hold.
  */
+export async function getUncodedPacked(event: string): Promise<number> {
+  const [row] = (await sql`
+    SELECT COALESCE(SUM(qty), 0)::int AS units
+      FROM dispatch_manifest
+     WHERE event = ${event} AND receipt = ''
+  `) as unknown as { units: number }[]
+  return row?.units ?? 0
+}
+
 export async function getUncodedReceived(event: string): Promise<number> {
   const [row] = (await sql`
     SELECT COALESCE(SUM( (a.new_row->>'unit_arrive')::int

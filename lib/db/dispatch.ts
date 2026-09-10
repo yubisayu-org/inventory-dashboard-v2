@@ -239,18 +239,34 @@ export interface DispatchDocLine {
  * A dispatch recorded without a tracking ref writes no manifest row — a box
  * with no name is not one anybody can look up.
  */
+/** What the receipt parameter means when it asks for the unnamed lines. */
+export const UNCODED_SCOPE = "(no box code)"
+
 export async function getDispatchDocument(
-  event: string,
+  /**
+   * The trip, or null for a document about a box wherever its goods came from.
+   *
+   * A box is a physical thing and two of the shop's carry goods from more than
+   * one trip -- MU-19953 carries three. Asked with a trip, the document showed
+   * that trip's share and called itself the box's, which is the same lie the
+   * box screen used to tell in its header.
+   */
+  event: string | null,
   receipt?: string | null,
 ): Promise<DispatchDocLine[]> {
   // A prefix, not a substring: "CJI" means every box whose code starts that
   // way, and "CJI-04" means that box. Matching the middle of a code made
   // "04" quietly reach CJI-04 and MNC-2047 alike, and the field on the screen
   // now fills itself from a box card, where a prefix is what a trimmed code is.
+  // The uncoded group asks for the opposite of a code: the lines packed before
+  // anybody wrote a number on the box. It is a group on the screen, so it is a
+  // document like any other rather than a hole the page cannot reach.
   const receiptFilter =
-    receipt && receipt.trim()
-      ? sql`AND batch.receipt ILIKE ${`${receipt.trim()}%`}`
-      : sql``
+    receipt === UNCODED_SCOPE
+      ? sql`AND batch.receipt = ''`
+      : receipt && receipt.trim()
+        ? sql`AND batch.receipt ILIKE ${`${receipt.trim()}%`}`
+        : sql``
   const rows = await sql`
     SELECT
       p.name AS product_name,
@@ -261,7 +277,8 @@ export async function getDispatchDocument(
     FROM dispatch_manifest batch
     JOIN products p ON p.id = batch.product_id
     LEFT JOIN countries c ON c.id = p.country_id
-    WHERE batch.event = ${event}
+    WHERE TRUE
+      ${event ? sql`AND batch.event = ${event}` : sql``}
       ${receiptFilter}
     GROUP BY p.id, c.currency, batch.receipt
     HAVING SUM(batch.qty) > 0

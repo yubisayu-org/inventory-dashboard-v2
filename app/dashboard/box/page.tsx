@@ -7,7 +7,7 @@ export default function BoxPage() {
     <PageShell>
       <PageHeader
         title="Box Manifest"
-        subtitle="What was packed in a parcel, against who was served out of it"
+        subtitle="What was packed in a parcel, against what has been counted back in"
       />
       <BoxManifestClient />
     </PageShell>

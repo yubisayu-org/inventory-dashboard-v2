@@ -582,7 +582,10 @@ export default function ArrivalListClient() {
         </button>
         <button
           onClick={() => setBulkOpen(true)}
-          className="hidden md:inline-flex items-center gap-1.5 h-[38px] px-4 text-sm font-medium rounded-lg bg-brand text-white hover:bg-brand-dark transition-colors"
+          // Same weight as Select all beside it: adding a batch is one of the tools on
+          // this toolbar, not the thing the screen is for. Filled, it read as the
+          // page's headline action.
+          className="hidden md:inline-flex items-center gap-1.5 h-[38px] px-4 text-sm rounded-lg border border-cream-border bg-white text-muted-strong hover:border-brand hover:text-brand transition-colors"
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <path d="M12 5v14M5 12h14" />

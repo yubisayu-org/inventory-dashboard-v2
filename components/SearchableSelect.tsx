@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect, useMemo, useCallback, memo, type ReactNode } from "react"
+import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback, memo, type ReactNode } from "react"
 
 export interface SelectOption {
   value: string
@@ -28,6 +28,14 @@ interface Props {
   searchable?: boolean
   /** Also match the query against each option's `meta` (e.g. a phone number). */
   searchMeta?: boolean
+  /**
+   * Faint text drawn inside the field, after the value.
+   *
+   * For saying something true about the selection that is not part of it --
+   * the other trips a box carries, when the one selected is not the whole
+   * story. It never takes a click: the field underneath still opens.
+   */
+  suffix?: string
   /** Shorter trigger input (34px) instead of the default 38px */
   dense?: boolean
   /** Fired on every keystroke, before anything is committed. For a caller that
@@ -38,6 +46,7 @@ interface Props {
 export default function SearchableSelect({
   value,
   onChange,
+  suffix,
   options,
   placeholder = "Select...",
   disabled = false,
@@ -75,8 +84,18 @@ export default function SearchableSelect({
   }, [])
 
   const inputRef = useRef<HTMLInputElement>(null)
+  // Where the selected value ends, so a suffix can follow it.
+  const mirrorRef = useRef<HTMLSpanElement>(null)
+  const [valueWidth, setValueWidth] = useState<number | null>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const popupRef = useRef<HTMLDivElement>(null)
+
+  // Re-measured whenever the text or the suffix changes, before paint, so the
+  // suffix never appears in the wrong place first and moves afterwards.
+  useLayoutEffect(() => {
+    if (!suffix) { setValueWidth(null); return }
+    setValueWidth(mirrorRef.current?.offsetWidth ?? null)
+  }, [suffix, inputValue, dense])
 
   // Sync input display when selection changes externally (or on mount)
   useEffect(() => {
@@ -356,6 +375,35 @@ export default function SearchableSelect({
         autoComplete="off"
         className={`w-full border border-cream-border rounded-lg px-3 bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${showInlineClear ? "pr-14" : "pr-8"} ${!searchable ? "cursor-pointer" : ""} ${dense ? "h-[34px] py-0 text-xs" : "h-10 text-sm"}`}
       />
+      {/* Sits after the value, before the chevron, and is ignored by the mouse
+          so the field it decorates still opens on click. Hidden while a query
+          is being typed, when the text under it is no longer the selection. */}
+      {/* Measured, not guessed: an invisible copy of the value in the same font
+          says where the text ends, so the suffix sits just after it instead of
+          against the far edge with a hole in the middle. */}
+      {suffix && inputValue.trim() === selectedLabel && (
+        <span
+          ref={mirrorRef}
+          aria-hidden
+          className={`pointer-events-none invisible absolute left-3 top-0 whitespace-pre ${
+            dense ? "text-xs" : "text-sm"
+          }`}
+        >
+          {inputValue}
+        </span>
+      )}
+      {suffix && inputValue.trim() === selectedLabel && valueWidth !== null && (
+        <span
+          // Flush against the value: the caller supplies its own separator, so
+          // a comma reads as punctuation rather than as a gap with a mark in it.
+          style={{ left: `calc(0.75rem + ${valueWidth}px)` }}
+          className={`absolute top-1/2 -translate-y-1/2 right-8 truncate text-faint pointer-events-none ${
+            dense ? "text-xs" : "text-sm"
+          }`}
+        >
+          {suffix}
+        </span>
+      )}
       {showInlineClear && (
         <button
           type="button"

@@ -9,12 +9,14 @@ export async function GET(req: NextRequest) {
   if (roleError) return roleError
 
   const params = req.nextUrl.searchParams
-  const event = params.get("event")
-  if (!event) {
-    return NextResponse.json({ error: "event is required" }, { status: 400 })
-  }
-  // Optional receipt substring; blank → no filter.
+  const event = params.get("event")?.trim() || null
+  // Optional receipt prefix; blank → no filter. One of the two is required:
+  // a trip's document, or a box's — and a box's covers the box, whichever
+  // trips its goods belong to.
   const receipt = params.get("receipt")?.trim() || null
+  if (!event && !receipt) {
+    return NextResponse.json({ error: "event or receipt is required" }, { status: 400 })
+  }
 
   try {
     const lines = await getDispatchDocument(event, receipt)
