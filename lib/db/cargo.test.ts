@@ -5,6 +5,7 @@ import { withActor } from "./actor"
 import { recordDispatchManifest, getEventBoxes, getBoxManifest } from "./dispatch-manifest"
 import {
   getCargo, getEventCargos, getUncodedByCargo, getBoxCargo, setCargoWeight,
+  describeCargo, renameCargo, setBoxCargo,
 } from "./cargo"
 import { updateOperationalExpense } from "./operational-expenses"
 
@@ -186,4 +187,61 @@ test("an opened box names its delivery too", async () => {
   await recordDispatchManifest([{ event: TRIP_A, productId, receipt: `${TAG}-solo`, qty: 2 }])
   const solo = (await getBoxManifest(`${TAG}-solo`))!
   assert.equal(solo.cargo, null)
+})
+
+/**
+ * Correcting a code, which only she can judge.
+ *
+ * Nothing in the data separates "typed CJI-9918 for CJI-9981" from "CJI-9918
+ * is a second delivery". So neither write guesses: one moves the whole
+ * delivery, the other moves one box, and what is already under the target is
+ * reported rather than resolved.
+ */
+const TYPO = `${TAG}-9918`
+
+test("what is already under a code is reported before anything is written", async () => {
+  const there = await describeCargo(CARGO)
+  assert.equal(there.known, true)
+  assert.equal(there.boxes, 2)
+  assert.equal(there.units, 19)
+
+  const empty = await describeCargo(`${TAG}-0000`)
+  assert.equal(empty.known, false, "nothing uses it, so renaming into it merges nothing")
+})
+
+test("renaming the delivery takes every box, the loose units and the bills", async () => {
+  // A batch counted in under a code that is one digit wrong, boxes and a
+  // pile with no box code alike.
+  await sql`UPDATE orders SET cargo_receipt = ${TYPO} WHERE event = ${TRIP_A}`
+  const bill = await expense(TRIP_A, "Freight, mistyped", 1_200_000, TYPO)
+
+  const before = (await getCargo(TYPO))!
+  assert.ok(before.looseUnits > 0, "the pile no per-box control could reach")
+
+  const { movedOrders, movedBills } = await renameCargo(TYPO, CARGO)
+  assert.ok(movedOrders >= 3)
+  assert.equal(movedBills, 1, "the cost follows, or it is lost on a code nothing uses")
+
+  assert.equal(await getCargo(TYPO), null, "the mistyped delivery stops existing")
+  const after = (await getCargo(CARGO))!
+  assert.equal(after.looseUnits, before.looseUnits, "the loose units came along")
+  assert.ok(after.bills.some((b) => b.id === bill), "and so did the bill")
+})
+
+test("moving one box leaves the rest of the delivery where it was", async () => {
+  const other = `${TAG}-7702`
+  const before = (await getCargo(CARGO))!
+
+  await setBoxCargo(BOX_TWO, other)
+
+  const left = (await getCargo(CARGO))!
+  assert.ok(!left.boxes.some((b) => b.receipt === BOX_TWO), "the box left")
+  assert.ok(left.boxes.some((b) => b.receipt === BOX_ONE), "the others stayed")
+  assert.equal(left.cost, before.cost, "and no money moved with it — a bill is raised for a shipment")
+  assert.equal(await getBoxCargo(BOX_TWO), other.toUpperCase())
+
+  // Blank is a real answer: the code on it is wrong and she does not yet know
+  // which delivery it was.
+  await setBoxCargo(BOX_TWO, "")
+  assert.equal(await getBoxCargo(BOX_TWO), null)
 })

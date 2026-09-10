@@ -221,3 +221,111 @@ export async function setCargoWeight(
       SET weight_kg = ${weightKg}, note = ${note}, updated_at = NOW()
   `
 }
+
+/**
+ * What already lives under a code, before anything is written to it.
+ *
+ * The one thing the system can contribute to a correction: it cannot know
+ * whether a code was mistyped -- only she has the freight bill -- but it can
+ * say whether the code she is typing already carries goods or a bill, which
+ * turns a relabel into a merge nothing can undo afterwards.
+ */
+export async function describeCargo(receipt: string): Promise<{
+  boxes: number; units: number; cost: number; known: boolean
+}> {
+  const code = receipt.trim()
+  if (!code) return { boxes: 0, units: 0, cost: 0, known: false }
+
+  const [row] = (await sql`
+    WITH arrivals AS (
+      SELECT COALESCE(o.dispatch_receipt, '') AS box,
+             ( (a.new_row->>'unit_arrive')::int
+               - COALESCE((a.old_row->>'unit_arrive')::int, 0) ) AS units
+        FROM audit.audit_log a
+        JOIN orders o ON o.id = (a.new_row->>'id')::int
+       WHERE a.table_name = 'orders'
+         AND a.action IN ('INSERT', 'UPDATE')
+         AND COALESCE((a.new_row->>'unit_arrive')::int, 0)
+             > COALESCE((a.old_row->>'unit_arrive')::int, 0)
+         AND upper(o.cargo_receipt) = upper(${code})
+    )
+    SELECT COUNT(DISTINCT NULLIF(box, ''))::int AS boxes,
+           COALESCE(SUM(units), 0)::int         AS units,
+           COALESCE((SELECT SUM(amount_idr)::int FROM operational_expenses
+                      WHERE upper(COALESCE(cargo_receipt, '')) = upper(${code})), 0) AS cost
+      FROM arrivals
+  `) as unknown as { boxes: number; units: number; cost: number }[]
+
+  const weighed = (await sql`
+    SELECT 1 FROM cargos WHERE upper(receipt) = upper(${code}) LIMIT 1
+  `) as unknown as unknown[]
+
+  const boxes = row?.boxes ?? 0
+  const units = row?.units ?? 0
+  const cost = row?.cost ?? 0
+  return { boxes, units, cost, known: boxes > 0 || units > 0 || cost > 0 || weighed.length > 0 }
+}
+
+/**
+ * The delivery is really called something else.
+ *
+ * Everything carrying the old code moves: every box, and the units counted in
+ * with no box code, which are the ones no per-box control could ever reach.
+ * The bills follow too -- a cost that stayed behind on a code nothing else
+ * uses would simply be lost.
+ *
+ * When the new code already exists the two become one delivery, which is
+ * correct when the old one was a typo and destructive when it was not. The
+ * screen says which case it is about to be; only she can know which it is.
+ */
+export async function renameCargo(
+  from: string, to: string, db: DBExecutor = sql,
+): Promise<{ movedOrders: number; movedBills: number }> {
+  const oldCode = from.trim()
+  const newCode = to.trim().toUpperCase()
+  if (!oldCode) throw new Error("The delivery to rename is required")
+  if (!newCode) throw new Error("A delivery receipt is required")
+  if (oldCode.toUpperCase() === newCode) return { movedOrders: 0, movedBills: 0 }
+
+  const orders = await db`
+    UPDATE orders SET cargo_receipt = ${newCode}, updated_at = NOW()
+     WHERE upper(cargo_receipt) = upper(${oldCode})
+    RETURNING id
+  `
+  const bills = await db`
+    UPDATE operational_expenses SET cargo_receipt = ${newCode}, updated_at = NOW()
+     WHERE upper(COALESCE(cargo_receipt, '')) = upper(${oldCode})
+    RETURNING id
+  `
+  // The weight follows the goods, unless the delivery it joins has one of its
+  // own -- that one was weighed on its own bill and is not ours to overwrite.
+  await db`
+    INSERT INTO cargos (receipt, weight_kg, note)
+    SELECT ${newCode}, weight_kg, note FROM cargos WHERE upper(receipt) = upper(${oldCode})
+    ON CONFLICT (receipt) DO NOTHING
+  `
+  await db`DELETE FROM cargos WHERE upper(receipt) = upper(${oldCode})`
+
+  return { movedOrders: orders.length, movedBills: bills.length }
+}
+
+/**
+ * This box came on a different delivery.
+ *
+ * Only the box's own rows move. No money moves with it: a bill is raised for a
+ * shipment, not for a parcel, so the cost stays where it was raised. Blank
+ * takes the box off every delivery, which is the honest answer when she knows
+ * the code on it is wrong but not what the right one is.
+ */
+export async function setBoxCargo(
+  box: string, receipt: string, db: DBExecutor = sql,
+): Promise<{ moved: number }> {
+  const code = box.trim()
+  if (!code) throw new Error("The box is required")
+  const rows = await db`
+    UPDATE orders SET cargo_receipt = ${receipt.trim().toUpperCase()}, updated_at = NOW()
+     WHERE upper(COALESCE(dispatch_receipt, '')) = upper(${code})
+    RETURNING id
+  `
+  return { moved: rows.length }
+}

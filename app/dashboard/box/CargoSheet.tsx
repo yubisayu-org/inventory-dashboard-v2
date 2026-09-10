@@ -24,16 +24,29 @@ function shortDate(iso: string | null): string {
  * Operational Expenses page, where every other rupiah is corrected, so there
  * is one place to fix a number and never two figures to reconcile.
  */
-export default function CargoSheet({ receipt, event, onClose, onPickBox }: {
+export default function CargoSheet({ receipt, event, onClose, onPickBox, onRenamed }: {
   receipt: string
   event: string
   onClose: () => void
   onPickBox: (code: string) => void
+  /** The sheet follows the delivery to its new code, and the page reloads. */
+  onRenamed: (code: string) => void
 }) {
   const [cargo, setCargo] = useState<CargoSummary | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [weight, setWeight] = useState("")
   const [saving, setSaving] = useState(false)
+  /**
+   * The code she says this delivery really is.
+   *
+   * Nothing here judges whether the old one was a typo -- only she has the
+   * freight bill. What the screen owes her is what is already under the code
+   * she is typing, because a rename into an existing delivery is a merge, and
+   * afterwards nothing can tell the two apart again.
+   */
+  const [rename, setRename] = useState("")
+  const [there, setThere] = useState<{ boxes: number; units: number; cost: number; known: boolean } | null>(null)
+  const [renaming, setRenaming] = useState(false)
 
   const load = useCallback(async () => {
     setError(null)
@@ -49,6 +62,38 @@ export default function CargoSheet({ receipt, event, onClose, onPickBox }: {
   }, [receipt])
 
   useEffect(() => { void load() }, [load])
+
+  // Held for a moment: she is typing a code, not asking after every letter.
+  useEffect(() => {
+    const code = rename.trim()
+    if (!code || code.toUpperCase() === receipt.toUpperCase()) { setThere(null); return }
+    let live = true
+    const t = setTimeout(() => {
+      fetchJson<{ there: typeof there }>(`/api/sheets/cargo?describe=${encodeURIComponent(code)}`)
+        .then((d) => { if (live) setThere(d.there) })
+        .catch(() => { if (live) setThere(null) })
+    }, 300)
+    return () => { live = false; clearTimeout(t) }
+  }, [rename, receipt])
+
+  async function saveRename() {
+    const to = rename.trim()
+    if (!to) return
+    setRenaming(true)
+    try {
+      await fetchJson("/api/sheets/cargo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "rename", from: receipt, to }),
+      })
+      setRename("")
+      onRenamed(to.toUpperCase())
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not rename the delivery")
+    } finally {
+      setRenaming(false)
+    }
+  }
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose() }
@@ -212,6 +257,49 @@ export default function CargoSheet({ receipt, event, onClose, onPickBox }: {
                 {saving ? "Saving…" : "Save weight"}
               </button>
               <span className="text-[11px] text-faint pb-2.5">the only figure the delivery keeps</span>
+            </div>
+
+            {/* The whole delivery, including the units with no box code — the
+                ones no per-box control can reach. */}
+            <div className="border-t border-cream-border pt-4">
+              <div className="flex items-end gap-2 flex-wrap">
+                <label className="flex flex-col gap-1 flex-1 min-w-[160px]">
+                  <span className="text-xs font-medium text-muted">This delivery is really</span>
+                  <input
+                    type="text"
+                    value={rename}
+                    onChange={(e) => setRename(e.target.value.toUpperCase())}
+                    onKeyDown={(e) => { if (e.key === "Enter") void saveRename() }}
+                    placeholder={receipt}
+                    className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={saveRename}
+                  disabled={renaming || !rename.trim() || rename.trim().toUpperCase() === receipt.toUpperCase()}
+                  className="h-10 rounded-lg border border-cream-border px-3 text-sm text-muted-strong bg-white hover:border-brand hover:text-brand disabled:opacity-40 transition-colors"
+                >
+                  {renaming ? "Moving…" : there?.known ? "Merge into it" : "Rename delivery"}
+                </button>
+              </div>
+              {/* The one thing the system can contribute: not whether the old
+                  code was a mistake, but whether the new one is already
+                  carrying something. */}
+              {there && (
+                there.known ? (
+                  <p className="mt-1.5 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2">
+                    <b>{rename.trim()}</b> already carries {there.boxes} {there.boxes === 1 ? "box" : "boxes"},
+                    {" "}{fmt(there.units)} units and {there.cost ? RP(there.cost) : "no bill"}. They become one
+                    delivery, and afterwards nothing can tell the two apart again.
+                  </p>
+                ) : (
+                  <p className="mt-1.5 text-[11px] text-faint">
+                    Nothing uses {rename.trim()} yet — every box here, the units with no box code,
+                    and the bills move over to it.
+                  </p>
+                )
+              )}
             </div>
           </div>
         )}

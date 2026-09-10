@@ -117,6 +117,18 @@ export default function BoxManifestClient() {
   /** The trip's deliveries, so the receipt field can find one by name. */
   const [cargos, setCargos] = useState<{ receipt: string; boxes: number; received: number }[]>([])
   const [suggest, setSuggest] = useState(false)
+  /** Bumped when a write changes what the trip's cards say. */
+  const [reload, setReload] = useState(0)
+  /**
+   * The box whose delivery is being corrected, and what she is typing.
+   *
+   * Only ever this one box: a parcel counted in during the wrong unpacking
+   * session is the case this answers, and the whole-delivery case is the
+   * field on the cargo sheet.
+   */
+  const [moveBox, setMoveBox] = useState<string | null>(null)
+  const [moveTo, setMoveTo] = useState("")
+  const [moving, setMoving] = useState(false)
   const fieldRef = useRef<HTMLDivElement>(null)
   const [receipt, setReceipt] = useState("")
   const [manifest, setManifest] = useState<BoxManifest | null>(null)
@@ -157,7 +169,7 @@ export default function BoxManifestClient() {
         if (live) { setBoxes([]); setUncoded(0); setUncodedPacked(0); setUncodedGroups([]) }
       })
     return () => { live = false }
-  }, [event])
+  }, [event, reload])
 
   // The card stops being selected when the field no longer says so, so the
   // strip and the field can never disagree about what is chosen.
@@ -173,7 +185,7 @@ export default function BoxManifestClient() {
       .then((d) => { if (live) setCargos(d.cargos ?? []) })
       .catch(() => { if (live) setCargos([]) })
     return () => { live = false }
-  }, [event])
+  }, [event, reload])
 
   useEffect(() => {
     if (!suggest) return
@@ -290,6 +302,28 @@ export default function BoxManifestClient() {
     return () => clearTimeout(t)
   }, [scope, manifest, open])
 
+
+  /** This box came on a different delivery -- or on none she can name yet. */
+  async function moveBoxCargo() {
+    if (!moveBox) return
+    setMoving(true)
+    try {
+      await fetchJson("/api/sheets/cargo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "move-box", box: moveBox, to: moveTo.trim() }),
+      })
+      setMoveBox(null)
+      // The header, the strip and the trip's deliveries all said the old code.
+      const code = manifest?.receipt
+      setReload((n) => n + 1)
+      if (code) await open(code)
+    } catch (err) {
+      setDocError(err instanceof Error ? err.message : "Could not change the delivery")
+    } finally {
+      setMoving(false)
+    }
+  }
 
   /** Open one box's lines inside the list, fetching it the first time. */
   const toggleRow = useCallback(async (code: string) => {
@@ -915,12 +949,65 @@ export default function BoxManifestClient() {
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{error}</div>
       )}
 
+      {moveBox && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center bg-foreground/30 p-4 sm:p-8"
+          onClick={(e) => { if (e.target === e.currentTarget) setMoveBox(null) }}
+        >
+          <div className="w-full max-w-sm rounded-xl border border-cream-border bg-white shadow-xl p-5 flex flex-col gap-3">
+            <div>
+              <h3 className="text-base font-bold text-foreground">Which delivery did {moveBox} come on?</h3>
+              <p className="text-xs text-muted">
+                Only this box moves. Every other box on {manifest?.cargo ?? "that delivery"} keeps what it has,
+                and no money moves — a bill is raised for a shipment, not for a parcel.
+              </p>
+            </div>
+            <input
+              type="text"
+              value={moveTo}
+              onChange={(e) => setMoveTo(e.target.value.toUpperCase())}
+              onKeyDown={(e) => { if (e.key === "Enter") void moveBoxCargo() }}
+              placeholder="e.g. CJI-9981"
+              autoFocus
+              className={`${INPUT_CLASS} h-10 w-full`}
+            />
+            {/* Blank is a real answer, and says so rather than looking broken. */}
+            <p className="text-[11px] text-faint">
+              {moveTo.trim()
+                ? `${moveBox} will belong to ${moveTo.trim()}.`
+                : "Leave it empty to take this box off every delivery — for when the code on it is wrong and the right one is not known yet."}
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setMoveBox(null)}
+                className="h-10 rounded-lg border border-cream-border px-3 text-sm text-muted-strong hover:border-brand hover:text-brand transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={moveBoxCargo}
+                disabled={moving}
+                className="h-10 rounded-lg bg-brand px-4 text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-50 transition-colors"
+              >
+                {moving ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {cargoOpen && (
         <CargoSheet
           receipt={cargoOpen}
           event={event}
           onClose={() => setCargoOpen(null)}
           onPickBox={(code) => setReceipt(code)}
+          // The delivery keeps its identity, so the sheet follows it to the new
+          // code -- and the strip is refetched, since every card carrying the
+          // old one now says something else.
+          onRenamed={(code) => { setCargoOpen(code); setReload((n) => n + 1) }}
         />
       )}
 
@@ -949,6 +1036,17 @@ export default function BoxManifestClient() {
                     </button>
                   </>
                 )}
+                {/* Where she is standing when she notices a box is under the
+                    wrong delivery. Always this box; nothing to choose. */}
+                {" "}
+                <button
+                  type="button"
+                  onClick={() => { setMoveBox(manifest.receipt); setMoveTo(manifest.cargo ?? "") }}
+                  title="This box came on a different delivery"
+                  className="text-faint hover:text-brand transition-colors"
+                >
+                  {manifest.cargo ? "✎" : "+ cargo"}
+                </button>
               </div>
             </div>
             <div className="text-sm text-muted tabular-nums">
