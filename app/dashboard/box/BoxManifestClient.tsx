@@ -1,13 +1,57 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { fetchJson } from "@/lib/api-fetch"
 import { fmt } from "@/lib/format"
 import EventSelect from "@/components/EventSelect"
 import { useSheetOptions } from "@/hooks/useSheetOptions"
-import type { BoxManifest } from "@/lib/db"
+import { generateCargoDocument, type CargoDocLine } from "@/lib/cargo-document-pdf"
+import { generateReceivedReport } from "@/lib/receiving-report-pdf"
+import type { ReportCopy, ReportLayout } from "@/lib/receiving-report-groups"
+import type { BoxManifest, EventBox, ReceivedReportItem } from "@/lib/db"
 
-type BoxSummary = { receipt: string; lines: number; units: number; dispatchedAt: string | null }
+/** The receipt field's word for "counted in with no box named on it". */
+const UNCODED = "(no box code)"
+
+/** Hand a generated PDF to the browser, then let go of the blob. */
+function save(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  try {
+    const a = document.createElement("a")
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+}
+
+type BoxSummary = EventBox
+
+/** The scope the receipt field expresses, and what it will put in a document. */
+type Scope =
+  | { kind: "trip" }
+  | { kind: "prefix"; code: string; boxes: BoxSummary[] }
+  | { kind: "box"; code: string }
+  | { kind: "uncoded" }
+
+const STATUS_LABEL: Record<BoxSummary["status"], string> = {
+  transit: "in transit",
+  short: "short",
+  opened: "opened",
+}
+const STATUS_CLASS: Record<BoxSummary["status"], string> = {
+  transit: "bg-blue-50 text-blue-700",
+  short: "bg-red-50 text-red-700",
+  opened: "bg-green-100 text-green-700",
+}
+
+/** Today in Asia/Jakarta, so a document is dated by business day. */
+function jakartaToday(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date())
+}
 
 const INPUT_CLASS =
   "border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
@@ -33,19 +77,35 @@ export default function BoxManifestClient() {
   const options = useSheetOptions()
   const [event, setEvent] = useState("")
   const [boxes, setBoxes] = useState<BoxSummary[]>([])
+  const [uncoded, setUncoded] = useState(0)
   const [receipt, setReceipt] = useState("")
   const [manifest, setManifest] = useState<BoxManifest | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState<"dispatch" | "received" | null>(null)
+  const [docError, setDocError] = useState<string | null>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
+  // Per box by default: the box is what this screen is about, and it is the
+  // sheet that answers "what came in that parcel".
+  const [layout, setLayout] = useState<ReportLayout>("per-box")
+  const [copy, setCopy] = useState<ReportCopy>("owner")
+  const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!event) { setBoxes([]); return }
+    if (!event) { setBoxes([]); setUncoded(0); return }
     let live = true
-    fetchJson<{ boxes: BoxSummary[] }>(`/api/sheets/dispatch-manifest?event=${encodeURIComponent(event)}`)
-      .then((d) => { if (live) setBoxes(d.boxes ?? []) })
-      .catch(() => { if (live) setBoxes([]) })
+    fetchJson<{ boxes: BoxSummary[]; uncoded: number }>(`/api/sheets/dispatch-manifest?event=${encodeURIComponent(event)}`)
+      .then((d) => { if (live) { setBoxes(d.boxes ?? []); setUncoded(d.uncoded ?? 0) } })
+      .catch(() => { if (live) { setBoxes([]); setUncoded(0) } })
     return () => { live = false }
   }, [event])
+
+  useEffect(() => {
+    if (!menuOpen) return
+    const h = (e: PointerEvent) => { if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false) }
+    document.addEventListener("pointerdown", h)
+    return () => document.removeEventListener("pointerdown", h)
+  }, [menuOpen])
 
   const open = useCallback(async (code: string) => {
     const trimmed = code.trim()
@@ -67,6 +127,88 @@ export default function BoxManifestClient() {
   }, [])
 
   const short = manifest ? manifest.unaccounted : 0
+
+  /**
+   * What the field means right now.
+   *
+   * Empty is the whole trip, a full code is one box, and anything in between
+   * is the family it starts -- which is what the field always was, since the
+   * document matched on the front of the code. Tapping a card fills it, and
+   * trimming the tail widens it.
+   */
+  const scope: Scope = useMemo(() => {
+    const code = receipt.trim()
+    if (!code) return { kind: "trip" }
+    if (code === UNCODED) return { kind: "uncoded" }
+    const exact = boxes.find((b) => b.receipt.toUpperCase() === code.toUpperCase())
+    if (exact) return { kind: "box", code: exact.receipt }
+    const matched = boxes.filter((b) => b.receipt.toUpperCase().startsWith(code.toUpperCase()))
+    return matched.length === 1
+      ? { kind: "box", code: matched[0].receipt }
+      : { kind: "prefix", code, boxes: matched }
+  }, [receipt, boxes])
+
+  /** The boxes a document would cover, and what they add up to. */
+  const covered = useMemo(() => {
+    if (scope.kind === "uncoded") return [] as BoxSummary[]
+    if (scope.kind === "trip") return boxes
+    if (scope.kind === "prefix") return scope.boxes
+    return boxes.filter((b) => b.receipt.toUpperCase() === scope.code.toUpperCase())
+  }, [scope, boxes])
+
+  const coveredUncoded = scope.kind === "trip" || scope.kind === "uncoded" ? uncoded : 0
+  const receivedInScope = covered.reduce((n, b) => n + b.received, 0) + coveredUncoded
+  const packedInScope = covered.reduce((n, b) => n + b.units, 0)
+
+  /** What the document is called, and what the request asks for. */
+  const scopeCode = scope.kind === "box" ? scope.code : scope.kind === "prefix" ? scope.code : ""
+
+  async function downloadDispatch() {
+    if (!event) return
+    setBusy("dispatch"); setDocError(null)
+    try {
+      const query = new URLSearchParams({ event })
+      if (scopeCode) query.set("receipt", scopeCode)
+      const doc = await fetchJson<{ lines: CargoDocLine[] }>(`/api/sheets/dispatch-report?${query}`)
+      if (!doc.lines.length) { setDocError("Nothing was packed under that code."); return }
+      const title = `${event}${scopeCode ? ` · ${scopeCode}` : ""}`
+      const blob = await generateCargoDocument({ name: title, date: jakartaToday(), lines: doc.lines })
+      save(blob, `dispatch-${event}${scopeCode ? `-${scopeCode}` : ""}.pdf`)
+    } catch (err) {
+      setDocError(err instanceof Error ? err.message : "Could not make that document")
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function downloadReceived() {
+    if (!event) return
+    setBusy("received"); setDocError(null); setMenuOpen(false)
+    try {
+      const query = new URLSearchParams({ event })
+      if (scopeCode) query.set("receipt", scopeCode)
+      // No dates. The scope is the field above, and every arrival this screen
+      // can reach is either in a box or in the uncoded group -- both of which
+      // the report groups by name rather than by day.
+      const report = await fetchJson<{ event: string; items: ReceivedReportItem[] }>(
+        `/api/sheets/receiving-report?${query}`)
+      const items = scope.kind === "uncoded"
+        ? report.items.filter((i) => !i.dispatchReceipt)
+        : report.items
+      if (!items.length) { setDocError("Nothing has been counted in for that."); return }
+      const blob = await generateReceivedReport({
+        event: report.event, from: null, to: null, receipt: scopeCode || null,
+        items, totalUnits: items.reduce((n, i) => n + i.unitsReceived, 0),
+        layout, copy: layout === "per-store" ? copy : "owner",
+      })
+      const copyPart = layout === "per-store" ? `-${copy}` : ""
+      save(blob, `received-${event}${scopeCode ? `-${scopeCode}` : ""}-${layout}${copyPart}.pdf`)
+    } catch (err) {
+      setDocError(err instanceof Error ? err.message : "Could not make that report")
+    } finally {
+      setBusy(null)
+    }
+  }
 
   return (
     <div className="flex flex-col gap-5">
@@ -98,7 +240,86 @@ export default function BoxManifestClient() {
         >
           {loading ? "Opening…" : "Open"}
         </button>
+
+        {/* The documents, in the row that already says which boxes we mean.
+            They used to live on two other screens behind a receipt field typed
+            from memory — which is why the code was looked up on a third. */}
+        <button
+          type="button"
+          onClick={downloadDispatch}
+          disabled={!event || busy !== null || packedInScope === 0}
+          title={packedInScope === 0 ? "Nothing was packed under this code" : "What was packed and sent"}
+          className="h-[38px] shrink-0 rounded-lg bg-brand px-3 text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-40 transition-colors"
+        >
+          {busy === "dispatch" ? "Preparing…" : "⤓ Dispatch"}
+        </button>
+        <div className="relative shrink-0" ref={menuRef}>
+          <button
+            type="button"
+            onClick={() => setMenuOpen((o) => !o)}
+            // A box nobody has opened has nothing to report. Offering the
+            // button would hand back an empty PDF and a shrug.
+            disabled={!event || busy !== null || receivedInScope === 0}
+            title={receivedInScope === 0 ? "Nothing has been counted in yet" : "What was counted in"}
+            aria-expanded={menuOpen}
+            className="h-[38px] rounded-lg border border-cream-border px-3 text-sm text-muted-strong bg-white hover:border-brand hover:text-brand disabled:opacity-40 transition-colors"
+          >
+            {busy === "received" ? "Preparing…" : "⤓ Received ▾"}
+          </button>
+          {menuOpen && (
+            <div className="absolute right-0 top-full mt-1 z-30 w-56 rounded-lg border border-cream-border bg-white shadow-lg p-3 flex flex-col gap-3">
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-muted">Layout</span>
+                <div className="flex rounded-lg border border-cream-border overflow-hidden text-xs">
+                  {([["per-box", "Per box"], ["per-store", "Per store"]] as const).map(([v, label]) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setLayout(v)}
+                      className={`flex-1 px-2 py-1.5 transition-colors ${
+                        layout === v ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {/* Only the handed-over sheet has anything to withhold. */}
+              {layout === "per-store" && (
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs font-medium text-muted">Copy</span>
+                  <div className="flex rounded-lg border border-cream-border overflow-hidden text-xs">
+                    {([["owner", "Owner"], ["staff", "Staff"]] as const).map(([v, label]) => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => setCopy(v)}
+                        className={`flex-1 px-2 py-1.5 transition-colors ${
+                          copy === v ? "bg-brand text-white font-medium" : "bg-white text-muted-strong hover:bg-cream"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={downloadReceived}
+                className="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-white hover:bg-brand-dark transition-colors"
+              >
+                Make the report
+              </button>
+            </div>
+          )}
+        </div>
       </div>
+
+      {docError && (
+        <p className="text-sm text-amber-700">{docError}</p>
+      )}
 
       {/* One row, scrolling sideways.
           LSJP202608 has 47 parcels, and wrapped they were seven rows of cards
@@ -113,27 +334,121 @@ export default function BoxManifestClient() {
               <button
                 key={b.receipt}
                 type="button"
-                onClick={() => open(b.receipt)}
+                onClick={() => (receipt.trim().toUpperCase() === b.receipt.toUpperCase()
+                  ? (setReceipt(""), setManifest(null))
+                  : open(b.receipt))}
                 className={`shrink-0 snap-start rounded-lg border px-3 py-2 text-left transition-colors ${
                   manifest?.receipt.toUpperCase() === b.receipt.toUpperCase()
                     ? "border-brand bg-brand-light"
                     : "border-cream-border bg-white hover:border-brand"
                 }`}
               >
-                <div className="text-sm font-medium text-foreground tabular-nums whitespace-nowrap">{b.receipt}</div>
+                <div className="text-sm font-medium text-foreground tabular-nums whitespace-nowrap flex items-center gap-1.5">
+                  {b.receipt}
+                  {/* What state the box is in, so what is still out reads off
+                      the strip without opening anything. */}
+                  <span className={`text-[9px] font-bold uppercase tracking-wide px-1 py-px rounded ${STATUS_CLASS[b.status]}`}>
+                    {b.status === "short" ? `${fmt(b.units - b.received)} short` : STATUS_LABEL[b.status]}
+                  </span>
+                </div>
                 <div className="text-[11px] text-muted tabular-nums whitespace-nowrap">
-                  {b.units} units · {b.lines} {b.lines === 1 ? "line" : "lines"}
+                  {b.status === "transit"
+                    ? `${b.units} packed`
+                    : `${b.received} of ${b.units} received`}
                   {b.dispatchedAt && ` · ${shortDate(b.dispatchedAt)}`}
                 </div>
               </button>
             ))}
+            {/* Counted in with no box named. A card of its own, because it is a
+                real pile of goods and the only alternative was hiding it. */}
+            {uncoded > 0 && (
+              <button
+                type="button"
+                onClick={() => { setReceipt(receipt.trim() === UNCODED ? "" : UNCODED); setManifest(null); setError(null) }}
+                className={`shrink-0 snap-start rounded-lg border border-dashed px-3 py-2 text-left transition-colors ${
+                  receipt.trim() === UNCODED ? "border-brand bg-brand-light" : "border-cream-border bg-white hover:border-brand"
+                }`}
+              >
+                <div className="text-sm font-medium text-muted-strong whitespace-nowrap">No box code</div>
+                <div className="text-[11px] text-muted tabular-nums whitespace-nowrap">{fmt(uncoded)} units received</div>
+              </button>
+            )}
           </div>
           {/* How many are off to the right, since a scrolling row hides its own
               length — and the count is the cue to use the receipt field instead
               of dragging through forty cards. */}
           <p className="text-[11px] text-faint">
-            {boxes.length} {boxes.length === 1 ? "parcel" : "parcels"} on this trip · scroll for
-            older, or type a receipt above
+            {boxes.length} {boxes.length === 1 ? "parcel" : "parcels"} on this trip
+            {boxes.some((b) => b.status === "transit") && ` · ${boxes.filter((b) => b.status === "transit").length} in transit`}
+            {boxes.some((b) => b.status === "short") && ` · ${boxes.filter((b) => b.status === "short").length} short`}
+            {" · "}scroll for older, or type a receipt above
+          </p>
+        </div>
+      )}
+
+      {/* More than one box in scope: a row each, opened in place. The question a
+          family-wide view is for is "which box is short", and that is a column
+          here rather than eleven visits. */}
+      {event && !manifest && covered.length > 1 && (
+        <div className="rounded-xl border border-cream-border bg-white overflow-hidden">
+          <div className="px-5 py-3 border-b border-cream-border flex items-baseline justify-between gap-3 flex-wrap">
+            <div className="text-sm font-bold text-foreground">
+              {scope.kind === "prefix" ? `${scope.code} · ${covered.length} boxes` : `${event} · ${covered.length} boxes`}
+            </div>
+            <div className="text-xs text-muted tabular-nums">
+              packed {fmt(packedInScope)} · received {fmt(receivedInScope)}
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-[11px] uppercase tracking-wide text-faint">
+                  <th className="text-left font-bold px-5 py-2.5 border-b border-cream-border">Box</th>
+                  <th className="text-left font-bold px-5 py-2.5 border-b border-cream-border">Status</th>
+                  <th className="text-right font-bold px-5 py-2.5 border-b border-cream-border">Packed</th>
+                  <th className="text-right font-bold px-5 py-2.5 border-b border-cream-border">Received</th>
+                  <th className="text-right font-bold px-5 py-2.5 border-b border-cream-border">Short</th>
+                </tr>
+              </thead>
+              <tbody>
+                {covered.map((b) => {
+                  const missing = Math.max(0, b.units - b.received)
+                  return (
+                    <tr
+                      key={b.receipt}
+                      onClick={() => open(b.receipt)}
+                      className="cursor-pointer hover:bg-surface-muted transition-colors"
+                    >
+                      <td className="px-5 py-2.5 border-b border-cream-border/60 font-medium text-foreground whitespace-nowrap">{b.receipt}</td>
+                      <td className="px-5 py-2.5 border-b border-cream-border/60">
+                        <span className={`text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${STATUS_CLASS[b.status]}`}>
+                          {STATUS_LABEL[b.status]}
+                        </span>
+                      </td>
+                      <td className="px-5 py-2.5 border-b border-cream-border/60 text-right tabular-nums">{fmt(b.units)}</td>
+                      <td className="px-5 py-2.5 border-b border-cream-border/60 text-right tabular-nums">{fmt(b.received)}</td>
+                      <td className={`px-5 py-2.5 border-b border-cream-border/60 text-right tabular-nums font-semibold ${
+                        missing === 0 ? "text-faint" : "text-red-700"
+                      }`}>
+                        {missing === 0 ? "—" : fmt(missing)}
+                      </td>
+                    </tr>
+                  )
+                })}
+                {coveredUncoded > 0 && (
+                  <tr onClick={() => setReceipt(UNCODED)} className="cursor-pointer hover:bg-surface-muted transition-colors">
+                    <td className="px-5 py-2.5 border-b border-cream-border/60 text-muted-strong italic">No box code</td>
+                    <td className="px-5 py-2.5 border-b border-cream-border/60" />
+                    <td className="px-5 py-2.5 border-b border-cream-border/60 text-right tabular-nums text-faint">—</td>
+                    <td className="px-5 py-2.5 border-b border-cream-border/60 text-right tabular-nums">{fmt(coveredUncoded)}</td>
+                    <td className="px-5 py-2.5 border-b border-cream-border/60 text-right tabular-nums text-faint">—</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <p className="px-5 py-2.5 border-t border-cream-border text-xs text-muted">
+            Tap a box for what is inside it. The documents above cover every box listed here.
           </p>
         </div>
       )}

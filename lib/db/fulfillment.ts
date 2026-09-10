@@ -1335,19 +1335,30 @@ export async function getReceivedReport(
     from && to
       ? sql`AND (a.at AT TIME ZONE 'Asia/Jakarta')::date BETWEEN ${from}::date AND ${to}::date`
       : sql``
+  // Matched against the receipt the ORDER carries now, not the one typed at the
+  // counting table. Six of CJI-04's units were counted while the screen said
+  // "Bix 4"; the order rows were corrected and the history was not, so reading
+  // the history's own field left the box six short in its own report while a
+  // receipt nobody has ever seen held them. Same rule as the box screen, so
+  // the number on the page and the number in the document are one number.
   const receiptFilter = receipt?.trim()
-    ? sql`AND upper(COALESCE(a.new_row->>'dispatch_receipt', '')) LIKE ${`${receipt.trim().toUpperCase()}%`}`
+    ? sql`AND upper(COALESCE(o.dispatch_receipt, '')) LIKE ${`${receipt.trim().toUpperCase()}%`}`
     : sql``
   const rows = await sql`
     SELECT
-      (a.new_row->>'event')                                        AS event,
-      (a.new_row->>'product_id')::int                              AS product_id,
+      -- From the order row, not the history's copy: joining orders put real
+      -- event and product_id columns in scope, so a GROUP BY naming them meant
+      -- the table's columns while the SELECT still read the JSON, and Postgres
+      -- refused the lot. They are the same row either way.
+      o.event                                                      AS event,
+      o.product_id                                                 AS product_id,
       p.name                                                       AS product_name,
       p.store                                                      AS store,
-      COALESCE(a.new_row->>'dispatch_receipt', '')                 AS dispatch_receipt,
+      COALESCE(o.dispatch_receipt, '')                             AS dispatch_receipt,
       SUM( (a.new_row->>'unit_arrive')::int
            - COALESCE((a.old_row->>'unit_arrive')::int, 0) )::int  AS units_received
     FROM audit.audit_log a
+    JOIN orders o ON o.id = (a.new_row->>'id')::int
     JOIN products p ON p.id = (a.new_row->>'product_id')::int
     WHERE a.table_name = 'orders'
       AND a.action IN ('INSERT', 'UPDATE')
@@ -1356,8 +1367,8 @@ export async function getReceivedReport(
       ${receiptFilter}
       AND COALESCE((a.new_row->>'unit_arrive')::int, 0)
           > COALESCE((a.old_row->>'unit_arrive')::int, 0)
-    GROUP BY event, product_id, p.name, p.store, dispatch_receipt
-    ORDER BY event, dispatch_receipt, p.name
+    GROUP BY o.event, o.product_id, p.name, p.store, o.dispatch_receipt
+    ORDER BY o.event, o.dispatch_receipt, p.name
   `
 
   return rows.map((r) => ({

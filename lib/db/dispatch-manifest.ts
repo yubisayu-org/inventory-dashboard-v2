@@ -267,30 +267,96 @@ export async function getBoxManifest(receipt: string): Promise<BoxManifest | nul
   }
 }
 
+export interface EventBox {
+  receipt: string
+  lines: number
+  units: number
+  dispatchedAt: string | null
+  /** Units counted in against this box, by the same rule as getBoxManifest. */
+  received: number
+  /**
+   * What the card says at a glance.
+   *
+   * "transit" is nothing counted in yet, "short" is fewer counted than packed,
+   * "opened" is everything home. Computed here rather than on the screen so the
+   * cards, the table and the documents cannot disagree about which box is
+   * still out.
+   */
+  status: "transit" | "short" | "opened"
+}
+
 /**
  * Every box of a trip, newest first, for picking one to look at.
  *
- * Unnamed dispatches are excluded: they are in the manifest so the dispatch
- * document stays whole, but they are not boxes anybody can open.
+ * Unnamed dispatches are excluded here: they are in the manifest so the
+ * dispatch document stays whole, but they are not boxes anybody can open. What
+ * they hold is offered separately as the "no box code" group.
  */
-export async function getEventBoxes(event: string): Promise<
-  { receipt: string; lines: number; units: number; dispatchedAt: string | null }[]
-> {
+export async function getEventBoxes(event: string): Promise<EventBox[]> {
   const rows = (await sql`
-    SELECT receipt,
-           count(DISTINCT product_id)::int AS lines,
-           SUM(qty)::int AS units,
-           MIN(dispatched_at) AS dispatched_at
-      FROM dispatch_manifest
-     WHERE event = ${event}
-       AND receipt <> ''
-     GROUP BY receipt
-     ORDER BY MIN(dispatched_at) DESC, receipt
-  `) as unknown as { receipt: string; lines: number; units: number; dispatched_at: string | null }[]
+    WITH packed AS (
+      SELECT receipt,
+             count(DISTINCT product_id)::int AS lines,
+             SUM(qty)::int AS units,
+             MIN(dispatched_at) AS dispatched_at
+        FROM dispatch_manifest
+       WHERE event = ${event}
+         AND receipt <> ''
+       GROUP BY receipt
+    ), received AS (
+      -- Arrival increments, attributed to the receipt the order carries now,
+      -- so a corrected typo counts for the box it was corrected to.
+      SELECT upper(COALESCE(o.dispatch_receipt, '')) AS receipt,
+             SUM( (a.new_row->>'unit_arrive')::int
+                  - COALESCE((a.old_row->>'unit_arrive')::int, 0) )::int AS units
+        FROM audit.audit_log a
+        JOIN orders o ON o.id = (a.new_row->>'id')::int
+       WHERE a.table_name = 'orders'
+         AND a.action IN ('INSERT', 'UPDATE')
+         AND COALESCE((a.new_row->>'unit_arrive')::int, 0)
+             > COALESCE((a.old_row->>'unit_arrive')::int, 0)
+         AND COALESCE(o.dispatch_receipt, '') <> ''
+       GROUP BY 1
+    )
+    SELECT p.receipt, p.lines, p.units, p.dispatched_at,
+           COALESCE(r.units, 0)::int AS received
+      FROM packed p
+      LEFT JOIN received r ON r.receipt = upper(p.receipt)
+     ORDER BY p.dispatched_at DESC NULLS LAST, p.receipt
+  `) as unknown as {
+    receipt: string; lines: number; units: number
+    dispatched_at: string | null; received: number
+  }[]
   return rows.map((r) => ({
     receipt: r.receipt,
     lines: r.lines,
     units: r.units,
     dispatchedAt: r.dispatched_at,
+    received: r.received,
+    status: r.received === 0 ? "transit" : r.received < r.units ? "short" : "opened",
   }))
+}
+
+/**
+ * What a trip received without any box named on it.
+ *
+ * Every arrival counted while the receipt field was empty. It is the honest
+ * group rather than a hidden one: 505 units of September's arrivals are here,
+ * and they stay reachable in the list and in the documents until the habit of
+ * naming a box takes hold.
+ */
+export async function getUncodedReceived(event: string): Promise<number> {
+  const [row] = (await sql`
+    SELECT COALESCE(SUM( (a.new_row->>'unit_arrive')::int
+                         - COALESCE((a.old_row->>'unit_arrive')::int, 0) ), 0)::int AS units
+      FROM audit.audit_log a
+      JOIN orders o ON o.id = (a.new_row->>'id')::int
+     WHERE a.table_name = 'orders'
+       AND a.action IN ('INSERT', 'UPDATE')
+       AND COALESCE((a.new_row->>'unit_arrive')::int, 0)
+           > COALESCE((a.old_row->>'unit_arrive')::int, 0)
+       AND o.event = ${event}
+       AND COALESCE(o.dispatch_receipt, '') = ''
+  `) as unknown as { units: number }[]
+  return row?.units ?? 0
 }

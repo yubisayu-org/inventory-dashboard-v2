@@ -243,9 +243,13 @@ export async function getDispatchDocument(
   event: string,
   receipt?: string | null,
 ): Promise<DispatchDocLine[]> {
+  // A prefix, not a substring: "CJI" means every box whose code starts that
+  // way, and "CJI-04" means that box. Matching the middle of a code made
+  // "04" quietly reach CJI-04 and MNC-2047 alike, and the field on the screen
+  // now fills itself from a box card, where a prefix is what a trimmed code is.
   const receiptFilter =
     receipt && receipt.trim()
-      ? sql`AND batch.receipt ILIKE '%' || ${receipt.trim()} || '%'`
+      ? sql`AND batch.receipt ILIKE ${`${receipt.trim()}%`}`
       : sql``
   const rows = await sql`
     SELECT
