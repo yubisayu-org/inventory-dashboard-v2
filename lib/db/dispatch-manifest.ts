@@ -72,6 +72,8 @@ export interface BoxManifest {
    * "nothing missing" is only true because nothing has been checked yet.
    */
   unaccounted: number
+  /** The delivery that brought it, from the arrivals that filled it. */
+  cargo: string | null
 }
 
 /** One row per product that went into a box in one dispatch. */
@@ -229,6 +231,14 @@ export async function getBoxManifest(receipt: string): Promise<BoxManifest | nul
 
   if (rows.length === 0) return null
 
+  // Which delivery carried it, read the same way the strip reads it.
+  const [cargoRow] = (await sql`
+    SELECT MIN(upper(o.cargo_receipt)) AS cargo
+      FROM orders o
+     WHERE upper(COALESCE(o.dispatch_receipt, '')) = upper(${code})
+       AND COALESCE(o.cargo_receipt, '') <> ''
+  `) as unknown as { cargo: string | null }[]
+
   const lines: ManifestLine[] = rows.map((r) => ({
     productId: r.product_id,
     productName: r.product_name ?? "(deleted product)",
@@ -264,6 +274,7 @@ export async function getBoxManifest(receipt: string): Promise<BoxManifest | nul
     assignedTotal: lines.reduce((n, l) => n + l.assigned, 0),
     receivedTotal: lines.reduce((n, l) => n + l.received, 0),
     unaccounted: lines.reduce((n, l) => n + Math.max(0, l.packed - l.surplus - l.received), 0),
+    cargo: cargoRow?.cargo ?? null,
   }
 }
 
@@ -284,6 +295,13 @@ export interface EventBox {
    * which box is still out.
    */
   status: "transit" | "short" | "over" | "opened"
+  /**
+   * The delivery that brought it, taken from the arrivals that filled it.
+   *
+   * Null until somebody counts a unit in naming a cargo, which is most of the
+   * boxes older than this feature and none of the ones after it.
+   */
+  cargo: string | null
 }
 
 /**
@@ -318,15 +336,25 @@ export async function getEventBoxes(event: string): Promise<EventBox[]> {
              > COALESCE((a.old_row->>'unit_arrive')::int, 0)
          AND COALESCE(o.dispatch_receipt, '') <> ''
        GROUP BY 1
+    ), cargo AS (
+      -- A box's delivery is whatever its arrivals named. Not scoped to the
+      -- trip: one cargo carries boxes from several, and the box is the thing
+      -- being labelled either way.
+      SELECT upper(o.dispatch_receipt) AS receipt, MIN(upper(o.cargo_receipt)) AS cargo
+        FROM orders o
+       WHERE COALESCE(o.dispatch_receipt, '') <> ''
+         AND COALESCE(o.cargo_receipt, '') <> ''
+       GROUP BY 1
     )
     SELECT p.receipt, p.lines, p.units, p.dispatched_at,
-           COALESCE(r.units, 0)::int AS received
+           COALESCE(r.units, 0)::int AS received, c.cargo
       FROM packed p
       LEFT JOIN received r ON r.receipt = upper(p.receipt)
+      LEFT JOIN cargo c ON c.receipt = upper(p.receipt)
      ORDER BY p.dispatched_at DESC NULLS LAST, p.receipt
   `) as unknown as {
     receipt: string; lines: number; units: number
-    dispatched_at: string | null; received: number
+    dispatched_at: string | null; received: number; cargo: string | null
   }[]
   return rows.map((r) => ({
     receipt: r.receipt,
@@ -334,6 +362,7 @@ export async function getEventBoxes(event: string): Promise<EventBox[]> {
     units: r.units,
     dispatchedAt: r.dispatched_at,
     received: r.received,
+    cargo: r.cargo,
     status: r.received === 0
       ? "transit"
       : r.received < r.units ? "short" : r.received > r.units ? "over" : "opened",

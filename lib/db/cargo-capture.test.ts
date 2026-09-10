@@ -28,6 +28,14 @@ before(async () => {
   for (const n of [1, 2, 3, 4, 5, 6]) {
     const who = `${TAG}_${n}`
     await sql`INSERT INTO customers (instagram_id) VALUES (${who})`
+    // Priced everywhere, so this fixture never turns up in another file's
+    // "who cannot be quoted" list -- which is capped, and would drop its own
+    // row to make space for ours.
+    await sql`
+      INSERT INTO customer_warehouse_ongkir (customer_id, warehouse_id, ongkos_kirim)
+      SELECT c.id, w.id, 10000 FROM customers c CROSS JOIN warehouses w
+       WHERE c.instagram_id = ${who}
+      ON CONFLICT (customer_id, warehouse_id) DO NOTHING`
     await sql`
       INSERT INTO orders (event, customer, product_id, unit_price, unit, unit_buy, unit_dispatch, dispatch_receipt)
       VALUES (${EVENT}, ${who}, ${productId}, 100000, 2, 2, 2, ${BOX})`
@@ -37,6 +45,8 @@ before(async () => {
 after(async () => {
   await sql`DELETE FROM orders WHERE event = ${EVENT}`
   await sql`DELETE FROM events WHERE name = ${EVENT}`
+  await sql`DELETE FROM customer_warehouse_ongkir WHERE customer_id IN (
+    SELECT id FROM customers WHERE instagram_id LIKE ${`${TAG}%`})`
   await sql`DELETE FROM customers WHERE instagram_id LIKE ${`${TAG}%`}`
   await sql`DELETE FROM cargos WHERE receipt = ${CARGO}`
   await sql.end()

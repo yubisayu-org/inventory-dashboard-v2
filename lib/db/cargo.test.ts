@@ -2,7 +2,7 @@ import { test, before, after } from "node:test"
 import assert from "node:assert/strict"
 import sql from "../db-pool"
 import { withActor } from "./actor"
-import { recordDispatchManifest } from "./dispatch-manifest"
+import { recordDispatchManifest, getEventBoxes, getBoxManifest } from "./dispatch-manifest"
 import {
   getCargo, getEventCargos, getUncodedByCargo, getBoxCargo,
   setCargoWeight, setExpenseCargo, getUnlinkedCargoBills,
@@ -27,6 +27,13 @@ const orders: Record<string, number> = {}
 async function seed(key: string, trip: string, box: string, cargo: string, units: number) {
   const customer = `${TAG}_${key}`
   await sql`INSERT INTO customers (instagram_id) VALUES (${customer})`
+  // Priced everywhere, so this fixture never turns up in another file's "who
+  // cannot be quoted" list -- which is capped, and would drop its own row.
+  await sql`
+    INSERT INTO customer_warehouse_ongkir (customer_id, warehouse_id, ongkos_kirim)
+    SELECT c.id, w.id, 10000 FROM customers c CROSS JOIN warehouses w
+     WHERE c.instagram_id = ${customer}
+    ON CONFLICT (customer_id, warehouse_id) DO NOTHING`
   const [o] = (await sql`
     INSERT INTO orders (event, customer, product_id, unit_price, unit, unit_buy, unit_dispatch,
                         dispatch_receipt, cargo_receipt)
@@ -78,6 +85,8 @@ after(async () => {
   await sql`DELETE FROM dispatch_manifest WHERE event IN (${TRIP_A}, ${TRIP_B})`
   await sql`DELETE FROM orders WHERE event IN (${TRIP_A}, ${TRIP_B})`
   await sql`DELETE FROM events WHERE name IN (${TRIP_A}, ${TRIP_B})`
+  await sql`DELETE FROM customer_warehouse_ongkir WHERE customer_id IN (
+    SELECT id FROM customers WHERE instagram_id LIKE ${`${TAG}%`})`
   await sql`DELETE FROM customers WHERE instagram_id LIKE ${`${TAG}%`}`
   await sql`DELETE FROM cargos WHERE receipt = ${CARGO}`
   await sql.end()
@@ -154,4 +163,22 @@ test("units with no box code are split by the cargo they name", async () => {
 test("a cargo nobody has counted anything against does not exist", async () => {
   assert.equal(await getCargo(`${TAG}-never`), null)
   assert.equal(await getCargo("  "), null)
+})
+
+test("the strip says which delivery each box came on", async () => {
+  const cards = await getEventBoxes(TRIP_A)
+  const card = cards.find((b) => b.receipt === BOX_ONE)!
+  assert.equal(card.cargo, CARGO.toUpperCase(), "in its own slot, beside the box code")
+  assert.equal(card.received, 9, "and the box's own count is untouched by it")
+})
+
+test("an opened box names its delivery too", async () => {
+  const m = (await getBoxManifest(BOX_ONE))!
+  assert.equal(m.cargo, CARGO.toUpperCase())
+
+  // A box nobody counted in against a cargo says so plainly, rather than
+  // borrowing one from a box beside it.
+  await recordDispatchManifest([{ event: TRIP_A, productId, receipt: `${TAG}-solo`, qty: 2 }])
+  const solo = (await getBoxManifest(`${TAG}-solo`))!
+  assert.equal(solo.cargo, null)
 })

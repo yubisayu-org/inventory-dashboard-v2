@@ -9,6 +9,7 @@ import { generateCargoDocument, type CargoDocLine } from "@/lib/cargo-document-p
 import { generateReceivedReport } from "@/lib/receiving-report-pdf"
 import type { ReportCopy, ReportLayout } from "@/lib/receiving-report-groups"
 import type { BoxManifest, EventBox, ReceivedReportItem } from "@/lib/db"
+import CargoSheet from "./CargoSheet"
 
 /** The receipt field's word for "counted in with no box named on it". */
 const UNCODED = "(no box code)"
@@ -95,6 +96,28 @@ export default function BoxManifestClient() {
   const [boxes, setBoxes] = useState<BoxSummary[]>([])
   const [uncoded, setUncoded] = useState(0)
   const [uncodedPacked, setUncodedPacked] = useState(0)
+  /**
+   * The units counted in with no box named, split by the delivery they came on.
+   *
+   * A pile with a cargo on it is identifiable -- it can be chased with the
+   * freight company -- and a pile with neither is the one nobody can trace, so
+   * they are separate cards and the nameless one sorts last.
+   */
+  const [uncodedGroups, setUncodedGroups] = useState<{ cargo: string | null; units: number }[]>([])
+  /** Which of those cards is selected; "" is the pile with no cargo either. */
+  const [uncodedPick, setUncodedPick] = useState<string | null>(null)
+  /**
+   * The delivery whose sheet is open.
+   *
+   * A dialog rather than a filter on the table below: the table is the box
+   * manifest, flat, and a cargo is a different question asked about the same
+   * goods -- what the freight cost, and what else came with them.
+   */
+  const [cargoOpen, setCargoOpen] = useState<string | null>(null)
+  /** The trip's deliveries, so the receipt field can find one by name. */
+  const [cargos, setCargos] = useState<{ receipt: string; boxes: number; received: number }[]>([])
+  const [suggest, setSuggest] = useState(false)
+  const fieldRef = useRef<HTMLDivElement>(null)
   const [receipt, setReceipt] = useState("")
   const [manifest, setManifest] = useState<BoxManifest | null>(null)
   const [loading, setLoading] = useState(false)
@@ -120,15 +143,44 @@ export default function BoxManifestClient() {
   useEffect(() => {
     if (!event) { setBoxes([]); setUncoded(0); return }
     let live = true
-    fetchJson<{ boxes: BoxSummary[]; uncoded: number; uncodedPacked: number }>(
+    fetchJson<{
+      boxes: BoxSummary[]; uncoded: number; uncodedPacked: number
+      uncodedByCargo?: { cargo: string | null; units: number }[]
+    }>(
       `/api/sheets/dispatch-manifest?event=${encodeURIComponent(event)}`)
       .then((d) => {
         if (!live) return
         setBoxes(d.boxes ?? []); setUncoded(d.uncoded ?? 0); setUncodedPacked(d.uncodedPacked ?? 0)
+        setUncodedGroups(d.uncodedByCargo ?? [])
       })
-      .catch(() => { if (live) { setBoxes([]); setUncoded(0); setUncodedPacked(0) } })
+      .catch(() => {
+        if (live) { setBoxes([]); setUncoded(0); setUncodedPacked(0); setUncodedGroups([]) }
+      })
     return () => { live = false }
   }, [event])
+
+  // The card stops being selected when the field no longer says so, so the
+  // strip and the field can never disagree about what is chosen.
+  useEffect(() => {
+    if (receipt.trim() !== UNCODED) setUncodedPick(null)
+  }, [receipt])
+
+  useEffect(() => {
+    if (!event) { setCargos([]); return }
+    let live = true
+    fetchJson<{ cargos: { receipt: string; boxes: number; received: number }[] }>(
+      `/api/sheets/cargo?event=${encodeURIComponent(event)}`)
+      .then((d) => { if (live) setCargos(d.cargos ?? []) })
+      .catch(() => { if (live) setCargos([]) })
+    return () => { live = false }
+  }, [event])
+
+  useEffect(() => {
+    if (!suggest) return
+    const h = (e: PointerEvent) => { if (!fieldRef.current?.contains(e.target as Node)) setSuggest(false) }
+    document.addEventListener("pointerdown", h)
+    return () => document.removeEventListener("pointerdown", h)
+  }, [suggest])
 
   useEffect(() => {
     if (!menuOpen) return
@@ -254,6 +306,38 @@ export default function BoxManifestClient() {
     }
   }, [opened])
 
+  /**
+   * The cards for units counted in with no box code, least-traceable last.
+   *
+   * One per delivery, and one for the pile that names neither. Older trips
+   * predate cargo codes entirely and come back as a single nameless card,
+   * which is the same card this strip has always shown.
+   */
+  const strayCards = useMemo(() => {
+    if (uncodedGroups.length) {
+      return [...uncodedGroups].sort((a, b) =>
+        (a.cargo ? 0 : 1) - (b.cargo ? 0 : 1) || String(a.cargo).localeCompare(String(b.cargo)))
+    }
+    return uncoded > 0 ? [{ cargo: null as string | null, units: uncoded }] : []
+  }, [uncodedGroups, uncoded])
+
+  /**
+   * What the field is offering, which is nothing until something is typed.
+   *
+   * A list that opens on focus would put twenty box codes over the manifest
+   * every time the field is touched, and the field is most often touched to
+   * clear it. Deliveries first: a cargo code is the thing somebody is holding
+   * a freight bill for, and it is the newer habit of the two.
+   */
+  const matches = useMemo(() => {
+    const q = receipt.trim().toUpperCase()
+    if (!q || q === UNCODED) return { cargos: [], boxes: [] }
+    return {
+      cargos: cargos.filter((c) => c.receipt.toUpperCase().startsWith(q)).slice(0, 6),
+      boxes: boxes.filter((b) => b.receipt.toUpperCase().startsWith(q)).slice(0, 8),
+    }
+  }, [receipt, cargos, boxes])
+
   /** The boxes a document would cover, and what they add up to. */
   const covered = useMemo(() => {
     if (scope.kind === "uncoded") return [] as BoxSummary[]
@@ -368,15 +452,59 @@ export default function BoxManifestClient() {
         </div>
         {/* Typed straight in, because the receipt on a courier's dispute email
             is the fastest way in and does not need a trip chosen first. */}
-        <input
-          type="text"
-          value={receipt}
-          onChange={(e) => setReceipt(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") open(receipt) }}
-          placeholder="Receipt, e.g. CJI-2607"
-          aria-label="Receipt"
-          className={`${INPUT_CLASS} h-10 flex-1 min-w-0 sm:min-w-[180px]`}
-        />
+        <div className="relative flex-1 min-w-0 sm:min-w-[180px]" ref={fieldRef}>
+          <input
+            type="text"
+            value={receipt}
+            onChange={(e) => { setReceipt(e.target.value); setSuggest(true) }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { setSuggest(false); open(receipt) }
+              if (e.key === "Escape") setSuggest(false)
+            }}
+            placeholder="Box or cargo, e.g. CJI-2607"
+            aria-label="Box or cargo receipt"
+            className={`${INPUT_CLASS} h-10 w-full`}
+          />
+          {suggest && (matches.cargos.length > 0 || matches.boxes.length > 0) && (
+            <div className="absolute left-0 top-full mt-1 z-30 w-full min-w-[240px] rounded-lg border border-cream-border bg-white shadow-lg overflow-hidden">
+              {matches.cargos.length > 0 && (
+                <div className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wide text-faint">Cargo</div>
+              )}
+              {matches.cargos.map((c) => (
+                <button
+                  key={`c:${c.receipt}`}
+                  type="button"
+                  // Straight to the delivery. It is not a scope for the table
+                  // below — that table is the box manifest, flat — so there is
+                  // nothing to select and nothing to press afterwards.
+                  onClick={() => { setSuggest(false); setCargoOpen(c.receipt) }}
+                  className="w-full flex items-baseline justify-between gap-3 px-3 py-2 text-left hover:bg-cream transition-colors"
+                >
+                  <span className="text-sm font-medium text-foreground">{c.receipt}</span>
+                  <span className="text-[11px] text-muted tabular-nums">
+                    {c.boxes} {c.boxes === 1 ? "box" : "boxes"} · {fmt(c.received)} units
+                  </span>
+                </button>
+              ))}
+              {matches.boxes.length > 0 && (
+                <div className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wide text-faint border-t border-cream-border">Boxes</div>
+              )}
+              {matches.boxes.map((b) => (
+                <button
+                  key={`b:${b.receipt}`}
+                  type="button"
+                  onClick={() => { setReceipt(b.receipt); setSuggest(false) }}
+                  className="w-full flex items-baseline justify-between gap-3 px-3 py-2 text-left hover:bg-cream transition-colors"
+                >
+                  <span className="text-sm text-foreground tabular-nums">{b.receipt}</span>
+                  <span className={`text-[9px] font-bold uppercase tracking-wide px-1 py-px rounded ${STATUS_CLASS[b.status]}`}>
+                    {statusBadge(b)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <button
           type="button"
           onClick={() => open(receipt)}
@@ -479,12 +607,10 @@ export default function BoxManifestClient() {
         <div className="-mx-1 px-1">
           <div className="flex gap-2 overflow-x-auto pb-2 snap-x">
             {boxes.map((b) => (
-              <button
+              // A card, not a button: the delivery underneath is its own way
+              // in, and one cannot sit inside the other.
+              <div
                 key={b.receipt}
-                type="button"
-                onClick={() => setReceipt(
-                  receipt.trim().toUpperCase() === b.receipt.toUpperCase() ? "" : b.receipt,
-                )}
                 // Selected is the maroon border and nothing else. Hover keeps
                 // its own mark — a shadow rather than a border — so pointing at
                 // a card and having chosen one do not look the same.
@@ -494,40 +620,89 @@ export default function BoxManifestClient() {
                     : "border-cream-border hover:shadow-[0_1px_6px_rgba(34,31,28,0.12)]"
                 }`}
               >
-                <div className="text-sm font-medium text-foreground tabular-nums whitespace-nowrap flex items-center gap-1.5">
-                  {b.receipt}
-                  {/* What state the box is in, so what is still out reads off
-                      the strip without opening anything. */}
-                  <span className={`text-[9px] font-bold uppercase tracking-wide px-1 py-px rounded ${STATUS_CLASS[b.status]}`}>
-                    {statusBadge(b)}
-                  </span>
-                </div>
-                <div className="text-[11px] text-muted tabular-nums whitespace-nowrap">
-                  {b.status === "transit"
-                    ? `${b.units} packed`
-                    : `${b.received} of ${b.units} received`}
-                  {b.dispatchedAt && ` · ${shortDate(b.dispatchedAt)}`}
-                </div>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setReceipt(
+                    receipt.trim().toUpperCase() === b.receipt.toUpperCase() ? "" : b.receipt,
+                  )}
+                  className="block text-left"
+                >
+                  <div className="text-sm font-medium text-foreground tabular-nums whitespace-nowrap flex items-center gap-1.5">
+                    {b.receipt}
+                    {/* What state the box is in, so what is still out reads off
+                        the strip without opening anything. */}
+                    <span className={`text-[9px] font-bold uppercase tracking-wide px-1 py-px rounded ${STATUS_CLASS[b.status]}`}>
+                      {statusBadge(b)}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-muted tabular-nums whitespace-nowrap">
+                    {b.status === "transit"
+                      ? `${b.units} packed`
+                      : `${b.received} of ${b.units} received`}
+                    {b.dispatchedAt && ` · ${shortDate(b.dispatchedAt)}`}
+                  </div>
+                </button>
+                {/* Under the box, in its own slot, and never in place of the
+                    code: the box is what this screen is about, and the
+                    delivery is what carried it. One tap opens the delivery. */}
+                {b.cargo ? (
+                  <button
+                    type="button"
+                    onClick={() => setCargoOpen(b.cargo)}
+                    className="block text-[11px] tabular-nums whitespace-nowrap text-muted hover:text-brand underline decoration-dotted underline-offset-2 transition-colors"
+                  >
+                    cargo {b.cargo}
+                  </button>
+                ) : (
+                  <div className="text-[11px] text-faint whitespace-nowrap">no cargo</div>
+                )}
+              </div>
             ))}
             {/* Counted in with no box named. A card of its own, because it is a
                 real pile of goods and the only alternative was hiding it. */}
-            {uncoded > 0 && (
-              <button
-                type="button"
-                onClick={() => { setReceipt(receipt.trim() === UNCODED ? "" : UNCODED); setManifest(null); setError(null) }}
-                className={`shrink-0 snap-start rounded-lg border border-dashed px-3 py-2 text-left bg-white transition-all ${
-                  receipt.trim() === UNCODED
-                    ? "border-brand"
-                    : "border-cream-border hover:shadow-[0_1px_6px_rgba(34,31,28,0.12)]"
-                }`}
-              >
-                <div className="text-sm font-medium text-muted-strong whitespace-nowrap">No box code</div>
-                <div className="text-[11px] text-muted tabular-nums whitespace-nowrap">
-                  {uncodedPacked > 0 ? `${fmt(uncodedPacked)} packed · ` : ""}{fmt(uncoded)} received
+            {strayCards.map((g) => {
+              const key = g.cargo ?? ""
+              const on = receipt.trim() === UNCODED && (uncodedPick ?? "") === key
+              return (
+                <div
+                  key={`uncoded:${key}`}
+                  className={`shrink-0 snap-start rounded-lg border border-dashed px-3 py-2 text-left bg-white transition-all ${
+                    on ? "border-brand" : "border-cream-border hover:shadow-[0_1px_6px_rgba(34,31,28,0.12)]"
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const same = on
+                      setReceipt(same ? "" : UNCODED)
+                      setUncodedPick(same ? null : key)
+                      setManifest(null); setError(null)
+                    }}
+                    className="block text-left"
+                  >
+                    <div className="text-sm font-medium text-muted-strong whitespace-nowrap">No box code</div>
+                    <div className="text-[11px] text-muted tabular-nums whitespace-nowrap">
+                      {/* Packed is a trip-wide figure for unnamed dispatches and
+                          cannot be split by delivery, so only the one card that
+                          stands for the whole pile carries it. */}
+                      {strayCards.length === 1 && uncodedPacked > 0 ? `${fmt(uncodedPacked)} packed · ` : ""}
+                      {fmt(g.units)} received
+                    </div>
+                  </button>
+                  {g.cargo ? (
+                    <button
+                      type="button"
+                      onClick={() => setCargoOpen(g.cargo)}
+                      className="block text-[11px] tabular-nums whitespace-nowrap text-muted hover:text-brand underline decoration-dotted underline-offset-2 transition-colors"
+                    >
+                      cargo {g.cargo}
+                    </button>
+                  ) : (
+                    <div className="text-[11px] text-faint whitespace-nowrap">no cargo</div>
+                  )}
                 </div>
-              </button>
-            )}
+              )
+            })}
           </div>
           {/* How many are off to the right, since a scrolling row hides its own
               length — and the count is the cue to use the receipt field instead
@@ -664,6 +839,49 @@ export default function BoxManifestClient() {
         </div>
       )}
 
+      {/* The pile with no box code, once a card is chosen. Small on purpose:
+          there is no manifest to show — nothing was packed under a code — so
+          what is worth saying is how many units, and what carried them. */}
+      {scope.kind === "uncoded" && (
+        <div className="rounded-xl border border-cream-border bg-white px-5 py-4 flex items-baseline justify-between gap-4 flex-wrap">
+          <div>
+            <div className="text-sm font-bold text-foreground">No box code</div>
+            <div className="text-xs text-muted">
+              {(() => {
+                const pick = strayCards.find((g) => (g.cargo ?? "") === (uncodedPick ?? ""))
+                const units = pick?.units ?? uncoded
+                return (
+                  <>
+                    {fmt(units)} units counted in on {event}
+                    {pick?.cargo ? (
+                      <>
+                        {" · "}
+                        <button
+                          type="button"
+                          onClick={() => setCargoOpen(pick.cargo)}
+                          className="text-muted-strong hover:text-brand underline decoration-dotted underline-offset-2 transition-colors"
+                        >
+                          cargo {pick.cargo}
+                        </button>
+                      </>
+                    ) : " · no cargo either, so there is nothing to chase them by"}
+                  </>
+                )
+              })()}
+            </div>
+          </div>
+          {/* Said once, where the buttons are: a document covers what is in a
+              box or on a trip, and unnamed units cannot be split by delivery
+              inside one. */}
+          {strayCards.length > 1 && (
+            <div className="text-[11px] text-faint max-w-xs">
+              The documents above cover every unit with no box code on this trip,
+              not just this delivery.
+            </div>
+          )}
+        </div>
+      )}
+
       {/* A code that matches nothing on this trip. It may still be a real box —
           another trip's, or one this trip never packed — so the way in is
           offered rather than the screen just going quiet. */}
@@ -697,6 +915,15 @@ export default function BoxManifestClient() {
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{error}</div>
       )}
 
+      {cargoOpen && (
+        <CargoSheet
+          receipt={cargoOpen}
+          event={event}
+          onClose={() => setCargoOpen(null)}
+          onPickBox={(code) => setReceipt(code)}
+        />
+      )}
+
       {manifest && (
         <div className="rounded-xl border border-cream-border bg-white overflow-hidden">
           <div className="px-5 py-4 border-b border-cream-border flex items-baseline justify-between gap-4 flex-wrap">
@@ -708,6 +935,20 @@ export default function BoxManifestClient() {
               <div className="text-xs text-muted" title={manifest.trips.map((t) => `${t.event} · ${t.packed}`).join("\n")}>
                 {manifest.trips.length > 1 ? `${manifest.trips.length} trips` : manifest.event}
                 {manifest.dispatchedAt && ` · dispatched ${shortDate(manifest.dispatchedAt)}`}
+                {/* And what carried it, in the line that already says where it
+                    came from and when it left. */}
+                {manifest.cargo && (
+                  <>
+                    {" · "}
+                    <button
+                      type="button"
+                      onClick={() => setCargoOpen(manifest.cargo)}
+                      className="text-muted-strong hover:text-brand underline decoration-dotted underline-offset-2 transition-colors"
+                    >
+                      cargo {manifest.cargo}
+                    </button>
+                  </>
+                )}
               </div>
             </div>
             <div className="text-sm text-muted tabular-nums">
