@@ -154,13 +154,16 @@ export default function BoxManifestClient() {
           <div className="px-5 py-4 border-b border-cream-border flex items-baseline justify-between gap-4 flex-wrap">
             <div>
               <div className="text-lg font-bold text-foreground">{manifest.receipt}</div>
-              <div className="text-xs text-muted">
-                {manifest.event}
+              {/* A box carrying more than one trip is named by the count, not by
+                  whichever of them sorted first. MU-19953 holds three, and this
+                  line used to pick one and print it over all of them. */}
+              <div className="text-xs text-muted" title={manifest.trips.map((t) => `${t.event} · ${t.packed}`).join("\n")}>
+                {manifest.trips.length > 1 ? `${manifest.trips.length} trips` : manifest.event}
                 {manifest.dispatchedAt && ` · dispatched ${shortDate(manifest.dispatchedAt)}`}
               </div>
             </div>
             <div className="text-sm text-muted tabular-nums">
-              packed {fmt(manifest.packedTotal)} · served {fmt(manifest.servedTotal)}
+              packed {fmt(manifest.packedTotal)} · assigned {fmt(manifest.assignedTotal)} · received {fmt(manifest.receivedTotal)}
               {manifest.surplusTotal > 0 && ` · ${fmt(manifest.surplusTotal)} surplus`}
             </div>
           </div>
@@ -169,10 +172,16 @@ export default function BoxManifestClient() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-[11px] uppercase tracking-wide text-faint">
+                  {/* Only on a box that carries more than one — on the other
+                      sixty it would be the same word repeated down the page. */}
+                  {manifest.trips.length > 1 && (
+                    <th className="text-left font-bold px-5 py-2.5 border-b border-cream-border">Trip</th>
+                  )}
                   <th className="text-left font-bold px-5 py-2.5 border-b border-cream-border">Product</th>
                   <th className="text-right font-bold px-5 py-2.5 border-b border-cream-border">Packed</th>
                   <th className="text-right font-bold px-5 py-2.5 border-b border-cream-border">Surplus</th>
-                  <th className="text-right font-bold px-5 py-2.5 border-b border-cream-border">Served</th>
+                  <th className="text-right font-bold px-5 py-2.5 border-b border-cream-border">Assigned</th>
+                  <th className="text-right font-bold px-5 py-2.5 border-b border-cream-border">Received</th>
                   <th className="text-right font-bold px-5 py-2.5 border-b border-cream-border">Difference</th>
                 </tr>
               </thead>
@@ -180,15 +189,23 @@ export default function BoxManifestClient() {
                 {manifest.lines.map((l) => {
                   // Surplus belongs to nobody, so it can never be "served" — counting
                   // it as missing would cry wolf on every box carrying overbuy.
-                  const diff = l.packed - l.surplus - l.served
+                  const diff = l.packed - l.surplus - l.received
                   return (
-                    <tr key={l.productId} className={diff !== 0 ? "bg-amber-50/60" : ""}>
+                    <tr key={`${l.event}|${l.productId}`} className={diff !== 0 ? "bg-amber-50/60" : ""}>
+                      {manifest.trips.length > 1 && (
+                        <td className={`px-5 py-2.5 border-b border-cream-border/60 whitespace-nowrap ${
+                          l.event === event ? "font-bold text-foreground" : "text-muted"
+                        }`}>
+                          {l.event}
+                        </td>
+                      )}
                       <td className="px-5 py-2.5 border-b border-cream-border/60 text-foreground">{l.productName}</td>
                       <td className="px-5 py-2.5 border-b border-cream-border/60 text-right tabular-nums">{fmt(l.packed)}</td>
                       <td className={`px-5 py-2.5 border-b border-cream-border/60 text-right tabular-nums ${l.surplus > 0 ? "text-muted-strong" : "text-faint"}`}>
                         {l.surplus > 0 ? fmt(l.surplus) : "—"}
                       </td>
-                      <td className="px-5 py-2.5 border-b border-cream-border/60 text-right tabular-nums">{fmt(l.served)}</td>
+                      <td className="px-5 py-2.5 border-b border-cream-border/60 text-right tabular-nums text-muted">{fmt(l.assigned)}</td>
+                      <td className="px-5 py-2.5 border-b border-cream-border/60 text-right tabular-nums">{fmt(l.received)}</td>
                       <td className={`px-5 py-2.5 border-b border-cream-border/60 text-right tabular-nums font-semibold ${
                         diff === 0 ? "text-faint" : "text-amber-700"
                       }`}>
@@ -200,12 +217,14 @@ export default function BoxManifestClient() {
               </tbody>
               <tfoot>
                 <tr className="font-bold">
+                  {manifest.trips.length > 1 && <td className="px-5 py-3" />}
                   <td className="px-5 py-3">Total</td>
                   <td className="px-5 py-3 text-right tabular-nums">{fmt(manifest.packedTotal)}</td>
                   <td className={`px-5 py-3 text-right tabular-nums ${manifest.surplusTotal > 0 ? "" : "text-faint"}`}>
                     {manifest.surplusTotal > 0 ? fmt(manifest.surplusTotal) : "—"}
                   </td>
-                  <td className="px-5 py-3 text-right tabular-nums">{fmt(manifest.servedTotal)}</td>
+                  <td className="px-5 py-3 text-right tabular-nums text-muted">{fmt(manifest.assignedTotal)}</td>
+                  <td className="px-5 py-3 text-right tabular-nums">{fmt(manifest.receivedTotal)}</td>
                   <td className={`px-5 py-3 text-right tabular-nums ${short === 0 ? "text-faint" : "text-amber-700"}`}>
                     {short === 0 ? "—" : short > 0 ? `−${fmt(short)}` : `+${fmt(-short)}`}
                   </td>

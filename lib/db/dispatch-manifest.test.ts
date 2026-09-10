@@ -89,7 +89,7 @@ test("reassigning a unit at arrival does not move the manifest", async () => {
   await seedOrder(`${TAG}_later`, bagId, 3, BOX)
 
   const before = (await getBoxManifest(BOX))!
-  assert.equal(before.servedTotal, 19, "everything still reads this box")
+  assert.equal(before.assignedTotal, 19, "everything still reads this box")
 
   await sql`
     UPDATE orders SET dispatch_receipt = ${OTHER}
@@ -98,15 +98,19 @@ test("reassigning a unit at arrival does not move the manifest", async () => {
 
   const after = (await getBoxManifest(BOX))!
   assert.equal(after.packedTotal, 19, "what was packed cannot change")
-  assert.equal(after.servedTotal, 16, "who was served can")
+  assert.equal(after.assignedTotal, 16, "what the orders claim can")
   const bag = after.lines.find((l) => l.productId === bagId)!
   assert.equal(bag.packed, 3)
-  assert.equal(bag.served, 0, "three bags left this box for another one")
+  assert.equal(bag.assigned, 0, "three bags left this box for another one")
 })
 
 test("a box reads short when its goods never arrived", async () => {
+  // Nothing in this test was ever checked in, so everything packed is still
+  // unaccounted for -- which is what a box that has not been opened looks like.
   const m = (await getBoxManifest(BOX))!
-  assert.equal(m.packedTotal - m.servedTotal, 3, "the difference is the question worth asking")
+  assert.equal(m.receivedTotal, 0, "nothing counted in")
+  assert.equal(m.unaccounted, m.packedTotal - m.surplusTotal, "all of it is still owed")
+  assert.equal(m.packedTotal - m.assignedTotal, 3, "and three units now read another box")
 })
 
 test("a box nobody ever packed has no manifest", async () => {
@@ -167,12 +171,12 @@ test("surplus is packed, but is never counted as missing", async () => {
   const bag = m.lines.find((l) => l.productId === bagId)!
   assert.equal(bag.packed, 5, "3 ordered + 2 surplus")
   assert.equal(bag.surplus, 2)
-  assert.equal(bag.served, 0, "the three ordered ones went to another box earlier")
+  assert.equal(bag.assigned, 0, "the three ordered ones went to another box earlier")
 
   assert.equal(m.surplusTotal, 2)
   assert.equal(
     m.unaccounted,
-    m.packedTotal - m.surplusTotal - m.servedTotal,
+    m.packedTotal - m.surplusTotal - m.receivedTotal,
     "what is unaccounted for excludes what nobody was owed",
   )
 })

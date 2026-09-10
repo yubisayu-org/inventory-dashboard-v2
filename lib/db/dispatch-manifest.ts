@@ -14,12 +14,37 @@ import type { DBExecutor } from "./actor"
 export interface ManifestLine {
   productId: number
   productName: string
+  /**
+   * The trip this line belongs to. Carried per line because a box can hold
+   * more than one: MU-19953 packs goods from three, and until now the screen
+   * printed the first of them over all of it.
+   */
+  event: string
   /** Units of this product that went into the box, ordered and surplus alike. */
   packed: number
   /** Of those, units nobody had ordered — overbuy riding along. */
   surplus: number
-  /** Units of it the customers now holding this receipt were given. */
-  served: number
+  /**
+   * Units of it claimed by orders whose receipt reads this box today. Set when
+   * the box was packed, and it moves when arrival reassigns a unit to whoever
+   * paid first -- so it answers "is this box still accounted for", not "did
+   * anybody get their things".
+   *
+   * Called `served` until 8 Sep 2026, which read as "handed over" and had the
+   * owner asking why a box still at sea had served 116 units.
+   */
+  assigned: number
+  /**
+   * Units of it actually counted in against this box.
+   *
+   * Zero until the box is opened, which is what makes a box in transit
+   * readable at a glance. Counted from the arrival history -- the only record
+   * of WHEN a unit was received -- but attributed to the receipt its order
+   * carries NOW, so a receipt typed wrong at the counting table and corrected
+   * afterwards lands on the box it was corrected to. "Bix 4" held six of
+   * CJI-04's units that way.
+   */
+  received: number
 }
 
 export interface BoxManifest {
@@ -27,13 +52,24 @@ export interface BoxManifest {
   event: string
   dispatchedAt: string | null
   lines: ManifestLine[]
+  /**
+   * Every trip this box carries, most goods first. One for almost every box;
+   * MU-19953 carries three, and the header names the count rather than picking
+   * one of them to display.
+   */
+  trips: { event: string; packed: number; received: number }[]
   packedTotal: number
   surplusTotal: number
-  servedTotal: number
+  assignedTotal: number
+  receivedTotal: number
   /**
    * What is genuinely unaccounted for: packed, minus the surplus nobody was
-   * ever owed, minus what was served. Surplus is not a shortfall, and a page
+   * ever owed, minus what was received. Surplus is not a shortfall, and a page
    * that counted it as one would cry wolf on every box carrying overbuy.
+   *
+   * Measured against RECEIVED rather than assigned since 8 Sep 2026: a box in
+   * transit has every unit assigned and none received, and reading that as
+   * "nothing missing" is only true because nothing has been checked yet.
    */
   unaccounted: number
 }
@@ -117,13 +153,23 @@ export async function recordExcessDispatchManifest(
 }
 
 /**
- * One box, packed against served.
+ * One box: packed, assigned, received.
  *
- * `packed` comes from the manifest and is fixed. `served` counts the units of
- * that product on orders whose receipt reads this box TODAY -- so the two
- * disagree exactly where a unit was reassigned at arrival, or where the box
- * turned up short. Which of those it was is a question for the second tab; the
- * numbers only say that it happened.
+ * `packed` comes from the manifest and is fixed. `assigned` counts the units on
+ * orders whose receipt reads this box TODAY, so it drifts when arrival moves a
+ * unit to whoever paid first. `received` counts what was actually checked in.
+ *
+ * Received is taken from the arrival history and not from the orders, because
+ * an order row records how many units have arrived but not when, and not
+ * against which box each one landed. The history has both. It is attributed to
+ * the receipt the order carries NOW rather than the one typed that day, so a
+ * correction lands where it was corrected to -- six of CJI-04's units were
+ * counted under "Bix 4" and would otherwise still be filed there, missing from
+ * one box and inventing another.
+ *
+ * The cost of that choice, stated where the choice is made: a document
+ * reprinted after a correction prints what is true now, not what was typed on
+ * the day. The raw record survives in the audit log for anyone who needs it.
  *
  * Matched case-insensitively, because the code is typed by hand while packing.
  */
@@ -140,27 +186,45 @@ export async function getBoxManifest(receipt: string): Promise<BoxManifest | nul
         FROM dispatch_manifest m
        WHERE upper(m.receipt) = upper(${code})
        GROUP BY m.event, m.product_id
-    ), served AS (
+    ), assigned AS (
       SELECT o.event, o.product_id, SUM(o.unit_dispatch)::int AS qty
         FROM orders o
        WHERE upper(COALESCE(o.dispatch_receipt, '')) = upper(${code})
          AND COALESCE(o.unit_dispatch, 0) > 0
        GROUP BY o.event, o.product_id
+    ), received AS (
+      -- Every arrival increment, tied to its order, and kept only where that
+      -- order points at this box today.
+      SELECT o.event, o.product_id,
+             SUM( (a.new_row->>'unit_arrive')::int
+                  - COALESCE((a.old_row->>'unit_arrive')::int, 0) )::int AS qty
+        FROM audit.audit_log a
+        JOIN orders o ON o.id = (a.new_row->>'id')::int
+       WHERE a.table_name = 'orders'
+         AND a.action IN ('INSERT', 'UPDATE')
+         AND COALESCE((a.new_row->>'unit_arrive')::int, 0)
+             > COALESCE((a.old_row->>'unit_arrive')::int, 0)
+         AND upper(COALESCE(o.dispatch_receipt, '')) = upper(${code})
+       GROUP BY o.event, o.product_id
     )
-    SELECT COALESCE(p.event, s.event)           AS event,
-           COALESCE(p.product_id, s.product_id) AS product_id,
-           pr.name                              AS product_name,
-           COALESCE(p.qty, 0)                   AS packed,
-           COALESCE(p.surplus, 0)               AS surplus,
-           COALESCE(s.qty, 0)                   AS served,
-           p.at                                 AS dispatched_at
+    SELECT COALESCE(p.event, s.event, r.event)                 AS event,
+           COALESCE(p.product_id, s.product_id, r.product_id)  AS product_id,
+           pr.name                                             AS product_name,
+           COALESCE(p.qty, 0)                                  AS packed,
+           COALESCE(p.surplus, 0)                              AS surplus,
+           COALESCE(s.qty, 0)                                  AS assigned,
+           COALESCE(r.qty, 0)                                  AS received,
+           p.at                                                AS dispatched_at
       FROM packed p
-      FULL JOIN served s ON s.event = p.event AND s.product_id = p.product_id
-      LEFT JOIN products pr ON pr.id = COALESCE(p.product_id, s.product_id)
+      FULL JOIN assigned s ON s.event = p.event AND s.product_id = p.product_id
+      FULL JOIN received r ON r.event = COALESCE(p.event, s.event)
+                          AND r.product_id = COALESCE(p.product_id, s.product_id)
+      LEFT JOIN products pr ON pr.id = COALESCE(p.product_id, s.product_id, r.product_id)
      ORDER BY pr.name
   `) as unknown as {
     event: string; product_id: number; product_name: string | null
-    packed: number; surplus: number; served: number; dispatched_at: string | null
+    packed: number; surplus: number; assigned: number; received: number
+    dispatched_at: string | null
   }[]
 
   if (rows.length === 0) return null
@@ -168,20 +232,38 @@ export async function getBoxManifest(receipt: string): Promise<BoxManifest | nul
   const lines: ManifestLine[] = rows.map((r) => ({
     productId: r.product_id,
     productName: r.product_name ?? "(deleted product)",
+    event: r.event,
     packed: r.packed,
     surplus: r.surplus,
-    served: r.served,
+    assigned: r.assigned,
+    received: r.received,
   }))
+
+  // One entry per trip in the box, heaviest first -- so a header can say
+  // "3 trips" and a table can group by them without counting twice.
+  const byTrip = new Map<string, { event: string; packed: number; received: number }>()
+  for (const l of lines) {
+    const t = byTrip.get(l.event) ?? { event: l.event, packed: 0, received: 0 }
+    t.packed += l.packed
+    t.received += l.received
+    byTrip.set(l.event, t)
+  }
+  const trips = [...byTrip.values()].sort((a, b) => b.packed - a.packed || a.event.localeCompare(b.event))
 
   return {
     receipt: code,
-    event: rows[0].event,
+    // The trip with most of the goods. Kept for callers that want one name;
+    // anything showing this to a person should read `trips` instead, because
+    // on a box carrying three this is one of three right answers.
+    event: trips[0]?.event ?? rows[0].event,
+    trips,
     dispatchedAt: rows.find((r) => r.dispatched_at)?.dispatched_at ?? null,
     lines,
     packedTotal: lines.reduce((n, l) => n + l.packed, 0),
     surplusTotal: lines.reduce((n, l) => n + l.surplus, 0),
-    servedTotal: lines.reduce((n, l) => n + l.served, 0),
-    unaccounted: lines.reduce((n, l) => n + l.packed - l.surplus - l.served, 0),
+    assignedTotal: lines.reduce((n, l) => n + l.assigned, 0),
+    receivedTotal: lines.reduce((n, l) => n + l.received, 0),
+    unaccounted: lines.reduce((n, l) => n + Math.max(0, l.packed - l.surplus - l.received), 0),
   }
 }
 
