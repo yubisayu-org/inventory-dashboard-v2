@@ -45,6 +45,9 @@ export async function PUT(req: NextRequest, { params }: Params) {
       // What she actually paid in. Inferring it afterwards cannot tell USD from
       // CNY, and an expense with no event has no country to guess from.
       currency: String(body.currency ?? "").trim() || null,
+      // Which delivery this bill paid for. Blank on everything that is not
+      // freight, which is most rows.
+      cargoReceipt: String(body.cargoReceipt ?? "").trim(),
     }, tx))
 
     return NextResponse.json({ success: true })

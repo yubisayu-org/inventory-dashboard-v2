@@ -4,9 +4,9 @@ import sql from "../db-pool"
 import { withActor } from "./actor"
 import { recordDispatchManifest, getEventBoxes, getBoxManifest } from "./dispatch-manifest"
 import {
-  getCargo, getEventCargos, getUncodedByCargo, getBoxCargo,
-  setCargoWeight, setExpenseCargo, getUnlinkedCargoBills,
+  getCargo, getEventCargos, getUncodedByCargo, getBoxCargo, setCargoWeight,
 } from "./cargo"
+import { updateOperationalExpense } from "./operational-expenses"
 
 /**
  * A cargo is the delivery, not the box.
@@ -121,19 +121,24 @@ test("the cost is the bills, and there is no other copy", async () => {
   assert.equal((await getCargo(CARGO))!.cost, 4_500_000, "one number, corrected once")
 })
 
-test("a bill can be attached and let go without touching the money", async () => {
+test("a bill is attached where bills are edited, and the money never moves", async () => {
   const loose = await expense(TRIP_A, "Karina", 6_384_000, null)
-  const offered = await getUnlinkedCargoBills(TRIP_A)
-  assert.ok(offered.some((b) => b.id === loose), "offered for linking while it names no cargo")
+  const fields = {
+    event: TRIP_A, expenseDate: new Date().toISOString().slice(0, 10), description: "Karina",
+    category: "Cargo" as const, amountForeign: 6_384_000, rate: 1, amountIdr: 6_384_000,
+    isSettled: false, method: "1497", remarks: "",
+  }
 
-  await setExpenseCargo(loose, CARGO)
-  assert.equal((await getCargo(CARGO))!.cost, 10_884_000)
+  // The one writer: the expense row itself, on Operational Expenses. There is
+  // no second place to attach a bill, so there is no second place to correct.
+  await updateOperationalExpense(loose, { ...fields, cargoReceipt: CARGO })
+  assert.equal((await getCargo(CARGO))!.cost, 10_884_000, "and the cargo's cost follows immediately")
 
-  await setExpenseCargo(loose, null)
-  assert.equal((await getCargo(CARGO))!.cost, 4_500_000, "and the amount never moved")
+  await updateOperationalExpense(loose, { ...fields, cargoReceipt: "" })
+  assert.equal((await getCargo(CARGO))!.cost, 4_500_000, "let go again")
   const [row] = await sql<{ amount: number }[]>`
     SELECT amount_idr::int AS amount FROM operational_expenses WHERE id = ${loose}`
-  assert.equal(row.amount, 6_384_000)
+  assert.equal(row.amount, 6_384_000, "the amount itself never moved")
 })
 
 test("weight is the only figure the cargo keeps", async () => {

@@ -221,35 +221,3 @@ export async function setCargoWeight(
       SET weight_kg = ${weightKg}, note = ${note}, updated_at = NOW()
   `
 }
-
-/**
- * Attach an expense already in the ledger to a cargo, or let it go.
- *
- * Nothing about the money moves: the row keeps its amount, its date and its
- * account. All that changes is that the cargo can now find it.
- */
-export async function setExpenseCargo(
-  expenseId: number,
-  receipt: string | null,
-  db: DBExecutor = sql,
-): Promise<void> {
-  await db`
-    UPDATE operational_expenses
-       SET cargo_receipt = ${receipt?.trim() || null}, updated_at = NOW()
-     WHERE id = ${expenseId}
-  `
-}
-
-/** Cargo bills with no cargo named yet — what the "link an existing bill" list offers. */
-export async function getUnlinkedCargoBills(event?: string | null): Promise<CargoSummary["bills"]> {
-  return (await sql`
-    SELECT id, expense_date::text AS date, COALESCE(description, '') AS description,
-           COALESCE(event, '') AS event, COALESCE(method, '') AS method, amount_idr::int AS amount
-      FROM operational_expenses
-     WHERE cargo_receipt IS NULL
-       AND category = 'Cargo'
-       ${event ? sql`AND event = ${event}` : sql``}
-     ORDER BY expense_date DESC, id DESC
-     LIMIT 50
-  `) as unknown as CargoSummary["bills"]
-}

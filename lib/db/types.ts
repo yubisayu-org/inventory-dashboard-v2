@@ -731,6 +731,14 @@ export interface OperationalExpenseRow {
   isSettled: boolean
   /** Payment method — card last-4, account label, etc. */
   method: string
+  /**
+   * The delivery this bill paid for, when it is a freight cost.
+   *
+   * "" on everything else, which is most rows. The cargo has no money of its
+   * own -- its cost is the sum of the rows pointing here -- so this field is
+   * the only link between a shipment and what it cost.
+   */
+  cargoReceipt: string
   remarks: string
   createdAt: string
   updatedAt: string

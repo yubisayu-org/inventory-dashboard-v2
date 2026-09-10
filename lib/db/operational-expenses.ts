@@ -23,6 +23,7 @@ function mapExpenseRow(r: Record<string, unknown>): OperationalExpenseRow {
     amountIdr: (r.amount_idr as number) ?? 0,
     isSettled: Boolean(r.is_settled),
     method: (r.method as string) ?? "",
+    cargoReceipt: (r.cargo_receipt as string | null) ?? "",
     remarks: (r.remarks as string) ?? "",
     createdAt: tsToString(r.created_at as Date | null),
     updatedAt: tsToString(r.updated_at as Date | null),
@@ -95,7 +96,7 @@ export async function getOperationalExpensesPaginated(opts: {
     conditions.push(
       `(lower(e.event) LIKE ${p} OR lower(e.description) LIKE ${p} ` +
       `OR lower(e.method) LIKE ${p} OR lower(e.remarks) LIKE ${p} ` +
-      `OR lower(e.category) LIKE ${p} ` +
+      `OR lower(e.category) LIKE ${p} OR lower(e.cargo_receipt) LIKE ${p} ` +
       `OR e.amount_foreign::text LIKE ${p} OR e.amount_idr::text LIKE ${p})`,
     )
   }
@@ -137,6 +138,7 @@ export async function getOperationalExpensesPaginated(opts: {
     amountIdr: "e.amount_idr",
     isSettled: "e.is_settled",
     method: "e.method",
+    cargoReceipt: "e.cargo_receipt",
     createdAt: "e.created_at",
     updatedAt: "e.updated_at",
   }
@@ -146,7 +148,7 @@ export async function getOperationalExpensesPaginated(opts: {
   const selectCols =
     `e.id, e.event, e.expense_date, e.description, e.category, ` +
     `e.amount_foreign, e.rate, e.amount_idr, e.is_settled, e.method, e.currency, ` +
-    `e.remarks, e.created_at, e.updated_at`
+    `e.remarks, e.cargo_receipt, e.created_at, e.updated_at`
 
   const dataQuery = sql.unsafe(
     `SELECT ${selectCols}
@@ -217,16 +219,18 @@ export async function addOperationalExpense(data: {
   /** Stored rather than inferred: rate is a ratio, so USD and CNY look alike
    *  afterwards, and an expense with no event has no country to fall back on. */
   currency?: string | null
+  /** Which delivery this paid for, on the freight rows. Blank on the rest. */
+  cargoReceipt?: string
 }, db: DBExecutor = sql): Promise<{ rowNumber: number }> {
   const [row] = await db`
     INSERT INTO operational_expenses
       (event, expense_date, description, category, amount_foreign, rate,
-       amount_idr, is_settled, method, remarks, currency)
+       amount_idr, is_settled, method, remarks, currency, cargo_receipt)
     VALUES
       (${data.event || null}, ${data.expenseDate || null}, ${data.description},
        ${data.category}, ${data.amountForeign}, ${data.rate}, ${data.amountIdr},
        ${data.isSettled}, ${data.method}, ${data.remarks},
-       ${data.currency?.trim() || null})
+       ${data.currency?.trim() || null}, ${data.cargoReceipt?.trim().toUpperCase() || null})
     RETURNING id
   `
   return { rowNumber: row.id }
@@ -246,6 +250,7 @@ export async function updateOperationalExpense(
     method: string
     remarks: string
     currency?: string | null
+    cargoReceipt?: string
   },
   db: DBExecutor = sql,
 ): Promise<void> {
@@ -256,7 +261,9 @@ export async function updateOperationalExpense(
         amount_foreign = ${data.amountForeign}, rate = ${data.rate},
         amount_idr = ${data.amountIdr}, is_settled = ${data.isSettled},
         method = ${data.method}, remarks = ${data.remarks},
-        currency = ${data.currency?.trim() || null}, updated_at = NOW()
+        currency = ${data.currency?.trim() || null},
+        cargo_receipt = ${data.cargoReceipt?.trim().toUpperCase() || null},
+        updated_at = NOW()
     WHERE id = ${rowNumber}
   `
 }

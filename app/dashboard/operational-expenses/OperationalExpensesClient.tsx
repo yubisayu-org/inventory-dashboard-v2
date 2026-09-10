@@ -364,6 +364,20 @@ export default function OperationalExpensesClient() {
       cell: ({ row }) => <CategoryBadge category={row.original.category} />,
     },
     {
+      // Which shipment a freight bill paid for. Blank on everything else, and
+      // hideable like every other column — it is the answer to one question,
+      // asked by whoever is adding up a delivery.
+      accessorKey: "cargoReceipt",
+      header: "Cargo",
+      size: 120,
+      filterFn: "textContains",
+      cell: ({ row }) => (
+        row.original.cargoReceipt
+          ? <span className="whitespace-nowrap tabular-nums text-muted-strong">{row.original.cargoReceipt}</span>
+          : <span className="text-faint">—</span>
+      ),
+    },
+    {
       accessorKey: "amountForeign",
       header: "VLS",
       size: 100,
@@ -888,6 +902,7 @@ const emptyDraft = () => ({
   amountIdr: "",
   isSettled: false,
   method: "",
+  cargoReceipt: "",
 })
 
 function AddExpenseForm({
@@ -925,6 +940,9 @@ function AddExpenseForm({
       amountIdr: String(r.amountIdr),
       isSettled: false,
       method: r.method,
+      // Carried over: a duplicated freight bill is almost always the second
+      // bill for the same shipment, which is a case that really happens.
+      cargoReceipt: r.cargoReceipt,
     })
     setAddError(null)
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -973,6 +991,7 @@ function AddExpenseForm({
           amountIdr: idrNum,
           isSettled: draft.isSettled,
           method: draft.method.trim(),
+          cargoReceipt: draft.cargoReceipt.trim(),
           remarks: "",
           // Kept, not recomputed later: the rate cannot say which currency it
           // converted from.
@@ -1061,6 +1080,22 @@ function AddExpenseForm({
             disabled={adding}
           />
         </Field>
+        {/* Only where it means something. A cargo receipt on a shop invoice
+            would be a link nothing follows, and the field would then sit on
+            every row of a form used mostly for other things. */}
+        {draft.category === "Cargo" && (
+          <Field label="Cargo receipt">
+            <input
+              value={draft.cargoReceipt}
+              onChange={(e) => setDraft((d) => ({ ...d, cargoReceipt: e.target.value.toUpperCase() }))}
+              type="text"
+              placeholder="e.g. CJI-9981"
+              disabled={adding}
+              title="The delivery this bill paid for — its cost is the sum of the bills naming it"
+              className={formInputCls}
+            />
+          </Field>
+        )}
       </div>
 
       <div className="flex items-center justify-end gap-2">
@@ -1187,6 +1222,7 @@ function EditExpenseModal({
     amountIdr: String(row.amountIdr),
     isSettled: row.isSettled,
     method: row.method,
+    cargoReceipt: row.cargoReceipt,
   })
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -1228,6 +1264,7 @@ function EditExpenseModal({
           amountIdr: idrNum,
           isSettled: draft.isSettled,
           method: draft.method.trim(),
+          cargoReceipt: draft.cargoReceipt.trim(),
           remarks: row.remarks,
           currency: draft.currency.trim(),
         }),
@@ -1323,6 +1360,21 @@ function EditExpenseModal({
               disabled={saving}
             />
           </Field>
+          {/* Where an older freight bill is attached to its delivery, which is
+              the one place any of this money is edited. */}
+          {draft.category === "Cargo" && (
+            <Field label="Cargo receipt">
+              <input
+                value={draft.cargoReceipt}
+                onChange={(e) => setDraft((d) => ({ ...d, cargoReceipt: e.target.value.toUpperCase() }))}
+                type="text"
+                placeholder="e.g. CJI-9981"
+                disabled={saving}
+                title="The delivery this bill paid for — its cost is the sum of the bills naming it"
+                className={formInputCls}
+              />
+            </Field>
+          )}
         </div>
 
         <label className="hidden" title="Settled">
