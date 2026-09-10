@@ -297,6 +297,10 @@ export default function OperationalExpensesClient() {
     const q = methodQuery.trim().toLowerCase()
     return q ? methods.filter((m) => m.toLowerCase().includes(q)) : methods
   }, [methods, methodQuery])
+  // Below this the list is shorter than the box that would search it, so there
+  // is no box -- and then the list has to be shown, or there is no way to pick
+  // an account at all.
+  const methodSearchable = methods.length > 8
 
   // Suggested categories + whatever's actually in the DB, deduped.
   const categoryOptions = useMemo(
@@ -524,15 +528,15 @@ export default function OperationalExpensesClient() {
               </div>
               <div className="flex flex-col gap-1">
                 <span className="text-xs font-medium text-muted">Method</span>
-                {/* Only once there are enough of them to hunt through. Four
-                    accounts do not need a search box above them. */}
-                {methods.length > 8 && (
+                {/* Only once there are enough of them to hunt through. With a
+                    handful, the list itself is shorter than the box. */}
+                {methodSearchable && (
                   <input
                     type="text"
                     inputMode="numeric"
                     value={methodQuery}
                     onChange={(e) => setMethodQuery(e.target.value)}
-                    placeholder="Search account…"
+                    placeholder={`Search ${methods.length} accounts…`}
                     aria-label="Search payment methods"
                     // Not autofocused: on a phone that throws a keyboard over
                     // the popover before she has read the status choices.
@@ -542,12 +546,24 @@ export default function OperationalExpensesClient() {
                 {/* Capped and scrolling, so the popover is one height whatever
                     the list is doing. */}
                 <div className="flex flex-col gap-0.5 max-h-44 overflow-y-auto">
-                  {/* "All methods" is the way back, so it is offered only when
-                      nothing is typed -- a search for 43 that answers with
-                      "All methods" first is answering a question nobody asked. */}
+                  {/* Nothing typed, nothing listed. Twenty-two accounts under
+                      the box put the popover past the bottom of the screen
+                      again, and scrolling a list of numbers is the thing the
+                      box exists to replace. At rest it offers the way back --
+                      and, when one is in force, the account being filtered on,
+                      so the filter still says what it is doing.
+
+                      Typing swaps in the matches, and "All methods" steps
+                      aside: answering a search for 43 with "All methods" first
+                      answers a question nobody asked. */}
                   {[
                     ...(methodQuery.trim() ? [] : [{ value: "", label: "All methods" }]),
-                    ...methodMatches.map((m) => ({ value: m, label: m })),
+                    ...(!methodSearchable
+                      ? methods
+                      : methodQuery.trim()
+                        ? methodMatches
+                        : methodFilterValue ? [methodFilterValue] : []
+                    ).map((m) => ({ value: m, label: m })),
                   ].map((o) => (
                     <button
                       key={o.value}
