@@ -60,7 +60,10 @@ async function refundedByPair(db: DBExecutor): Promise<Map<string, Cover>> {
 export async function listOverpaymentsToCheck(
   db: DBExecutor = sql,
 ): Promise<OverpaymentToCheck[]> {
-  const [statuses, refunded] = await Promise.all([getPaymentStatus(), refundedByPair(db)])
+  // Only the pairs that paid more than they owe. The refund cover below can
+  // still rule one out, but nothing it keeps was outside this set.
+  const [statuses, refunded] = await Promise.all([
+    getPaymentStatus(undefined, { only: "overpaid" }), refundedByPair(db)])
 
   const out: OverpaymentToCheck[] = []
   for (const s of statuses) {

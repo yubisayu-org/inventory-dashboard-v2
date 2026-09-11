@@ -54,7 +54,10 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
     // drift from "Siap Dikirim" there — a plain unit_arrive > unit_ship count
     // used to overcount (it missed the all-lines-arrived, payment-clear, and
     // not-on-hold requirements).
-    getShipOrdersFiltered({ segment: "ready" }).then((r) => r.counts.ready),
+    // A card with nothing left to send cannot be ready to ship, so the
+    // finished ones are not read: shop-wide that is 7,513 of the 9,943 order
+    // lines, fetched to be counted as zero.
+    getShipOrdersFiltered({ segment: "ready", includeShipped: false }).then((r) => r.counts.ready),
     // Headline money totals across all events, all-time. Omzet = full invoice
     // value billed (subtotal + ongkir + adjustments); invoice_count = number of
     // customer-event invoices; outstanding = per-customer unpaid balance floored

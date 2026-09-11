@@ -21,12 +21,12 @@ export async function outstandingElsewhere(
   customer: string,
   excludeEvent: string,
 ): Promise<OutstandingTrip[]> {
-  const want = normalizeId(customer)
-  const statuses = await getPaymentStatus()
+  // Her trips only, and only the ones with something on them: unscoped this
+  // aggregates every customer against every trip, and three of those rows are
+  // hers.
+  const statuses = await getPaymentStatus(undefined, { customer, only: "outstanding" })
   return statuses
-    .filter((s) => normalizeId(s.customer) === want)
     .filter((s) => s.event !== excludeEvent)
-    .filter((s) => s.outstanding > 0)
     .map((s) => ({ event: s.event, amount: s.outstanding }))
     .sort((a, b) => b.amount - a.amount)
 }
@@ -41,7 +41,9 @@ export async function outstandingElsewhere(
  * filters that one out.
  */
 export async function outstandingByCustomer(): Promise<Record<string, OutstandingTrip[]>> {
-  const statuses = await getPaymentStatus()
+  // 112 pairs of 3,713 owe anything, and the rest were read only to be dropped
+  // by the line below.
+  const statuses = await getPaymentStatus(undefined, { only: "outstanding" })
   const out: Record<string, OutstandingTrip[]> = {}
   for (const s of statuses) {
     if (s.outstanding <= 0) continue

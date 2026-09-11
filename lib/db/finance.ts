@@ -1352,7 +1352,43 @@ function paymentStatusFor(totalPaid: number, invoiceTotal: number): PaymentStatu
  * normalized (lowercase, no "@") so legacy/normalized variants merge instead of
  * splitting into a bogus Unpaid + Overpaid pair.
  */
-export async function getPaymentStatus(event?: string): Promise<PaymentStatusRow[]> {
+/**
+ * Who owes what, per trip and customer.
+ *
+ * Three callers want a slice rather than the whole ledger, and used to take
+ * the whole ledger and throw most of it away in JavaScript: unscoped this
+ * aggregates every trip against every customer, 3,713 pairs on 11 Sep 2026, of
+ * which 112 have anything outstanding. So the slice is a WHERE rather than a
+ * filter, and the rows never leave the database.
+ *
+ * The gate reads the figures the query itself computed, so there is no second
+ * copy of the invoice rule to drift from this one.
+ */
+export async function getPaymentStatus(
+  event?: string,
+  opts: {
+    /** One customer, by handle. Normalised the way the query keys them. */
+    customer?: string
+    /** "outstanding" is what she still owes; "overpaid" is what she is owed. */
+    only?: "outstanding" | "overpaid"
+  } = {},
+): Promise<PaymentStatusRow[]> {
+  const custKey = opts.customer ? normalizeId(opts.customer) : null
+  // Built as one fragment rather than a list, which keeps postgres-js happy
+  // about the types and keeps the gate readable in the query it lands in.
+  let gate = sql``
+  if (custKey && opts.only === "outstanding") {
+    gate = sql`WHERE customer = ${custKey} AND invoice_total > total_paid`
+  } else if (custKey && opts.only === "overpaid") {
+    gate = sql`WHERE customer = ${custKey} AND total_paid > invoice_total`
+  } else if (custKey) {
+    gate = sql`WHERE customer = ${custKey}`
+  } else if (opts.only === "outstanding") {
+    gate = sql`WHERE invoice_total > total_paid`
+  } else if (opts.only === "overpaid") {
+    gate = sql`WHERE total_paid > invoice_total`
+  }
+
   // When an event is given, push the filter into every event-keyed CTE so the
   // planner can use the (event, ...) indexes on orders/payments/adjustments
   // instead of aggregating the world and filtering in JS. customer_ongkir is
@@ -1405,22 +1441,26 @@ export async function getPaymentStatus(event?: string): Promise<PaymentStatusRow
           UNION
           SELECT event, cust_key FROM adjustment_aggregates
         )
-        SELECT
-          k.event AS event,
-          k.cust_key AS customer,
-          (COALESCE(oa.subtotal, 0)
-            -- The parcel's own rate first, her profile rate only until one goes.
-            + COALESCE(sr.rate, c.ongkir, 0) * CEIL(COALESCE(oa.total_gram, 0)::numeric / 1000)
-            + COALESCE(adj.total_adj, 0))::int AS invoice_total,
-          COALESCE(pa.total_paid, 0)::int AS total_paid,
-          COALESCE(oa.total_items, 0)::int AS total_items
-        FROM all_keys k
-        LEFT JOIN order_aggregates oa ON oa.event = k.event AND oa.cust_key = k.cust_key
-        LEFT JOIN customer_ongkir c ON c.cust_key = k.cust_key AND c.event = k.event
-        LEFT JOIN shipped_rate sr ON sr.event = k.event AND sr.cust_key = k.cust_key
-        LEFT JOIN payment_aggregates pa ON pa.event = k.event AND pa.cust_key = k.cust_key
-        LEFT JOIN adjustment_aggregates adj ON adj.event = k.event AND adj.cust_key = k.cust_key
-        ORDER BY k.event, k.cust_key
+        , totals AS (
+          SELECT
+            k.event AS event,
+            k.cust_key AS customer,
+            (COALESCE(oa.subtotal, 0)
+              -- The parcel's own rate first, her profile rate only until one goes.
+              + COALESCE(sr.rate, c.ongkir, 0) * CEIL(COALESCE(oa.total_gram, 0)::numeric / 1000)
+              + COALESCE(adj.total_adj, 0))::int AS invoice_total,
+            COALESCE(pa.total_paid, 0)::int AS total_paid,
+            COALESCE(oa.total_items, 0)::int AS total_items
+          FROM all_keys k
+          LEFT JOIN order_aggregates oa ON oa.event = k.event AND oa.cust_key = k.cust_key
+          LEFT JOIN customer_ongkir c ON c.cust_key = k.cust_key AND c.event = k.event
+          LEFT JOIN shipped_rate sr ON sr.event = k.event AND sr.cust_key = k.cust_key
+          LEFT JOIN payment_aggregates pa ON pa.event = k.event AND pa.cust_key = k.cust_key
+          LEFT JOIN adjustment_aggregates adj ON adj.event = k.event AND adj.cust_key = k.cust_key
+        )
+        SELECT * FROM totals
+        ${gate}
+        ORDER BY event, customer
       `
     : await sql`
         WITH order_aggregates AS (
@@ -1465,22 +1505,26 @@ export async function getPaymentStatus(event?: string): Promise<PaymentStatusRow
           UNION
           SELECT event, cust_key FROM adjustment_aggregates
         )
-        SELECT
-          k.event AS event,
-          k.cust_key AS customer,
-          (COALESCE(oa.subtotal, 0)
-            -- The parcel's own rate first, her profile rate only until one goes.
-            + COALESCE(sr.rate, c.ongkir, 0) * CEIL(COALESCE(oa.total_gram, 0)::numeric / 1000)
-            + COALESCE(adj.total_adj, 0))::int AS invoice_total,
-          COALESCE(pa.total_paid, 0)::int AS total_paid,
-          COALESCE(oa.total_items, 0)::int AS total_items
-        FROM all_keys k
-        LEFT JOIN order_aggregates oa ON oa.event = k.event AND oa.cust_key = k.cust_key
-        LEFT JOIN customer_ongkir c ON c.cust_key = k.cust_key AND c.event = k.event
-        LEFT JOIN shipped_rate sr ON sr.event = k.event AND sr.cust_key = k.cust_key
-        LEFT JOIN payment_aggregates pa ON pa.event = k.event AND pa.cust_key = k.cust_key
-        LEFT JOIN adjustment_aggregates adj ON adj.event = k.event AND adj.cust_key = k.cust_key
-        ORDER BY k.event, k.cust_key
+        , totals AS (
+          SELECT
+            k.event AS event,
+            k.cust_key AS customer,
+            (COALESCE(oa.subtotal, 0)
+              -- The parcel's own rate first, her profile rate only until one goes.
+              + COALESCE(sr.rate, c.ongkir, 0) * CEIL(COALESCE(oa.total_gram, 0)::numeric / 1000)
+              + COALESCE(adj.total_adj, 0))::int AS invoice_total,
+            COALESCE(pa.total_paid, 0)::int AS total_paid,
+            COALESCE(oa.total_items, 0)::int AS total_items
+          FROM all_keys k
+          LEFT JOIN order_aggregates oa ON oa.event = k.event AND oa.cust_key = k.cust_key
+          LEFT JOIN customer_ongkir c ON c.cust_key = k.cust_key AND c.event = k.event
+          LEFT JOIN shipped_rate sr ON sr.event = k.event AND sr.cust_key = k.cust_key
+          LEFT JOIN payment_aggregates pa ON pa.event = k.event AND pa.cust_key = k.cust_key
+          LEFT JOIN adjustment_aggregates adj ON adj.event = k.event AND adj.cust_key = k.cust_key
+        )
+        SELECT * FROM totals
+        ${gate}
+        ORDER BY event, customer
       `
 
   return rows.map((r) => {

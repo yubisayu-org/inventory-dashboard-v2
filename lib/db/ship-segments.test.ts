@@ -129,3 +129,11 @@ test("the finished cards come newest first, and only as many as asked for", asyn
   assert.ok(all.groups.length > 2)
   assert.equal(all.shippedHasMore, false, "nothing beyond the window this time")
 })
+
+test("the ready count does not change when the finished cards are left unread", async () => {
+  // What the home dashboard shows. It reads one number out of this query, and
+  // used to read every order line in the shop to get it.
+  const whole = await getShipOrdersFiltered({ segment: "ready", event: EVENT })
+  const lean = await getShipOrdersFiltered({ segment: "ready", event: EVENT, includeShipped: false })
+  assert.equal(lean.counts.ready, whole.counts.ready)
+})
