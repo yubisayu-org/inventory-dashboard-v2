@@ -61,7 +61,7 @@ after(async () => {
   await sql.end()
 })
 
-const mine = (rows: { customer: string }[]) => rows.filter((r) => r.customer.startsWith(TAG.toLowerCase()))
+const mine = <T extends { customer: string }>(rows: T[]) => rows.filter((r) => r.customer.startsWith(TAG.toLowerCase()))
 const key = (r: { event: string; customer: string }) => `${r.event}|${r.customer}`
 
 test("the outstanding slice is the whole ledger filtered, and nothing else", async () => {

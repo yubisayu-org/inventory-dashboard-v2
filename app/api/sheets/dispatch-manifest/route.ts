@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession, requireRole } from "@/lib/api"
+import { renameDispatchReceipt, withActor } from "@/lib/db"
 import {
   getBoxManifest, getEventBoxes, getUncodedReceived, getUncodedPacked, getUncodedByCargo,
 } from "@/lib/db"
@@ -44,5 +45,37 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     console.error("Failed to read the dispatch manifest:", err)
     return NextResponse.json({ error: "Failed to read the manifest" }, { status: 500 })
+  }
+}
+
+/**
+ * Correct a box's code, after the goods are in.
+ *
+ * The Receiving List can rename a parcel too, but its rows leave the screen
+ * once everything on them has been counted -- so a code typed wrong was
+ * uncorrectable from the moment it was finished with. This screen still shows
+ * the box, so this is where it can be fixed.
+ */
+export async function POST(req: NextRequest) {
+  const { session, error: authError } = await requireSession()
+  if (authError) return authError
+  const roleError = requireRole(session)
+  if (roleError) return roleError
+
+  try {
+    const body = await req.json()
+    const from = String(body?.from ?? "").trim()
+    const to = String(body?.to ?? "").trim()
+    if (!from || !to) {
+      return NextResponse.json({ error: "from and to are required" }, { status: 400 })
+    }
+
+    const moved = await withActor(session!.user.email ?? "dashboard", (tx) =>
+      renameDispatchReceipt(from, to, tx))
+    return NextResponse.json({ ok: true, ...moved, receipt: to })
+  } catch (err) {
+    console.error("Failed to rename the box:", err)
+    const message = err instanceof Error ? err.message : "Failed to rename"
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

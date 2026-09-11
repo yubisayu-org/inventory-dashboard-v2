@@ -129,6 +129,17 @@ export default function BoxManifestClient() {
   const [moveBox, setMoveBox] = useState<string | null>(null)
   const [moveTo, setMoveTo] = useState("")
   const [moving, setMoving] = useState(false)
+  /**
+   * Correcting the box's own code, which nowhere else can do once it is full.
+   *
+   * The Receiving List renames a parcel, but its rows leave the screen when
+   * everything on them has been counted -- so a code typed wrong became
+   * uncorrectable at exactly the moment somebody finished with it. This screen
+   * still shows the box.
+   */
+  const [renameBox, setRenameBox] = useState<string | null>(null)
+  const [renameTo, setRenameTo] = useState("")
+  const [renaming, setRenaming] = useState(false)
   const fieldRef = useRef<HTMLDivElement>(null)
   const [receipt, setReceipt] = useState("")
   const [manifest, setManifest] = useState<BoxManifest | null>(null)
@@ -302,6 +313,31 @@ export default function BoxManifestClient() {
     return () => clearTimeout(t)
   }, [scope, manifest, open])
 
+
+  /** The code on the box itself was wrong. Moves the goods, not the box. */
+  async function saveRename() {
+    const from = renameBox
+    const to = renameTo.trim()
+    if (!from || !to || to.toUpperCase() === from.toUpperCase()) return
+    setRenaming(true)
+    try {
+      await fetchJson("/api/sheets/dispatch-manifest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "rename", from, to }),
+      })
+      setRenameBox(null)
+      setReload((n) => n + 1)
+      // Follow the box to its new name rather than leaving the screen looking
+      // at a code that no longer exists.
+      setReceipt(to)
+      await open(to)
+    } catch (err) {
+      setDocError(err instanceof Error ? err.message : "Could not rename the box")
+    } finally {
+      setRenaming(false)
+    }
+  }
 
   /** This box came on a different delivery -- or on none she can name yet. */
   async function moveBoxCargo() {
@@ -949,6 +985,59 @@ export default function BoxManifestClient() {
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{error}</div>
       )}
 
+      {renameBox && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center bg-foreground/30 p-4 sm:p-8"
+          onClick={(e) => { if (e.target === e.currentTarget) setRenameBox(null) }}
+        >
+          <div className="w-full max-w-sm rounded-xl border border-cream-border bg-white shadow-xl p-5 flex flex-col gap-3">
+            <div>
+              <h3 className="text-base font-bold text-foreground">Rename {renameBox}</h3>
+              <p className="text-xs text-muted">
+                Everything moves together — what was packed in it, what was counted in against
+                it, and any ready stock that travelled in it. The goods do not move; only the
+                code they are filed under.
+              </p>
+            </div>
+            <input
+              type="text"
+              value={renameTo}
+              onChange={(e) => setRenameTo(e.target.value.toUpperCase())}
+              onKeyDown={(e) => { if (e.key === "Enter") void saveRename() }}
+              placeholder="e.g. CJI-04"
+              autoFocus
+              className={`${INPUT_CLASS} h-10 w-full`}
+            />
+            {/* A code already in use is a merge, and the strip is what she can
+                check it against before pressing. */}
+            {boxes.some((b) => b.receipt.toUpperCase() === renameTo.trim().toUpperCase()
+              && b.receipt.toUpperCase() !== renameBox.toUpperCase()) && (
+              <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2">
+                <b>{renameTo.trim()}</b> is already a box on this trip. The two become one box,
+                and nothing afterwards can tell which goods came from which.
+              </p>
+            )}
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setRenameBox(null)}
+                className="h-10 rounded-lg border border-cream-border px-3 text-sm text-muted-strong hover:border-brand hover:text-brand transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={saveRename}
+                disabled={renaming || !renameTo.trim() || renameTo.trim().toUpperCase() === renameBox.toUpperCase()}
+                className="h-10 rounded-lg bg-brand px-4 text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-50 transition-colors"
+              >
+                {renaming ? "Renaming…" : "Rename"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {moveBox && (
         <div
           className="fixed inset-0 z-50 flex items-start justify-center bg-foreground/30 p-4 sm:p-8"
@@ -1015,7 +1104,17 @@ export default function BoxManifestClient() {
         <div className="rounded-xl border border-cream-border bg-white overflow-hidden">
           <div className="px-5 py-4 border-b border-cream-border flex items-baseline justify-between gap-4 flex-wrap">
             <div>
-              <div className="text-lg font-bold text-foreground">{manifest.receipt}</div>
+              <div className="text-lg font-bold text-foreground flex items-baseline gap-2">
+                {manifest.receipt}
+                <button
+                  type="button"
+                  onClick={() => { setRenameBox(manifest.receipt); setRenameTo(manifest.receipt) }}
+                  title="The code on this box is wrong"
+                  className="text-xs font-normal text-faint hover:text-brand transition-colors"
+                >
+                  rename
+                </button>
+              </div>
               {/* A box carrying more than one trip is named by the count, not by
                   whichever of them sorted first. MU-19953 holds three, and this
                   line used to pick one and print it over all of them. */}

@@ -1911,23 +1911,41 @@ export async function recordNotReceived(
  */
 export async function renameDispatchReceipt(
   from: string, to: string, db: DBExecutor = sql,
-): Promise<{ moved: number }> {
+): Promise<{ moved: number; packedMoved: number }> {
   const oldReceipt = from.trim()
   const newReceipt = to.trim()
   if (!oldReceipt) throw new Error("The parcel to rename is required")
   if (!newReceipt) throw new Error("A tracking number is required")
-  if (oldReceipt === newReceipt) return { moved: 0 }
+  if (oldReceipt.toUpperCase() === newReceipt.toUpperCase()) return { moved: 0, packedMoved: 0 }
 
+  // Matched without regard to case, the way every screen reads these codes.
   const rows = await db`
     UPDATE orders SET dispatch_receipt = ${newReceipt}, updated_at = NOW()
-    WHERE dispatch_receipt = ${oldReceipt}
+    WHERE upper(COALESCE(dispatch_receipt, '')) = upper(${oldReceipt})
     RETURNING id
   `
   // Ready-stock lines travel in the same boxes and carry the same codes.
   const excess = await db`
     UPDATE excess_purchase SET dispatch_receipt = ${newReceipt}, updated_at = NOW()
-    WHERE dispatch_receipt = ${oldReceipt}
+    WHERE upper(COALESCE(dispatch_receipt, '')) = upper(${oldReceipt})
     RETURNING id
   `
-  return { moved: rows.length + excess.length }
+  /**
+   * And what was packed under the old name.
+   *
+   * Left behind until 11 Sep 2026, which split a renamed box in two: the
+   * manifest went on saying goods were packed in "Bix 9, Box 9" while the
+   * orders had been corrected to something else, so one box showed as packed
+   * and never received and the other as received out of nowhere. Nineteen box
+   * codes in production are stranded that way.
+   *
+   * No unique key to fight here -- the manifest is an append-only log of
+   * dispatch events and the reader sums by receipt.
+   */
+  const packed = await db`
+    UPDATE dispatch_manifest SET receipt = ${newReceipt}
+    WHERE upper(receipt) = upper(${oldReceipt})
+    RETURNING id
+  `
+  return { moved: rows.length + excess.length, packedMoved: packed.length }
 }
