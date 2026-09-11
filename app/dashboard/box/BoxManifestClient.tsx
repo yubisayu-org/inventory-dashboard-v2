@@ -1104,17 +1104,18 @@ export default function BoxManifestClient() {
         <div className="rounded-xl border border-cream-border bg-white overflow-hidden">
           <div className="px-5 py-4 border-b border-cream-border flex items-baseline justify-between gap-4 flex-wrap">
             <div>
-              <div className="text-lg font-bold text-foreground flex items-baseline gap-2">
+              {/* The code itself is the control, the way the Receiving List
+                  renames a parcel. A word beside it would be a second thing to
+                  aim at for the same job, sitting in a heading that is read
+                  every day to do something else. */}
+              <button
+                type="button"
+                onClick={() => { setRenameBox(manifest.receipt); setRenameTo(manifest.receipt) }}
+                title="Click to rename — for when the code on the box is wrong"
+                className="text-lg font-bold text-foreground rounded-lg -mx-1.5 px-1.5 py-0.5 hover:bg-surface-sunken transition-colors"
+              >
                 {manifest.receipt}
-                <button
-                  type="button"
-                  onClick={() => { setRenameBox(manifest.receipt); setRenameTo(manifest.receipt) }}
-                  title="The code on this box is wrong"
-                  className="text-xs font-normal text-faint hover:text-brand transition-colors"
-                >
-                  rename
-                </button>
-              </div>
+              </button>
               {/* A box carrying more than one trip is named by the count, not by
                   whichever of them sorted first. MU-19953 holds three, and this
                   line used to pick one and print it over all of them. */}
