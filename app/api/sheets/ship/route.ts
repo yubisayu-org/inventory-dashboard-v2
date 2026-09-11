@@ -19,7 +19,10 @@ export async function GET(req: NextRequest) {
     // the screen says so rather than the server guessing from the segment,
     // because the screen filters the tabs itself.
     const includeShipped = url.searchParams.get("includeShipped") !== "0"
-    const data = await getShipOrdersFiltered({ segment, search, event, includeShipped })
+    // How deep into the finished cards the screen has been paged. Bounded so a
+    // hand-typed URL cannot ask for the whole history.
+    const shippedLimit = Math.min(1000, Math.max(0, Number(url.searchParams.get("shippedLimit")) || 50))
+    const data = await getShipOrdersFiltered({ segment, search, event, includeShipped, shippedLimit })
     return NextResponse.json(data)
   } catch (err) {
     console.error("Failed to load ready-to-ship orders:", err)

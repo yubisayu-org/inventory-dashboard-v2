@@ -493,6 +493,8 @@ export interface ShipOrdersFiltered {
   groups: ShipCustomer[]
   totalCount: number
   counts: Record<ShipSegment, number>
+  /** Whether older finished cards exist beyond the window that was read. */
+  shippedHasMore: boolean
 }
 
 /**
@@ -561,8 +563,17 @@ export async function getShipOrdersFiltered(opts: {
    * way -- what is not read is counted, which is one row rather than hundreds.
    */
   includeShipped?: boolean
+  /**
+   * How many finished cards to read, newest first.
+   *
+   * A trip in mid-cycle has hundreds -- 605 on LSCN202606 -- and the screen
+   * shows twenty-five at a time, so reading all of them fills a page with
+   * something nobody scrolled to. The screen asks for more when somebody pages
+   * past what it holds.
+   */
+  shippedLimit?: number
 }): Promise<ShipOrdersFiltered> {
-  const { segment = "all", search, event, includeShipped = true } = opts
+  const { segment = "all", search, event, includeShipped = true, shippedLimit = 50 } = opts
 
   // Fetch every order line in scope (no arrival pre-filter) so each invoice
   // group carries its full set of lines — required to tell a fully-arrived
@@ -575,17 +586,8 @@ export async function getShipOrdersFiltered(opts: {
             COALESCE(p.gram, 0) AS gram, o.unit, o.unit_price, o.unit_arrive, o.unit_ship, o.unit_hold`
   const WINDOW = `WINDOW w AS (PARTITION BY o.event, lower(replace(o.customer, '@', '')))`
 
-  const orderRows = await (
-    includeShipped
-      ? sql.unsafe(
-          `SELECT ${LINES}
-             FROM orders o
-             JOIN products p ON p.id = o.product_id
-             ${where}
-            ORDER BY o.event, o.customer, o.id`,
-          params,
-        )
-      : sql.unsafe(
+  // The cards that are still work. Always all of them: they are the job.
+  const workingRows = await sql.unsafe(
           `SELECT id, event, customer, product_id, product_name, gram, unit, unit_price,
                   unit_arrive, unit_ship, unit_hold
              FROM (
@@ -597,14 +599,74 @@ export async function getShipOrdersFiltered(opts: {
              ) t
             WHERE NOT done
             ORDER BY event, customer, id`,
-          params,
-        )
+    params,
   )
+
+  /**
+   * The finished cards, newest first, and only as many as were asked for.
+   *
+   * Ordered by when the parcel actually left -- the shipments row -- falling
+   * back to when the order was last touched, for the ones shipped before that
+   * table was kept. One extra is read to know whether to offer more.
+   */
+  let shippedRows: Record<string, unknown>[] = []
+  let shippedHasMore = false
+  if (includeShipped && shippedLimit > 0) {
+    const keys = (await sql.unsafe(
+      `SELECT g.event, g.cust
+         FROM (
+           SELECT o.event, lower(replace(o.customer, '@', '')) AS cust,
+                  bool_and(COALESCE(o.unit_arrive, 0) >= o.unit) AS all_arrived,
+                  COALESCE(SUM(o.unit_hold), 0) AS held,
+                  COALESCE(SUM(GREATEST(0, COALESCE(o.unit_arrive, 0)
+                    - COALESCE(o.unit_ship, 0) - COALESCE(o.unit_hold, 0))), 0) AS to_ship,
+                  MAX(o.updated_at) AS touched,
+                  MAX((SELECT MAX(sh.created_at) FROM shipments sh
+                        WHERE sh.event = o.event
+                          AND lower(replace(sh.customer, '@', '')) = lower(replace(o.customer, '@', '')))) AS sent_at
+             FROM orders o
+             JOIN products p ON p.id = o.product_id
+             ${where}
+            GROUP BY 1, 2
+         ) g
+        WHERE g.all_arrived AND g.held = 0 AND g.to_ship = 0
+        ORDER BY COALESCE(g.sent_at, g.touched) DESC NULLS LAST, g.cust
+        LIMIT ${shippedLimit + 1}`,
+      params,
+    )) as unknown as { event: string; cust: string }[]
+
+    shippedHasMore = keys.length > shippedLimit
+    const window = keys.slice(0, shippedLimit)
+    if (window.length > 0) {
+      // Their lines, in the order the window put them, so the newest parcel is
+      // the first card on the tab.
+      const order = new Map(window.map((k, i) => [`${k.event}|${k.cust}`, i]))
+      // Paired arrays rather than a row-value IN: Postgres will not take an
+      // anonymous composite as a parameter.
+      const rows = (await sql`
+        SELECT ${sql.unsafe(LINES)}
+          FROM orders o
+          JOIN products p ON p.id = o.product_id
+          JOIN unnest(${window.map((k) => k.event)}::text[], ${window.map((k) => k.cust)}::text[])
+               AS k(event, cust)
+            ON k.event = o.event
+           AND k.cust = lower(replace(o.customer, '@', ''))
+         ORDER BY o.event, o.customer, o.id
+      `) as unknown as Record<string, unknown>[]
+      rows.sort((a, b) =>
+        (order.get(`${a.event}|${normalizeId(a.customer as string)}`) ?? 0)
+        - (order.get(`${b.event}|${normalizeId(b.customer as string)}`) ?? 0)
+        || Number(a.id) - Number(b.id))
+      shippedRows = rows
+    }
+  }
+
+  const orderRows = [...(workingRows as unknown as Record<string, unknown>[]), ...shippedRows]
 
   const customerIds = new Set<string>()
   const eventNames = new Set<string>()
   for (const r of orderRows) {
-    customerIds.add(normalizeId(r.customer))
+    customerIds.add(normalizeId(r.customer as string))
     eventNames.add(String(r.event))
   }
 
@@ -646,6 +708,7 @@ export async function getShipOrdersFiltered(opts: {
   counts.paired = countReadyBundles(allGroups, splitAsked)
 
   return {
+    shippedHasMore,
     groups: filteredGroups,
     totalCount: filteredGroups.length,
     counts,

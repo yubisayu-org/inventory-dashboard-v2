@@ -40,6 +40,7 @@ before(async () => {
 })
 
 after(async () => {
+  await sql`DELETE FROM shipments WHERE event = ${EVENT}`
   await sql`DELETE FROM orders WHERE event = ${EVENT}`
   await sql`DELETE FROM events WHERE name = ${EVENT}`
   await sql`DELETE FROM customer_warehouse_ongkir WHERE customer_id IN (
@@ -102,4 +103,29 @@ test("a part-shipped card is still work, and is still read", async () => {
   const card = working.groups.find((g) => g.customer.includes("_part"))
   assert.ok(card, "half-shipped is not shipped")
   assert.equal(card!.totalToShip, 3, "and its remaining units are intact")
+})
+
+test("the finished cards come newest first, and only as many as asked for", async () => {
+  const p = (await sql<{ id: number }[]>`SELECT id FROM products ORDER BY id LIMIT 1`)[0]
+  // Three more finished cards, sent on three different days.
+  for (const [n, day] of [[1, "2026-09-01"], [2, "2026-09-05"], [3, "2026-09-09"]] as const) {
+    const who = `${TAG}_sent${n}`
+    await sql`INSERT INTO customers (instagram_id) VALUES (${who})`
+    await sql`
+      INSERT INTO orders (event, customer, product_id, unit_price, unit, unit_arrive, unit_ship)
+      VALUES (${EVENT}, ${who}, ${p.id}, 100000, 4, 4, 4)`
+    await sql`
+      INSERT INTO shipments (event, customer, shipping_id, created_at)
+      VALUES (${EVENT}, ${who}, ${`${TAG}-${n}`}, ${`${day}T02:00:00Z`})`
+  }
+
+  const two = await getShipOrdersFiltered({ segment: "shipped", event: EVENT, shippedLimit: 2 })
+  assert.equal(two.groups.length, 2, "the window is the cap, not a suggestion")
+  assert.equal(two.shippedHasMore, true, "and it says there are older ones")
+  assert.ok(two.groups[0].customer.includes("sent3"), "newest parcel first")
+  assert.ok(two.groups[1].customer.includes("sent2"))
+
+  const all = await getShipOrdersFiltered({ segment: "shipped", event: EVENT, shippedLimit: 50 })
+  assert.ok(all.groups.length > 2)
+  assert.equal(all.shippedHasMore, false, "nothing beyond the window this time")
 })

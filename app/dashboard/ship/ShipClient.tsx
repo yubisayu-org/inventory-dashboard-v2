@@ -51,6 +51,9 @@ const SEGMENTS: { id: Segment; label: string }[] = [
  */
 const SHIPPED_TABS = new Set<Segment>(["shipped", "all"])
 
+/** Finished cards read at a time: two pages of the twenty-five shown. */
+const SHIPPED_WINDOW = 50
+
 // Per-line hold marker. Icon rather than a "Hold" pill so it doesn't compete
 // with the product name for width; title/aria carry the label for hover and
 // screen readers.
@@ -179,7 +182,7 @@ export default function ShipClient() {
   const abortRef = useRef<AbortController | null>(null)
   useEffect(() => () => { abortRef.current?.abort() }, [])
 
-  const fetchData = useCallback(async (srch: string, ev: string, withShipped: boolean) => {
+  const fetchData = useCallback(async (srch: string, ev: string, withShipped: boolean, shippedLimit: number) => {
     abortRef.current?.abort()
     const ac = new AbortController()
     abortRef.current = ac
@@ -191,6 +194,7 @@ export default function ShipClient() {
       // Always the whole trip: the tabs are applied below, in the browser.
       params.set("segment", "all")
       if (!withShipped) params.set("includeShipped", "0")
+      else params.set("shippedLimit", String(shippedLimit))
       if (srch) params.set("search", srch)
       if (ev) params.set("event", ev)
 
@@ -198,6 +202,7 @@ export default function ShipClient() {
       const json: ShipOrdersFiltered = await res.json()
       if (!res.ok) throw new Error((json as unknown as { error: string }).error ?? "Failed to load")
       setAllGroups(json.groups)
+      setShippedHasMore(Boolean(json.shippedHasMore))
       setCounts(json.counts)
     } catch (err) {
       if ((err as Error).name === "AbortError") return
@@ -230,15 +235,28 @@ export default function ShipClient() {
    * second fetch. Choosing another trip starts it over.
    */
   const [withShipped, setWithShipped] = useState(false)
-  useEffect(() => { setWithShipped(false) }, [eventFilter, debouncedSearch])
+  /**
+   * How many finished cards have been asked for, newest first.
+   *
+   * Fifty to begin with -- two pages of twenty-five -- and another fifty each
+   * time somebody pages to the end of what is loaded. A trip in mid-cycle has
+   * hundreds of them and the screen shows twenty-five, so reading the lot to
+   * display a page of it was the whole waste.
+   */
+  const [shippedLimit, setShippedLimit] = useState(SHIPPED_WINDOW)
+  const [shippedHasMore, setShippedHasMore] = useState(false)
+  useEffect(() => {
+    setWithShipped(false)
+    setShippedLimit(SHIPPED_WINDOW)
+  }, [eventFilter, debouncedSearch])
   useEffect(() => {
     if (SHIPPED_TABS.has(segment)) setWithShipped(true)
   }, [segment])
 
   useEffect(() => {
     if (!scopeReady) return
-    fetchData(debouncedSearch, eventFilter, withShipped)
-  }, [debouncedSearch, eventFilter, fetchData, scopeReady, withShipped])
+    fetchData(debouncedSearch, eventFilter, withShipped, shippedLimit)
+  }, [debouncedSearch, eventFilter, fetchData, scopeReady, withShipped, shippedLimit])
 
   // The tab, applied where the cards already are. The badge counts come from
   // the same response and are computed over all of them, so they do not move.
@@ -252,11 +270,19 @@ export default function ShipClient() {
   const PAGINATED_SEGMENTS: Segment[] = ["all", "not_arrived", "partial", "shipped"]
   const paginated = PAGINATED_SEGMENTS.includes(segment)
   const pageCount = paginated ? Math.max(1, Math.ceil(groups.length / SHIP_PAGE_SIZE)) : 1
+  // Only the two tabs that show finished cards have anything left unread.
+  const canLoadMore = SHIPPED_TABS.has(segment) && shippedHasMore
   const pageGroups = paginated ? groups.slice(page * SHIP_PAGE_SIZE, page * SHIP_PAGE_SIZE + SHIP_PAGE_SIZE) : groups
-  useEffect(() => { setPage(0) }, [segment, debouncedSearch, eventFilter, groups.length])
+  useEffect(() => { setPage(0) }, [segment, debouncedSearch, eventFilter])
+  // Clamped rather than reset: a shorter list must not leave the reader on a
+  // page that no longer exists, but loading another fifty finished cards
+  // should leave them where they were standing.
+  useEffect(() => {
+    if (page > pageCount - 1) setPage(Math.max(0, pageCount - 1))
+  }, [pageCount, page])
 
   function refresh() {
-    fetchData(debouncedSearch, eventFilter, withShipped)
+    fetchData(debouncedSearch, eventFilter, withShipped, shippedLimit)
   }
 
   // One card per pair. The server marks the members and hands over the key; the
@@ -549,11 +575,31 @@ export default function ShipClient() {
               />
             )
           })}
-          {paginated && pageCount > 1 && (
+          {paginated && (pageCount > 1 || canLoadMore) && (
             <div className="flex items-center justify-between gap-3 pt-1">
               <button type="button" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-muted-strong disabled:opacity-40">Prev</button>
-              <span className="text-xs text-faint">Page {page + 1} of {pageCount}</span>
-              <button type="button" disabled={page >= pageCount - 1} onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))} className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-muted-strong disabled:opacity-40">Next</button>
+              <span className="text-xs text-faint">
+                Page {page + 1} of {pageCount}
+                {/* Said plainly, because "of 4" would otherwise read as "that
+                    is all of them" when older parcels are simply not read yet. */}
+                {canLoadMore && <span className="text-faint"> · older parcels not loaded</span>}
+              </span>
+              <button
+                type="button"
+                // On the last loaded page of a tab that shows finished cards,
+                // Next fetches the next fifty rather than stopping: they were
+                // deliberately left in the database until somebody paged this
+                // far. The page number stays put while it loads and the new
+                // cards land under the ones already there.
+                disabled={page >= pageCount - 1 && !(canLoadMore && !loading)}
+                onClick={() => {
+                  if (page >= pageCount - 1) { setShippedLimit((n) => n + SHIPPED_WINDOW); return }
+                  setPage((p) => Math.min(pageCount - 1, p + 1))
+                }}
+                className="px-3 py-1.5 rounded-lg border border-cream-border text-sm text-muted-strong disabled:opacity-40"
+              >
+                {page >= pageCount - 1 && canLoadMore ? (loading ? "Memuat…" : "Muat lagi") : "Next"}
+              </button>
             </div>
           )}
         </>
