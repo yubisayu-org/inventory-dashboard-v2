@@ -68,9 +68,12 @@ test("the outstanding slice is the whole ledger filtered, and nothing else", asy
   const whole = await getPaymentStatus()
   const sliced = await getPaymentStatus(undefined, { only: "outstanding" })
 
-  const expected = whole.filter((r) => r.outstanding > 0).map(key).sort()
-  assert.deepEqual(sliced.map(key).sort(), expected)
-  assert.ok(expected.length < whole.length, "and it is a slice, not the lot")
+  // Compared over this file's own rows. The two readings are separate queries
+  // and other test files are writing payments between them, so a shop-wide
+  // set comparison fails on somebody else's fixture rather than on the gate.
+  const expected = mine(whole).filter((r) => r.outstanding > 0).map(key).sort()
+  assert.deepEqual(mine(sliced).map(key).sort(), expected)
+  assert.ok(sliced.length < whole.length, "and it is a slice, not the lot")
 
   // The fixture's own rows, as a legible check on the above.
   assert.equal(mine(sliced).length, 2, "both of her unpaid trips")
@@ -82,9 +85,10 @@ test("the overpaid slice is the mirror of it", async () => {
   const sliced = await getPaymentStatus(undefined, { only: "overpaid" })
 
   assert.deepEqual(
-    sliced.map(key).sort(),
-    whole.filter((r) => r.totalPaid > r.invoiceTotal).map(key).sort(),
+    mine(sliced).map(key).sort(),
+    mine(whole).filter((r) => r.totalPaid > r.invoiceTotal).map(key).sort(),
   )
+  assert.ok(sliced.length < whole.length, "a slice, not the lot")
   assert.ok(mine(sliced).some((r) => r.customer === OVER), "the one who paid too much")
 })
 
@@ -96,6 +100,7 @@ test("one customer's rows are the same rows, fetched alone", async () => {
     hers.map(key).sort(),
     whole.filter((r) => r.customer === OWES).map(key).sort(),
   )
+  assert.ok(hers.length < whole.length, "one customer, not the ledger")
   assert.equal(hers.length, 2)
 })
 

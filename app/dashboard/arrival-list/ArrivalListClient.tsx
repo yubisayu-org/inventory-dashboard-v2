@@ -965,6 +965,45 @@ function ConfirmReceivePanel({
   })
   const [submitting, setSubmitting] = useState(false)
   const [errors, setErrors] = useState<string[]>([])
+  /**
+   * One delivery for everything ticked, like the bulk form asks once a batch.
+   *
+   * Counting several rows in is one trip to the table with one stack of
+   * paperwork, so the code is asked for once. When every row ticked belongs to
+   * the same box and that box already knows its delivery, the answer is shown
+   * back rather than asked for again.
+   */
+  const [cargo, setCargo] = useState("")
+  const [inheritedFrom, setInheritedFrom] = useState("")
+
+  const boxes = [...new Set(items.map((it) => it.parcel).filter(Boolean))]
+  const oneBox = boxes.length === 1 ? boxes[0] : ""
+  useEffect(() => {
+    let live = true
+    async function decide() {
+      if (oneBox) {
+        try {
+          const d = await fetchJson<{ cargo: string | null }>(
+            `/api/sheets/arrival-list?boxCargo=${encodeURIComponent(oneBox)}`)
+          if (!live) return
+          if (d.cargo) { setCargo(d.cargo); setInheritedFrom(oneBox); return }
+        } catch {
+          // Fall through to the last one used: not knowing the box's delivery
+          // is no reason to make her retype the one she just typed.
+        }
+      }
+      if (!live) return
+      setInheritedFrom("")
+      try {
+        const last = localStorage.getItem("yubisayu.lastCargo")
+        if (last) setCargo(last)
+      } catch {
+        // A browser that refuses storage still counts stock in.
+      }
+    }
+    void decide()
+    return () => { live = false }
+  }, [oneBox])
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose() }
@@ -1004,12 +1043,19 @@ function ConfirmReceivePanel({
       }))
       .filter((t) => t.qty > 0)
 
+    if (cargo.trim()) {
+      try { localStorage.setItem("yubisayu.lastCargo", cargo.trim()) } catch { /* not essential */ }
+    }
+
     const settled = await Promise.allSettled(
       targets.map((t) =>
         fetch("/api/sheets/arrival-list", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ event: t.event, productId: t.productId, quantityArrived: t.qty, receipt: t.receipt }),
+          body: JSON.stringify({
+            event: t.event, productId: t.productId, quantityArrived: t.qty,
+            receipt: t.receipt, cargo: cargo.trim(),
+          }),
         }).then(async (res) => {
           const data = await res.json()
           if (!res.ok) throw new Error(data.error ?? `Failed for ${t.name}`)
@@ -1077,6 +1123,30 @@ function ConfirmReceivePanel({
         </div>
 
         <div className="px-5 py-4 border-t border-cream-border shrink-0 flex flex-col gap-3">
+          {/* One cargo for everything ticked. Optional: a handcarry has none,
+              and refusing the arrival for want of a code would stop the
+              counting rather than improve the records. */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-muted">
+              Cargo <span className="text-faint font-normal">(optional)</span>
+            </label>
+            <input
+              type="text"
+              value={cargo}
+              onChange={(e) => { setCargo(e.target.value.toUpperCase()); setInheritedFrom("") }}
+              placeholder="e.g. CJI-9981 — the delivery these came in"
+              disabled={submitting}
+              className="w-full border border-cream-border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors"
+            />
+            <span className="text-[11px] text-faint">
+              {inheritedFrom
+                ? `Already recorded for ${inheritedFrom}.`
+                : boxes.length > 1
+                  ? `Applied to all ${items.length} lines, across ${boxes.length} boxes.`
+                  : `Applied to all ${items.length} lines.`}
+            </span>
+          </div>
+
           {errors.length > 0 && (
             <div className="text-xs text-red-600">
               <div className="font-medium">Some items failed (others were recorded):</div>
