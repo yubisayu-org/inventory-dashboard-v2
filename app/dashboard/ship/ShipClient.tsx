@@ -212,15 +212,30 @@ export default function ShipClient() {
     }
   }, [])
 
-  // The newest open trip, as soon as the trip list arrives.
+  /**
+   * The trip with parcels waiting, which is rarely the newest one.
+   *
+   * Goods land months after a trip opens, so the packing work sits on older
+   * trips: on 11 Sep 2026 the newest active trip had nothing ready while 114
+   * parcels waited on LSJP202608. One aggregate row decides it; the trip
+   * picker is right there for anything else.
+   */
   useEffect(() => {
     if (scopeReady) return
-    const newest = sheetOptions?.activeEvents?.[0] ?? sheetOptions?.events?.[0]
-    if (newest) { setEventFilter(newest); setScopeReady(true) }
-  }, [sheetOptions, scopeReady])
+    let live = true
+    fetch("/api/sheets/ship/scope")
+      .then((r) => r.json())
+      .then((d: { event?: string }) => {
+        if (!live) return
+        if (d?.event) setEventFilter(d.event)
+        setScopeReady(true)
+      })
+      .catch(() => { if (live) setScopeReady(true) })
+    return () => { live = false }
+  }, [scopeReady])
 
-  // If the trip list never arrives, open on everything rather than on nothing:
-  // a slow page beats a page that shows no orders at all.
+  // If that never answers, open on everything rather than on nothing: a slow
+  // page beats a page with no orders on it at all.
   useEffect(() => {
     if (scopeReady) return
     const t = setTimeout(() => setScopeReady(true), 4000)
