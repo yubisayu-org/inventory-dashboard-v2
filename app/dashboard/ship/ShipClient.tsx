@@ -148,20 +148,16 @@ export default function ShipClient() {
   const [debouncedSearch, setDebouncedSearch] = useState("")
   const [eventFilter, setEventFilter] = useState("")
   /**
-   * Whether the trip to show has been decided yet.
+   * Every trip, unless she narrows it.
    *
-   * Nothing is fetched before it has. The page used to open on every order
-   * line ever recorded -- 9,943 of them, with the product name joined on, plus
-   * every customer's ongkir and every customer's address -- because the filter
-   * started empty and the server reads the lot when no trip is named. About
-   * 1.8MB an open, repeated on every segment tab, and by a distance the most
-   * expensive click in the dashboard (measured 10 Sep 2026).
-   *
-   * Trips that sailed months ago cannot be shipped again, so the newest one is
-   * both the cheap answer and the right one. "Semua Event" is still there for
-   * the rare look back.
+   * Opening on one trip was tried on 11 Sep 2026 and taken out again the same
+   * day: it is the cheapest read by a distance, but Kirim Duluan and Gabung
+   * showed 0 while eleven splits and two pairs waited on other trips, and a
+   * work queue that says "nothing to do" when there is something to do is not
+   * a saving. What made it affordable to keep the whole shop in view is that
+   * the finished cards are no longer read -- 2,430 working lines against the
+   * 9,943 this page used to pull.
    */
-  const [scopeReady, setScopeReady] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkShipping, setBulkShipping] = useState(false)
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null)
@@ -213,36 +209,6 @@ export default function ShipClient() {
   }, [])
 
   /**
-   * The trip with parcels waiting, which is rarely the newest one.
-   *
-   * Goods land months after a trip opens, so the packing work sits on older
-   * trips: on 11 Sep 2026 the newest active trip had nothing ready while 114
-   * parcels waited on LSJP202608. One aggregate row decides it; the trip
-   * picker is right there for anything else.
-   */
-  useEffect(() => {
-    if (scopeReady) return
-    let live = true
-    fetch("/api/sheets/ship/scope")
-      .then((r) => r.json())
-      .then((d: { event?: string }) => {
-        if (!live) return
-        if (d?.event) setEventFilter(d.event)
-        setScopeReady(true)
-      })
-      .catch(() => { if (live) setScopeReady(true) })
-    return () => { live = false }
-  }, [scopeReady])
-
-  // If that never answers, open on everything rather than on nothing: a slow
-  // page beats a page with no orders on it at all.
-  useEffect(() => {
-    if (scopeReady) return
-    const t = setTimeout(() => setScopeReady(true), 4000)
-    return () => clearTimeout(t)
-  }, [scopeReady])
-
-  /**
    * Whether the finished cards have been asked for.
    *
    * Sticky once it turns on: somebody who has looked at Sudah Dikirim will
@@ -269,9 +235,8 @@ export default function ShipClient() {
   }, [segment])
 
   useEffect(() => {
-    if (!scopeReady) return
     fetchData(debouncedSearch, eventFilter, withShipped, shippedLimit)
-  }, [debouncedSearch, eventFilter, fetchData, scopeReady, withShipped, shippedLimit])
+  }, [debouncedSearch, eventFilter, fetchData, withShipped, shippedLimit])
 
   // The tab, applied where the cards already are. The badge counts come from
   // the same response and are computed over all of them, so they do not move.

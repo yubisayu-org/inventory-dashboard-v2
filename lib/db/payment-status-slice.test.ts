@@ -29,7 +29,10 @@ before(async () => {
     await sql`INSERT INTO customers (instagram_id) VALUES (${who})`
     await sql`
       INSERT INTO customer_warehouse_ongkir (customer_id, warehouse_id, ongkos_kirim)
-      SELECT c.id, w.id, 0 FROM customers c CROSS JOIN warehouses w
+      -- A real rate, not zero: a zero reads as "cannot be priced" to the guard
+      -- in another file, whose list is capped. The product here weighs
+      -- nothing, so the rate never reaches the invoice either way.
+      SELECT c.id, w.id, 10000 FROM customers c CROSS JOIN warehouses w
        WHERE c.instagram_id = ${who} ON CONFLICT (customer_id, warehouse_id) DO NOTHING`
   }
   // One owing on two trips, one settled exactly, one who paid too much.
