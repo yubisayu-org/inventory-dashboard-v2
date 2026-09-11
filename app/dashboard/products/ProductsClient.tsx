@@ -4,6 +4,7 @@ import TableSkeleton from "@/components/TableSkeleton"
 import { useEffect, useMemo, useState } from "react"
 import type { ProductIndoRow } from "@/lib/db"
 import DataGrid, { numericFilter, textContainsFilter, type ColumnDef } from "@/components/DataGrid"
+import { refreshSheetOptions } from "@/hooks/useSheetOptions"
 
 const EMPTY_FORM = { product: "", store: "", price: "" }
 
@@ -63,6 +64,10 @@ export default function ProductsClient() {
       if (!res.ok) throw new Error(json.error ?? "Failed to add")
       setForm(EMPTY_FORM)
       setData((prev) => [...(prev ?? []), json as ProductIndoRow])
+      // The pickers on other screens hold this tab's copy of the lists, and
+      // Postgres's write counters will not admit to this insert for about a
+      // second yet.
+      refreshSheetOptions()
     } catch (err) {
       setAddError(err instanceof Error ? err.message : "Failed to add")
     } finally {

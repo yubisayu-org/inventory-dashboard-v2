@@ -14,6 +14,7 @@ import { usePaginatedFetch, type PageData } from "@/hooks/usePaginatedFetch"
 import { fmt, displayIg } from "@/lib/format"
 import { composeLabel, canCompose, fieldsFromArea } from "@/lib/address"
 import { CustomerDetailDrawer } from "./CustomerDetailDrawer"
+import { refreshSheetOptions } from "@/hooks/useSheetOptions"
 
 const PAGE_SIZE = 25
 
@@ -1260,6 +1261,9 @@ function CreateCustomerModal({
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? "Failed")
       onSaved()
+      // The pickers on other screens hold this tab's copy of the lists, and
+      // Postgres's write counters will not admit to this insert for a second yet.
+      refreshSheetOptions()
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Failed to save")
     } finally {

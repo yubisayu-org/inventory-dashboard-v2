@@ -434,23 +434,54 @@ async function fetchRequestedAddresses(
   return map
 }
 
+/**
+ * Each customer's ongkir for each trip on screen.
+ *
+ * The rate belongs to the warehouse, not to the trip -- seventeen trips ship
+ * out of two warehouses -- so asking for it per trip returned every customer's
+ * two rates once per trip that shares their warehouse: 13,554 rows a call, of
+ * which about 3,500 were information and the rest were the same numbers again.
+ * Measured 10 Sep 2026, that one query was 67M of the 349M rows the database
+ * had returned since May.
+ *
+ * So the rates are read per warehouse, the trips are expanded here, and the
+ * map handed back is the same map.
+ */
 async function fetchEventOngkir(
   customerIds: Set<string>,
   eventNames: Set<string>,
 ): Promise<Map<string, number>> {
   const map = new Map<string, number>()
   if (customerIds.size === 0 || eventNames.size === 0) return map
-  const rows = await sql`
-    SELECT ev.name AS event,
-           lower(replace(c.instagram_id, '@', '')) AS norm_cust,
+
+  const trips = (await sql`
+    SELECT name, warehouse_id FROM events WHERE name = ANY(${[...eventNames]})
+  `) as unknown as { name: string; warehouse_id: number }[]
+  if (trips.length === 0) return map
+
+  // Only the warehouses those trips ship from, which is usually one.
+  const warehouses = [...new Set(trips.map((t) => t.warehouse_id))]
+  const rates = (await sql`
+    SELECT lower(replace(c.instagram_id, '@', '')) AS norm_cust,
+           cwo.warehouse_id,
            COALESCE(cwo.effective_ongkir, 0)::int AS ongkir
-    FROM events ev
-    JOIN customer_warehouse_ongkir cwo ON cwo.warehouse_id = ev.warehouse_id
-    JOIN customers c ON c.id = cwo.customer_id
-    WHERE ev.name = ANY(${[...eventNames]})
-      AND lower(replace(c.instagram_id, '@', '')) = ANY(${[...customerIds]})
-  `
-  for (const r of rows) map.set(`${r.norm_cust}|${r.event}`, Number(r.ongkir) || 0)
+      FROM customer_warehouse_ongkir cwo
+      JOIN customers c ON c.id = cwo.customer_id
+     WHERE cwo.warehouse_id = ANY(${warehouses})
+       AND lower(replace(c.instagram_id, '@', '')) = ANY(${[...customerIds]})
+  `) as unknown as { norm_cust: string; warehouse_id: number; ongkir: number }[]
+
+  const byWarehouse = new Map<string, number>()
+  for (const r of rates) byWarehouse.set(`${r.norm_cust}|${r.warehouse_id}`, Number(r.ongkir) || 0)
+
+  for (const t of trips) {
+    for (const cust of customerIds) {
+      const rate = byWarehouse.get(`${cust}|${t.warehouse_id}`)
+      // Absent stays absent: a customer with no rate row for that warehouse is
+      // unpriceable there, and the caller distinguishes that from a zero.
+      if (rate !== undefined) map.set(`${cust}|${t.name}`, rate)
+    }
+  }
   return map
 }
 

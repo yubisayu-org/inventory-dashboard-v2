@@ -7,6 +7,7 @@ import DataGrid, { type ColumnDef } from "@/components/DataGrid"
 import ToggleSwitch from "@/components/ToggleSwitch"
 import SearchableSelect from "@/components/SearchableSelect"
 import EventPerformancePanel from "./EventPerformancePanel"
+import { refreshSheetOptions } from "@/hooks/useSheetOptions"
 
 const EMPTY_FORM = { name: "", eta: "", warehouseId: "", countryId: "" }
 
@@ -94,6 +95,9 @@ export default function EventsClient() {
       setForm({ ...EMPTY_FORM, warehouseId: form.warehouseId })
       setMobileAddOpen(false)
       load()
+      // The pickers on other screens hold this tab's copy of the lists, and
+      // Postgres's write counters will not admit to this insert for a second yet.
+      refreshSheetOptions()
       if (window.innerWidth < 768) window.scrollTo({ top: 0, behavior: "smooth" })
     } catch (err) {
       setAddError(err instanceof Error ? err.message : "Failed to add")
