@@ -1376,7 +1376,12 @@ export async function getArrivalList(event?: string, route?: string): Promise<Ar
   // Sorted by it, never sent with it: the receiving table shows no per-customer
   // payment state, so the status is the server's business and the order of the
   // array carries everything the arrive modal needs.
-  const statusMap = await fetchPaidStatusMap(event ? [event] : null)
+  // Only the trips on this list. Asked with nothing, it aggregates every
+  // invoice the shop has ever raised -- 3,709 rows -- to sort the customers
+  // under a handful of products, and the sort only ever reads the trips the
+  // items themselves name.
+  const listed = event ? [event] : [...new Set(items.map((i) => i.event))]
+  const statusMap = await fetchPaidStatusMap(listed.length > 0 ? listed : null)
   for (const item of items) {
     item.orders.sort(compareOrderPriority(item.event, statusMap))
   }
