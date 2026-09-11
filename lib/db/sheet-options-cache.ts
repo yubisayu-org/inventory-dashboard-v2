@@ -7,7 +7,7 @@ import type { SheetOptions } from "./types"
  *
  * getSheetOptions reads every product and every customer -- about 9,400 rows.
  * useSheetOptions runs on every dashboard page that has a picker on it, so
- * walking from Box Manifest to Shopping List to Expenses pulled three full
+ * walking from Manifest to Shopping List to Expenses pulled three full
  * copies of both tables. Measured on 10 Sep 2026 it was 134M of the 349M rows
  * the database had returned since May: 38% of all egress, for four dropdowns.
  *
