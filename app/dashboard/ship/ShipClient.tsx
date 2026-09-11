@@ -42,6 +42,15 @@ const SEGMENTS: { id: Segment; label: string }[] = [
   { id: "all", label: "Semua" },
 ]
 
+/**
+ * The tabs that can show a card with nothing left to do.
+ *
+ * Everywhere else those cards are unreachable, so they are left in the
+ * database until one of these is opened -- on a trip in mid-cycle they are
+ * most of the table.
+ */
+const SHIPPED_TABS = new Set<Segment>(["shipped", "all"])
+
 // Per-line hold marker. Icon rather than a "Hold" pill so it doesn't compete
 // with the product name for width; title/aria carry the label for hover and
 // screen readers.
@@ -170,7 +179,7 @@ export default function ShipClient() {
   const abortRef = useRef<AbortController | null>(null)
   useEffect(() => () => { abortRef.current?.abort() }, [])
 
-  const fetchData = useCallback(async (srch: string, ev: string) => {
+  const fetchData = useCallback(async (srch: string, ev: string, withShipped: boolean) => {
     abortRef.current?.abort()
     const ac = new AbortController()
     abortRef.current = ac
@@ -181,6 +190,7 @@ export default function ShipClient() {
       const params = new URLSearchParams()
       // Always the whole trip: the tabs are applied below, in the browser.
       params.set("segment", "all")
+      if (!withShipped) params.set("includeShipped", "0")
       if (srch) params.set("search", srch)
       if (ev) params.set("event", ev)
 
@@ -212,10 +222,23 @@ export default function ShipClient() {
     return () => clearTimeout(t)
   }, [scopeReady])
 
+  /**
+   * Whether the finished cards have been asked for.
+   *
+   * Sticky once it turns on: somebody who has looked at Sudah Dikirim will
+   * likely look again, and a second trip through the tabs should not cost a
+   * second fetch. Choosing another trip starts it over.
+   */
+  const [withShipped, setWithShipped] = useState(false)
+  useEffect(() => { setWithShipped(false) }, [eventFilter, debouncedSearch])
+  useEffect(() => {
+    if (SHIPPED_TABS.has(segment)) setWithShipped(true)
+  }, [segment])
+
   useEffect(() => {
     if (!scopeReady) return
-    fetchData(debouncedSearch, eventFilter)
-  }, [debouncedSearch, eventFilter, fetchData, scopeReady])
+    fetchData(debouncedSearch, eventFilter, withShipped)
+  }, [debouncedSearch, eventFilter, fetchData, scopeReady, withShipped])
 
   // The tab, applied where the cards already are. The badge counts come from
   // the same response and are computed over all of them, so they do not move.
@@ -233,7 +256,7 @@ export default function ShipClient() {
   useEffect(() => { setPage(0) }, [segment, debouncedSearch, eventFilter, groups.length])
 
   function refresh() {
-    fetchData(debouncedSearch, eventFilter)
+    fetchData(debouncedSearch, eventFilter, withShipped)
   }
 
   // One card per pair. The server marks the members and hands over the key; the
@@ -362,15 +385,21 @@ export default function ShipClient() {
             }`}
           >
             {s.label}
-            <span
-              className={`hidden sm:inline text-xs rounded-full px-1.5 py-0.5 tabular-nums ${
-                segment === s.id
-                  ? "bg-white/20 text-white"
-                  : "bg-surface-sunken text-muted"
-              }`}
-            >
-              {counts[s.id]}
-            </span>
+            {/* No number on the two tabs that can show finished cards: those
+                cards are not read unless one of them is open, so a badge there
+                could only be a guess or another query. Every other badge
+                counts cards that are on the page already. */}
+            {!SHIPPED_TABS.has(s.id) && (
+              <span
+                className={`hidden sm:inline text-xs rounded-full px-1.5 py-0.5 tabular-nums ${
+                  segment === s.id
+                    ? "bg-white/20 text-white"
+                    : "bg-surface-sunken text-muted"
+                }`}
+              >
+                {counts[s.id]}
+              </span>
+            )}
           </button>
         ))}
       </div>

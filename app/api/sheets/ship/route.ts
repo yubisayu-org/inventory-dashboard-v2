@@ -15,7 +15,11 @@ export async function GET(req: NextRequest) {
     const search = url.searchParams.get("search") ?? ""
     const event = url.searchParams.get("event") ?? ""
 
-    const data = await getShipOrdersFiltered({ segment, search, event })
+    // Cards with nothing left to do are read only when a tab can show them;
+    // the screen says so rather than the server guessing from the segment,
+    // because the screen filters the tabs itself.
+    const includeShipped = url.searchParams.get("includeShipped") !== "0"
+    const data = await getShipOrdersFiltered({ segment, search, event, includeShipped })
     return NextResponse.json(data)
   } catch (err) {
     console.error("Failed to load ready-to-ship orders:", err)

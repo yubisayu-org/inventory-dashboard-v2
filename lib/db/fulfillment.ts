@@ -530,12 +530,39 @@ function countReadyBundles(groups: ShipCustomer[], splitAsked: Set<string>): num
   return ready
 }
 
+/**
+ * A card with nothing left to do, expressed where the rows are.
+ *
+ * The same rule buildShipGroups applies in memory: every line arrived, nothing
+ * parked, nothing left to send. Seven of the working tabs cannot show such a
+ * card, and on a trip in mid-cycle they are most of the table -- 62% of
+ * LSCN202606's 2,604 lines on 11 Sep 2026 -- so they are worth not reading.
+ *
+ * Grouped by the same key the cards are: the trip, and the handle with its "@"
+ * and its case taken off, so one customer spelled two ways stays one card.
+ */
+const SHIPPED_GROUP = `
+  bool_and(COALESCE(o.unit_arrive, 0) >= o.unit)
+    OVER w
+  AND COALESCE(SUM(o.unit_hold) OVER w, 0) = 0
+  AND COALESCE(SUM(GREATEST(0, COALESCE(o.unit_arrive, 0)
+        - COALESCE(o.unit_ship, 0) - COALESCE(o.unit_hold, 0))) OVER w, 0) = 0
+`
+
 export async function getShipOrdersFiltered(opts: {
   segment?: ShipSegment
   search?: string
   event?: string
+  /**
+   * Whether cards with nothing left to do are read at all.
+   *
+   * Only "Sudah Dikirim" and "Semua" can show one, so the screen asks for them
+   * only when one of those tabs is open. The badge counts stay right either
+   * way -- what is not read is counted, which is one row rather than hundreds.
+   */
+  includeShipped?: boolean
 }): Promise<ShipOrdersFiltered> {
-  const { segment = "all", search, event } = opts
+  const { segment = "all", search, event, includeShipped = true } = opts
 
   // Fetch every order line in scope (no arrival pre-filter) so each invoice
   // group carries its full set of lines — required to tell a fully-arrived
@@ -544,14 +571,34 @@ export async function getShipOrdersFiltered(opts: {
   const { conditions, params } = buildSearchFilters({ event, search })
   const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""
 
-  const orderRows = await sql.unsafe(
-    `SELECT o.id, o.event, o.customer, o.product_id, p.name AS product_name,
-            COALESCE(p.gram, 0) AS gram, o.unit, o.unit_price, o.unit_arrive, o.unit_ship, o.unit_hold
-     FROM orders o
-     JOIN products p ON p.id = o.product_id
-     ${where}
-     ORDER BY o.event, o.customer, o.id`,
-    params,
+  const LINES = `o.id, o.event, o.customer, o.product_id, p.name AS product_name,
+            COALESCE(p.gram, 0) AS gram, o.unit, o.unit_price, o.unit_arrive, o.unit_ship, o.unit_hold`
+  const WINDOW = `WINDOW w AS (PARTITION BY o.event, lower(replace(o.customer, '@', '')))`
+
+  const orderRows = await (
+    includeShipped
+      ? sql.unsafe(
+          `SELECT ${LINES}
+             FROM orders o
+             JOIN products p ON p.id = o.product_id
+             ${where}
+            ORDER BY o.event, o.customer, o.id`,
+          params,
+        )
+      : sql.unsafe(
+          `SELECT id, event, customer, product_id, product_name, gram, unit, unit_price,
+                  unit_arrive, unit_ship, unit_hold
+             FROM (
+               SELECT ${LINES}, (${SHIPPED_GROUP}) AS done
+                 FROM orders o
+                 JOIN products p ON p.id = o.product_id
+                 ${where}
+                 ${WINDOW}
+             ) t
+            WHERE NOT done
+            ORDER BY event, customer, id`,
+          params,
+        )
   )
 
   const customerIds = new Set<string>()
@@ -580,6 +627,9 @@ export async function getShipOrdersFiltered(opts: {
 
   // Counts and the filtered list both derive from the same in-memory status,
   // so the tab badges can never drift from the rows actually shown.
+  // "shipped" and "all" are not counted when the finished cards were not read,
+  // and their tabs no longer wear a badge. Every other count is over cards
+  // that were built, so it is exact.
   const counts: Record<ShipSegment, number> = {
     all: 0, not_arrived: 0, partial: 0, split_requested: 0, paired: 0, ready: 0, ready_unpaid: 0, hold: 0, shipped: 0,
   }
