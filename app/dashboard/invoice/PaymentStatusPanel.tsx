@@ -50,6 +50,15 @@ export function PaymentStatusPanel({
   const [filter, setFilter] = useState<StatusFilter>("unpaid")
   // Mobile-only event picker (next to the search bar); "" = all events.
   const [eventFilter, setEventFilter] = useState("")
+  /**
+   * The search box's text, held out here rather than inside the grid.
+   *
+   * The grid is keyed on the tab so switching tabs remounts it -- and a
+   * remount used to throw away what had been typed. Looking one customer up
+   * across unpaid, paid and overpaid is the reason to touch these tabs at all,
+   * so the name has to survive the trip.
+   */
+  const [search, setSearch] = useState("")
   // Rows currently visible in the grid after the search box narrows them, so
   // the Outstanding/Overpaid totals track what the user is looking at. null
   // until the grid first reports (falls back to the full filtered set).
@@ -353,6 +362,8 @@ export function PaymentStatusPanel({
           columns={columns}
           getRowId={(r) => `${r.event}-${r.customer}`}
           searchPlaceholder="Search customers, events…"
+          searchValue={search}
+          onSearchChange={setSearch}
           fullWidthSearch
           tightToolbar
           boldUppercaseHeader
