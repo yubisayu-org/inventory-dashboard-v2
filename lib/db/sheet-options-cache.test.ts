@@ -19,14 +19,21 @@ after(async () => {
 })
 
 test("asked twice with nothing written in between, the database is read once", async () => {
-  forgetSheetOptions()
-  const first = await getCachedSheetOptions()
-  const second = await getCachedSheetOptions()
+  // Other test files are inserting rows into these very tables while this
+  // runs, and each of those correctly throws the copy away -- which is the
+  // feature. So the assertion needs a quiet pair of reads, not a quiet suite.
+  for (let attempt = 0; attempt < 20; attempt++) {
+    forgetSheetOptions()
+    const first = await getCachedSheetOptions()
+    const second = await getCachedSheetOptions()
+    if (first.fingerprint !== second.fingerprint) continue
 
-  assert.equal(first.fingerprint, second.fingerprint)
-  // The same object, not an equal one: a second read of every product and
-  // every customer is exactly what this exists to avoid.
-  assert.equal(first.options, second.options)
+    // The same object, not an equal one: a second read of every product and
+    // every customer is exactly what this exists to avoid.
+    assert.equal(first.options, second.options)
+    return
+  }
+  assert.fail("no two consecutive reads found the tables unchanged")
 })
 
 test("a new product moves the fingerprint, and the lists are rebuilt", async () => {

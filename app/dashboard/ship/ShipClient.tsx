@@ -7,7 +7,7 @@ import { waLink } from "@/lib/message-delivery"
 import { displayIg } from "@/lib/format"
 import TableSkeleton from "@/components/TableSkeleton"
 import SelectionActionBar from "@/components/SelectionActionBar"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import type { ShipCustomer, ShipOrdersParams, ShipSegment, ShipStatus, ShipOrdersFiltered, PaymentStatus } from "@/lib/db"
 import { normalizeId, parcelPlanExtra } from "@/lib/db/helpers"
@@ -115,7 +115,19 @@ const PAYMENT_BADGE: Record<PaymentStatus, { label: string; cls: string }> = {
 export default function ShipClient() {
   const router = useRouter()
   const sheetOptions = useSheetOptions()
-  const [groups, setGroups] = useState<ShipCustomer[]>([])
+  /**
+   * Every card for the chosen trip, whatever tab is showing.
+   *
+   * The tab used to be a server parameter, and switching it re-ran four full
+   * queries -- order lines, ongkir, customer details, payment status -- so the
+   * server could apply a single `if` to the result at the very end
+   * (lib/db/fulfillment.ts). The badge counts were computed over all the cards
+   * either way, so the work was identical for every tab and only the last
+   * filter differed.
+   *
+   * Fetched once for the trip; the tab is a filter over what is already here.
+   */
+  const [allGroups, setAllGroups] = useState<ShipCustomer[]>([])
   const [counts, setCounts] = useState<Record<Segment, number>>({ all: 0, not_arrived: 0, partial: 0, split_requested: 0, paired: 0, ready: 0, ready_unpaid: 0, hold: 0, shipped: 0 })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -123,6 +135,21 @@ export default function ShipClient() {
   const [search, setSearch] = useState("")
   const [debouncedSearch, setDebouncedSearch] = useState("")
   const [eventFilter, setEventFilter] = useState("")
+  /**
+   * Whether the trip to show has been decided yet.
+   *
+   * Nothing is fetched before it has. The page used to open on every order
+   * line ever recorded -- 9,943 of them, with the product name joined on, plus
+   * every customer's ongkir and every customer's address -- because the filter
+   * started empty and the server reads the lot when no trip is named. About
+   * 1.8MB an open, repeated on every segment tab, and by a distance the most
+   * expensive click in the dashboard (measured 10 Sep 2026).
+   *
+   * Trips that sailed months ago cannot be shipped again, so the newest one is
+   * both the cheap answer and the right one. "Semua Event" is still there for
+   * the rare look back.
+   */
+  const [scopeReady, setScopeReady] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkShipping, setBulkShipping] = useState(false)
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null)
@@ -143,7 +170,7 @@ export default function ShipClient() {
   const abortRef = useRef<AbortController | null>(null)
   useEffect(() => () => { abortRef.current?.abort() }, [])
 
-  const fetchData = useCallback(async (seg: Segment, srch: string, ev: string) => {
+  const fetchData = useCallback(async (srch: string, ev: string) => {
     abortRef.current?.abort()
     const ac = new AbortController()
     abortRef.current = ac
@@ -152,14 +179,15 @@ export default function ShipClient() {
     setError(null)
     try {
       const params = new URLSearchParams()
-      params.set("segment", seg)
+      // Always the whole trip: the tabs are applied below, in the browser.
+      params.set("segment", "all")
       if (srch) params.set("search", srch)
       if (ev) params.set("event", ev)
 
       const res = await fetch(`/api/sheets/ship?${params}`, { signal: ac.signal })
       const json: ShipOrdersFiltered = await res.json()
       if (!res.ok) throw new Error((json as unknown as { error: string }).error ?? "Failed to load")
-      setGroups(json.groups)
+      setAllGroups(json.groups)
       setCounts(json.counts)
     } catch (err) {
       if ((err as Error).name === "AbortError") return
@@ -169,9 +197,32 @@ export default function ShipClient() {
     }
   }, [])
 
+  // The newest open trip, as soon as the trip list arrives.
   useEffect(() => {
-    fetchData(segment, debouncedSearch, eventFilter)
-  }, [segment, debouncedSearch, eventFilter, fetchData])
+    if (scopeReady) return
+    const newest = sheetOptions?.activeEvents?.[0] ?? sheetOptions?.events?.[0]
+    if (newest) { setEventFilter(newest); setScopeReady(true) }
+  }, [sheetOptions, scopeReady])
+
+  // If the trip list never arrives, open on everything rather than on nothing:
+  // a slow page beats a page that shows no orders at all.
+  useEffect(() => {
+    if (scopeReady) return
+    const t = setTimeout(() => setScopeReady(true), 4000)
+    return () => clearTimeout(t)
+  }, [scopeReady])
+
+  useEffect(() => {
+    if (!scopeReady) return
+    fetchData(debouncedSearch, eventFilter)
+  }, [debouncedSearch, eventFilter, fetchData, scopeReady])
+
+  // The tab, applied where the cards already are. The badge counts come from
+  // the same response and are computed over all of them, so they do not move.
+  const groups = useMemo(
+    () => (segment === "all" ? allGroups : allGroups.filter((g) => g.status === segment)),
+    [allGroups, segment],
+  )
 
   // Client-side simple pagination for the browsing tabs (not the selection tabs).
   const SHIP_PAGE_SIZE = 25
@@ -182,7 +233,7 @@ export default function ShipClient() {
   useEffect(() => { setPage(0) }, [segment, debouncedSearch, eventFilter, groups.length])
 
   function refresh() {
-    fetchData(segment, debouncedSearch, eventFilter)
+    fetchData(debouncedSearch, eventFilter)
   }
 
   // One card per pair. The server marks the members and hands over the key; the
