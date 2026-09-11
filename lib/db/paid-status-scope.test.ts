@@ -71,3 +71,22 @@ test("a trip nobody asked about is not in the answer", async () => {
   const one = await fetchPaidStatusMap([EV1])
   assert.ok([...one.keys()].every((k) => !k.includes(EV2)), "and its rows never left the database")
 })
+
+test("naming the customers answers the same for them, and nothing for the others", async () => {
+  const wide = await fetchPaidStatusMap([EV1, EV2])
+  const one = `${TAG}_2`.toLowerCase()
+  const narrow = await fetchPaidStatusMap([EV1, EV2], [one])
+
+  // Every key it does return agrees with the wide answer...
+  for (const [k, v] of narrow) assert.equal(v, wide.get(k), `${k} disagreed`)
+  // ...and the customers nobody asked about are simply not there.
+  assert.ok([...narrow.keys()].every((k) => k.toLowerCase().includes(one)))
+  assert.ok(narrow.size > 0 && narrow.size < wide.size, "a slice, and not an empty one")
+})
+
+test("asking about nobody is not asking about everybody", async () => {
+  // The empty list is a real answer -- a page with no lines on it -- and must
+  // not fall through to "every customer".
+  const none = await fetchPaidStatusMap([EV1, EV2], [])
+  assert.equal(none.size, 0)
+})

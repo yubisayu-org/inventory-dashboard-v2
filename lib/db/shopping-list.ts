@@ -200,9 +200,26 @@ export async function getShoppingList(event?: string): Promise<ShoppingListItem[
  * tables, so payments/adjustments/customers are joined on the normalized
  * handle (lower + strip @), matching how invoice.ts does it.
  */
-export async function fetchPaidStatusMap(events: string[] | null): Promise<Map<string, PaidStatus>> {
+export async function fetchPaidStatusMap(
+  events: string[] | null,
+  /**
+   * The customers whose status is going to be read, by normalised handle.
+   *
+   * The receiving list sorts a few hundred customers and was handed every
+   * customer on five trips -- 1,817 pairs to use 474. Left out, every customer
+   * on those trips is returned, which is what the shopping list wants.
+   */
+  customers?: string[],
+): Promise<Map<string, PaidStatus>> {
   const map = new Map<string, PaidStatus>()
   if (events !== null && events.length === 0) return map
+  if (customers && customers.length === 0) return map
+  // Applied to the invoice rows at the end rather than to each CTE: the
+  // aggregates are grouped by customer already, so this drops whole rows
+  // without changing a single figure on the ones it keeps.
+  const only = customers
+    ? sql`WHERE ot.norm_cust = ANY(${[...new Set(customers)]})`
+    : sql``
 
   const rows = events === null
     ? await sql`
@@ -256,6 +273,7 @@ export async function fetchPaidStatusMap(events: string[] | null): Promise<Map<s
         LEFT JOIN customer_ongkir co  ON co.norm_id = ot.norm_cust AND co.event = ot.event
         LEFT JOIN payment_totals pt   ON pt.event = ot.event AND pt.norm_cust = ot.norm_cust
         LEFT JOIN adjustment_totals at ON at.event = ot.event AND at.norm_cust = ot.norm_cust
+        ${only}
       `
     : await sql`
         WITH order_totals AS (
@@ -310,6 +328,7 @@ export async function fetchPaidStatusMap(events: string[] | null): Promise<Map<s
         LEFT JOIN customer_ongkir co  ON co.norm_id = ot.norm_cust AND co.event = ot.event
         LEFT JOIN payment_totals pt   ON pt.event = ot.event AND pt.norm_cust = ot.norm_cust
         LEFT JOIN adjustment_totals at ON at.event = ot.event AND at.norm_cust = ot.norm_cust
+        ${only}
       `
 
   for (const r of rows) {
