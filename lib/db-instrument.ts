@@ -31,6 +31,25 @@ const stats = new AsyncLocalStorage<QueryStats>()
 /** Log any query at or above this, in ms. 0 disables the log entirely. */
 const SLOW_QUERY_MS = Number(process.env.SLOW_QUERY_MS ?? 300)
 
+/**
+ * Give up on a query after this long, in ms. 0 disables the ceiling.
+ *
+ * postgres.js has no per-query timeout of its own, and the server-side
+ * statement_timeout only starts once a backend is executing. Neither covers
+ * the failure production actually has: the pooler has no backend to hand out,
+ * so the query sits in the driver's queue -- for eighteen minutes, on 29 Sep
+ * 2026, for a one-row SELECT -- and every page behind it shows nothing. Twenty
+ * seconds is longer than any query the app legitimately runs (the slowest in
+ * pg_stat_statements is 1.3s) and short enough that a person still gets an
+ * error while they are looking at the screen.
+ */
+const QUERY_CEILING_MS = Number(process.env.QUERY_CEILING_MS ?? 20_000)
+
+export interface InstrumentOptions {
+  /** Overrides QUERY_CEILING_MS for this pool; 0 disables it. */
+  ceilingMs?: number
+}
+
 /** The SQL text only — never the parameters, which carry customer data. */
 function sqlText(strings: readonly string[] | undefined): string {
   if (!strings) return "(unknown)"
@@ -49,21 +68,47 @@ function sqlText(strings: readonly string[] | undefined): string {
  * idempotent, guarded by `this.executed`) and the constructor-assigned
  * `resolve`/`reject` for the end stamp. Nothing runs that would not have run.
  */
-function track(query: unknown, label: string): unknown {
+function track(query: unknown, label: string, ceilingMs: number): unknown {
   const q = query as {
     handle?: () => unknown
     resolve?: (x: unknown) => unknown
     reject?: (x: unknown) => unknown
+    cancel?: () => unknown
     strings?: readonly string[]
   }
   if (typeof q.handle !== "function" || typeof q.resolve !== "function") return query
 
   let start: number | undefined
+  let ceiling: NodeJS.Timeout | undefined
   const bucket = stats.getStore()
 
   const handle = q.handle.bind(q)
   q.handle = () => {
-    if (start === undefined) start = performance.now()
+    if (start === undefined) {
+      start = performance.now()
+      // The caller is told no by us, not by the driver. `cancel()` is asked
+      // too, and it helps when it can -- a query still in the driver's queue
+      // is dropped unsent, a running one gets a CancelRequest -- but a query
+      // already written to a socket behind another (postgres.js pipelines)
+      // only has a note left on it, and one waiting at the pooler for a
+      // backend that never comes has nothing to cancel at all. That last is
+      // the production failure, so the promise is rejected here regardless.
+      // Whatever the server eventually answers lands on a promise that has
+      // already settled, which is a no-op; the connection stays consistent
+      // because the driver still reads the response off the wire. The timer
+      // is unref'd so a pending ceiling never keeps the process alive.
+      if (ceilingMs > 0) {
+        ceiling = setTimeout(() => {
+          console.error(`[query-ceiling] ${label} gave up after ${ceilingMs}ms — ${sqlText(q.strings)}`)
+          try { q.cancel?.() } catch { /* best effort */ }
+          q.reject!(Object.assign(
+            new Error(`canceling statement: no answer after ${ceilingMs}ms`),
+            { code: "57014", name: "QueryCeilingError" },
+          ))
+        }, ceilingMs)
+        ceiling.unref()
+      }
+    }
     return handle()
   }
 
@@ -71,6 +116,7 @@ function track(query: unknown, label: string): unknown {
     if (start === undefined) return
     const ms = performance.now() - start
     start = undefined
+    if (ceiling) { clearTimeout(ceiling); ceiling = undefined }
     if (bucket) {
       bucket.count++
       bucket.dbMs += ms
@@ -99,13 +145,14 @@ function track(query: unknown, label: string): unknown {
  * own transaction handle, not this proxy, so they are counted only as the one
  * outer call — transactions here are writes, not the read paths under suspicion.
  */
-export function instrument<T extends object>(sql: T, label: string): T {
+export function instrument<T extends object>(sql: T, label: string, opts: InstrumentOptions = {}): T {
+  const ceilingMs = opts.ceilingMs ?? QUERY_CEILING_MS
   return new Proxy(sql, {
     apply(target, thisArg, args: unknown[]) {
       const out = Reflect.apply(target as unknown as (...a: unknown[]) => unknown, thisArg, args)
       const first = args[0] as { raw?: unknown } | undefined
       const isTagged = Array.isArray(first) && Array.isArray(first.raw)
-      return isTagged ? track(out, label) : out
+      return isTagged ? track(out, label, ceilingMs) : out
     },
     get(target, prop, receiver) {
       const value = Reflect.get(target, prop, receiver)
@@ -117,7 +164,7 @@ export function instrument<T extends object>(sql: T, label: string): T {
       // SQL as a string, so the busiest read paths reach the database ONLY this
       // way — and their query time was being reported as application time.
       if (prop === "unsafe" || prop === "file") {
-        return (...args: unknown[]) => track(bound(...args), label)
+        return (...args: unknown[]) => track(bound(...args), label, ceilingMs)
       }
       return bound
     },
