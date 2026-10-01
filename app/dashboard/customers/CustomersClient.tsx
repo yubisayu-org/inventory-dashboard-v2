@@ -102,6 +102,19 @@ function rowToDraft(row: CustomerRow): DraftCustomer {
 export default function CustomersClient({ role }: { role: Role | null }) {
   // Staff may pick an area; only the owner may type the four fields it fills.
   const canUnlockAddress = role === "owner"
+  /**
+   * Whether this user may change a customer's details at all.
+   *
+   * Staff read them. A customer's details are hers, and the form she filled in
+   * is the record of them -- a name corrected by hand leaves the form saying
+   * one thing and the row another, with nothing to say which was meant. When
+   * she asks for a change, she is asked to send the form again.
+   *
+   * The four address fields have been owner-only for longer, for the narrower
+   * reason above; this is the same argument applied to the whole row, and the
+   * server enforces it either way.
+   */
+  const canEdit = role === "owner"
   // Current page of rows + total — both come from the server now.
   const [data, setData] = useState<CustomerRow[]>([])
   const [totalCount, setTotalCount] = useState(0)
@@ -401,7 +414,7 @@ export default function CustomersClient({ role }: { role: Role | null }) {
           <button
             type="button"
             onClick={() => setEditRow(row.original)}
-            title="Edit"
+            title={canEdit ? "Edit" : "See her details — ask her to send the form again to change them"}
             className="text-faint hover:text-brand transition-colors"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -409,7 +422,7 @@ export default function CustomersClient({ role }: { role: Role | null }) {
               <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
             </svg>
           </button>
-          <button
+          {canEdit && <button
             type="button"
             onClick={() => handleDelete(row.original)}
             title="Delete"
@@ -420,11 +433,11 @@ export default function CustomersClient({ role }: { role: Role | null }) {
               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
               <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
             </svg>
-          </button>
+          </button>}
         </div>
       ),
     },
-  ], [warehouses])
+  ], [warehouses, canEdit])
 
   const renderMobileCard = useCallback((row: CustomerRow) => {
     const hasAddress = Boolean(row.dataDiri && row.dataDiri.trim())
@@ -670,6 +683,7 @@ export default function CustomersClient({ role }: { role: Role | null }) {
 
       {editRow && (
         <EditCustomerModal
+          canEdit={canEdit}
           rowId={editRow.id}
           warehouses={warehouses}
           initial={rowToDraft(editRow)}
@@ -1316,6 +1330,7 @@ function CreateCustomerModal({
 function EditCustomerModal({
   rowId,
   warehouses,
+  canEdit,
   canUnlockAddress,
   initial,
   charged,
@@ -1325,6 +1340,8 @@ function EditCustomerModal({
 }: {
   rowId: number
   warehouses: WarehouseRow[]
+  /** Whether this user may change her details at all — staff may not. */
+  canEdit: boolean
   initial: DraftCustomer
   /** What the invoice charges today, so the form can say which fields it overrides. */
   charged: OngkirByWarehouse
@@ -1375,11 +1392,23 @@ function EditCustomerModal({
         onKeyDown={handleKeyDown}
       >
         <div className="flex items-center justify-between">
-          <span className="text-sm font-semibold text-foreground">Edit Customer</span>
+          <span className="text-sm font-semibold text-foreground">{canEdit ? "Edit Customer" : "Customer"}</span>
           <span className="text-xs text-faint">ID: {rowId}</span>
         </div>
 
-        <CustomerFields draft={draft} setDraft={setDraft} warehouses={warehouses} saving={saving} charged={charged} canUnlockAddress={canUnlockAddress} />
+        {/* Said once, at the top, instead of letting her fill a form that
+            refuses to save. The remedy is the whole point of the rule. */}
+        {!canEdit && (
+          <p className="text-xs text-muted bg-surface-sunken border border-cream-border rounded-lg px-3 py-2">
+            Her details come from the form she filled in, and only the owner can change
+            them here. If something is wrong, ask her to send the form again with the
+            correct details.
+          </p>
+        )}
+
+        <fieldset disabled={!canEdit} className={canEdit ? "" : "opacity-70"} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+          <CustomerFields draft={draft} setDraft={setDraft} warehouses={warehouses} saving={saving} charged={charged} canUnlockAddress={canUnlockAddress} />
+        </fieldset>
 
         {saveError && <p className="text-xs text-red-500">{saveError}</p>}
 

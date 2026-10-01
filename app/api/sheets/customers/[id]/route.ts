@@ -1,14 +1,28 @@
 import { NextRequest, NextResponse } from "next/server"
-import { requireSession, requireRole } from "@/lib/api"
+import { requireSession, requireRole, requireOwner } from "@/lib/api"
 import { updateCustomer, deleteCustomer, parseOngkir, requoteCustomerArea, withActor } from "@/lib/db"
 
 type Params = { params: Promise<{ id: string }> }
 
+/**
+ * Owner only, since 11 Sep 2026.
+ *
+ * A customer's details are hers, and the record of them is the form she filled
+ * in. Staff correcting a name or an address by hand leaves the form saying one
+ * thing and the record another, with nothing to say which was meant -- so when
+ * she asks for a change, she is asked to send the form again and the record
+ * follows it.
+ *
+ * The four address fields were already owner-only for a narrower reason: a
+ * district typed by hand that the rates table does not recognise prices a
+ * parcel at nothing and says so nowhere. This is the same argument, applied to
+ * the whole row.
+ */
 export async function PUT(req: NextRequest, { params }: Params) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
 
-  const ownerError = requireRole(session)
+  const ownerError = requireOwner(session)
   if (ownerError) return ownerError
 
   const { id: idStr } = await params
@@ -79,11 +93,12 @@ export async function PUT(req: NextRequest, { params }: Params) {
   }
 }
 
+/** Owner only, for the same reason as PUT -- and a deletion cannot be undone. */
 export async function DELETE(_req: NextRequest, { params }: Params) {
   const { session, error: authError } = await requireSession()
   if (authError) return authError
 
-  const ownerError = requireRole(session)
+  const ownerError = requireOwner(session)
   if (ownerError) return ownerError
 
   const { id: idStr } = await params
