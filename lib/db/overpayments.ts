@@ -34,14 +34,15 @@ export type OverpaymentToCheck = {
 type Cover = { total: number; hasLive: boolean }
 
 async function refundedByPair(db: DBExecutor): Promise<Map<string, Cover>> {
-  const rows = await db<{ event: string; cust_key: string; total: string; reason: string; status: string }[]>`
-    SELECT event,
-           lower(replace(customer, '@', '')) AS cust_key,
-           refund_amount AS total,
-           reason,
-           status
-      FROM refunds
-     WHERE status <> 'cancelled'
+  const rows = await db<{ event: string; cust_key: string; total: string; reason: string; status: string; money_moved: boolean }[]>`
+    SELECT r.event,
+           lower(replace(r.customer, '@', '')) AS cust_key,
+           r.refund_amount AS total,
+           r.reason,
+           r.status,
+           EXISTS (SELECT 1 FROM payments p WHERE p.refund_id = r.id) AS money_moved
+      FROM refunds r
+     WHERE r.status <> 'cancelled'
   `
   const m = new Map<string, Cover>()
   for (const r of rows) {
@@ -51,7 +52,16 @@ async function refundedByPair(db: DBExecutor): Promise<Map<string, Cover>> {
     // her balance. Summing it would make a covered overpayment look uncovered
     // and offer the same money a second time, so its presence is the cover.
     if (isLiveAmount({ reason: r.reason, status: r.status })) cur.hasLive = true
-    else cur.total += Number(r.total)
+    // A refund whose money has already left -- sent to her bank, or moved as
+    // credit onto another trip -- has a payment row that lowered her balance
+    // on the way out. Her overpayment is measured from that balance, so the
+    // money is gone from both sides of the subtraction already; counting the
+    // refund here took it off a second time, and the row written for the next
+    // overpayment came out short by exactly the earlier refund (andelissaaa,
+    // 7 Oct 2026: 755.000 where 1.409.000 was owed). A refund she chose to
+    // keep on her account has no payment row -- the money is still on the
+    // trip, which is what the refund stands for -- and still covers.
+    else if (!r.money_moved) cur.total += Number(r.total)
     m.set(key, cur)
   }
   return m
