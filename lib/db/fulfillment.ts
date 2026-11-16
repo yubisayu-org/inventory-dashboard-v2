@@ -46,6 +46,31 @@ export class PairedShipmentError extends Error {
 }
 
 /** The other events this one was asked to travel with. */
+/**
+ * A pairing member counts only while its own trip still has something to send.
+ *
+ * A pair is a promise that two trips leave in one box. Once one of them has
+ * left -- shipped, or cancelled down to nothing -- the other has nobody to wait
+ * for, and treating it as paired strands it: arrival parks it for a partner
+ * that is gone, its card reads "paired", and the Gabung tab, which shows only
+ * a pair of two or more, leaves it out while Hold and Ready leave it to Gabung.
+ * LSCN202606, Nov 2026: eight customers' late Man Underwear Sets sat paid-for
+ * on no tab at all.
+ *
+ * The preference row itself is left alone, deliberately. The pairing's money
+ * (the merge credit, the parcel plan) is settled elsewhere and must not move
+ * because a box left; this only stops the spent half from holding the other.
+ *
+ * `p` is a customer_shipping_prefs alias and `c` its customers row.
+ */
+const MEMBER_HAS_SOMETHING_LEFT = sql`
+  EXISTS (
+    SELECT 1 FROM orders lo
+     WHERE lo.event = p.event
+       AND lower(replace(lo.customer, '@', '')) = lower(replace(c.instagram_id, '@', ''))
+       AND lo.unit > COALESCE(lo.unit_ship, 0)
+  )`
+
 async function pairedPartners(customer: string, event: string): Promise<string[]> {
   const custKey = normalizeId(customer)
   const rows = await sql<{ event: string }[]>`
@@ -63,6 +88,7 @@ async function pairedPartners(customer: string, event: string): Promise<string[]
       JOIN mine ON mine.merge_key = p.merge_key
      WHERE p.event <> ${event}
        AND lower(replace(c.instagram_id, '@', '')) = ${custKey}
+       AND ${MEMBER_HAS_SOMETHING_LEFT}
   `
   return rows.map((r) => r.event)
 }
@@ -309,6 +335,7 @@ async function fetchPairings(
       FROM customer_shipping_prefs p
       JOIN keys k ON k.customer_id = p.customer_id AND k.merge_key = p.merge_key
       JOIN customers c ON c.id = p.customer_id
+     WHERE ${MEMBER_HAS_SOMETHING_LEFT}
   `
   for (const r of rows) map.set(`${r.norm_cust}|${r.event}`, String(r.merge_key))
   return map
@@ -1104,15 +1131,25 @@ export async function reapplyHoldsForArrival(
 ): Promise<void> {
   const keys = Array.from(new Set(customers.map((c) => normalizeId(c)))).filter(Boolean)
   if (keys.length === 0) return
+  // `me` is the arriving trip; `p`/`c` inside the EXISTS are its partners,
+  // which is what MEMBER_HAS_SOMETHING_LEFT is written against.
   const rows = await db<{ instagram_id: string }[]>`
-    SELECT c.instagram_id
-      FROM customer_shipping_prefs p
-      JOIN customers c ON c.id = p.customer_id
-     WHERE p.event = ${event}
+    SELECT mc.instagram_id
+      FROM customer_shipping_prefs me
+      JOIN customers mc ON mc.id = me.customer_id
+     WHERE me.event = ${event}
        -- A pairing parks the parcel exactly as a hold does, so it has to be
-       -- re-applied on arrival for exactly the same reason.
-       AND (p.mode = 'hold' OR p.merge_key IS NOT NULL)
-       AND lower(replace(c.instagram_id, '@', '')) = ANY(${keys})
+       -- re-applied on arrival for exactly the same reason -- but only while
+       -- another member still has something to send. Parking for a partner
+       -- that has already gone is how the late arrivals were stranded.
+       AND (me.mode = 'hold' OR (me.merge_key IS NOT NULL AND EXISTS (
+             SELECT 1 FROM customer_shipping_prefs p
+               JOIN customers c ON c.id = p.customer_id
+              WHERE p.customer_id = me.customer_id
+                AND p.merge_key = me.merge_key
+                AND p.event <> me.event
+                AND ${MEMBER_HAS_SOMETHING_LEFT})))
+       AND lower(replace(mc.instagram_id, '@', '')) = ANY(${keys})
   `
   for (const row of rows) {
     await holdPackingList({ customer: row.instagram_id, event }, db)
