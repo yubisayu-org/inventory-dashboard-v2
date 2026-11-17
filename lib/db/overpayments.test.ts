@@ -222,3 +222,60 @@ test("a shipped parcel is measured at the rate it went out at", async () => {
     await sql`DELETE FROM products WHERE id = ${prod.id}`
   }
 })
+
+test("a refund already sent to her bank does not cover a later overpayment", async () => {
+  // She overpaid 50_000 in June and it was refunded: the refund's payment row
+  // (-50_000, kind 'refund') already brought her balance to zero. Then a mark
+  // drops her invoice by 200_000. She is owed 200_000 -- not 150_000, which is
+  // what counting the June refund a second time produced in production.
+  const SENT = `${TAG}_sent`
+  const SENT_EVENT = `${TAG}_EV3`
+  await sql`INSERT INTO customers (instagram_id) VALUES (${SENT})`
+  await sql`INSERT INTO events (name, warehouse_id) SELECT ${SENT_EVENT}, id FROM warehouses ORDER BY id LIMIT 1`
+  await sql`INSERT INTO orders (event, customer, product_id, unit_price, unit) VALUES (${SENT_EVENT}, ${SENT}, ${productId}, 500000, 1)`
+  await sql`INSERT INTO payments (event, customer, amount, is_checked, kind) VALUES (${SENT_EVENT}, ${SENT}, 550000, true, 'deposit')`
+  const [sent] = await sql<{ id: number }[]>`
+    INSERT INTO refunds (event, customer, reason, refund_amount, status)
+    VALUES (${SENT_EVENT}, ${SENT}, 'overpayment', 50000, 'refunded') RETURNING id`
+  await sql`INSERT INTO payments (event, customer, amount, is_checked, kind, refund_id) VALUES (${SENT_EVENT}, ${SENT}, -50000, true, 'refund', ${sent.id})`
+
+  const square = await listOverpaymentsToCheck()
+  assert.equal(square.find((r) => r.event === SENT_EVENT), undefined, "paid 500_000 of 500_000: nothing owed")
+
+  await sql`INSERT INTO orders (event, customer, product_id, unit_price, unit) VALUES (${SENT_EVENT}, ${SENT}, ${productId}, -200000, 1)`
+  const after = await listOverpaymentsToCheck()
+  const mine = after.find((r) => r.event === SENT_EVENT)
+  assert.ok(mine, "the mark left her overpaid")
+  assert.equal(mine.uncovered, 200000, "the June refund must not be subtracted again")
+  assert.equal(mine.refundedSoFar, 0)
+
+  await sql`DELETE FROM refunds WHERE event = ${SENT_EVENT}`
+  await sql`DELETE FROM payments WHERE event = ${SENT_EVENT}`
+  await sql`DELETE FROM orders WHERE event = ${SENT_EVENT}`
+  await sql`DELETE FROM events WHERE name = ${SENT_EVENT}`
+  await sql`DELETE FROM customers WHERE instagram_id = ${SENT}`
+})
+
+test("a refund she kept on her account still covers the overpayment", async () => {
+  // "Keep it" freezes the refund as a deposit and writes no payment row: the
+  // money is still on the trip, which is exactly what the refund stands for.
+  // It must go on covering, or the same 50_000 is offered to her again.
+  const KEPT = `${TAG}_kept`
+  const KEPT_EVENT = `${TAG}_EV4`
+  await sql`INSERT INTO customers (instagram_id) VALUES (${KEPT})`
+  await sql`INSERT INTO events (name, warehouse_id) SELECT ${KEPT_EVENT}, id FROM warehouses ORDER BY id LIMIT 1`
+  await sql`INSERT INTO orders (event, customer, product_id, unit_price, unit) VALUES (${KEPT_EVENT}, ${KEPT}, ${productId}, 500000, 1)`
+  await sql`INSERT INTO payments (event, customer, amount, is_checked, kind) VALUES (${KEPT_EVENT}, ${KEPT}, 550000, true, 'deposit')`
+  await sql`
+    INSERT INTO refunds (event, customer, reason, refund_amount, status)
+    VALUES (${KEPT_EVENT}, ${KEPT}, 'overpayment', 50000, 'applied_to_next_order')`
+
+  const rows = await listOverpaymentsToCheck()
+  assert.equal(rows.find((r) => r.event === KEPT_EVENT), undefined, "kept on account is still cover")
+
+  await sql`DELETE FROM refunds WHERE event = ${KEPT_EVENT}`
+  await sql`DELETE FROM payments WHERE event = ${KEPT_EVENT}`
+  await sql`DELETE FROM orders WHERE event = ${KEPT_EVENT}`
+  await sql`DELETE FROM events WHERE name = ${KEPT_EVENT}`
+  await sql`DELETE FROM customers WHERE instagram_id = ${KEPT}`
+})
